@@ -87,6 +87,11 @@ export interface DatasetRow {
   data_through?: string | null
   observed_at?: string | null
   reasons?: string[]
+  coverage?: {
+    row_count?: number
+    earliest_observed_at?: string | null
+    latest_observed_at?: string | null
+  }
 }
 
 export interface CollectionStatus {
@@ -112,6 +117,12 @@ export interface DataOverview {
 export interface QueryResult {
   data?: Record<string, unknown>[]
   next_cursor?: string | null
+  metadata?: {
+    state?: string
+    runtime_state?: string
+    data_through?: string | null
+    reasons?: string[]
+  }
 }
 
 export type Role = 'admin' | 'customer'

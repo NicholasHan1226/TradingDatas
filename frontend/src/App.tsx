@@ -21,6 +21,7 @@ function resolveRole(scopes: string[], tier: string): Role {
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [booting, setBooting] = useState(true)
+  const [previewingCustomer, setPreviewingCustomer] = useState(false)
 
   const bootstrap = useCallback(async (token: string, base: string) => {
     const probe = new ApiClient(base, token)
@@ -62,6 +63,7 @@ export default function App() {
   const handleLogout = useCallback(() => {
     clearSession()
     setSession(null)
+    setPreviewingCustomer(false)
   }, [])
 
   if (booting) {
@@ -78,13 +80,18 @@ export default function App() {
 
   return (
     <ToastProvider>
-      {session.role === 'admin' ? (
-        <AdminApp client={session.client} onLogout={handleLogout} />
+      {session.role === 'admin' && !previewingCustomer ? (
+        <AdminApp
+          client={session.client}
+          onLogout={handleLogout}
+          onViewCustomer={() => setPreviewingCustomer(true)}
+        />
       ) : (
         <CustomerApp
           client={session.client}
           tenantId={session.tenantId}
           onLogout={handleLogout}
+          onViewAdmin={session.role === 'admin' ? () => setPreviewingCustomer(false) : undefined}
         />
       )}
     </ToastProvider>

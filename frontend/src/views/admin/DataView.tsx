@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
-import type { DatasetRow, QueryResult } from '../../lib/types'
+import type { CollectionStatus, DatasetRow, QueryResult } from '../../lib/types'
 import {
   Badge,
   Button,
@@ -16,11 +16,12 @@ import {
 } from '../../components/ui'
 
 interface CatalogResponse {
-  datasets?: DatasetRow[]
+  data?: DatasetRow[]
 }
 
-const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'slate'> = {
+const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'blue' | 'slate'> = {
   success: 'green',
+  empty: 'blue',
   failed: 'rose',
   stale: 'amber',
   degraded: 'amber',
@@ -37,15 +38,39 @@ export default function DataView({ client }: { client: ApiClient }) {
     fields: string[]
     items: Record<string, unknown>[]
     cursor: string | null
+    metadata?: QueryResult['metadata']
   } | null>(null)
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const data = await client.get<CatalogResponse>('/v1/catalog', { limit: '500' })
+        const catalog = await client.get<CatalogResponse>('/v1/catalog', { limit: '500' })
         if (!alive) return
-        setRows(data.datasets ?? [])
+        let runtimeByDataset = new Map<string, DatasetRow>()
+        try {
+          const collection = await client.get<CollectionStatus>('/admin/api/collection/status')
+          runtimeByDataset = new Map(
+            (collection.datasets ?? []).map((row) => [`${row.dataset_id}|${row.provider}`, row]),
+          )
+        } catch {
+          // Catalog is independently useful; runtime decoration is best-effort.
+        }
+        if (!alive) return
+        setRows((catalog.data ?? []).map((row) => {
+          const runtime = runtimeByDataset.get(`${row.dataset_id}|${row.provider}`)
+          return runtime
+            ? {
+                ...row,
+                runtime_state: runtime.runtime_state,
+                degraded: runtime.degraded,
+                freshness_state: runtime.freshness_state,
+                data_through: runtime.data_through,
+                observed_at: runtime.observed_at,
+                reasons: runtime.reasons,
+              }
+            : row
+        }))
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : '加载目录失败')
       }
@@ -77,6 +102,7 @@ export default function DataView({ client }: { client: ApiClient }) {
         fields: items[0] ? Object.keys(items[0]) : [],
         items,
         cursor: result.next_cursor ?? null,
+        metadata: result.metadata,
       })
     } catch (err) {
       setSample({
@@ -106,6 +132,7 @@ export default function DataView({ client }: { client: ApiClient }) {
         fields: sample.fields.length ? sample.fields : items[0] ? Object.keys(items[0]) : [],
         items: [...sample.items, ...items],
         cursor: result.next_cursor ?? null,
+        metadata: result.metadata,
       })
     } catch (err) {
       setSample({
@@ -191,6 +218,7 @@ export default function DataView({ client }: { client: ApiClient }) {
                   ['激活', selected.activation],
                   ['数据截止', selected.data_through ?? '—'],
                   ['新鲜度', selected.freshness_state ?? '—'],
+                  ['已存记录', selected.coverage?.row_count?.toLocaleString('zh-CN') ?? '—'],
                 ].map(([k, v]) => (
                   <div key={k}>
                     <span className="text-slate-400">{k}</span>
@@ -206,7 +234,12 @@ export default function DataView({ client }: { client: ApiClient }) {
               ) : sample?.error ? (
                 <ErrorBanner message={sample.error} />
               ) : !sample || sample.items.length === 0 ? (
-                <EmptyState title="该窗口内没有返回数据行" />
+                <EmptyState
+                  title={sample?.metadata?.runtime_state === 'empty' ? '当前采集窗口没有新增行' : '该窗口内没有返回数据行'}
+                  hint={sample?.metadata?.runtime_state === 'empty'
+                    ? '这是本次采集窗口的真实空结果；目录内的历史覆盖不会被当作当前数据回传。'
+                    : undefined}
+                />
               ) : (
                 <>
                   <div className="max-h-80 overflow-auto rounded-lg border border-slate-100">

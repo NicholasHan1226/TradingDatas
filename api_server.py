@@ -375,6 +375,29 @@ def _parse_catalog_query(raw_query: str) -> dict[str, str]:
     return result
 
 
+def _parse_usage_days(raw_query: str) -> int:
+    """Read the optional usage-history window without catalog-query rules.
+
+    Usage endpoints intentionally accept a single, lenient ``days`` parameter.
+    They must not reuse the catalog parser: ``days`` is not a catalog filter and
+    an invalid value should fall back to the 30-day dashboard default.
+    """
+
+    days = 30
+    for component in raw_query.split("&") if raw_query else ():
+        raw_key, separator, raw_value = component.partition("=")
+        if raw_key != "days":
+            continue
+        if not separator:
+            break
+        try:
+            days = int(_strict_percent_decode(raw_value))
+        except (QueryValidationError, ValueError, TypeError):
+            days = 30
+        break
+    return max(1, min(days, 365))
+
+
 def _header_values(headers: Any, name: str) -> list[str]:
     getter = getattr(headers, "get_all", None)
     if callable(getter):
@@ -821,14 +844,8 @@ class Handler(BaseHTTPRequestHandler):
             }, status=200)
 
         if path == "/admin/api/usage/history" and method == "GET":
-            params = _parse_catalog_query(raw_query)
-            try:
-                days = int(params.get("days", "30"))
-            except (ValueError, TypeError):
-                days = 30
-            days = max(1, min(days, 365))
             return self._write_v1_json({
-                "history": auth.get_usage_history(days=days),
+                "history": auth.get_usage_history(days=_parse_usage_days(raw_query)),
             }, status=200)
 
         if path == "/admin/api/health/alerts" and method == "GET":
@@ -1090,18 +1107,7 @@ class Handler(BaseHTTPRequestHandler):
         request_id: str,
     ) -> None:
         tenant_id = str(account.get("tenant_id") or "")
-        # Lenient ``days`` parsing (mirrors the admin usage-history endpoint):
-        # anything absent or unparsable falls back to the 30-day default.
-        days = 30
-        for component in raw_query.split("&") if raw_query else ():
-            raw_key, _, raw_value = component.partition("=")
-            if raw_key == "days":
-                try:
-                    days = int(_strict_percent_decode(raw_value))
-                except (ValueError, TypeError):
-                    days = 30
-                break
-        days = max(1, min(days, 365))
+        days = _parse_usage_days(raw_query)
         limits = auth.effective_limits(account)
         daily = auth.get_daily_usage().get(tenant_id, {})
         history = [

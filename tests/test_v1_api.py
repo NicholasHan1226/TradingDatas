@@ -2192,3 +2192,16 @@ def test_admin_data_endpoints_serve_real_catalog_runtime(
         assert sum(overview["by_market"].values()) == len(registry.datasets)
     finally:
         conn.close()
+
+
+def test_admin_usage_history_accepts_dashboard_days_parameter(
+    v1_server: _Harness,
+) -> None:
+    """The admin dashboard's history query is not a catalog-filter query."""
+
+    status, payload, _headers, _raw = v1_server.request(
+        "GET", "/admin/api/usage/history?days=7", token="full-token"
+    )
+    assert status == 200
+    assert payload is not None
+    assert len(payload["history"]) == 7

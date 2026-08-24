@@ -69,7 +69,7 @@ export function Spinner({ size = 16, className = '' }: { size?: number; classNam
 
 export function LoadingPanel({ label = '加载中…' }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-400">
+    <div role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-slate-400">
       <Spinner /> {label}
     </div>
   )
@@ -86,7 +86,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 
 export function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+    <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
       <svg className="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-9-4a1 1 0 1 1 2 0v4a1 1 0 1 1-2 0V6Zm2 7a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" clipRule="evenodd" />
       </svg>

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ApiClient } from '../../lib/api'
+import { Button } from '../../components/ui'
 import TokensView from './TokensView'
 import UsageView from './UsageView'
 import CollectionView from './CollectionView'
@@ -70,9 +71,11 @@ const NAV: NavItem[] = [
 export default function AdminApp({
   client,
   onLogout,
+  onViewCustomer,
 }: {
   client: ApiClient
   onLogout: () => void
+  onViewCustomer: () => void
 }) {
   const [section, setSection] = useState<SectionKey>('tokens')
 
@@ -135,16 +138,19 @@ export default function AdminApp({
 
       {/* Content */}
       <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50">
-        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 px-5 py-4 backdrop-blur md:px-8">
+        <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 px-5 py-3.5 backdrop-blur md:px-8">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
             <div>
               <div className="mb-0.5 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">TradingDatas · Control Plane</div>
               <p className="text-xs text-slate-500">运营管理工作区</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:inline-flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> 已认证会话
               </span>
+              <Button variant="secondary" size="sm" onClick={onViewCustomer}>
+                查看用户前台
+              </Button>
               <select
                 aria-label="切换控制台页面"
                 value={section}
@@ -153,6 +159,15 @@ export default function AdminApp({
               >
                 {NAV.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
               </select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="lg:hidden"
+                aria-label="退出登录"
+                onClick={onLogout}
+              >
+                退出
+              </Button>
             </div>
           </div>
         </header>

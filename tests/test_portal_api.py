@@ -23,6 +23,21 @@ FUTURE_TS = time.time() + 90 * 24 * 3600
 PAST_TS = time.time() - 3600
 
 
+@pytest.mark.parametrize(
+    ("raw_query", "expected"),
+    [
+        ("", 30),
+        ("days=30", 30),
+        ("days=0", 1),
+        ("days=99999", 365),
+        ("days=invalid", 30),
+        ("unused=value&days=7", 7),
+    ],
+)
+def test_usage_days_parser_is_lenient_and_bounded(raw_query: str, expected: int) -> None:
+    assert api_server._parse_usage_days(raw_query) == expected  # noqa: SLF001 - public route contract
+
+
 def _token_hash(token: str) -> str:
     return auth._hash_token(token)  # noqa: SLF001 - exercise real middleware token lookup
 
