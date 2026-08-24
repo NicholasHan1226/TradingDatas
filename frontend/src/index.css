@@ -68,7 +68,12 @@ body {
   @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-[var(--td-radius-sm)] border border-white/10 bg-white/[0.04] px-2.5 text-[11px] font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400;
 }
 
-.workspace-header nav::-webkit-scrollbar {
+.workspace-nav {
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+}
+
+.workspace-nav::-webkit-scrollbar {
   display: none;
 }
 

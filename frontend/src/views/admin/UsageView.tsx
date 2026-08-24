@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, CircleCheckBig, Eye, MousePointerClick, RotateCcw, ShieldCheck } from 'lucide-react'
+import { Activity, ChartNoAxesCombined, CircleCheckBig, Eye, MousePointerClick, RotateCcw, ShieldCheck } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -93,7 +93,7 @@ export default function UsageView({ client }: { client: ApiClient }) {
 
       <Card title="近 30 天请求趋势">
         {!history || history.length === 0 ? (
-          <EmptyState title="还没有用量数据" hint="客户开始调用 API 后这里会出现趋势图" />
+          <EmptyState icon={ChartNoAxesCombined} title="还没有用量数据" hint="客户完成首次 API 调用后，这里会出现趋势图。" />
         ) : (
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -169,7 +169,7 @@ export default function UsageView({ client }: { client: ApiClient }) {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card title="今日 · 按客户" action={<span className="text-[11px] text-slate-400">已用 / 日限额</span>}>
           {dailyRows.length === 0 ? (
-            <EmptyState title="今天还没有调用" />
+            <EmptyState icon={ChartNoAxesCombined} title="今天还没有调用" hint="当天产生请求后会按客户显示用量。" />
           ) : (
             <table className="w-full text-sm">
               <tbody>
@@ -191,7 +191,7 @@ export default function UsageView({ client }: { client: ApiClient }) {
 
         <Card title="当前小时窗口 · 按客户" action={<span className="text-[11px] text-slate-400">窗口内 / 套餐上限</span>}>
           {hourlyRows.length === 0 ? (
-            <EmptyState title="当前小时没有调用" />
+            <EmptyState icon={ChartNoAxesCombined} title="当前窗口没有调用" hint="新请求出现后会显示窗口用量与套餐上限。" />
           ) : (
             <table className="w-full text-sm">
               <tbody>

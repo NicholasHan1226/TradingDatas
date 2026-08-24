@@ -41,6 +41,40 @@ const datasets = [
   { dataset_id: 'cn.news.flash', schema_major: 1, provider: 'tushare', market: 'CN', domain: 'news', cadence: 'on_demand', activation: 'paused', entitlement: 'unknown', runtime_state: 'failed', degraded: true, freshness_state: 'unknown', data_through: null, observed_at: '2026-08-24T08:10:00Z', reasons: ['provider_unavailable'], coverage: { row_count: 0 } },
 ]
 
+const requestedCollectionRows = Number(process.env.TD_CONSOLE_MOCK_COLLECTION_ROWS || datasets.length)
+const collectionRowCount = Number.isFinite(requestedCollectionRows)
+  ? Math.max(datasets.length, Math.min(5000, Math.floor(requestedCollectionRows)))
+  : datasets.length
+const markets = ['CN', 'CRYPTO', 'NEWS']
+const providers = ['tushare', 'binance', 'firecrawl']
+const cadences = ['postclose_daily', 'session_minute', 'on_demand', 'weekly']
+const runtimeStates = ['success', 'success', 'success', 'stale', 'empty', 'failed']
+const collectionDatasets = [
+  ...datasets,
+  ...Array.from({ length: collectionRowCount - datasets.length }, (_, offset) => {
+    const index = offset + datasets.length + 1
+    const runtimeState = runtimeStates[index % runtimeStates.length]
+    const market = markets[index % markets.length]
+    return {
+      dataset_id: `${market.toLowerCase()}.stress.dataset_${String(index).padStart(4, '0')}`,
+      schema_major: 1 + (index % 2),
+      provider: providers[index % providers.length],
+      market,
+      domain: market === 'NEWS' ? 'news' : 'market',
+      cadence: cadences[index % cadences.length],
+      activation: index % 9 === 0 ? 'paused' : 'active',
+      entitlement: 'allowed',
+      runtime_state: runtimeState,
+      degraded: runtimeState === 'stale' || runtimeState === 'failed',
+      freshness_state: runtimeState === 'stale' ? 'stale' : 'fresh',
+      data_through: runtimeState === 'empty' ? null : '2026-08-24',
+      observed_at: '2026-08-24T10:05:00Z',
+      reasons: runtimeState === 'failed' ? ['stress_fixture_failure'] : [],
+      coverage: { row_count: index * 137 },
+    }
+  }),
+]
+
 const history = Array.from({ length: 30 }, (_, index) => ({
   date: `2026-08-${String(index + 1).padStart(2, '0')}`,
   total: 80 + ((index * 47) % 420),
@@ -100,7 +134,10 @@ const server = http.createServer(async (request, response) => {
     return json(response, 200, { daily: { 'research-team': { date: '2026-08-24', count: 1840, daily_limit: null }, 'quant-lab': { date: '2026-08-24', count: 9230, daily_limit: 50000 } }, hourly: { 'research-team': { count_in_window: 121, tier_limit: null, window_seconds: 3600 }, 'quant-lab': { count_in_window: 482, tier_limit: 600, window_seconds: 60 } }, cache: { dedup_entries: 214, dedup_bytes: 45870, active_requests: 2 } })
   }
   if (request.method === 'GET' && url.pathname === '/admin/api/usage/history') return json(response, 200, { history })
-  if (request.method === 'GET' && url.pathname === '/admin/api/collection/status') return json(response, 200, { datasets, total: datasets.length, active: 3, paused: 1 })
+  if (request.method === 'GET' && url.pathname === '/admin/api/collection/status') {
+    const active = collectionDatasets.filter((item) => item.activation === 'active').length
+    return json(response, 200, { datasets: collectionDatasets, total: collectionDatasets.length, active, paused: collectionDatasets.length - active })
+  }
   if (request.method === 'GET' && url.pathname === '/admin/api/health/alerts') return json(response, 200, { alerts: [{ severity: 'critical', title: '新闻数据源连接失败', detail: 'cn.news.flash 最近一次采集返回 provider_unavailable。' }, { severity: 'warning', title: '复权因子数据已过新鲜度窗口', detail: 'cn.dataset.adj_factor 需要检查下一次 post-close 采集。' }, { severity: 'info', title: 'Crypto 数据集本窗口为空', detail: '当前窗口未产生新增行，历史覆盖仍保留。' }] })
   if (request.method === 'GET' && url.pathname === '/v1/catalog') return json(response, 200, { api_version: 'v1', data: datasets })
   if (request.method === 'POST' && url.pathname === '/v1/query') {

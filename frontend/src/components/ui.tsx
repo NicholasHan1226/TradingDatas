@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Bitcoin, ChartCandlestick, Check, CircleAlert, Copy, LoaderCircle, Newspaper, Search, Tag, X, type LucideIcon } from 'lucide-react'
+import { Bitcoin, ChartCandlestick, Check, CircleAlert, Copy, Inbox, LoaderCircle, Newspaper, Search, Tag, X, type LucideIcon } from 'lucide-react'
 import { recordConsoleEvent, type ConsoleWorkspace } from '../lib/consoleAnalytics'
 
 // ---------- Buttons ----------
@@ -62,11 +62,25 @@ export function LoadingPanel({ label = '加载中…' }: { label?: string }) {
   )
 }
 
-export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+export function EmptyState({
+  title,
+  hint,
+  icon: Icon = Inbox,
+  action,
+}: {
+  title: string
+  hint?: string
+  icon?: LucideIcon
+  action?: ReactNode
+}) {
   return (
-    <div className="py-14 text-center">
-      <div className="text-sm font-medium text-slate-500">{title}</div>
-      {hint && <div className="mt-1 text-xs text-slate-400">{hint}</div>}
+    <div className="flex min-h-48 flex-col items-center justify-center px-5 py-12 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--td-accent-quiet)] text-[var(--td-accent)] ring-1 ring-blue-100">
+        <Icon aria-hidden size={19} strokeWidth={1.7} />
+      </span>
+      <div className="mt-4 text-sm font-semibold text-[var(--td-ink-soft)]">{title}</div>
+      {hint && <div className="mt-1.5 max-w-sm text-xs leading-5 text-[var(--td-muted)]">{hint}</div>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   )
 }
@@ -158,12 +172,12 @@ export function Card({
       className={`overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-1)] ${className}`}
     >
       {(title || action) && (
-        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+        <header className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 sm:px-5">
           <h2 className="text-sm font-semibold tracking-[-0.01em] text-[var(--td-ink-soft)]">{title}</h2>
           {action}
         </header>
       )}
-      <div className={`p-5 ${bodyClassName}`}>{children}</div>
+      <div className={`p-4 sm:p-5 ${bodyClassName}`}>{children}</div>
     </section>
   )
 }
@@ -419,7 +433,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed top-4 right-4 z-60 flex w-80 flex-col gap-2">
+      <div className="pointer-events-none fixed top-4 right-4 left-4 z-60 flex flex-col gap-2 sm:left-auto sm:w-80">
           {items.map((t) => (
             <div
               key={t.id}

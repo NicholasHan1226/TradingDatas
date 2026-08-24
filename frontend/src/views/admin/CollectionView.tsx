@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, Database, RotateCcw } from 'lucide-react'
 import {
   columnVisibilityFeature,
   createColumnHelper,
@@ -165,16 +165,16 @@ export default function CollectionView({ client }: { client: ApiClient }) {
 
       <ControlBar>
         <SearchField className="w-full md:w-64" aria-label="搜索数据集" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索数据集 ID…" />
-        <SelectInput value={market} onChange={(e) => setMarket(e.target.value)} className="!w-auto">
+        <SelectInput value={market} onChange={(e) => setMarket(e.target.value)} className="!w-auto flex-1 sm:flex-none">
           <option value="">全部市场</option>{markets.map((m) => <option key={m} value={m}>{m}</option>)}
         </SelectInput>
-        <SelectInput value={activation} onChange={(e) => setActivation(e.target.value)} className="!w-auto">
+        <SelectInput value={activation} onChange={(e) => setActivation(e.target.value)} className="!w-auto flex-1 sm:flex-none">
           <option value="">全部激活状态</option><option value="active">active</option><option value="paused">paused</option>
         </SelectInput>
-        <SelectInput value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} className="!w-auto">
+        <SelectInput value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} className="!w-auto flex-1 sm:flex-none">
           <option value="">全部运行状态</option>{runtimeStates.map((state) => <option key={state} value={state}>{state}</option>)}
         </SelectInput>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
           <span className="hidden text-xs text-slate-400 xl:inline">{tableRows.length.toLocaleString('zh-CN')} / {datasets.length.toLocaleString('zh-CN')} 个数据集</span>
           <Button variant="secondary" size="sm" onClick={() => setColumnsOpen(true)}><Columns3 aria-hidden size={14} /> 列</Button>
           <Button variant="ghost" size="sm" onClick={resetView} aria-label="重置表格视图"><RotateCcw aria-hidden size={14} /> 重置</Button>
@@ -182,8 +182,10 @@ export default function CollectionView({ client }: { client: ApiClient }) {
       </ControlBar>
 
       <Card className="overflow-hidden" bodyClassName="!p-0">
-        {tableRows.length === 0 ? <EmptyState title="没有匹配的数据集" hint="调整筛选条件试试" /> : (
-          <div ref={scrollRef} className="max-h-[62vh] overflow-auto" tabIndex={0} aria-label="数据集运行状态表格">
+        {tableRows.length === 0 ? <EmptyState icon={Database} title="没有匹配的数据集" hint="调整市场、状态或搜索条件后再试。" action={<Button variant="secondary" size="sm" onClick={resetView}>清除筛选</Button>} /> : (
+          <>
+          <div id="collection-scroll-hint" className="border-b border-slate-100 bg-slate-50/70 px-4 py-2 text-[10px] text-slate-500 sm:hidden">左右滑动查看全部字段 · 数据集列保持可见</div>
+          <div ref={scrollRef} className="max-h-[62vh] overflow-auto" tabIndex={0} aria-label="数据集运行状态表格" aria-describedby="collection-scroll-hint">
             <table className="min-w-[980px] w-full text-sm" style={{ display: 'grid' }}>
               <thead className="sticky top-0 z-[2] grid border-b border-[var(--td-line)] bg-[#f7f8fa]">
                 {table.getHeaderGroups().map((group) => (
@@ -191,7 +193,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
                     {group.headers.map((header) => {
                       const sorted = header.column.getIsSorted()
                       return (
-                        <th key={header.id} className="min-w-0 px-4 py-3 text-left text-[10px] font-semibold tracking-[0.07em] text-[var(--td-muted)] uppercase">
+                        <th key={header.id} className={`min-w-0 px-4 py-3 text-left text-[10px] font-semibold tracking-[0.07em] text-[var(--td-muted)] uppercase ${header.column.id === 'dataset_id' ? 'sticky left-0 z-[3] bg-[#f7f8fa] shadow-[1px_0_0_var(--td-line)]' : ''}`}>
                           {header.isPlaceholder ? null : (
                             <button type="button" onClick={header.column.getToggleSortingHandler()} className="inline-flex items-center gap-1.5 rounded text-left hover:text-[var(--td-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)]" aria-label={`按${String(header.column.columnDef.header)}排序`}>
                               <table.FlexRender header={header} />
@@ -208,14 +210,15 @@ export default function CollectionView({ client }: { client: ApiClient }) {
                 {virtualizer.getVirtualItems().map((virtualRow) => {
                   const row = tableRows[virtualRow.index]
                   return (
-                    <tr key={row.id} data-index={virtualRow.index} ref={virtualizer.measureElement} className={`absolute top-0 left-0 grid w-full ${TABLE_ROW_CLASS}`} style={{ gridTemplateColumns, transform: `translateY(${virtualRow.start}px)` }}>
-                      {row.getVisibleCells().map((cell) => <td key={cell.id} className="min-w-0 px-4 py-3 text-xs text-slate-600"><table.FlexRender cell={cell} /></td>)}
+                    <tr key={row.id} data-index={virtualRow.index} ref={virtualizer.measureElement} className={`group absolute top-0 left-0 grid w-full ${TABLE_ROW_CLASS}`} style={{ gridTemplateColumns, transform: `translateY(${virtualRow.start}px)` }}>
+                      {row.getVisibleCells().map((cell) => <td key={cell.id} className={`min-w-0 px-4 py-3 text-xs text-slate-600 ${cell.column.id === 'dataset_id' ? 'sticky left-0 z-[1] bg-white shadow-[1px_0_0_var(--td-line)] group-hover:bg-[#f6f8fc]' : ''}`}><table.FlexRender cell={cell} /></td>)}
                     </tr>
                   )
                 })}
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Card>
 

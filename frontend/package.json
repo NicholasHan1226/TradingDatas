@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "mock-api": "node scripts/mock-console-api.mjs",
+    "mock-api:stress": "TD_CONSOLE_MOCK_COLLECTION_ROWS=1000 node scripts/mock-console-api.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

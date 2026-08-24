@@ -4,7 +4,7 @@ import { BookOpen, Bot, ChartNoAxesCombined, Check, CircleGauge, Clock3, Code2, 
 import type { ApiClient } from '../../lib/api'
 import type { DataCategory, PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
 import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
-import { Badge, Card, CopyButton, ErrorBanner, LoadingPanel, PageIntro, ProgressBar, TIER_LABELS, fmtNumber } from '../../components/ui'
+import { Badge, Card, CopyButton, EmptyState, ErrorBanner, LoadingPanel, PageIntro, ProgressBar, TIER_LABELS, fmtNumber } from '../../components/ui'
 import type { CustomerSection, DocSection } from '../../lib/workspaceRoute'
 
 type SectionKey = CustomerSection
@@ -198,7 +198,7 @@ curl -X POST ${client.baseUrl}/v1/query \\
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.75fr)]">
             <Card title="近 30 天调用量" action={me.daily_limit !== null ? <ProgressBar value={me.usage.today_count} limit={me.daily_limit} /> : <span className="text-xs text-slate-400">每日不限额</span>}>
               {!history || history.every((item) => item.total === 0) ? (
-                <div className="py-12 text-center"><p className="text-sm font-medium text-slate-600">还没有调用记录</p><p className="mt-1 text-xs text-slate-400">完成首次请求后，这里会出现调用趋势。</p></div>
+                <EmptyState icon={ChartNoAxesCombined} title="还没有调用记录" hint="完成首次 API 请求后，这里会出现调用趋势。" />
               ) : (
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">

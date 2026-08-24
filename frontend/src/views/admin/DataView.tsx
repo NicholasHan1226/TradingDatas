@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Database, SearchX } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { CollectionStatus, DatasetRow, QueryResult } from '../../lib/types'
 import { recordConsoleEvent } from '../../lib/consoleAnalytics'
@@ -176,7 +177,7 @@ export default function DataView({ client }: { client: ApiClient }) {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {filtered.length === 0 ? (
-              <EmptyState title="没有匹配的数据集" />
+              <EmptyState icon={SearchX} title="没有匹配的数据集" hint="尝试缩短关键词或清除搜索条件。" />
             ) : (
               filtered.map((d) => {
                 const active = selected?.dataset_id === d.dataset_id && selected?.provider === d.provider
@@ -207,6 +208,7 @@ export default function DataView({ client }: { client: ApiClient }) {
         {!selected ? (
           <Card>
             <EmptyState
+              icon={Database}
               title="从左侧选择一个数据集"
               hint="将自动拉取最近 20 条样本数据，并生成对应的 curl 示例"
             />
@@ -244,6 +246,7 @@ export default function DataView({ client }: { client: ApiClient }) {
                 <ErrorBanner message={sample.error} />
               ) : !sample || sample.items.length === 0 ? (
                 <EmptyState
+                  icon={Database}
                   title={sample?.metadata?.runtime_state === 'empty' ? '当前采集窗口没有新增行' : '该窗口内没有返回数据行'}
                   hint={sample?.metadata?.runtime_state === 'empty'
                     ? '这是本次采集窗口的真实空结果；目录内的历史覆盖不会被当作当前数据回传。'

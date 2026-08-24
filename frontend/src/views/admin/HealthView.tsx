@@ -126,7 +126,7 @@ export default function HealthView({ client }: { client: ApiClient }) {
         <span className="text-xs text-slate-400">显示 {visibleAlerts.length} / {alerts.length} 条</span>
       </ControlBar>
       {visibleAlerts.length === 0 ? (
-        <Card><EmptyState title="当前筛选下没有告警" hint="切换严重程度查看其他告警" /></Card>
+        <Card><EmptyState icon={CircleCheckBig} title="当前筛选下没有告警" hint="这一严重程度暂时没有需要处理的项目。" /></Card>
       ) : <div className="space-y-3">
         {visibleAlerts.map((a, idx) => {
           const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.info
