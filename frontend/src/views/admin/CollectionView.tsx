@@ -7,8 +7,12 @@ import {
   EmptyState,
   ErrorBanner,
   LoadingPanel,
+  PageIntro,
+  SearchField,
   SelectInput,
   StatCard,
+  TABLE_HEAD_CLASS,
+  TABLE_ROW_CLASS,
 } from '../../components/ui'
 
 const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'slate'> = {
@@ -78,6 +82,11 @@ export default function CollectionView({ client }: { client: ApiClient }) {
 
   return (
     <div className="space-y-5">
+      <PageIntro
+        eyebrow="COLLECTION CONTROL"
+        title="数据采集状态"
+        description="跟踪数据集激活状态、最新运行结果与质量降级信号。"
+      />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="数据集总数" value={status?.total ?? datasets.length} />
         <StatCard label="采集激活" value={activeCount} tone="good" />
@@ -93,12 +102,13 @@ export default function CollectionView({ client }: { client: ApiClient }) {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <input
+      <div className="flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-slate-200/80 bg-white/70 p-3 shadow-[0_1px_2px_rgb(15_23_42/0.02)]">
+        <SearchField
+          className="w-full md:w-64"
+          aria-label="搜索数据集"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="搜索数据集 ID…"
-          className="w-64 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
         />
         <SelectInput value={market} onChange={(e) => setMarket(e.target.value)} className="!w-auto">
           <option value="">全部市场</option>
@@ -122,14 +132,14 @@ export default function CollectionView({ client }: { client: ApiClient }) {
         </span>
       </div>
 
-      <Card className="overflow-hidden !p-0">
+      <Card className="overflow-hidden" bodyClassName="!p-0">
         {filtered.length === 0 ? (
           <EmptyState title="没有匹配的数据集" hint="调整筛选条件试试" />
         ) : (
           <div className="max-h-[62vh] overflow-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 z-[1] bg-slate-50/95 backdrop-blur">
-                <tr className="border-b border-slate-100 text-left text-[11px] font-medium tracking-wide text-slate-500 uppercase">
+              <thead>
+                <tr className={TABLE_HEAD_CLASS}>
                   <th className="px-5 py-3">数据集</th>
                   <th className="px-3 py-3">市场</th>
                   <th className="px-3 py-3">频率</th>
@@ -141,7 +151,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
               </thead>
               <tbody>
                 {filtered.map((d) => (
-                  <tr key={`${d.dataset_id}|${d.provider}`} className="border-b border-slate-50 transition-colors last:border-0 hover:bg-slate-50/60">
+                  <tr key={`${d.dataset_id}|${d.provider}`} className={TABLE_ROW_CLASS}>
                     <td className="px-5 py-3 font-mono text-xs font-medium text-slate-700">{d.dataset_id}</td>
                     <td className="px-3 py-3 text-xs text-slate-600">{d.market}</td>
                     <td className="px-3 py-3 text-xs whitespace-nowrap text-slate-600">{d.cadence}</td>

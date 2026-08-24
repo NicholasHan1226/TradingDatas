@@ -75,7 +75,6 @@ export default function AdminApp({
   onLogout: () => void
 }) {
   const [section, setSection] = useState<SectionKey>('tokens')
-  const current = NAV.find((n) => n.key === section)!
 
   const views: Record<SectionKey, ReactNode> = {
     tokens: <TokensView client={client} />,
@@ -139,8 +138,8 @@ export default function AdminApp({
         <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 px-5 py-4 backdrop-blur md:px-8">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
             <div>
-              <div className="mb-0.5 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">运营控制台</div>
-              <h1 className="text-base font-semibold tracking-tight text-slate-900">{current.title}</h1>
+              <div className="mb-0.5 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">TradingDatas · Control Plane</div>
+              <p className="text-xs text-slate-500">运营管理工作区</p>
             </div>
             <div className="flex items-center gap-3">
               <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:inline-flex">
