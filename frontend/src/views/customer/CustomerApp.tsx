@@ -18,7 +18,9 @@ import {
   CopyButton,
   ErrorBanner,
   LoadingPanel,
+  PageIntro,
   ProgressBar,
+  TABLE_ROW_CLASS,
   TIER_LABELS,
 } from '../../components/ui'
 
@@ -210,6 +212,11 @@ while next_cursor:
 
         {me && (
           <>
+            <PageIntro
+              eyebrow="DATA ACCESS"
+              title="你的数据访问概览"
+              description="在一个工作台内查看套餐、调用趋势，以及可直接复制的接入资产。"
+            />
             {/* Plan summary */}
             <section className="relative overflow-hidden rounded-[var(--td-radius)] bg-slate-950 p-6 text-white shadow-[0_16px_36px_rgb(15_23_42/0.14)] sm:p-7">
               <div className="pointer-events-none absolute -right-28 -top-32 h-72 w-72 rounded-full bg-blue-500/12 blur-3xl" />
@@ -333,7 +340,7 @@ while next_cursor:
                           ['POST', '/v1/query', '查询具体数据集的数据行'],
                           ['GET', '/portal/api/me', '查看本页的套餐与配额信息'],
                         ].map(([method, path, desc]) => (
-                          <tr key={path} className="border-b border-slate-50 last:border-0">
+                          <tr key={path} className={TABLE_ROW_CLASS}>
                             <td className="w-14 px-3 py-2.5">
                               <Badge tone={method === 'GET' ? 'green' : 'blue'}>{method}</Badge>
                             </td>

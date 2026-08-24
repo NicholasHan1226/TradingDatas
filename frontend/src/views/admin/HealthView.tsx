@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ApiClient } from '../../lib/api'
 import type { HealthAlert } from '../../lib/types'
-import { Card, ErrorBanner, LoadingPanel } from '../../components/ui'
+import { Card, ErrorBanner, LoadingPanel, PageIntro } from '../../components/ui'
 
 interface AlertsResponse {
   alerts?: HealthAlert[]
@@ -58,44 +58,56 @@ export default function HealthView({ client }: { client: ApiClient }) {
 
   if (!alerts || alerts.length === 0) {
     return (
-      <Card>
-        <div className="flex flex-col items-center py-10 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 text-emerald-600">
-              <path d="m4.5 12.75 6 6 9-13.5" />
-            </svg>
+      <div className="space-y-5">
+        <PageIntro
+          eyebrow="RUNTIME HEALTH"
+          title="系统健康与告警"
+          description="按照影响等级汇总当前运行时风险与需要关注的服务信号。"
+        />
+        <Card>
+          <div className="flex flex-col items-center py-10 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 text-emerald-600">
+                <path d="m4.5 12.75 6 6 9-13.5" />
+              </svg>
+            </div>
+            <h3 className="mt-4 text-base font-semibold text-slate-800">全部正常</h3>
+            <p className="mt-1 text-sm text-slate-500">当前没有任何健康告警</p>
           </div>
-          <h3 className="mt-4 text-base font-semibold text-slate-800">全部正常</h3>
-          <p className="mt-1 text-sm text-slate-500">当前没有任何健康告警</p>
-        </div>
-      </Card>
+        </Card>
+      </div>
     )
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-slate-500">
-        共 {alerts.length} 条告警 · 按严重程度排序
-      </p>
-      {alerts.map((a, idx) => {
-        const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.info
-        return (
-          <div
-            key={idx}
-            className={`rounded-xl border border-slate-200 border-l-4 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)] ${meta.card}`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="text-sm font-semibold text-slate-800">{a.title}</h3>
-              <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}>
-                {meta.label}
-              </span>
+    <div className="space-y-5">
+      <PageIntro
+        eyebrow="RUNTIME HEALTH"
+        title="系统健康与告警"
+        description="按照影响等级汇总当前运行时风险与需要关注的服务信号。"
+        action={<span className="text-xs text-slate-400">{alerts.length} 条 · 已按严重程度排序</span>}
+      />
+      <div className="space-y-3">
+        {alerts.map((a, idx) => {
+          const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.info
+          return (
+            <div
+              key={idx}
+              className={`rounded-xl border border-slate-200 border-l-4 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)] ${meta.card}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-sm font-semibold text-slate-800">{a.title}</h3>
+                <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}>
+                  {meta.label}
+                </span>
+              </div>
+              {a.detail && (
+                <p className="mt-1.5 text-xs leading-relaxed break-words text-slate-500">{a.detail}</p>
+              )}
             </div>
-            {a.detail && (
-              <p className="mt-1.5 text-xs leading-relaxed break-words text-slate-500">{a.detail}</p>
-            )}
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

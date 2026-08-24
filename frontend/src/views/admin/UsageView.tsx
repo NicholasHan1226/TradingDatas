@@ -15,6 +15,7 @@ import {
   EmptyState,
   ErrorBanner,
   LoadingPanel,
+  PageIntro,
   ProgressBar,
   StatCard,
   fmtNumber,
@@ -71,6 +72,11 @@ export default function UsageView({ client }: { client: ApiClient }) {
 
   return (
     <div className="space-y-5">
+      <PageIntro
+        eyebrow="USAGE INTELLIGENCE"
+        title="调用与容量概览"
+        description="从实时窗口到月度趋势，持续观察客户请求与服务容量。"
+      />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="今日请求总数" value={todayTotal.toLocaleString('zh-CN')} sub={`${dailyRows.length} 个客户有调用`} />
         <StatCard label="当前小时窗口" value={hourlyTotal.toLocaleString('zh-CN')} sub="滑动 60 分钟" />

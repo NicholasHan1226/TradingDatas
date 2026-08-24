@@ -95,17 +95,71 @@ export function ErrorBanner({ message }: { message: string }) {
   )
 }
 
+// ---------- Page composition ----------
+
+export function PageIntro({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow?: string
+  title: string
+  description?: string
+  action?: ReactNode
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200/80 pb-5">
+      <div className="max-w-2xl">
+        {eyebrow && (
+          <p className="mb-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400 uppercase">
+            {eyebrow}
+          </p>
+        )}
+        <h2 className="text-xl font-semibold tracking-[-0.035em] text-slate-950">{title}</h2>
+        {description && <p className="mt-1.5 text-sm leading-6 text-slate-500">{description}</p>}
+      </div>
+      {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
+    </div>
+  )
+}
+
+export function SearchField({
+  className = '',
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className={`relative min-w-0 ${className}`}>
+      <svg aria-hidden viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400">
+        <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
+      </svg>
+      <input
+        type="search"
+        {...props}
+        className="min-h-10 w-full rounded-[var(--td-radius-sm)] border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm text-slate-800 shadow-[0_1px_1px_rgb(15_23_42/0.02)] outline-none transition-[border-color,box-shadow] duration-[var(--td-duration-fast)] placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+      />
+    </div>
+  )
+}
+
+export const TABLE_HEAD_CLASS =
+  'sticky top-0 z-[1] border-b border-slate-200 bg-slate-50/95 text-left text-[10px] font-semibold tracking-[0.12em] text-slate-500 uppercase backdrop-blur'
+export const TABLE_ROW_CLASS =
+  'border-b border-slate-100/90 transition-colors last:border-0 hover:bg-blue-50/[0.38]'
+
 // ---------- Cards & stats ----------
 
 export function Card({
   title,
   action,
   className = '',
+  bodyClassName = '',
   children,
 }: {
   title?: ReactNode
   action?: ReactNode
   className?: string
+  bodyClassName?: string
   children: ReactNode
 }) {
   return (
@@ -118,7 +172,7 @@ export function Card({
           {action}
         </header>
       )}
-      <div className="p-5">{children}</div>
+      <div className={`p-5 ${bodyClassName}`}>{children}</div>
     </section>
   )
 }

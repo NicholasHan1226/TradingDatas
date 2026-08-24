@@ -12,9 +12,13 @@ import {
   Field,
   LoadingPanel,
   Modal,
+  PageIntro,
   ProgressBar,
+  SearchField,
   ScopeChip,
   SelectInput,
+  TABLE_HEAD_CLASS,
+  TABLE_ROW_CLASS,
   TIER_LABELS,
   TIER_TONES,
   TextInput,
@@ -192,19 +196,20 @@ export default function TokensView({ client }: { client: ApiClient }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-56">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400">
-            <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
-          </svg>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索客户 ID / 套餐 / 权限…"
-            className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
-          />
-        </div>
+    <div className="space-y-5">
+      <PageIntro
+        eyebrow="ACCESS CONTROL"
+        title="客户与访问凭证"
+        description="集中管理客户套餐、访问范围与调用上限；变更会即时写入当前服务。"
+      />
+      <div className="flex flex-wrap items-center gap-3 rounded-[var(--td-radius)] border border-slate-200/80 bg-white/70 p-3 shadow-[0_1px_2px_rgb(15_23_42/0.02)]">
+        <SearchField
+          className="min-w-56 flex-1"
+          aria-label="搜索客户密钥"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="搜索客户 ID / 套餐 / 权限…"
+        />
         <Button variant="secondary" onClick={() => void reload()}>
           <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
             <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 1 0 0-1.5H4.598a.75.75 0 0 0-.75.75v3.998a.75.75 0 0 0 1.5 0v-2.993l.358.357a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.106-.799ZM5.25 6.747a5.5 5.5 0 0 1 9.201-2.466l.312.311V3.626a.75.75 0 0 1 1.5 0V7.62a.75.75 0 0 1-.75.75h-4.116a.75.75 0 0 1 0-1.5h2.33l-.357-.357a7 7 0 0 0-11.712 3.138.75.75 0 0 0 1.106.8Z" clipRule="evenodd" />
@@ -226,7 +231,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
 
       {error && <ErrorBanner message={error} />}
 
-      <Card title={`客户密钥（${filtered.length}）`} className="overflow-hidden !p-0">
+      <Card title="访问凭证" action={<span className="text-xs text-slate-400">{filtered.length} 项</span>} className="overflow-hidden" bodyClassName="!p-0">
         {tokens === null ? (
           <LoadingPanel />
         ) : error ? (
@@ -240,7 +245,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/60 text-left text-[11px] font-medium tracking-wide text-slate-500 uppercase">
+                <tr className={TABLE_HEAD_CLASS}>
                   <th className="px-5 py-3">客户</th>
                   <th className="px-3 py-3">套餐</th>
                   <th className="px-3 py-3">API 权限</th>
@@ -253,7 +258,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
               </thead>
               <tbody>
                 {filtered.map((t) => (
-                  <tr key={t.token_hash_full} className="border-b border-slate-50 transition-colors last:border-0 hover:bg-slate-50/60">
+                  <tr key={t.token_hash_full} className={TABLE_ROW_CLASS}>
                     <td className="px-5 py-3.5">
                       <div className="font-medium text-slate-800">{t.tenant_id}</div>
                       <div className="mt-0.5 font-mono text-[10px] text-slate-400">{t.token_hash_masked ?? ''}</div>

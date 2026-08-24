@@ -9,6 +9,10 @@ import {
   EmptyState,
   ErrorBanner,
   LoadingPanel,
+  PageIntro,
+  SearchField,
+  TABLE_HEAD_CLASS,
+  TABLE_ROW_CLASS,
 } from '../../components/ui'
 
 interface CatalogResponse {
@@ -120,15 +124,21 @@ export default function DataView({ client }: { client: ApiClient }) {
   if (error) return <ErrorBanner message={error} />
 
   return (
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,2fr)_3fr]">
-      {/* Catalog list */}
-      <Card title={`数据目录（${filtered.length}）`} className="overflow-hidden flex flex-col !p-0 max-h-[72vh]">
+    <div className="space-y-5">
+      <PageIntro
+        eyebrow="DATA EXPLORER"
+        title="数据目录浏览"
+        description="检索可用数据集，验证结构，并从当前目录直接发起只读样本查询。"
+      />
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,2fr)_3fr]">
+        {/* Catalog list */}
+        <Card title="数据目录" action={<span className="text-xs text-slate-400">{filtered.length} 项</span>} className="max-h-[72vh] overflow-hidden flex flex-col" bodyClassName="!p-0">
         <div className="border-b border-slate-100 p-3">
-          <input
+          <SearchField
+            aria-label="搜索数据目录"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索数据集…"
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
           />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -139,7 +149,7 @@ export default function DataView({ client }: { client: ApiClient }) {
               <button
                 key={`${d.dataset_id}|${d.provider}`}
                 onClick={() => void runSample(d)}
-                className={`flex w-full items-center justify-between gap-2 border-b border-slate-50 px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-slate-50 ${
+                className={`flex w-full items-center justify-between gap-2 ${TABLE_ROW_CLASS} px-4 py-2.5 text-left ${
                   selected?.dataset_id === d.dataset_id && selected?.provider === d.provider
                     ? 'bg-blue-50/70'
                     : ''
@@ -154,10 +164,10 @@ export default function DataView({ client }: { client: ApiClient }) {
             ))
           )}
         </div>
-      </Card>
+        </Card>
 
-      {/* Sample data */}
-      <div className="space-y-5">
+        {/* Sample data */}
+        <div className="space-y-5">
         {!selected ? (
           <Card>
             <EmptyState
@@ -190,7 +200,7 @@ export default function DataView({ client }: { client: ApiClient }) {
               </div>
             </Card>
 
-            <Card title={`样本数据（${sample?.items.length ?? 0} 条）`}>
+            <Card title="样本数据" action={<span className="text-xs text-slate-400">{sample?.items.length ?? 0} 条</span>}>
               {sample?.loading ? (
                 <LoadingPanel label="查询中…" />
               ) : sample?.error ? (
@@ -201,8 +211,8 @@ export default function DataView({ client }: { client: ApiClient }) {
                 <>
                   <div className="max-h-80 overflow-auto rounded-lg border border-slate-100">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-slate-50">
-                        <tr>
+                      <thead>
+                        <tr className={TABLE_HEAD_CLASS}>
                           {sample.fields.map((f) => (
                             <th key={f} className="px-3 py-2 text-left font-medium whitespace-nowrap text-slate-500">{f}</th>
                           ))}
@@ -210,7 +220,7 @@ export default function DataView({ client }: { client: ApiClient }) {
                       </thead>
                       <tbody>
                         {sample.items.map((item, i) => (
-                          <tr key={i} className="border-t border-slate-50">
+                          <tr key={i} className={TABLE_ROW_CLASS}>
                             {sample.fields.map((f) => {
                               const v = item[f]
                               return (
@@ -242,6 +252,7 @@ export default function DataView({ client }: { client: ApiClient }) {
             </Card>
           </>
         )}
+        </div>
       </div>
     </div>
   )
