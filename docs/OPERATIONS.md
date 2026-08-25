@@ -446,6 +446,32 @@ DNS failover 都从目标 release 配置及带时间戳的有界探测读回，�
 预算约束，消费者应缩小日期范围，不能通过无限重试或旧 route fallback 绕过。非分区
 snapshot（如 security master）及有界 calendar 可按 registry 默认排序完整翻页。
 
+## 管理控制台公网回源
+
+管理控制台前端继续由 Cloudflare Pages 提供，生产 API 主机名固定为
+`td-admin-api.tradingagent.cc`。管理 API 本体仍运行在广州 ECS 的
+`tradingdatas-admin.service`（端口 `18084`）；公网回源故障不得通过改 Token、改数据库、
+改采集 timer 或把浏览器降级为直连 HTTP IP 处理。
+
+当广州到 Cloudflare edge 的直连 Tunnel 持续握手超时时，可以启用独立的新加坡中继回源：
+
+- 广州 `tradingdatas-admin-relay-origin.service` 只建立到中继机
+  `127.0.0.1:18084` 的 SSH reverse forward；它不复用、重启或修改数据采集使用的 SOCKS
+  relay。
+- 中继机 `tradingdatas-admin-api-tunnel.service` 只把既有 Cloudflare Tunnel 路由到上述
+  reverse-forward origin；Tunnel token 只保存在中继机 root-only 文件中，不进入仓库、
+  systemd unit、日志或运行报告。
+- 两个 unit 都必须在启用后分别读回 `active` 与 `enabled`；中继机 origin 和公网
+  `/portal/api/me` 无凭据均应返回 `401`，管理 API CORS preflight 应返回 `204`。
+- 该链路只承载管理/客户控制台 API，不改变 `127.0.0.1:18082` 数据 API、本地 SQLite、
+  collector service/timer、provider 凭据或任何用户 API Key。
+
+回退时先在中继机执行
+`systemctl disable --now tradingdatas-admin-api-tunnel.service`，再在广州执行
+`systemctl disable --now tradingdatas-admin-relay-origin.service`。不得删除 Token 文件、
+修改 DNS、重启采集 timer 或清理 facts/receipts。回退后重新验证广州本地 `18084` 的
+`401`，再单独修复或恢复广州直连 Tunnel；公网主机名恢复前不能宣称控制台可用。
+
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
 `PAYLOADS.sha256`，再用独立 sidecar 记录该清单的 SHA-256；交接前必须分别执行
 `sha256sum -c PAYLOADS.sha256` 和 sidecar 校验。若已生成自引用或不自洽清单，保留原件
