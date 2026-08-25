@@ -32,7 +32,6 @@ TEN_CODE_FANOUT_APIS = {
     "cashflow",
     "cyq_chips",
     "cyq_perf",
-    "daily_basic",
     "express",
     "fina_audit",
     "fina_indicator",
@@ -446,11 +445,11 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
     assert runtime_bindings["rt_min_daily"]["fanout"]["batch_size"] == 5
 
     default_observations = deepcopy(observations)
-    _entry(default_observations, "daily_basic")["parameters"]["ts_code"].pop(
+    _entry(default_observations, "express")["parameters"]["ts_code"].pop(
         "batch_size"
     )
     default_bundle = _compile(request_observations=default_observations)
-    assert _contract(default_bundle, "daily_basic")["fanout"]["batch_size"] == 1
+    assert _contract(default_bundle, "express")["fanout"]["batch_size"] == 1
 
     generic_observations = deepcopy(observations)
     _entry(generic_observations, "cb_price_chg")["parameters"]["ts_code"][
@@ -463,7 +462,7 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
 @pytest.mark.parametrize("batch_size", [0, -1, True])
 def test_dataset_field_batch_size_must_be_a_positive_integer(batch_size: object) -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
-    _entry(observations, "daily_basic")["parameters"]["ts_code"]["batch_size"] = (
+    _entry(observations, "express")["parameters"]["ts_code"]["batch_size"] = (
         batch_size
     )
 
@@ -473,7 +472,7 @@ def test_dataset_field_batch_size_must_be_a_positive_integer(batch_size: object)
 
 def test_dataset_field_declaration_rejects_extra_keys() -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
-    _entry(observations, "daily_basic")["parameters"]["ts_code"]["unexpected"] = (
+    _entry(observations, "express")["parameters"]["ts_code"]["unexpected"] = (
         "dataset-specific-override"
     )
 
@@ -545,7 +544,7 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
 
     daily_basic = _entry(plan, "daily_basic")
     assert daily_basic["probe_state"] == "blocked"
-    assert daily_basic["probe_block_reasons"] == ["dependency_seed_receipt_unresolved"]
+    assert daily_basic["probe_block_reasons"] == ["required_parameter_unresolved"]
     assert daily_basic["params"] == {}
 
     rt_min = _entry(plan, "rt_min")
@@ -581,15 +580,15 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     plan = _compile_plan(dataset_field_values=[seed])
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 158,
-        "blocked": 32,
-        "ingest_contract_ready": 143,
-        "ingest_contract_blocked": 47,
+        "executable": 157,
+        "blocked": 33,
+        "ingest_contract_ready": 142,
+        "ingest_contract_blocked": 48,
     }
-    daily_basic = _entry(plan, "daily_basic")
-    assert daily_basic["probe_state"] == "executable"
-    assert daily_basic["probe_block_reasons"] == []
-    assert daily_basic["params"]["ts_code"] == "600000.SH"
+    express = _entry(plan, "express")
+    assert express["probe_state"] == "executable"
+    assert express["probe_block_reasons"] == []
+    assert express["params"]["ts_code"] == "600000.SH"
     assert "600000.SH" not in yaml.safe_dump(plan["provenance"])
     assert plan["provenance"]["seed_authorities"] == [
         {
@@ -658,8 +657,8 @@ def test_probe_plan_rejects_unregistered_seed_declarations_before_generation(
     message: str,
 ) -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
-    daily_basic = _entry(observations, "daily_basic")
-    declaration = daily_basic["parameters"]["ts_code"]
+    express = _entry(observations, "express")
+    declaration = express["parameters"]["ts_code"]
     declaration["dataset_id"] = dataset_id
     declaration["field"] = field
     seed = {
