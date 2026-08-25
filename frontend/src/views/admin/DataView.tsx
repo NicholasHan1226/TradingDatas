@@ -54,31 +54,38 @@ export default function DataView({ client }: { client: ApiClient }) {
       try {
         const catalog = await client.get<CatalogResponse>('/v1/catalog', { limit: '500' })
         if (!alive) return
-        let runtimeByDataset = new Map<string, DatasetRow>()
+        const catalogRows = (catalog.data ?? []).map((row) => ({
+          ...row,
+          provider: row.provider ?? '—',
+        }))
+        // The public catalog is already sufficient to browse and query data.
+        // Render it immediately instead of blocking the whole page on the
+        // admin-only runtime decoration request below.
+        setRows(catalogRows)
         try {
           const collection = await client.get<CollectionStatus>('/admin/api/collection/status')
-          runtimeByDataset = new Map(
+          if (!alive) return
+          const runtimeByDataset = new Map(
             (collection.datasets ?? []).map((row) => [row.dataset_id, row]),
           )
+          setRows((current) => current?.map((row) => {
+            const runtime = runtimeByDataset.get(row.dataset_id)
+            return {
+              ...row,
+              provider: runtime?.provider ?? row.provider,
+              activation: runtime?.activation ?? row.activation,
+              runtime_state: runtime?.runtime_state ?? row.runtime_state,
+              degraded: runtime?.degraded ?? row.degraded,
+              freshness_state: runtime?.freshness_state ?? row.freshness_state,
+              data_through: runtime?.data_through ?? row.data_through,
+              observed_at: runtime?.observed_at ?? row.observed_at,
+              reasons: runtime?.reasons ?? row.reasons,
+              coverage: runtime?.coverage ?? row.coverage,
+            }
+          }) ?? current)
         } catch {
           // Catalog is independently useful; runtime decoration is best-effort.
         }
-        if (!alive) return
-        setRows((catalog.data ?? []).map((row) => {
-          const runtime = runtimeByDataset.get(row.dataset_id)
-          return {
-            ...row,
-            provider: runtime?.provider ?? row.provider ?? '—',
-            activation: runtime?.activation ?? row.activation,
-            runtime_state: runtime?.runtime_state ?? row.runtime_state,
-            degraded: runtime?.degraded ?? row.degraded,
-            freshness_state: runtime?.freshness_state ?? row.freshness_state,
-            data_through: runtime?.data_through ?? row.data_through,
-            observed_at: runtime?.observed_at ?? row.observed_at,
-            reasons: runtime?.reasons ?? row.reasons,
-            coverage: runtime?.coverage ?? row.coverage,
-          }
-        }))
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : '加载目录失败')
       }
