@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Article, BookOpenText, Check as PhosphorCheck, CirclesThree, Code, CopySimple, Cube, House, Key, Robot, Sun, WaveSine } from '@phosphor-icons/react'
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ArrowRight, Article, BookOpenText, Check as PhosphorCheck, CirclesThree, Code, CopySimple, Cube, Database, Gauge, House, Key, ListBullets, Robot, Sun, WaveSine } from '@phosphor-icons/react'
 import type { ApiClient } from '../../lib/api'
 import type { DataCategory, PortalInfo, PortalMeResponse, PortalUsageResponse } from '../../lib/types'
 import WorkspaceShell, { type WorkspaceNavItem } from '../../components/WorkspaceShell'
@@ -24,7 +24,7 @@ const AGENTS = [
   { name: 'Hermes', icon: WaveSine },
 ] as const
 type AgentName = (typeof AGENTS)[number]['name']
-type SetupTab = 'prompt' | 'tools' | 'api'
+type StudioLanguage = 'python' | 'curl'
 
 const DATA_CATEGORY_DETAILS: Record<DataCategory, { label: string; detail: string; tone: string }> = {
   a_share: { label: 'A 股', detail: '行情、基础资料与基本面数据', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
@@ -71,8 +71,8 @@ export default function CustomerApp({
   const [history, setHistory] = useState<{ date: string; total: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<AgentName>('Claude')
-  const [setupTab, setSetupTab] = useState<SetupTab>('prompt')
-  const [copiedSetup, setCopiedSetup] = useState(false)
+  const [studioLanguage, setStudioLanguage] = useState<StudioLanguage>('python')
+  const [copiedStudio, setCopiedStudio] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -102,6 +102,26 @@ curl -X POST ${client.baseUrl}/v1/query \\
   -H "Content-Type: application/json" \\
   -d '{"dataset_id":"cn.dataset.adj_factor","schema_major":2,
        "filters":{"ts_code":{"eq":"000001.SZ"}},"limit":100}'`, [client.baseUrl])
+
+  const pythonExample = useMemo(() => `import requests
+
+base_url = "${client.baseUrl}"
+headers = {
+    "Authorization": "Bearer YOUR_TRADINGDATAS_API_KEY",
+    "Content-Type": "application/json",
+}
+
+catalog = requests.get(f"{base_url}/v1/catalog", headers=headers)
+catalog.raise_for_status()
+
+query = {
+    "dataset_id": "cn.dataset.adj_factor",
+    "schema_major": 2,
+    "filters": {"ts_code": {"eq": "000001.SZ"}},
+    "limit": 100,
+}
+result = requests.post(f"{base_url}/v1/query", headers=headers, json=query)
+print(result.json())`, [client.baseUrl])
 
   const agentPrompt = useMemo(() => `你是金融数据分析 Agent。通过 TradingDatas 只读 API 获取真实数据。
 
@@ -151,38 +171,12 @@ curl -X POST ${client.baseUrl}/v1/query \\
     },
   ], null, 2), [])
 
-  const visibleAgentPrompt = useMemo(() => `你是使用 TradingDatas 的金融数据 Agent。请遵循以下流程：
-
-1. 先调用 GET /v1/catalog，确认数据集、字段与查询约束。
-2. 再调用 POST /v1/query；数据集与 schema 版本必须来自本次目录响应。
-3. 检查 data_through、freshness_state、degraded 与 reasons。
-4. 收到 429 后停止当前批次，并按退避策略重试。
-5. 不得记录、输出或转发用户的 API 密钥。`, [])
-
-  const apiExampleVisible = useMemo(() => `# 先读取目录
-GET /v1/catalog
-Authorization: Bearer <你的 API 密钥>
-
-# 再提交查询
-POST /v1/query
-{
-  "dataset_id": "cn.dataset.adj_factor",
-  "schema_major": 2,
-  "limit": 100
-}`, [])
-
-  const setupContent = setupTab === 'prompt'
-    ? { label: '复制提示词', visible: visibleAgentPrompt, copy: `${agentPrompt}\n\n目标 Agent：${selectedAgent}` }
-    : setupTab === 'tools'
-      ? { label: '复制定义', visible: toolDefsJson, copy: toolDefsJson }
-      : { label: '复制示例', visible: apiExampleVisible, copy: curlExample }
-
-  const copySetup = async () => {
+  const copyStudio = async () => {
     try {
-      await navigator.clipboard.writeText(setupContent.copy)
+      await navigator.clipboard.writeText(studioLanguage === 'python' ? pythonExample : curlExample)
       recordConsoleEvent('copy_succeeded', 'customer')
-      setCopiedSetup(true)
-      window.setTimeout(() => setCopiedSetup(false), 1600)
+      setCopiedStudio(true)
+      window.setTimeout(() => setCopiedStudio(false), 1600)
     } catch {
       setError('复制失败，请手动选择内容复制。')
     }
@@ -191,6 +185,10 @@ POST /v1/query
   if (!me && !error) return <LoadingPanel label="加载账户工作台…" />
 
   const expiry = me ? expiryLabel(me.expires_at) : null
+  const dailyRemaining = me?.daily_limit === null || me?.daily_limit === undefined
+    ? null
+    : Math.max(0, me.daily_limit - me.usage.today_count)
+  const studioCode = studioLanguage === 'python' ? pythonExample : curlExample
 
   return (
     <WorkspaceShell
@@ -204,57 +202,108 @@ POST /v1/query
       onLogout={onLogout}
       previewing={Boolean(onViewAdmin)}
       identity={tenantId}
+      layout="side"
     >
       {error && <ErrorBanner message={error} />}
       {me && section === 'overview' && (
-        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.9fr)_minmax(310px,0.88fr)]">
-          <div className="min-w-0 pr-0 xl:pr-10">
-            <div className="max-w-3xl">
-              <h1 className="text-[34px] font-semibold leading-[1.12] tracking-[-0.055em] text-[var(--td-ink)] sm:text-[38px]">Agent 接入</h1>
-              <p className="mt-3 text-[14px] leading-6 text-[var(--td-muted)]">复制提示词或工具定义，交给 Claude、Codex、OpenClaw 或 Hermes。</p>
-            </div>
+        <div className="space-y-0">
+          <section className="grid border-b border-[var(--td-line)] pb-10 pt-1 xl:grid-cols-[minmax(420px,0.85fr)_minmax(0,1.4fr)] xl:pb-12" aria-labelledby="customer-workbench-heading">
+            <div className="flex min-w-0 flex-col justify-center border-b border-[var(--td-line)] pb-9 xl:border-r xl:border-b-0 xl:pr-10 xl:pb-0">
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-[var(--td-accent)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--td-accent)]" /> Agent-first 数据服务
+              </div>
+              <h1 id="customer-workbench-heading" className="mt-5 max-w-[580px] text-[34px] font-semibold leading-[1.12] tracking-[-0.055em] text-[var(--td-ink)] sm:text-[38px] xl:text-[38px]">
+                让 Agent 用一种方式<br className="hidden sm:block" />读取多市场金融数据
+              </h1>
+              <p className="mt-5 max-w-xl text-[14px] leading-7 text-[var(--td-muted)]">
+                通过统一目录发现可用数据，再按标准查询合同读取结果，并依据可追溯状态判断数据是否适合当前任务。
+              </p>
 
-            <section className="mt-8" aria-labelledby="agent-selector-heading">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h2 id="agent-selector-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">选择 Agent</h2>
-                  <div className="mt-3 flex max-w-full gap-1 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Agent">
-                    {AGENTS.map((agent) => {
-                      const AgentIcon = agent.icon
-                      return (
-                        <button
-                          key={agent.name}
-                          type="button"
-                          role="tab"
-                          aria-selected={selectedAgent === agent.name}
-                          onClick={() => setSelectedAgent(agent.name)}
-                          className={`inline-flex min-h-11 min-w-max items-center gap-1 rounded-[var(--td-radius-sm)] border px-1 text-[10px] font-medium transition-colors sm:gap-2 sm:px-3 sm:text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)] ${selectedAgent === agent.name ? 'border-[var(--td-accent)] bg-white text-[var(--td-ink)]' : 'border-transparent text-[var(--td-muted)] hover:border-[var(--td-line)] hover:bg-white hover:text-[var(--td-ink)]'}`}
-                        >
-                          <AgentIcon aria-hidden size={15} weight="regular" />
-                          {agent.name}
-                        </button>
-                      )
-                    })}
+              <div className="mt-8 divide-y divide-[var(--td-line)] border-y border-[var(--td-line)]">
+                {[
+                  [ListBullets, '统一目录', '发现数据集、字段与查询约束'],
+                  [Code, '标准查询', '使用同一份 catalog / query 合同'],
+                  [Database, '可追溯状态', '检查数据时间、质量与降级原因'],
+                ].map(([Icon, label, detail]) => (
+                  <div key={String(label)} className="grid grid-cols-[28px_92px_minmax(0,1fr)] items-center gap-3 py-3.5">
+                    <Icon aria-hidden size={18} className="text-[var(--td-ink-soft)]" />
+                    <span className="text-[12px] font-semibold text-[var(--td-ink)]">{String(label)}</span>
+                    <span className="text-[11px] leading-5 text-[var(--td-muted)]">{String(detail)}</span>
                   </div>
-                </div>
-                <p className="max-w-sm border-l-2 border-[var(--td-orange)] pl-3 text-[11px] leading-5 text-[var(--td-muted)]">为 {selectedAgent} 调整说明语境；目录与查询合同保持一致。</p>
+                ))}
               </div>
 
-              <div className="mt-6 overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line-strong)] bg-white shadow-[var(--td-shadow-1)]">
-                <div className="flex flex-col border-b border-[var(--td-line)] bg-[#f4f4f2] sm:flex-row sm:items-stretch sm:justify-between">
-                  <div className="flex overflow-x-auto" role="tablist" aria-label="接入内容">
-                    {([
-                      ['prompt', '接入提示词'],
-                      ['tools', '工具定义'],
-                      ['api', 'API 示例'],
-                    ] as const).map(([key, label]) => (
+              <div className="mt-7 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('agent-studio-heading')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                  className="inline-flex min-h-11 items-center gap-3 rounded-[var(--td-radius-sm)] bg-[var(--td-accent)] px-5 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--td-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)]"
+                >
+                  开始配置 <ArrowRight aria-hidden size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { onDocSectionChange('quickstart'); onSectionChange('docs') }}
+                  className="inline-flex min-h-11 items-center gap-2 px-2 text-[12px] font-semibold text-[var(--td-ink-soft)] transition-colors hover:text-[var(--td-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)]"
+                >
+                  查看完整文档 <ArrowRight aria-hidden size={14} />
+                </button>
+              </div>
+            </div>
+
+            <section id="agent-studio" className="min-w-0 pt-9 xl:pl-10 xl:pt-0" aria-labelledby="agent-studio-heading">
+              <div className="flex flex-col gap-4 border-b border-[var(--td-line)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-[10px] font-semibold tracking-[0.06em] text-[var(--td-faint)]">AGENT SETUP</div>
+                  <h2 id="agent-studio-heading" className="mt-1 text-[19px] font-semibold tracking-[-0.025em] text-[var(--td-ink)]">Agent 设置工作台</h2>
+                </div>
+                <div className="flex max-w-full gap-1 overflow-x-auto" role="tablist" aria-label="选择 Agent">
+                  {AGENTS.map((agent) => {
+                    const AgentIcon = agent.icon
+                    const selected = selectedAgent === agent.name
+                    return (
+                      <button
+                        key={agent.name}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        onClick={() => setSelectedAgent(agent.name)}
+                        className={`inline-flex min-h-9 min-w-max items-center gap-2 border-b-2 px-3 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--td-accent)] ${selected ? 'border-[var(--td-accent)] text-[var(--td-accent)]' : 'border-transparent text-[var(--td-muted)] hover:text-[var(--td-ink)]'}`}
+                      >
+                        <AgentIcon aria-hidden size={14} /> {agent.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <ol className="grid border-b border-[var(--td-line)] sm:grid-cols-3" aria-label="接入步骤">
+                {[
+                  ['01', '选择 Agent', selectedAgent],
+                  ['02', '添加访问密钥', '使用环境变量保存'],
+                  ['03', '运行首次查询', '验证目录与查询结果'],
+                ].map(([number, label, detail], index) => (
+                  <li key={number} className={`grid grid-cols-[28px_minmax(0,1fr)] gap-2 py-3 sm:px-4 ${index > 0 ? 'border-t border-[var(--td-line)] sm:border-t-0 sm:border-l' : ''}`}>
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold ${index === 0 ? 'border-[var(--td-accent)] bg-[var(--td-accent)] text-white' : 'border-[var(--td-line-strong)] text-[var(--td-muted)]'}`}>{number}</span>
+                    <span>
+                      <span className="block text-[11px] font-semibold text-[var(--td-ink)]">{label}</span>
+                      <span className="mt-0.5 block text-[10px] leading-4 text-[var(--td-faint)]">{detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="mt-5 overflow-hidden rounded-[var(--td-radius-lg)] border border-[var(--td-line-strong)] bg-white shadow-[var(--td-shadow-hairline)]">
+                <div className="flex items-center justify-between border-b border-[var(--td-line)] bg-[#f6f7f8]">
+                  <div className="flex" role="tablist" aria-label="示例语言">
+                    {([['python', 'Python'], ['curl', 'cURL']] as const).map(([key, label]) => (
                       <button
                         key={key}
                         type="button"
                         role="tab"
-                        aria-selected={setupTab === key}
-                        onClick={() => { setSetupTab(key); setCopiedSetup(false) }}
-                        className={`min-h-11 min-w-max border-r border-[var(--td-line)] px-5 text-[12px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--td-accent)] ${setupTab === key ? 'bg-[var(--td-lilac-quiet)] text-[var(--td-ink)] shadow-[inset_0_-2px_0_#7a66e8]' : 'text-[var(--td-muted)] hover:bg-white/70 hover:text-[var(--td-ink)]'}`}
+                        aria-selected={studioLanguage === key}
+                        onClick={() => { setStudioLanguage(key); setCopiedStudio(false) }}
+                        className={`min-h-11 border-b-2 px-5 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--td-accent)] ${studioLanguage === key ? 'border-[var(--td-accent)] bg-white text-[var(--td-accent)]' : 'border-transparent text-[var(--td-muted)] hover:text-[var(--td-ink)]'}`}
                       >
                         {label}
                       </button>
@@ -262,110 +311,113 @@ POST /v1/query
                   </div>
                   <button
                     type="button"
-                    onClick={copySetup}
-                    className="group flex min-h-11 items-center justify-between gap-3 border-t border-[var(--td-line)] px-4 text-[12px] font-semibold text-[var(--td-ink)] transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--td-accent)] sm:border-t-0 sm:border-l"
+                    onClick={copyStudio}
                     aria-live="polite"
+                    className="inline-flex min-h-11 items-center gap-2 px-4 text-[11px] font-semibold text-[var(--td-ink-soft)] transition-colors hover:bg-white hover:text-[var(--td-accent)] focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--td-accent)]"
                   >
-                    <span>{copiedSetup ? '已复制' : setupContent.label}</span>
-                    <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[var(--td-ink)] text-white transition-transform group-hover:translate-x-0.5">
-                      {copiedSetup ? <PhosphorCheck aria-hidden size={13} /> : <CopySimple aria-hidden size={13} />}
-                    </span>
+                    {copiedStudio ? <PhosphorCheck aria-hidden size={14} /> : <CopySimple aria-hidden size={14} />}
+                    {copiedStudio ? '已复制' : '复制示例'}
                   </button>
                 </div>
-                <pre className="min-h-[300px] overflow-auto whitespace-pre-wrap bg-[#fffefa] px-5 py-5 font-mono text-[12px] leading-6 text-[#343039] sm:px-7">{setupContent.visible}</pre>
-              </div>
 
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-[11px] leading-5 text-[var(--td-faint)]">复制内容会自动带入当前服务配置；密钥仍使用占位符。</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onDocSectionChange(setupTab === 'api' ? 'quickstart' : 'agents')
-                    onSectionChange('docs')
-                  }}
-                  className="inline-flex min-h-9 items-center gap-2 rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-white px-3 text-[11px] font-semibold text-[var(--td-ink-soft)] transition-colors hover:border-[var(--td-line-strong)] hover:text-[var(--td-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)]"
-                >
-                  <Article aria-hidden size={14} /> 打开接入文档
-                </button>
+                <div className="max-h-[280px] overflow-auto bg-[#fbfbfc] py-4 font-mono text-[11px] leading-[1.72] text-[#343842]">
+                  {studioCode.split('\n').map((line, index) => (
+                    <div key={`${index}-${line}`} className="grid min-w-[620px] grid-cols-[44px_minmax(0,1fr)] px-4 sm:px-5">
+                      <span className="select-none pr-4 text-right text-[#a4a8b2]">{index + 1}</span>
+                      <code className="whitespace-pre">{line || ' '}</code>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-2 border-t border-[#dfe4f3] bg-[#f1f4ff] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-[#b9c7ff] text-[var(--td-accent)]"><PhosphorCheck aria-hidden size={11} /></span>
+                    <div>
+                      <div className="text-[11px] font-semibold text-[#2946a8]">示例已按真实接口合同准备</div>
+                      <div className="mt-0.5 text-[10px] leading-4 text-[#66719a]">密钥保持占位符；运行前请保存到本地环境变量。</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { onDocSectionChange('quickstart'); onSectionChange('docs') }}
+                    className="inline-flex min-h-8 items-center gap-2 text-[10px] font-semibold text-[var(--td-accent)] hover:text-[var(--td-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)]"
+                  >
+                    查看请求与响应说明 <ArrowRight aria-hidden size={12} />
+                  </button>
+                </div>
               </div>
             </section>
+          </section>
 
-            <section className="mt-9 border-t border-[var(--td-line)] pt-7" aria-labelledby="usage-heading">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <h2 id="usage-heading" className="text-[17px] font-semibold tracking-[-0.02em] text-[var(--td-ink)]">近 30 天用量</h2>
-                  <p className="mt-1 text-[11px] text-[var(--td-muted)]">{history?.reduce((sum, item) => sum + item.total, 0).toLocaleString('zh-CN') ?? '—'} 次请求</p>
-                </div>
-                <span className="text-[11px] text-[var(--td-muted)]">今日 {fmtNumber(me.usage.today_count)}</span>
+          <section className="border-b border-[var(--td-line)] py-7" aria-labelledby="account-capacity-heading">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <h2 id="account-capacity-heading" className="text-[17px] font-semibold tracking-[-0.025em] text-[var(--td-ink)]">账户能力</h2>
+                <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold ${me.enabled ? 'text-[var(--td-success)]' : 'text-[var(--td-danger)]'}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{me.enabled ? '服务可用' : '服务已暂停'}</span>
+              </div>
+              <div className="text-[10px] text-[var(--td-faint)]">{tenantId} · {TIER_LABELS[me.tier] ?? me.tier}</div>
+            </div>
+
+            <dl className="mt-5 grid border-y border-[var(--td-line)] sm:grid-cols-2 xl:grid-cols-4">
+              <div className="px-0 py-5 sm:px-5 sm:first:pl-0">
+                <dt className="flex items-center gap-2 text-[11px] font-medium text-[var(--td-muted)]"><Article aria-hidden size={15} />账户有效期</dt>
+                <dd className="mt-3 text-[22px] font-semibold tabular-nums tracking-[-0.03em] text-[var(--td-ink)]">{expiry?.main ?? '—'}</dd>
+                <div className="mt-1 text-[10px] text-[var(--td-faint)]">{expiry?.detail ?? '—'}</div>
+              </div>
+              <div className="border-t border-[var(--td-line)] px-0 py-5 sm:border-t-0 sm:border-l sm:px-5">
+                <dt className="flex items-center gap-2 text-[11px] font-medium text-[var(--td-muted)]"><Gauge aria-hidden size={15} />并发请求</dt>
+                <dd className="mt-3 text-[22px] font-semibold tabular-nums tracking-[-0.03em] text-[var(--td-ink)]">{me.max_concurrent === null ? '不限' : me.max_concurrent}</dd>
+                <div className="mt-1 text-[10px] text-[var(--td-faint)]">{me.max_concurrent === null ? '当前账户不限制并行数' : '当前账户同时请求上限'}</div>
+              </div>
+              <div className="border-t border-[var(--td-line)] px-0 py-5 sm:border-l sm:px-5 xl:border-t-0">
+                <dt className="flex items-center gap-2 text-[11px] font-medium text-[var(--td-muted)]"><WaveSine aria-hidden size={15} />今日剩余额度</dt>
+                <dd className="mt-3 text-[22px] font-semibold tabular-nums tracking-[-0.03em] text-[var(--td-ink)]">{dailyRemaining === null ? '不限' : `${fmtNumber(dailyRemaining)} / ${fmtNumber(me.daily_limit)}`}</dd>
+                <div className="mt-1 text-[10px] text-[var(--td-faint)]">今日已请求 {fmtNumber(me.usage.today_count)}</div>
+              </div>
+              <div className="border-t border-[var(--td-line)] px-0 py-5 sm:border-l sm:px-5 xl:border-t-0">
+                <dt className="flex items-center gap-2 text-[11px] font-medium text-[var(--td-muted)]"><Database aria-hidden size={15} />已授权市场</dt>
+                <dd className="mt-3 flex flex-wrap gap-2">
+                  {me.data_categories.map((category) => (
+                    <span key={category} className={`rounded-[4px] border px-2.5 py-1 text-[10px] font-semibold ${DATA_CATEGORY_DETAILS[category]?.tone ?? 'border-[var(--td-line)] text-[var(--td-muted)]'}`}>{DATA_CATEGORY_DETAILS[category]?.label ?? category}</span>
+                  ))}
+                  {!me.data_categories.length && <span className="text-[11px] text-[var(--td-danger)]">尚未开通市场</span>}
+                </dd>
+                <div className="mt-2 text-[10px] text-[var(--td-faint)]">最终范围以实时目录返回为准</div>
+              </div>
+            </dl>
+          </section>
+
+          <section className="pt-7" aria-labelledby="usage-heading">
+            <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_220px] xl:items-stretch">
+              <div>
+                <h2 id="usage-heading" className="text-[17px] font-semibold tracking-[-0.025em] text-[var(--td-ink)]">每日查询用量</h2>
+                <div className="mt-5 text-[30px] font-semibold tabular-nums tracking-[-0.045em] text-[var(--td-ink)]">{fmtNumber(me.usage.today_count)}</div>
+                <p className="mt-1 text-[10px] text-[var(--td-muted)]">今日已用查询量</p>
               </div>
 
               {!history || history.every((item) => item.total === 0) ? (
-                <div className="mt-5 border-y border-[var(--td-line)] py-8 text-[12px] text-[var(--td-muted)]">完成首次 API 请求后，这里会显示调用节奏。</div>
+                <div className="flex min-h-32 items-center border-y border-[var(--td-line)] text-[12px] text-[var(--td-muted)]">完成首次 API 请求后，这里会显示调用节奏。</div>
               ) : (
-                <div className="mt-4 h-28 w-full">
+                <div className="h-36 min-w-0 border-y border-[var(--td-line)] py-4">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={history} margin={{ top: 6, right: 0, bottom: 0, left: 0 }} accessibilityLayer>
+                    <LineChart data={history} margin={{ top: 8, right: 8, bottom: 0, left: 8 }} accessibilityLayer>
                       <XAxis dataKey="date" hide />
                       <YAxis hide allowDecimals={false} />
                       <Tooltip formatter={(value) => [`${Number(value).toLocaleString('zh-CN')} 次`, '请求']} labelFormatter={(value) => String(value)} contentStyle={{ borderRadius: 6, border: '1px solid #e1e0dc', boxShadow: '0 8px 24px rgb(22 22 22 / .08)', fontSize: 11 }} />
-                      <Bar dataKey="total" fill="var(--td-accent)" radius={[2, 2, 0, 0]} maxBarSize={8} />
-                    </BarChart>
+                      <Line type="monotone" dataKey="total" stroke="var(--td-accent)" strokeWidth={2} dot={false} activeDot={{ r: 3, fill: 'var(--td-accent)' }} />
+                    </LineChart>
                   </ResponsiveContainer>
                 </div>
               )}
 
-              <div className="mt-3 border-t border-[var(--td-line)]">
-                <div className="grid grid-cols-[1fr_auto] gap-4 py-3 text-[10px] font-semibold tracking-[0.04em] text-[var(--td-faint)] uppercase">
-                  <span>最近活跃日</span><span>请求</span>
-                </div>
-                {(history ?? []).filter((item) => item.total > 0).slice(-3).reverse().map((item) => (
-                  <div key={item.date} className="grid grid-cols-[1fr_auto] gap-4 border-t border-[var(--td-line)] py-3 text-[12px] text-[var(--td-ink-soft)]">
-                    <time dateTime={item.date}>{item.date}</time>
-                    <span className="tabular-nums">{item.total.toLocaleString('zh-CN')}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <aside className="mt-10 min-w-0 border-t border-[var(--td-line)] bg-[#f3f4f5] px-5 py-7 xl:mt-0 xl:border-t-0 xl:border-l xl:px-8 xl:py-8" aria-labelledby="access-summary-heading">
-            <h2 id="access-summary-heading" className="text-[21px] font-semibold tracking-[-0.035em] text-[var(--td-ink)]">账户与权限</h2>
-
-            <div className="mt-8 border-b border-[var(--td-line)] pb-7">
-              <div className="text-[12px] font-semibold text-[var(--td-ink)]">账户与计划</div>
-              <div className="mt-4 flex flex-wrap gap-x-2 text-[13px] text-[var(--td-ink-soft)]"><span>{tenantId}</span><span aria-hidden>·</span><span>{TIER_LABELS[me.tier] ?? me.tier}</span></div>
-            </div>
-
-            <div className="border-b border-[var(--td-line)] py-7">
-              <div className="text-[12px] font-semibold text-[var(--td-ink)]">市场授权</div>
-              <div className="mt-4 divide-y divide-[var(--td-line)]">
-                {me.data_categories.map((category) => (
-                  <div key={category} className="flex items-center justify-between gap-4 py-3 text-[12px]">
-                    <span className="text-[var(--td-ink-soft)]">{DATA_CATEGORY_DETAILS[category]?.label ?? category}</span>
-                    <span className="text-[var(--td-muted)]">已授权</span>
-                  </div>
-                ))}
-                {!me.data_categories.length && <p className="py-3 text-[12px] text-[var(--td-danger)]">尚未开通市场</p>}
+              <div className="border-t border-[var(--td-line)] pt-5 xl:border-t-0 xl:border-l xl:pl-6 xl:pt-0">
+                <div className="text-[10px] font-semibold text-[var(--td-faint)]">近 30 天</div>
+                <div className="mt-2 text-[19px] font-semibold tabular-nums text-[var(--td-ink)]">{history?.reduce((sum, item) => sum + item.total, 0).toLocaleString('zh-CN') ?? '—'}</div>
+                <div className="mt-5 text-[10px] font-semibold text-[var(--td-faint)]">频率窗口</div>
+                <div className="mt-2 text-[12px] font-medium text-[var(--td-ink-soft)]">{me.minute_request_limit ? `${fmtNumber(me.minute_request_limit)} 次 / 分钟` : `${fmtNumber(me.hourly_request_limit)} 次 / 小时`}</div>
               </div>
             </div>
-
-            <div className="py-7">
-              <div className="text-[12px] font-semibold text-[var(--td-ink)]">额度与使用</div>
-              <dl className="mt-4 space-y-4 text-[12px]">
-                {[
-                  ['今日请求', fmtNumber(me.usage.today_count)],
-                  ['并发上限', me.max_concurrent === null ? '不限' : `${me.max_concurrent} 路`],
-                  ['每日上限', fmtNumber(me.daily_limit)],
-                  ['有效期', expiry?.main ?? '—'],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex items-center justify-between gap-4">
-                    <dt className="text-[var(--td-muted)]">{label}</dt>
-                    <dd className="font-medium tabular-nums text-[var(--td-ink-soft)]">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </aside>
+          </section>
         </div>
       )}
 
@@ -373,17 +425,17 @@ POST /v1/query
         <div className="space-y-6">
           <PageIntro eyebrow="账户能力" title="权限与额度" description="查看这把 API 密钥当前真正生效的市场、速率和账户期限。" />
           <div className="grid overflow-hidden rounded-[var(--td-radius-lg)] border border-[var(--td-line)] bg-white shadow-[var(--td-shadow-hairline)] xl:grid-cols-[360px_minmax(0,1fr)]">
-            <section className="border-b border-[var(--td-line)] bg-[#17181c] p-6 text-white xl:border-r xl:border-b-0 xl:p-8" aria-labelledby="account-contract-heading">
-              <div className="text-[11px] font-medium tracking-[0.04em] text-white/50">当前账户</div>
+            <section className="border-b border-[var(--td-line)] bg-[#f3f5fb] p-6 text-[var(--td-ink)] xl:border-r xl:border-b-0 xl:p-8" aria-labelledby="account-contract-heading">
+              <div className="text-[11px] font-medium tracking-[0.04em] text-[var(--td-faint)]">当前账户</div>
               <h2 id="account-contract-heading" className="mt-3 text-[22px] font-semibold tracking-[-0.035em]">{tenantId}</h2>
-              <div className="mt-2 flex items-center gap-2 text-[12px] text-white/60"><span className={`h-1.5 w-1.5 rounded-full ${me.enabled ? 'bg-[#7aa2ff]' : 'bg-[#ff718e]'}`} />{me.enabled ? '服务可用' : '服务已暂停'} · {TIER_LABELS[me.tier] ?? me.tier}</div>
-              <dl className="mt-10 divide-y divide-white/10 border-y border-white/10">
+              <div className="mt-2 flex items-center gap-2 text-[12px] text-[var(--td-muted)]"><span className={`h-1.5 w-1.5 rounded-full ${me.enabled ? 'bg-[var(--td-success)]' : 'bg-[var(--td-danger)]'}`} />{me.enabled ? '服务可用' : '服务已暂停'} · {TIER_LABELS[me.tier] ?? me.tier}</div>
+              <dl className="mt-10 divide-y divide-[var(--td-line)] border-y border-[var(--td-line)]">
                 {[
                   ['账户有效期', expiry?.main ?? '—', expiry?.detail ?? ''],
                   ['今日请求', fmtNumber(me.usage.today_count), `每日上限 ${fmtNumber(me.daily_limit)}`],
-                ].map(([label, value, detail]) => <div key={label} className="grid grid-cols-[1fr_auto] gap-6 py-5"><dt className="text-[11px] text-white/45">{label}</dt><dd className="text-right"><div className="text-[17px] font-medium tabular-nums">{value}</div><div className="mt-1 text-[10px] text-white/40">{detail}</div></dd></div>)}
+                ].map(([label, value, detail]) => <div key={label} className="grid grid-cols-[1fr_auto] gap-6 py-5"><dt className="text-[11px] text-[var(--td-muted)]">{label}</dt><dd className="text-right"><div className="text-[17px] font-medium tabular-nums">{value}</div><div className="mt-1 text-[10px] text-[var(--td-faint)]">{detail}</div></dd></div>)}
               </dl>
-              <p className="mt-6 text-[11px] leading-5 text-white/45">权限数据来自当前账户，不是示例套餐或静态说明。</p>
+              <p className="mt-6 text-[11px] leading-5 text-[var(--td-muted)]">权限数据来自当前账户，不是示例套餐或静态说明。</p>
             </section>
 
             <div className="min-w-0 p-6 xl:p-8">
@@ -451,14 +503,14 @@ POST /v1/query
                     ['03', '查询与翻页', '通过 /v1/query 查询，使用 next_cursor 继续翻页。'],
                   ].map(([number, title, detail]) => <div key={number} className="flex gap-3"><span className="font-mono text-[10px] text-[var(--td-accent)]">{number}</span><div><div className="text-sm font-semibold text-[var(--td-ink)]">{title}</div><p className="mt-1 text-xs leading-5 text-[var(--td-muted)]">{detail}</p></div></div>)}
                 </div>
-                <pre className="max-h-[420px] overflow-auto rounded-[var(--td-radius)] border border-white/8 bg-[#15161a] p-5 font-mono text-[11px] leading-6 text-[#d5d8e2] whitespace-pre-wrap shadow-[0_18px_50px_rgb(13_19_32/0.12)]">{curlExample}</pre>
+                <pre className="max-h-[420px] overflow-auto rounded-[var(--td-radius)] border border-[var(--td-line-strong)] bg-[#fbfbfc] p-5 font-mono text-[11px] leading-6 text-[#343842] whitespace-pre-wrap shadow-[var(--td-shadow-hairline)]">{curlExample}</pre>
               </div>
             </article>}
 
             {docSection === 'agents' && <article className="space-y-8">
               <div className="border-b border-[var(--td-line)] pb-5"><div className="text-[10px] font-medium text-[var(--td-accent)]">AGENT SETUP</div><h2 className="mt-1 text-[20px] font-semibold tracking-[-0.03em] text-[var(--td-ink)]">Agent 接入</h2><p className="mt-2 text-[12px] leading-5 text-[var(--td-muted)]">把真实目录发现、查询和异常处理规则一次交给你的 Agent。</p></div>
-              <section aria-labelledby="agent-prompt-heading"><div className="mb-3 flex items-center justify-between gap-4"><h3 id="agent-prompt-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">接入提示词</h3><CopyButton text={agentPrompt} label="复制提示词" /></div><pre className="max-h-[420px] overflow-auto rounded-[var(--td-radius)] bg-[#15161a] p-5 font-mono text-[11px] leading-6 text-[#d5d8e2] whitespace-pre-wrap shadow-[0_18px_50px_rgb(13_19_32/0.12)]">{agentPrompt}</pre></section>
-              <section aria-labelledby="tool-schema-heading"><div className="mb-3 flex items-center justify-between gap-4"><h3 id="tool-schema-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">Function Calling 定义</h3><CopyButton text={toolDefsJson} label="复制定义" /></div><pre className="max-h-[380px] overflow-auto rounded-[var(--td-radius)] bg-[#15161a] p-5 font-mono text-[11px] leading-6 text-[#d5d8e2] shadow-[0_18px_50px_rgb(13_19_32/0.12)]">{toolDefsJson}</pre></section>
+              <section aria-labelledby="agent-prompt-heading"><div className="mb-3 flex items-center justify-between gap-4"><h3 id="agent-prompt-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">接入提示词</h3><CopyButton text={agentPrompt} label="复制提示词" /></div><pre className="max-h-[420px] overflow-auto rounded-[var(--td-radius)] border border-[var(--td-line-strong)] bg-[#fbfbfc] p-5 font-mono text-[11px] leading-6 text-[#343842] whitespace-pre-wrap shadow-[var(--td-shadow-hairline)]">{agentPrompt}</pre></section>
+              <section aria-labelledby="tool-schema-heading"><div className="mb-3 flex items-center justify-between gap-4"><h3 id="tool-schema-heading" className="text-[13px] font-semibold text-[var(--td-ink)]">Function Calling 定义</h3><CopyButton text={toolDefsJson} label="复制定义" /></div><pre className="max-h-[380px] overflow-auto rounded-[var(--td-radius)] border border-[var(--td-line-strong)] bg-[#fbfbfc] p-5 font-mono text-[11px] leading-6 text-[#343842] shadow-[var(--td-shadow-hairline)]">{toolDefsJson}</pre></section>
             </article>}
 
             {docSection === 'reference' && <article>
