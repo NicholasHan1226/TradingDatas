@@ -61,6 +61,10 @@ from storage.sqlite_authority_lock import (
 
 _WINDOW_PLACEHOLDER = re.compile(r"\$\{window\.([A-Za-z_][A-Za-z0-9_]{0,63})\}")
 _MAX_WINDOW_VALUE_BYTES = 1024
+# Fanout source reads hold the shared authority lock, so a concurrent writer
+# (backfill, overlapping collector) must delay the read, not fail it closed.
+# Mirrors _FACT_AUTHORITY_LOCK_WAIT_SECONDS from the crypto dump runners.
+_FANOUT_SOURCE_LOCK_WAIT_SECONDS = 180.0
 _PROVIDER_SCAN_FIELD_HEADROOM = 16
 _PROVIDER_SCAN_FIXED_NODE_HEADROOM = 4_096
 # Must stay in lock-step with the compiler: node budgeting, rather than an
@@ -457,7 +461,11 @@ def _load_completed_fanout_batches(
     if source_field is None:
         raise ValueError("fanout source_field is not declared by its dataset")
     try:
-        with sqlite_authority_lock(db_path, mode="shared"):
+        with sqlite_authority_lock(
+            db_path,
+            mode="shared",
+            timeout=_FANOUT_SOURCE_LOCK_WAIT_SECONDS,
+        ):
             uri = f"{db_path.resolve(strict=True).as_uri()}?mode=ro"
             with sqlite3.connect(uri, uri=True) as conn:
                 conn.execute("PRAGMA query_only = ON")
