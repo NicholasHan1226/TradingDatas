@@ -39,7 +39,6 @@ TEN_CODE_FANOUT_APIS = {
     "fina_mainbz",
     "income",
     "pledge_stat",
-    "rt_min_daily",
     "stk_rewards",
     "top10_floatholders",
     "top10_holders",
@@ -435,6 +434,16 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
         assert declaration["batch_size"] == 10
         assert _contract(bundle, api_name)["fanout"]["batch_size"] == 10
         assert runtime_bindings[api_name]["fanout"]["batch_size"] == 10
+
+    # rt_min_daily carries an explicit five-code batch: one session holds
+    # ~241 one-minute bars per code, so ten codes overflow any feasible
+    # max_rows_per_attempt late in the session (scan-envelope fix).
+    minute_declaration = _entry(observations, "rt_min_daily")["parameters"][
+        "ts_code"
+    ]
+    assert minute_declaration["batch_size"] == 5
+    assert _contract(bundle, "rt_min_daily")["fanout"]["batch_size"] == 5
+    assert runtime_bindings["rt_min_daily"]["fanout"]["batch_size"] == 5
 
     default_observations = deepcopy(observations)
     _entry(default_observations, "daily_basic")["parameters"]["ts_code"].pop(

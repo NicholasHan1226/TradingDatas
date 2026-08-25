@@ -444,7 +444,7 @@ def test_registry_scan_budget_accepts_approved_6000_by_17_for_complete_cohort(
     }
 
 
-def test_registry_scan_budget_hard_cap_fails_before_provider_call(
+def test_registry_scan_budget_hard_cap_records_config_error_before_provider_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -469,25 +469,29 @@ def test_registry_scan_budget_hard_cap_fails_before_provider_call(
 
     monkeypatch.setattr(collector_module, "_TUSHARE_CALL", provider_call)
 
-    with pytest.raises(ValueError, match="scan node budget exceeds"):
-        collect_provider_native_dataset(
-            database,
-            registry=registry,
-            collector=TushareCollector(),
-            dataset_id=dataset.dataset_id,
-            request_window={},
-            attempt_id="stock-basic-excessive-scan-budget",
-            started_at="2026-07-18T01:00:00+00:00",
-        )
+    result = collect_provider_native_dataset(
+        database,
+        registry=registry,
+        collector=TushareCollector(),
+        dataset_id=dataset.dataset_id,
+        request_window={},
+        attempt_id="stock-basic-excessive-scan-budget",
+        started_at="2026-07-18T01:00:00+00:00",
+    )
 
+    # The oversized budget is a registry configuration error: it fails
+    # closed into one honest terminal receipt instead of escaping as a
+    # bare exception the schedule runner would swallow without a trace.
+    assert result.status == "failed"
+    assert result.errors == ("config_error",)
     assert provider_called is False
     with sqlite3.connect(database) as connection:
         assert connection.execute(
             "SELECT COUNT(*) FROM provider_dataset_rows"
         ).fetchone() == (0,)
         assert connection.execute(
-            "SELECT COUNT(*) FROM market_ingest_runs"
-        ).fetchone() == (0,)
+            "SELECT status, COUNT(*) FROM market_ingest_runs GROUP BY status"
+        ).fetchall() == [("failed", 1)]
 
 
 def test_legacy_collect_outcome_keeps_three_argument_default(

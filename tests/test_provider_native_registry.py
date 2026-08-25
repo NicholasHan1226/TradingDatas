@@ -1265,3 +1265,53 @@ def test_partition_completeness_rejects_missing_identity_contract_fields(
 
     with pytest.raises(ValueError, match=message):
         load_dataset_registry(write_registry(tmp_path, dataset))
+
+
+def test_every_runtime_tushare_binding_has_a_bounded_scan_budget() -> None:
+    """Tripwire for the rt_min_daily planning deadlock (2026-08).
+
+    The sensitive-scan budget is sized from rows x resumable fanout
+    batches under the standard or wide-table node cap. A binding that
+    overflows raises at planning time, before any receipt can exist.
+    Every runtime binding must produce a positive bounded budget so such
+    regressions surface here instead of as silent zero-activity datasets.
+    """
+
+    from collectors.tushare.provider_native_ingest import _provider_scan_budget
+    from dataset_registry import load_runtime_dataset_registry
+
+    registry = load_runtime_dataset_registry()
+    oversized: list[str] = []
+    for dataset in registry.datasets:
+        for binding in dataset.provider_bindings:
+            try:
+                budget = _provider_scan_budget(dataset, binding)
+            except ValueError:
+                oversized.append(dataset.dataset_id)
+                continue
+            assert budget.max_nodes > 0
+    assert oversized == []
+
+
+def test_rt_min_daily_resumable_fanout_stays_inside_scan_envelope() -> None:
+    """rt_min_daily's corrected sizing: 1500 rows x 20 batches x 51 nodes.
+
+    The page limit must also stay above the real per-batch row count
+    (batch_size 5 codes x ~241 one-minute bars) or every late-session
+    response would trip reject_at_row_limit truncation.
+    """
+
+    from collectors.tushare.provider_native_ingest import _provider_scan_budget
+    from dataset_registry import load_runtime_dataset_registry
+
+    dataset = load_runtime_dataset_registry().resolve("cn.dataset.rt_min_daily")
+    binding = next(
+        item
+        for item in dataset.provider_bindings
+        if item.entitlement_state == "active" and item.activation_state == "active"
+    )
+    assert binding.max_rows_per_attempt == 1500
+    assert binding.fanout is not None and binding.fanout.batch_size == 5
+    assert binding.resumable_fanout is not None
+    budget = _provider_scan_budget(dataset, binding)
+    assert 0 < budget.max_nodes <= 2_000_000
