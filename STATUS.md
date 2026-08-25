@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-23 16:02 CST。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-26 00:35 CST。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,13 +9,33 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（PR #271） | 已验收源码；文档合并不等于发布 |
+| GitHub `main` | `423a9f49aee26ac41c476cdf39292e680e150066`（PR #340，含 #338） | 已验收源码；文档合并不等于发布 |
 | 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
-| A 股有效 release | `7f6ba42f41a90948666d00834139fefba5d2658c`（回滚点 `5ca8e3e2e658dc88917e78f1e56c816f46f993ca`） | immutable 运行源码，2026-08-23 14:33 CST 切换 |
+| A 股有效 release | `423a9f49aee26ac41c476cdf39292e680e150066`（回滚点 `4f7f89456e957e2f717fd3e389cf2f2c6567558b`） | immutable 运行源码，2026-08-25 23:40 CST 切换 |
 | Crypto 有效 release | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（回滚点 `7d04a1f6fe273d81e7ea20bef29c7c7701091df2`） | 隔离 immutable 运行源码，2026-08-23 15:26 CST 切换 |
 
 上述各层必须分别读回；源码、service 或 timer 单层健康都不能写成"三端同步"、
 消费者闭环或模拟交易结果。
+
+## 2026-08-25 发布记录
+
+第六轮（23:40 CST，A 股面 → `423a9f4`，PR #340 + #338）：#340 为 #283 修复——
+dataset_field fanout 源读取从非阻塞抢锁改为有界共享锁等待
+（`_FANOUT_SOURCE_LOCK_WAIT_SECONDS=180`），并发写入方（backfill/重叠采集）到来时
+延迟读而非 fail-closed；#338 为 console 工作区统一与数据状态文案（静态资源随版）。
+流程：本地 build manifest（255 files）→ staging 只读 root:root → verify 通过 →
+safe-release preflight（timer disabled、collector 排空、API inactive）→ switch-current
+→ verify-current verified=true → 认证 readback：catalog 192 datasets、
+`cn.equity.daily` query 200（TA 消费者 token）。切换后新代码采集运行 Tushare 面
+全部成功；`global.news.flash`（firecrawl）provider_error 致 exit 1 为部署前后一致的
+遗留问题，非本次回归。回滚点 `4f7f894`。
+
+后续（00:30 CST，#342，test-only）：修复 firecrawl 裸时间锚测试
+`test_bare_wall_clock_time_is_anchored_to_source_day` 的日期边界缺陷——测试用真实
+时钟推期望日，而生产代码在本地 00:00–08:09:28 窗口会正确回退一天避免未来时间戳，
+故该窗口内 CI 必挂；注入固定 `observed_at` 后确定性通过。生产行为不变，无需重新发布；
+旧分支 `fix/firecrawl-bare-time-anchor`（210c02e）的生产改动已由 main 等价承载，
+归档候选。
 
 ## 2026-08-23 发布记录
 
