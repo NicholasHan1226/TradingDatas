@@ -13,10 +13,10 @@ provenance:
     sha256: 4596a892304bdee7d517394ca5b41478bc6dabc0c00011595040160457b1c775
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: 930dca8f0dae09109ad0df234f02db7840f346bb24676c79db578eddd084c1a4
+    sha256: e0e2a4b2a6ef8faa78f99f9edba43543d4003708bc08d0db9d3295f1c710fe62
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: af1208ef12668e69385e8d7a03ff881fbc0dc994f7f2863d36bdee87aeb6bf29
+    sha256: a404da78cb7c79146f0a07fe4672d6562bf01f73c9c90505b1592125a1c00e7d
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: f0e397158cfe1c0a36875b35d259245bf1993c09f90c431b20a749d0925ecfae
@@ -8764,7 +8764,10 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
-      batch_size: 10
+      # 5 codes per batch keeps the worst-case page (5 x ~241 session-minute
+      # bars) inside max_rows_per_attempt=1500 and the resumable-fanout scan
+      # budget under the absolute node cap.
+      batch_size: 5
   row_limit_observation: null
 - api_name: rt_sw_k
   scope_labels:
