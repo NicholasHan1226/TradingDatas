@@ -8616,30 +8616,15 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: entity_fanout
-  request_template:
-    trade_date: ${window.trade_date}
+  request_shape: snapshot_or_date_range
+  request_template: {}
   request_variants:
   - {}
   fanout:
-    strategy: dataset_field
-    parameter: ts_code
-    source_dataset_id: cn.equity.security_master
-    source_field: ts_code
-    batch_size: 10
-  resumable_fanout:
-    cursor_contract_version: 2
-    max_batches_per_run: 1
+    strategy: none
   pagination:
     strategy: none
-  request_window_policy:
-    required_keys:
-    - trade_date
-    formats:
-      trade_date: yyyymmdd
-    range_start_key: trade_date
-    range_end_key: trade_date
-    max_span_days: 1
+  request_window_policy: null
   response_completeness: null
   requested_fields: []
   budgets:
@@ -8650,10 +8635,10 @@ contracts:
   reviewed_type_overrides: []
   probe_state: blocked
   probe_block_reasons:
-  - dependency_seed_receipt_unresolved
+  - required_parameter_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
-  - dependency_seed_receipt_unresolved
+  - required_parameter_unresolved
 - dataset_id: cn.dataset.daily_info
   aliases:
   - tushare.daily_info

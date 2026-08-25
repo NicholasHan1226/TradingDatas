@@ -3794,7 +3794,6 @@ def test_breadth_observed_20260815_b2_is_hash_bound_and_contract_ready() -> None
     registry = _active_registry()
     expected_windows = {
         "cn.dataset.cn_m": ("monthly", "m"),
-        "cn.dataset.daily_basic": ("postclose_daily", "trade_date"),
         "cn.dataset.etf_share_size": ("daily_reference", "trade_date"),
         "cn.dataset.index_monthly": ("monthly", "trade_date"),
         "cn.dataset.report_rc": ("postclose_daily", "report_date"),
@@ -3852,7 +3851,6 @@ def test_breadth_observed_20260815_b2_dry_run_plans_each_dataset(
 
     assert {plan.dataset_id for plan in result.plans} == {
         "cn.dataset.cn_m",
-        "cn.dataset.daily_basic",
         "cn.dataset.etf_share_size",
         "cn.dataset.index_monthly",
         "cn.dataset.report_rc",

@@ -28,13 +28,12 @@ WAVE7_FINANCIAL_APIS = {
     "income",
 }
 WAVE7_FINANCIAL_REF = "server-evidence/ashare-wave7-financial-exact7-20260812T1815CST"
-WAVE7_TRADEDAY_APIS = {"cyq_chips", "cyq_perf", "daily_basic"}
+WAVE7_TRADEDAY_APIS = {"cyq_chips", "cyq_perf"}
 SECURITY_MASTER_DEPENDENTS = {
     "balancesheet",
     "cashflow",
     "cyq_chips",
     "cyq_perf",
-    "daily_basic",
     "express",
     "fina_audit",
     "fina_indicator",
@@ -212,8 +211,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 134
-    assert len(bindings) - active_count == 56
+    assert active_count == 133
+    assert len(bindings) - active_count == 57
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
