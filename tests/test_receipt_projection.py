@@ -806,6 +806,75 @@ def test_asof_evidence_excludes_later_receipt_and_binds_internal_metadata(
     assert historical.as_of_success_receipt_ids == (first_receipt,)
 
 
+def test_evidence_projection_replays_from_shared_validation_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second evidence projection over the same rows must not re-validate.
+
+    Long-lived API services share one process-wide memo between the catalog
+    and query sides; without it every row query pays the full append-only
+    canonicalization cost again (#297). The cache is keyed by row content, so
+    a shared dict must yield identical projections with zero direct
+    ``_validate_receipt_row`` calls on the replayed scan.
+    """
+
+    conn = _memory_db()
+    dataset = _dataset()
+    first_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-cache-first",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:00:00+00:00",
+    )
+    later_receipt = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-cache-later",
+        started_at="2026-07-15T00:10:00+00:00",
+        finished_at="2026-07-15T00:11:00+00:00",
+        data_through="2026-07-15T00:10:00+00:00",
+    )
+    now = datetime(2026, 7, 15, 0, 20, tzinfo=timezone.utc)
+    validation_cache: dict = {}
+
+    current = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=now,
+        validation_cache=validation_cache,
+    )
+    # Known-source success receipts are pure functions of their row content;
+    # both must have been memoized by the first full-history scan.
+    assert len(validation_cache) >= 2
+
+    direct_calls = {"count": 0}
+    real_validate = projection_module._validate_receipt_row
+
+    def counting_validate(*args: Any, **kwargs: Any) -> Any:
+        direct_calls["count"] += 1
+        return real_validate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        projection_module, "_validate_receipt_row", counting_validate
+    )
+
+    replayed = project_dataset_runtime_evidence(
+        conn,
+        dataset,
+        now=now,
+        validation_cache=validation_cache,
+    )
+
+    assert direct_calls["count"] == 0
+    assert replayed.projection.receipt_id == current.projection.receipt_id
+    assert replayed.projection.receipt_id == later_receipt
+    assert replayed.current_receipt_ids == current.current_receipt_ids
+
+
 def test_validated_row_receipt_proofs_join_same_execution_and_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

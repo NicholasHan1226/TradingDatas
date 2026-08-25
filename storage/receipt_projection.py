@@ -2400,16 +2400,19 @@ def _trusted_receipts_for_evidence(
     known_dataset_ids: frozenset[str],
     rows: tuple[_ScannedIngestRunRow, ...],
     expected_binding: ProviderBinding | None,
+    validation_cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"]
+    | None = None,
 ) -> tuple[list[_Receipt], list[_InvalidReceipt]]:
     receipts: list[_Receipt] = []
     invalid: list[_InvalidReceipt] = []
     for scanned_row in rows:
-        validated = _validate_receipt_row(
+        validated = _validate_receipt_row_memoized(
             scanned_row,
             dataset,
             known_dataset_ids,
             now,
             expected_binding,
+            validation_cache,
         )
         if isinstance(validated, _Receipt):
             receipts.append(validated)
@@ -2907,6 +2910,8 @@ def project_dataset_runtime_evidence(
     data_through_as_of: datetime | None = None,
     receipt_collection_window: tuple[datetime, datetime] | None = None,
     request_partition: tuple[str, str] | None = None,
+    validation_cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"]
+    | None = None,
 ) -> DatasetRuntimeEvidence:
     """Return one projection and typed lineage evidence from one receipt scan.
 
@@ -2920,6 +2925,12 @@ def project_dataset_runtime_evidence(
     ``request_partition`` narrows receipt authority to the matching immutable
     request window.  It is deliberately opt-in: unbounded/range queries keep
     the dataset-wide fail-closed projection.
+
+    Long-lived API services should pass the same process-wide
+    ``validation_cache`` they already hand to :func:`_project_dataset_runtime`;
+    every receipt scan in this module re-validates the full append-only run
+    history, so without the shared memo each row query pays the whole-history
+    canonicalization cost again (issue #297).
     """
 
     if not isinstance(dataset, DatasetDefinition):
@@ -3006,6 +3017,7 @@ def project_dataset_runtime_evidence(
             known_dataset_ids=known_dataset_ids,
             rows=rows,
             expected_binding=provider_binding,
+            validation_cache=validation_cache,
         )
         if invalid_at_read_time:
             raise RuntimeProjectionError(
@@ -3048,12 +3060,13 @@ def project_dataset_runtime_evidence(
         request_partition_key, request_partition_value = request_partition
         scoped_rows: list[_ScannedIngestRunRow] = []
         for row in rows:
-            validated = _validate_receipt_row(
+            validated = _validate_receipt_row_memoized(
                 row,
                 dataset,
                 known_dataset_ids,
                 projection_now,
                 provider_binding,
+                validation_cache,
             )
             # Invalid source evidence remains dataset-fatal.  Only a validated
             # receipt from another complete partition may be excluded.
@@ -3078,6 +3091,7 @@ def project_dataset_runtime_evidence(
             known_dataset_ids=known_dataset_ids,
             rows=rows,
             expected_binding=provider_binding,
+            validation_cache=validation_cache,
         )
         if projection_invalid:
             raise RuntimeProjectionError(
@@ -3128,6 +3142,7 @@ def project_dataset_runtime_evidence(
         known_dataset_ids=known_dataset_ids,
         rows=rows,
         expected_binding=provider_binding,
+        validation_cache=validation_cache,
     )
     receipts, invalid = _trusted_receipts_for_evidence(
         dataset,
@@ -3135,6 +3150,7 @@ def project_dataset_runtime_evidence(
         known_dataset_ids=known_dataset_ids,
         rows=rows,
         expected_binding=provider_binding,
+        validation_cache=validation_cache,
     )
     authority_receipts = [
         receipt
