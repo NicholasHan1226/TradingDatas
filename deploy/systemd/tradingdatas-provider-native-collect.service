@@ -26,6 +26,10 @@ TimeoutStartSec=45min
 UMask=0077
 RuntimeDirectory=tradingdatas
 RuntimeDirectoryMode=0700
+# The operator stages a one-shot manifest only while this unit is idle.  Keep
+# the private runtime directory across the oneshot's inactive transition so
+# systemd can load and consume that selector on the next manual start.
+RuntimeDirectoryPreserve=yes
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true

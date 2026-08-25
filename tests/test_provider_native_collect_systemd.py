@@ -16,6 +16,7 @@ def test_collector_unit_runs_only_the_generic_registry_collector() -> None:
     assert "Group=tradingdatas" in source
     assert "RuntimeDirectory=tradingdatas" in source
     assert "RuntimeDirectoryMode=0700" in source
+    assert "RuntimeDirectoryPreserve=yes" in source
     assert "SuccessExitStatus=3 75" in source
     assert source.count("ExecStart=") == 1
     assert (

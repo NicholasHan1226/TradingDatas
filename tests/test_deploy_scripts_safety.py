@@ -66,6 +66,7 @@ def test_deploy_tree_has_one_provider_neutral_scheduler_surface() -> None:
     assert service.count("ExecStart=") == 1
     assert "tools/run_provider_native_collector.py" in service
     assert "EnvironmentFile=-/run/tradingdatas/on-demand.env" in service
+    assert "RuntimeDirectoryPreserve=yes" in service
     assert "https://api.quicksync.cn" in service
     assert "TUSHARE_TOKEN_FILE=/etc/tradingdatas/quicksync.token" in service
     assert "TUSHARE_TOKEN=" not in service
