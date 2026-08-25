@@ -437,6 +437,10 @@ def main(argv: list[str] | None = None) -> int:
             transport = DirectHttpTransport()
         collector = PolymarketSnapshotCollector(transport=transport, transport_name=args.transport)
         all_rows: list[dict[str, Any]] = []
+        # Markets that resolved or delisted keep returning zero rows forever; one of
+        # them must not abort the whole hourly run.  Genuine empties are recorded in
+        # the capture; a run where EVERY market is empty still fails closed below.
+        empty_market_slugs: list[str] = []
         for market in markets:
             outcome = collector.collect_outcome(
                 "market_snapshot",
@@ -450,25 +454,35 @@ def main(argv: list[str] | None = None) -> int:
                     "timeout_seconds": args.timeout_seconds,
                 },
             )
+            if outcome.state == "empty":
+                empty_market_slugs.append(market.slug)
+                continue
             if outcome.state != "success":
-                if outcome.state == "empty":
-                    outcome = ProviderCallOutcome(
-                        "failed",
-                        (),
-                        None,
-                        "provider_error",
-                        "Polymarket requested market returned no rows",
-                    )
                 receipt = _receipt(capture_id, outcome, args.transport)
                 _write_json_atomically(args.out_root / "receipts" / f"{capture_id}.json", asdict(receipt))
                 return 1
             all_rows.extend(outcome.mutable_rows())
+        if len(empty_market_slugs) == len(markets):
+            outcome = ProviderCallOutcome(
+                "failed",
+                (),
+                None,
+                "provider_error",
+                "Polymarket every requested market returned no rows",
+            )
+            receipt = _receipt(capture_id, outcome, args.transport)
+            _write_json_atomically(args.out_root / "receipts" / f"{capture_id}.json", asdict(receipt))
+            return 1
         success = ProviderCallOutcome("success" if all_rows else "empty", tuple(all_rows), 0, None, None)
         receipt = _receipt(capture_id, success, args.transport)
-        _write_json_atomically(
-            args.out_root / "captures" / f"{capture_id}.json",
-            {"receipt": asdict(receipt), "market_records": all_rows, "snapshot_records": all_rows},
-        )
+        capture: dict[str, Any] = {
+            "receipt": asdict(receipt),
+            "market_records": all_rows,
+            "snapshot_records": all_rows,
+        }
+        if empty_market_slugs:
+            capture["empty_market_slugs"] = empty_market_slugs
+        _write_json_atomically(args.out_root / "captures" / f"{capture_id}.json", capture)
         return 0
     except Exception as exc:
         failed = ProviderCallOutcome(

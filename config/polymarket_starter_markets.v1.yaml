@@ -2,7 +2,7 @@
  "version": 1,
  "status": "relay_verified_phase0_2026-08-24",
  "harvested_at": "2026-08-24T00:25Z",
- "note": "real slugs harvested from gamma top-volume via GZ-SG relay 2026-08-24",
+ "note": "real slugs harvested from gamma top-volume via GZ-SG relay 2026-08-24; will-bitcoin-reach-80k-in-august-2026 removed 2026-08-26 (gamma returns zero rows, market closed)",
  "markets": [
   {
    "slug": "will-ethereum-dip-to-1000-by-december-31-2026-273-175",
@@ -43,12 +43,6 @@
   {
    "slug": "will-bitcoin-dip-to-45000-by-december-31-2026-674-923-755-971-998-525-926-245-316-517-544-589-965-923-986-841-815-224-586-231-289-533-573",
    "question": "Will Bitcoin dip to $45,000 by December 31, 2026?",
-   "category": "bitcoin_price",
-   "verification_required": true
-  },
-  {
-   "slug": "will-bitcoin-reach-80k-in-august-2026",
-   "question": "Will Bitcoin reach $80,000 in August?",
    "category": "bitcoin_price",
    "verification_required": true
   },
