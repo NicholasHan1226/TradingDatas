@@ -1267,20 +1267,17 @@ def test_partition_completeness_rejects_missing_identity_contract_fields(
         load_dataset_registry(write_registry(tmp_path, dataset))
 
 
-def test_every_runtime_tushare_binding_scan_budget_fits_absolute_cap() -> None:
+def test_every_runtime_tushare_binding_has_a_bounded_scan_budget() -> None:
     """Tripwire for the rt_min_daily planning deadlock (2026-08).
 
     The sensitive-scan budget is sized from rows x resumable fanout
-    batches under an absolute node cap; a binding that overflows raises
-    at planning time, before any receipt can exist.  Every runtime
-    binding must stay inside the envelope so such regressions surface
-    here instead of as silent zero-activity datasets.
+    batches under the standard or wide-table node cap. A binding that
+    overflows raises at planning time, before any receipt can exist.
+    Every runtime binding must produce a positive bounded budget so such
+    regressions surface here instead of as silent zero-activity datasets.
     """
 
-    from collectors.tushare.provider_native_ingest import (
-        _PROVIDER_SCAN_ABSOLUTE_MAX_NODES,
-        _provider_scan_budget,
-    )
+    from collectors.tushare.provider_native_ingest import _provider_scan_budget
     from dataset_registry import load_runtime_dataset_registry
 
     registry = load_runtime_dataset_registry()
@@ -1292,7 +1289,6 @@ def test_every_runtime_tushare_binding_scan_budget_fits_absolute_cap() -> None:
             except ValueError:
                 oversized.append(dataset.dataset_id)
                 continue
-            assert budget.max_nodes <= _PROVIDER_SCAN_ABSOLUTE_MAX_NODES
             assert budget.max_nodes > 0
     assert oversized == []
 
