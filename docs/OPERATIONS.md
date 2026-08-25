@@ -181,7 +181,9 @@ facts + receipt transaction。manifest 不得含 token、provider API name、fie
 window 被明确放进该 manifest，才会采集。
 
 生产按需 batch 复用唯一的 `tradingdatas-provider-native-collect.service`，不创建第二个
-service 或 timer。发布 operator 只能在该 unit 空闲时，在其 `RuntimeDirectory` 写入由
+service 或 timer。该 unit 以 `RuntimeDirectoryPreserve=yes` 保留其私有 `0700` runtime
+目录，使 operator 能在 unit 空闲时安全暂存下一次手工启动所需的 selector；普通 timer
+没有 selector 时仍走原 cadence planner。发布 operator 只能在该 unit 空闲时，在其 `RuntimeDirectory` 写入由
 `tradingdatas` 账号拥有、`0600`、无链接且单链接的
 `/run/tradingdatas/on-demand-batch.json` 与 `/run/tradingdatas/on-demand.env`。后者只能
 逐字节指定该固定 batch 路径，不能含任何其它环境变量；手工启动同一 service 后，通用 dispatcher 先消费 selector，再以
