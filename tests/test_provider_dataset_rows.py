@@ -30,6 +30,23 @@ from tests.test_provider_native_registry import generic_dataset, write_registry
 CONFIG_HASH = "a" * 64
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("202608", True),
+        ("202613", False),
+        ("20268", False),
+        ("2026-08", False),
+        (202608, False),
+    ],
+)
+def test_month_time_format_is_strict(value: object, expected: bool) -> None:
+    assert (
+        provider_rows_module.matches_declared_provider_time(value, "yyyymm")
+        is expected
+    )
+
+
 def _db(path: Path, *, generic_table: bool = True) -> None:
     conn = sqlite3.connect(path)
     try:

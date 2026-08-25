@@ -75,6 +75,7 @@ _EXPECTED_INGEST_TABLE_INFO = tuple(
 _INT64_MIN = -(2**63)
 _INT64_MAX = 2**63 - 1
 _SAFE_PROVIDER_FIELD = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
+_YYYYMM = re.compile(r"[0-9]{6}\Z")
 _YYYYMMDD = re.compile(r"[0-9]{8}\Z")
 _RFC3339 = re.compile(
     r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
@@ -170,6 +171,14 @@ def matches_declared_provider_time(value: object, as_of_format: str) -> bool:
 
     if type(value) is not str:
         return False
+    if as_of_format == "yyyymm":
+        if _YYYYMM.fullmatch(value) is None:
+            return False
+        try:
+            parsed = datetime.strptime(value, "%Y%m")
+        except ValueError:
+            return False
+        return parsed.strftime("%Y%m") == value
     if as_of_format == "yyyymmdd":
         if _YYYYMMDD.fullmatch(value) is None:
             return False
