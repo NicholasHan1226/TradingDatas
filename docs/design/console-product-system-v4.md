@@ -19,9 +19,11 @@ projection; it is not customer impersonation and does not mutate credentials.
 The shared direction is **precision infrastructure / calm fintech**. The login
 and both workspaces use the same typography-only TradingDatas wordmark, warm
 porcelain canvas, ink text, cobalt action colour, and restrained lilac/orange
-accents. The workspace is intentionally horizontal rather than a conventional
-tall admin sidebar: brand and role sit in the first header row, task navigation
-in the second, and every page follows decision summary -> primary task -> detail.
+accents. Admin keeps a compact two-row horizontal header for dense operator
+tasks. The customer workspace uses a quiet desktop rail so account, access and
+documentation stay visible beside the Agent setup task; below the desktop
+breakpoint it returns to the same compact header and horizontal task navigation.
+Every page follows decision summary -> primary task -> detail.
 
 The design avoids ornamental glass, oversized gradients, excessive same-weight
 cards, fake live numbers, security-product language, and green link markers.
@@ -59,9 +61,11 @@ context or navigation position, never authorization or runtime health.
 
 ## Component contract
 
-- **Workspace shell**: two-row warm light header, persistent logout, optional
-  workspace switch, horizontally scrollable mobile navigation, and visible
-  customer-preview notice. Route changes return page content to the top.
+- **Workspace shell**: admin uses the two-row warm light header; customer uses a
+  224px desktop rail and the compact header on mobile. Logout remains persistent,
+  the optional workspace switch stays visible, mobile navigation scrolls
+  horizontally, and customer-preview mode has an explicit notice. Route changes
+  return page content to the top.
 - **Page header**: small contextual rule/eyebrow, one clear title, one sentence
   of task guidance, and at most one action cluster. Context labels are concise
   Chinese task nouns rather than decorative uppercase system language.
@@ -98,10 +102,12 @@ context or navigation position, never authorization or runtime health.
 
 ### Customer
 
-1. Home: an Agent connection workbench with Claude/Codex/OpenClaw/Hermes
-   context tabs, truthful prompt/tool/API artifacts, account/market limits,
-   expiry and 30-day usage. It must never imply a one-click connection or MCP
-   package that the product does not provide.
+1. Home: a light Agent setup studio with Claude/Codex/OpenClaw/Hermes context
+   tabs, an explicit three-step setup path, truthful catalog/query examples,
+   account/market limits, expiry and 30-day usage. It must never imply a one-click
+   connection or MCP package that the product does not provide. Large dark code
+   blocks are avoided; code, copy feedback and readiness guidance share one light
+   developer surface.
 2. Permissions and limits: server-projected market entitlements, endpoint
    abilities, expiry and every active ceiling. This page uses one account
    contract surface and a ledger hierarchy rather than four same-weight cards.
@@ -121,8 +127,10 @@ context or navigation position, never authorization or runtime health.
 - Metric collections use bordered ledgers or divided strips before introducing
   another layer of independent cards. Accent colour identifies focus or market
   family; healthy state alone may use green.
-- Code panels use one near-black neutral surface, 11px monospace text and a
-  local copy action. They never expose or prefill an actual API key.
+- Customer code panels use a light neutral developer surface, 11px monospace
+  text, subtle line structure and a local copy action. They never expose or
+  prefill an actual API key. Dark surfaces are not used as large customer-page
+  anchors.
 
 ## Reference implementation choices
 

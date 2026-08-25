@@ -1,82 +1,57 @@
-# TradingDatas deep-surface design QA
+# TradingDatas customer workspace v12 design QA
 
 ## Evidence
 
-- Before captures: `.artifacts/audit-v11/before/` (production release `6d0cec0`).
-- After captures: `.artifacts/audit-v11/after/` (local release candidate).
-- Source visual truth: `.artifacts/audit-v11/before/customer-access.png`.
-- Browser-rendered implementation: `.artifacts/audit-v11/after/customer-access.png`.
-- Normalized side-by-side input: `.artifacts/audit-v11/permission-before-after.png`.
+- Selected reference mock: `/Users/nicholashan/.codex/generated_images/01a03158-d267-7ba3-b153-91258073cbe3/exec-e1e7511a-45cc-40d0-8d60-ec1c3476210a.png`.
+- Browser-rendered overview: `.artifacts/ideate-v12/implementation/customer-overview-final.jpg`.
+- Normalized side-by-side comparison: `.artifacts/ideate-v12/implementation/customer-overview-comparison-final.jpg`.
+- Supporting captures: `.artifacts/ideate-v12/implementation/customer-access-final.jpg`, `.artifacts/ideate-v12/implementation/customer-docs-final.jpg`, and `.artifacts/ideate-v12/implementation/customer-overview-mobile-v1.jpg`.
 - Desktop viewport: 1440 x 1024 CSS px at density 1.
 - Mobile viewport: 390 x 844 CSS px at density 1.
-- Surfaces: all five admin sections, customer overview, permissions, quickstart,
-  Agent documentation and usage conventions.
-- Source and implementation captures are both 1440 x 1024 pixels at the same
-  1440 x 1024 CSS viewport and device density 1; the combined comparison scales
-  each proportionally into a 720 x 512 cell.
+- Source pixels: 1487 x 1058. Implementation pixels: 1432 x 1018. The combined comparison preserves aspect ratio and normalizes both into 720 x 512 cells.
+- Tested state: authenticated paid-customer workspace backed by isolated synthetic QA responses; no production token or data-plane mutation.
 
 ## Full-view comparison
 
-The iteration extends the existing precision-infrastructure direction into the
-deep pages. It keeps the typography-only wordmark, warm porcelain canvas and
-horizontal navigation, then replaces English system eyebrows, repeated rounded
-cards and raw status values with editorial headers, divided ledgers and visible
-Chinese task language.
+The implementation follows the selected warm-white, editorial developer-product direction rather than retaining the former dark code block. The customer workspace now has a persistent desktop rail, a two-column first screen, one integrated light Agent Setup Studio, a full-width account ledger, and one restrained usage chart. The reference mock included hypothetical navigation entries and static account values; the implementation intentionally uses only existing customer routes and live API projections.
 
-The normalized side-by-side permission comparison was the full-view fidelity
-input. A separate focused crop was not required because the 1440 x 1024 source
-and implementation were also opened independently at full resolution for table
-labels, icon alignment, dividers, code text and small-state badges.
+The source mock, browser implementation, and normalized side-by-side image were opened together for the final judgment. The hierarchy, split ratio, surface treatment, typography scale, hairline borders, restrained cobalt accent, and vertical rhythm preserve the selected direction without reproducing unsupported product claims.
 
 ## Focused comparison
 
-- Hierarchy: customer permissions now starts with one account contract and one
-  capability ledger; markets and endpoints are subordinate lists rather than
-  equal-weight cards.
-- Documentation: directory and article share one frame; quickstart, Agent
-  prompt, function definition and reference pages use the same editorial and
-  code-panel grammar.
-- Admin density: page headers, toolbar surfaces, metrics, tables and status
-  badges share the same radius, hairline and typography rules. Mobile customer
-  management changes from a compressed nine-column table into per-customer
-  task cards.
-- Language: deep-page context and runtime states are visible in Chinese. API
-  paths, dataset IDs and schema values remain technical identifiers.
-- Responsive: desktop and 390px captures have no document-level horizontal
-  overflow; data tables retain contained horizontal scrolling where needed.
-- Interactions: all eight workspace routes loaded; documentation navigation and
-  copy, data sample query, customer edit/create dialogs, table column dialog,
-  usage reset confirmation and admin/customer switching were exercised.
+- Typography: the wordmark and display headline keep the high-contrast editorial hierarchy; body copy and technical labels use the existing interface stack with stable wrapping at desktop and mobile widths.
+- Layout: the left product narrative and right studio read as one composition. The former isolated black rectangle is gone; code now sits inside a light bordered editor nested within the setup flow.
+- Color and surfaces: warm canvas, white working surfaces, pale indigo account panel, graphite text, and cobalt active states form one token family across overview, permissions, and documentation.
+- Content: examples use only the real `GET /v1/catalog` and `POST /v1/query` contract. Production-specific values are projected from API responses rather than embedded in the interface.
+- Icons and labels: navigation and actions use one stroke-icon family; technical names remain technical while task language is concise Chinese.
+- Responsive: the desktop rail becomes a compact mobile header with horizontally scrollable navigation. At 390px, the document width remains within the viewport and setup tabs remain reachable.
+- Interactions: Agent selector, Python/cURL selector, copy confirmation, overview/access/documentation navigation, and persistent logout were exercised. The admin workspace was smoke-tested separately and retained its original top navigation.
+- Accessibility: semantic buttons, visible focus treatment, practical mobile targets, labels, and reduced-motion-compatible behavior were preserved. Browser console checks reported no errors.
 
 ## Comparison history
 
-1. P2 customer permissions used four same-weight cards and decorative icon
-   tiles. Fixed with an account contract, a three-column limit ledger and
-   ordered market/endpoint rows.
-2. P2 mobile customer management squeezed nine columns into a narrow scroll
-   surface. Fixed with a dedicated card representation below 640px.
-3. P2 deep pages used English uppercase system eyebrows and raw runtime values.
-   Fixed with Chinese task labels and central activation/runtime translations.
+1. The first selected concept retained a visually dominant black code panel and used a non-contract market route. It was rejected and regenerated as a light integrated setup studio using the actual catalog/query API.
+2. Implementation pass one inherited the admin top shell. It was replaced with a customer-specific desktop rail while leaving the admin shell unchanged.
+3. Implementation pass two wrapped the hero too aggressively and pushed the ledger below the first desktop frame. Grid proportions, heading scale, and code height were corrected before the final capture.
 
 ## Findings
 
-- No actionable P0/P1/P2 visual or interaction differences remain.
-- Accepted constraint: technical provider, cadence and dataset identifiers stay
-  untranslated because they are operating contracts, not interface prose.
-- P3 follow-up: migrate the remaining secondary admin feature icons to Phosphor
-  when those feature files next receive functional changes.
+- No actionable P0/P1/P2 visual, responsive, accessibility, or interaction findings remain.
+- Accepted difference: the implementation exposes only real customer routes and live account fields, so it is intentionally less decorative than the concept mock.
+- P3 follow-up: add richer syntax token coloring only if the code examples later grow beyond the current quickstart length; the present neutral editor is clearer than adding decorative color without semantic value.
 
 ## Open questions
 
-- None blocking. Production data density may expose longer provider reasons or
-  tenant names than the mock; both remain constrained or locally scrollable.
+- None blocking. Long production tenant names and provider reasons remain constrained by wrapping or local scrolling.
 
 ## Implementation checklist
 
-- [x] Production before-state captured and compared.
-- [x] Desktop and mobile browser captures reviewed.
-- [x] Primary controls and workspace routes exercised.
+- [x] Selected mock and implementation compared in one normalized image.
+- [x] Overview, permissions, and documentation inspected at desktop size.
+- [x] Overview inspected at 390px mobile width with no document overflow.
+- [x] Primary navigation, tabs, copy state, and persistent logout verified.
+- [x] Admin shell regression smoke completed.
 - [x] Console error-level output checked.
-- [x] Build, lint and focused API/console tests passed.
+- [x] Build, lint, dependency audit, and focused API/console tests passed.
 
 final result: passed
