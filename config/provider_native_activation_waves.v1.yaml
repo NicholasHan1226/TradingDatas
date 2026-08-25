@@ -1,6 +1,6 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "b39e98d255cb4f530a712edda23fc40816621e46a7538e90ad219f8e86c96427"
+  runtime_registry_sha256: "0e18f26cb7190a3b816b73c4f451a0e5ca06414e9f7cf1a17f5b48c6a65a3ffa"
   schedule_sha256: "8f90ed359d273ca9bd59fa49de14128641dd1e8e8a3aaaeefd103ebdedc3eb5f"
 waves:
   breadth_observed_20260814:
@@ -22,7 +22,6 @@ waves:
   breadth_observed_20260815_b2:
     dataset_ids:
     - cn.dataset.cn_m
-    - cn.dataset.daily_basic
     - cn.dataset.etf_share_size
     - cn.dataset.index_monthly
     - cn.dataset.report_rc
