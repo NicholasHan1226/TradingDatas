@@ -67,6 +67,8 @@ _PROVIDER_SCAN_FIXED_NODE_HEADROOM = 4_096
 # arbitrary narrow schema ceiling, is the final transport safety bound.
 _PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 512
 _PROVIDER_SCAN_ABSOLUTE_MAX_NODES = 2_000_000
+_PROVIDER_SCAN_WIDE_FIELD_THRESHOLD = 256
+_PROVIDER_SCAN_WIDE_MAX_NODES = 4_000_000
 _PROVIDER_SCAN_ENVELOPE_DEPTH = 4
 _PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH = 64
 _PROVIDER_ERROR_CODES = frozenset(
@@ -195,7 +197,12 @@ def _provider_scan_budget(
         _PROVIDER_SCAN_FIXED_NODE_HEADROOM + 1 + row_limit * (1 + 2 * field_budget)
     )
     max_depth = nesting_limit + _PROVIDER_SCAN_ENVELOPE_DEPTH
-    if max_nodes > _PROVIDER_SCAN_ABSOLUTE_MAX_NODES:
+    absolute_node_limit = (
+        _PROVIDER_SCAN_WIDE_MAX_NODES
+        if field_budget > _PROVIDER_SCAN_WIDE_FIELD_THRESHOLD
+        else _PROVIDER_SCAN_ABSOLUTE_MAX_NODES
+    )
+    if max_nodes > absolute_node_limit:
         raise ValueError("provider scan node budget exceeds the absolute limit")
     if max_depth > _PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH:
         raise ValueError("provider scan depth budget exceeds the absolute limit")

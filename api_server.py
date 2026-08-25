@@ -113,6 +113,12 @@ _AUTH_ATTEMPTS_PER_WINDOW = max(
 _AUTH_ATTEMPT_TRACK_CAP = 4096
 _AUTH_LIMITER_LOCK = threading.Lock()
 _AUTH_ATTEMPT_TIMES: dict[str, list[float]] = {}
+_ADMIN_CATALOG_CACHE_TTL_SECONDS = 5.0
+_ADMIN_CATALOG_CACHE_LOCK = threading.Lock()
+_ADMIN_CATALOG_CACHE: dict[
+    tuple[int, tuple[str, ...], tuple[str, ...]],
+    tuple[float, int, tuple[dict[str, Any], ...]],
+] = {}
 
 # Cloudflare origin-facing networks (https://www.cloudflare.com/ips/).  When a
 # request arrives from one of these addresses the TCP peer is Cloudflare's
@@ -373,6 +379,44 @@ def _parse_catalog_query(raw_query: str) -> dict[str, str]:
             raise QueryValidationError("request is invalid")
         result[key] = value
     return result
+
+
+def _parse_catalog_request(
+    raw_query: str,
+) -> tuple[CatalogFilters, int, str | None]:
+    """Validate catalog filters without constructing runtime services."""
+
+    params = _parse_catalog_query(raw_query)
+    raw_limit = params.pop("limit", None)
+    if raw_limit is None:
+        limit = V1_QUERY_DEFAULTS.max_page_size
+    else:
+        if _CANONICAL_POSITIVE_INTEGER_RE.fullmatch(raw_limit) is None:
+            raise QueryValidationError("request is invalid")
+        maximum = str(V1_QUERY_DEFAULTS.max_page_size)
+        if len(raw_limit) > len(maximum) or (
+            len(raw_limit) == len(maximum) and raw_limit > maximum
+        ):
+            raise QueryBudgetError("request exceeds allowed budget")
+        limit = int(raw_limit)
+    filters = CatalogFilters(
+        market=params.pop("market", None),
+        domain=params.pop("domain", None),
+        cadence=params.pop("cadence", None),
+        state=params.pop("state", None),
+        q=params.pop("q", None),
+    )
+    if (
+        filters.q is not None
+        and len(filters.q) > V1_QUERY_DEFAULTS.max_catalog_search_chars
+    ):
+        raise QueryBudgetError("request exceeds allowed budget")
+    cursor = params.pop("cursor", None)
+    if cursor is not None and (not cursor or cursor != cursor.strip()):
+        raise QueryValidationError("request is invalid")
+    if params:
+        raise QueryValidationError("request is invalid")
+    return filters, limit, cursor
 
 
 def _parse_usage_days(raw_query: str) -> int:
@@ -707,36 +751,7 @@ class Handler(BaseHTTPRequestHandler):
         raw_path, raw_query = _split_target(self.path)
         if raw_path != V1_CATALOG_PATH:
             raise QueryValidationError("request is invalid")
-        params = _parse_catalog_query(raw_query)
-        raw_limit = params.pop("limit", None)
-        if raw_limit is None:
-            limit = V1_QUERY_DEFAULTS.max_page_size
-        else:
-            if _CANONICAL_POSITIVE_INTEGER_RE.fullmatch(raw_limit) is None:
-                raise QueryValidationError("request is invalid")
-            maximum = str(V1_QUERY_DEFAULTS.max_page_size)
-            if len(raw_limit) > len(maximum) or (
-                len(raw_limit) == len(maximum) and raw_limit > maximum
-            ):
-                raise QueryBudgetError("request exceeds allowed budget")
-            limit = int(raw_limit)
-        filters = CatalogFilters(
-            market=params.pop("market", None),
-            domain=params.pop("domain", None),
-            cadence=params.pop("cadence", None),
-            state=params.pop("state", None),
-            q=params.pop("q", None),
-        )
-        if (
-            filters.q is not None
-            and len(filters.q) > V1_QUERY_DEFAULTS.max_catalog_search_chars
-        ):
-            raise QueryBudgetError("request exceeds allowed budget")
-        cursor = params.pop("cursor", None)
-        if cursor is not None and (not cursor or cursor != cursor.strip()):
-            raise QueryValidationError("request is invalid")
-        if params:
-            raise QueryValidationError("request is invalid")
+        filters, limit, cursor = _parse_catalog_request(raw_query)
         catalog, _query = self._build_services_fail_closed()
         defaults = self._service_query_defaults(catalog)
         response = catalog.list_datasets(
@@ -944,6 +959,30 @@ class Handler(BaseHTTPRequestHandler):
         from data_plane_runtime import build_data_plane_runtime
 
         runtime = build_data_plane_runtime()
+        raw_scopes = account.get("scopes") or ()
+        raw_categories = account.get("data_categories") or ()
+        cache_key = (
+            id(runtime.catalog),
+            tuple(sorted(str(scope) for scope in raw_scopes)),
+            tuple(sorted(str(category) for category in raw_categories)),
+        )
+        db_path = getattr(runtime.catalog, "_db_path", None)
+        try:
+            db_mtime_ns = Path(db_path).stat().st_mtime_ns
+        except (OSError, TypeError):
+            db_mtime_ns = -1
+        now_monotonic = time.monotonic()
+        with _ADMIN_CATALOG_CACHE_LOCK:
+            cached = _ADMIN_CATALOG_CACHE.get(cache_key)
+            if (
+                cached is not None
+                and cached[0] > now_monotonic
+                and cached[1] == db_mtime_ns
+            ):
+                return [
+                    {**row, "reasons": list(row.get("reasons", []))}
+                    for row in cached[2]
+                ]
         provider_map = {
             dataset.dataset_id: sorted(
                 {binding.provider for binding in dataset.provider_bindings}
@@ -986,6 +1025,15 @@ class Handler(BaseHTTPRequestHandler):
             cursor = response.get("next_cursor")
             if not cursor:
                 break
+        frozen_rows = tuple(
+            {**row, "reasons": tuple(row.get("reasons", []))} for row in rows
+        )
+        with _ADMIN_CATALOG_CACHE_LOCK:
+            _ADMIN_CATALOG_CACHE[cache_key] = (
+                now_monotonic + _ADMIN_CATALOG_CACHE_TTL_SECONDS,
+                db_mtime_ns,
+                frozen_rows,
+            )
         return rows
 
     def _serve_collection_status(
@@ -1014,34 +1062,54 @@ class Handler(BaseHTTPRequestHandler):
             alerts: list[dict[str, Any]] = []
             for d in datasets:
                 state = d["runtime_state"]
+                reasons = list(d["reasons"])
+                common = {
+                    "alert_id": f"dataset:{d['dataset_id']}:{state}",
+                    "kind": "dataset_runtime",
+                    "dataset_id": d["dataset_id"],
+                    "runtime_state": state,
+                    "provider": d["provider"],
+                    "cadence": d["cadence"],
+                    "data_through": d["data_through"],
+                    "observed_at": d["observed_at"],
+                    "reason_codes": reasons,
+                }
                 if state == "failed":
                     alerts.append({
+                        **common,
                         "severity": "critical",
-                        "title": f"{d['dataset_id']}: collection failed",
+                        "title": f"{d['dataset_id']}: 采集失败",
                         "detail": (
                             f"provider={d['provider']} cadence={d['cadence']} "
-                            f"reasons={','.join(d['reasons']) or '-'} "
+                            f"reasons={','.join(reasons) or '-'} "
                             f"observed_at={d['observed_at'] or '-'}"
                         ),
+                        "suggested_action": "核对上游权限与调用结果，再执行有界重试。",
                     })
-                elif state == "stale" or d["degraded"]:
+                elif d["activation"] == "active" and (
+                    state == "stale" or d["degraded"]
+                ):
                     alerts.append({
+                        **common,
                         "severity": "warning",
-                        "title": f"{d['dataset_id']}: {d['freshness_state']}",
+                        "title": f"{d['dataset_id']}: 数据时效异常",
                         "detail": (
                             f"provider={d['provider']} cadence={d['cadence']} "
                             f"data_through={d['data_through'] or '-'} "
                             f"observed_at={d['observed_at'] or '-'}"
                         ),
+                        "suggested_action": "核对最近成功回执、数据水位与下一采集窗口。",
                     })
-                elif d["activation"] == "active" and state in ("empty", "unobserved"):
+                elif d["activation"] == "active" and state == "unobserved":
                     alerts.append({
+                        **common,
                         "severity": "info",
-                        "title": f"{d['dataset_id']}: {state}",
+                        "title": f"{d['dataset_id']}: 尚无运行回执",
                         "detail": (
                             f"provider={d['provider']} active but runtime state is "
                             f"{state}"
                         ),
+                        "suggested_action": "确认该数据集已进入正式采集计划，并检查首次回执。",
                     })
 
             # Global tamper tripwire: receipt rows no registered dataset claims.
@@ -1080,6 +1148,8 @@ class Handler(BaseHTTPRequestHandler):
                     unattributed_count = len(unattributed.anomalies)
                     for anomaly in unattributed.anomalies[:20]:
                         alerts.append({
+                            "alert_id": f"receipt:{anomaly.receipt_id or anomaly.reason}",
+                            "kind": "receipt_integrity",
                             "severity": "critical",
                             "title": (
                                 "unattributed receipt row: "
@@ -1089,9 +1159,14 @@ class Handler(BaseHTTPRequestHandler):
                                 f"receipt_id={anomaly.receipt_id or '-'} "
                                 f"observed_at={anomaly.observed_at or '-'}"
                             ),
+                            "reason_codes": [anomaly.reason],
+                            "observed_at": anomaly.observed_at,
+                            "suggested_action": "隔离异常回执并核对来源归属，不要改写历史记录。",
                         })
                     if unattributed_count > 20:
                         alerts.append({
+                            "alert_id": "receipt:suppressed",
+                            "kind": "receipt_integrity",
                             "severity": "critical",
                             "title": (
                                 f"unattributed receipts: "
@@ -1101,12 +1176,18 @@ class Handler(BaseHTTPRequestHandler):
                                 "list via project_unattributed_receipts for "
                                 "the full set"
                             ),
+                            "reason_codes": ["unattributed_receipts_suppressed"],
+                            "suggested_action": "导出完整异常回执清单并逐条核对。",
                         })
             except Exception as exc:
                 alerts.append({
+                    "alert_id": "receipt:scan_unavailable",
+                    "kind": "receipt_integrity",
                     "severity": "warning",
                     "title": "unattributed receipt scan unavailable",
                     "detail": str(exc),
+                    "reason_codes": ["unattributed_receipt_scan_unavailable"],
+                    "suggested_action": "检查只读数据库访问与回执投影服务。",
                 })
 
             return self._write_v1_json({
@@ -1327,8 +1408,23 @@ class Handler(BaseHTTPRequestHandler):
             content_length = 0
             if path == V1_CATALOG_PATH:
                 _validate_catalog_framing(self.headers)
+                _parse_catalog_request(raw_query)
             else:
                 content_length = _validated_query_framing(self.headers)
+        except QueryBudgetError:
+            return self._write_v1_error(
+                request_id,
+                status=413,
+                code="budget_exceeded",
+                suppress_body=suppress_body,
+            )
+        except QueryValidationError:
+            return self._write_v1_error(
+                request_id,
+                status=400,
+                code="invalid_request",
+                suppress_body=suppress_body,
+            )
         except _V1ProtocolError as exc:
             if exc.close_connection:
                 self.close_connection = True

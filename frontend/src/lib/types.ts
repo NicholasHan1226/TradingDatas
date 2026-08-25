@@ -106,9 +106,19 @@ export interface CollectionStatus {
 }
 
 export interface HealthAlert {
+  alert_id?: string
+  kind?: 'dataset_runtime' | 'receipt_integrity' | string
   severity: 'critical' | 'warning' | 'info' | string
   title: string
   detail?: string
+  dataset_id?: string
+  runtime_state?: string
+  provider?: string
+  cadence?: string
+  data_through?: string | null
+  observed_at?: string | null
+  reason_codes?: string[]
+  suggested_action?: string
 }
 
 export interface DataOverview {

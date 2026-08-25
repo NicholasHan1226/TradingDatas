@@ -24,7 +24,7 @@ machinery fail-closes on any leak.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 import os
@@ -163,7 +163,12 @@ def _canonical_url(value: object) -> str:
     return parsed._replace(fragment="").geturl()
 
 
-def _parse_published_at(value: object, *, timezone: ZoneInfo = _LOCAL_TIMEZONE) -> datetime:
+def _parse_published_at(
+    value: object,
+    *,
+    timezone: ZoneInfo = _LOCAL_TIMEZONE,
+    observed_at: datetime | None = None,
+) -> datetime:
     if type(value) is not str or not value.strip():
         raise ValueError("firecrawl item is missing a parseable published time")
     text = value.strip()
@@ -191,13 +196,21 @@ def _parse_published_at(value: object, *, timezone: ZoneInfo = _LOCAL_TIMEZONE) 
     if parsed is None:
         # Realtime flash feeds sometimes emit a bare wall-clock time
         # ("08:09:28" / "08:09") with the date implied by the source
-        # timezone.  Anchor it to the source timezone's current day.
+        # timezone.  Anchor it to the source timezone's current day, but roll
+        # late-night entries back one day when a just-after-midnight scrape
+        # would otherwise manufacture a future timestamp.
+        source_now = observed_at or datetime.now(timezone)
+        if source_now.tzinfo is None:
+            source_now = source_now.replace(tzinfo=timezone)
+        source_now = source_now.astimezone(timezone)
         for fmt in ("%H:%M:%S", "%H:%M"):
             try:
                 wall = datetime.strptime(text, fmt).time()
-                parsed = datetime.combine(
-                    datetime.now(timezone).date(), wall
-                ).replace(tzinfo=timezone)
+                parsed = datetime.combine(source_now.date(), wall).replace(
+                    tzinfo=timezone
+                )
+                if parsed > source_now + timedelta(minutes=5):
+                    parsed -= timedelta(days=1)
                 break
             except ValueError:
                 continue
@@ -215,6 +228,7 @@ def _normalize_item(
     time_key: str,
     summary_key: str | None,
     timezone: ZoneInfo = _LOCAL_TIMEZONE,
+    observed_at: datetime | None = None,
 ) -> dict[str, Any]:
     if type(item) is not dict:
         raise ValueError("firecrawl extraction item must be an object")
@@ -227,7 +241,9 @@ def _normalize_item(
         # identity; only the link itself is dropped.
         canonical_url = None
     title = _non_empty_text(item.get("title"), "title", max_chars=1024)
-    local = _parse_published_at(item.get(time_key), timezone=timezone)
+    local = _parse_published_at(
+        item.get(time_key), timezone=timezone, observed_at=observed_at
+    )
     published_at = local.isoformat(timespec="seconds")
     # Unlinkable flash items (empty URL in the source page) still carry a
     # valid title/time/source identity; the id falls back to that tuple.

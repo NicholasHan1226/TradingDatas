@@ -503,6 +503,36 @@ def test_bare_wall_clock_time_is_anchored_to_source_day() -> None:
     assert row["event_date"] == today.replace("-", "")
 
 
+def test_bare_wall_clock_time_rolls_back_across_midnight() -> None:
+    row = _normalize_item(
+        {
+            "title": "昨夜快讯",
+            "url": "https://finance.sina.com.cn/7x24/late",
+            "published_at": "23:57:45",
+        },
+        source="https://finance.sina.com.cn/7x24/",
+        time_key="published_at",
+        summary_key=None,
+        timezone=firecrawl_collector._LOCAL_TIMEZONE,
+        observed_at=firecrawl_collector.datetime.fromisoformat(
+            "2026-08-25T00:43:58+08:00"
+        ),
+    )
+    assert row["published_at"] == "2026-08-24T23:57:45+08:00"
+    assert row["event_date"] == "20260824"
+
+
+def test_bare_wall_clock_allows_small_provider_clock_skew() -> None:
+    parsed = firecrawl_collector._parse_published_at(
+        "00:03:00",
+        timezone=firecrawl_collector._LOCAL_TIMEZONE,
+        observed_at=firecrawl_collector.datetime.fromisoformat(
+            "2026-08-25T00:00:00+08:00"
+        ),
+    )
+    assert parsed.isoformat() == "2026-08-25T00:03:00+08:00"
+
+
 def test_relative_or_junk_url_becomes_unlinkable() -> None:
     row = _normalize_item(
         {"title": "t", "url": "/relative/path", "published_at": "2026-08-16 03:41:30"},
