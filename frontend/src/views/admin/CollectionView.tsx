@@ -34,24 +34,15 @@ import {
   ACTIVATION_LABELS,
   CADENCE_LABELS,
   RUNTIME_STATE_LABELS,
+  RuntimeStatus,
   TABLE_ROW_CLASS,
 } from '../../components/ui'
 
 const EMPTY_DATASETS: DatasetRow[] = []
 
-const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'blue' | 'slate'> = {
-  success: 'green', empty: 'blue', failed: 'rose', stale: 'amber', degraded: 'amber',
-}
-
 function StateBadge({ row }: { row: DatasetRow }) {
-  const state = row.runtime_state || '-'
   return (
-    <div>
-      <Badge tone={STATE_TONES[state] ?? 'slate'}>{RUNTIME_STATE_LABELS[state] ?? state}{row.degraded ? ' · 降级' : ''}</Badge>
-      {row.reasons && row.reasons.length > 0 && (
-        <div className="mt-1 max-w-64 truncate text-[10px] text-slate-400" title={row.reasons.join('; ')}>{row.reasons.join('; ')}</div>
-      )}
-    </div>
+    <RuntimeStatus state={row.runtime_state} degraded={row.degraded} reasons={row.reasons} detail />
   )
 }
 
@@ -157,6 +148,7 @@ export default function CollectionView({ client }: { client: ApiClient }) {
   const activeCount = datasets.filter((d) => d.activation === 'active').length
   const degradedCount = datasets.filter((d) => d.degraded).length
   const failedCount = datasets.filter((d) => d.runtime_state === 'failed').length
+  const attentionCount = datasets.filter((d) => d.runtime_state === 'failed' || d.degraded).length
   const resetView = () => {
     setMarket(''); setActivation(''); setStateFilter(''); setSearch('')
     setSorting([{ id: 'dataset_id', desc: false }]); setColumnVisibility({})
@@ -167,13 +159,26 @@ export default function CollectionView({ client }: { client: ApiClient }) {
 
   return (
     <div className="space-y-6">
-      <PageIntro eyebrow="数据运行面" title="数据采集状态" description="跟踪数据集激活状态、最新运行结果与质量降级信号。排序、筛选和列布局会保存在当前浏览器。" />
+      <PageIntro eyebrow="数据运行面" title="数据采集状态" description="把激活、最新运行结果和数据时间放在同一处判断。筛选与列布局仅保存在当前浏览器。" />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="数据集总数" value={status?.total ?? datasets.length} />
         <StatCard label="采集激活" value={activeCount} tone="good" />
         <StatCard label="运行失败" value={failedCount} tone={failedCount > 0 ? 'bad' : 'default'} />
         <StatCard label="质量降级" value={degradedCount} tone={degradedCount > 0 ? 'warn' : 'default'} />
       </div>
+
+      {(failedCount > 0 || degradedCount > 0) && (
+        <section className="flex flex-col gap-3 rounded-[12px] border border-[#d7def5] bg-[rgb(238_243_255/0.72)] px-4 py-3.5 shadow-[var(--td-shadow-hairline)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[var(--td-accent)] text-[11px] font-semibold text-white">!</span>
+            <div>
+              <h2 className="text-[12px] font-semibold text-[var(--td-ink)]">有 {attentionCount} 个数据集需要确认</h2>
+              <p className="mt-0.5 text-[11px] leading-5 text-[var(--td-muted)]">表格会保留真实回执状态；不会用历史数据或推断结果替代当前异常。</p>
+            </div>
+          </div>
+          <span className="shrink-0 text-[10px] font-medium text-[var(--td-accent)]">详细处理建议见“运行健康”</span>
+        </section>
+      )}
 
       <ControlBar>
         <SearchField className="w-full md:w-64" aria-label="搜索数据集" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索数据集 ID…" />

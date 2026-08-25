@@ -87,9 +87,9 @@ export function EmptyState({
 
 export function ErrorBanner({ message }: { message: string }) {
   return (
-    <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-      <CircleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
-      <span>{message}</span>
+    <div role="alert" className="flex items-start gap-3 rounded-[var(--td-radius)] border border-rose-200 bg-rose-50/90 px-4 py-3.5 text-sm text-rose-700 shadow-[var(--td-shadow-hairline)]">
+      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100"><CircleAlert aria-hidden className="h-3.5 w-3.5" /></span>
+      <span className="leading-5">{message}</span>
     </div>
   )
 }
@@ -108,15 +108,15 @@ export function PageIntro({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-5 border-b border-[var(--td-line)] pb-5">
+    <div className="flex flex-wrap items-end justify-between gap-5 border-b border-[var(--td-line)] pb-6">
       <div className="max-w-[720px]">
         {eyebrow && (
-          <p className="mb-2.5 flex items-center gap-2 text-[11px] font-medium tracking-[0.02em] text-[var(--td-accent)] before:h-1.5 before:w-1.5 before:rounded-[2px] before:bg-[var(--td-accent)]">
+          <p className="mb-3 flex items-center gap-2 text-[10px] font-semibold tracking-[0.08em] text-[var(--td-accent)] before:h-1.5 before:w-1.5 before:rounded-full before:bg-[var(--td-accent)]">
             {eyebrow}
           </p>
         )}
-        <h1 className="text-[27px] font-semibold leading-[1.16] tracking-[-0.045em] text-[var(--td-ink)] sm:text-[32px]">{title}</h1>
-        {description && <p className="mt-2.5 max-w-2xl text-[13px] leading-6 text-[var(--td-muted)]">{description}</p>}
+        <h1 className="text-[28px] font-semibold leading-[1.12] tracking-[-0.052em] text-[var(--td-ink)] sm:text-[34px]">{title}</h1>
+        {description && <p className="mt-3 max-w-2xl text-[13px] leading-6 text-[var(--td-muted)]">{description}</p>}
       </div>
       {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
     </div>
@@ -125,7 +125,7 @@ export function PageIntro({
 
 export function ControlBar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex flex-wrap items-center gap-2.5 rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-subtle)] p-2.5 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2.5 rounded-[10px] border border-[var(--td-line)] bg-[rgb(255_255_255/0.74)] p-2.5 shadow-[var(--td-shadow-hairline)] ${className}`}>
       {children}
     </div>
   )
@@ -141,16 +141,16 @@ export function SearchField({
       <input
         type="search"
         {...props}
-        className="min-h-10 w-full rounded-[var(--td-radius-sm)] border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm text-slate-800 shadow-[0_1px_1px_rgb(15_23_42/0.02)] outline-none transition-[border-color,box-shadow] duration-[var(--td-duration-fast)] placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+        className="min-h-10 w-full rounded-[8px] border border-[var(--td-line-strong)] bg-white py-2 pr-3 pl-9 text-sm text-[var(--td-ink)] shadow-[0_1px_1px_rgb(15_23_42/0.02)] outline-none transition-[border-color,box-shadow] duration-[var(--td-duration-fast)] placeholder:text-[var(--td-faint)] hover:border-[#aebbd0] focus:border-[var(--td-accent)] focus:ring-4 focus:ring-[rgb(49_92_246/0.10)]"
       />
     </div>
   )
 }
 
 export const TABLE_HEAD_CLASS =
-  'sticky top-0 z-[1] border-b border-[var(--td-line)] bg-[#f5f5f2] text-left text-[10px] font-semibold tracking-[0.035em] text-[var(--td-muted)]'
+  'sticky top-0 z-[1] border-b border-[var(--td-line)] bg-[#f5f7fb] text-left text-[10px] font-semibold tracking-[0.055em] text-[var(--td-muted)]'
 export const TABLE_ROW_CLASS =
-  'border-b border-[var(--td-line)] transition-colors last:border-0 hover:bg-[#f8f8f6] focus-within:bg-[var(--td-accent-quiet)]/70'
+  'border-b border-[var(--td-line)] transition-colors last:border-0 hover:bg-[#f7f9ff] focus-within:bg-[var(--td-accent-quiet)]/70'
 
 // ---------- Cards & stats ----------
 
@@ -169,7 +169,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-hairline)] ${className}`}
+      className={`overflow-hidden rounded-[12px] border border-[var(--td-line)] bg-[var(--td-surface-raised)] shadow-[var(--td-shadow-hairline)] ${className}`}
     >
       {(title || action) && (
         <header className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-[var(--td-line)] px-4 py-3.5 sm:px-5">
@@ -206,7 +206,7 @@ export function StatCard({
     bad: 'bg-rose-500',
   }[tone]
   return (
-    <div className="relative overflow-hidden rounded-[var(--td-radius)] border border-[var(--td-line)] bg-[var(--td-surface-raised)] px-4 py-4 shadow-[var(--td-shadow-hairline)]">
+    <div className="relative overflow-hidden rounded-[12px] border border-[var(--td-line)] bg-[var(--td-surface-raised)] px-4 py-4 shadow-[var(--td-shadow-hairline)]">
       <span className={`absolute top-4 right-4 h-1.5 w-1.5 rounded-full ${toneDot}`} />
       <div className="flex items-center gap-2 pr-5 text-[11px] font-medium text-[var(--td-muted)]">{label}</div>
       <div className={`mt-3.5 text-[26px] font-semibold leading-none tracking-[-0.05em] tabular-nums ${toneClass}`}>{value}</div>
@@ -266,10 +266,59 @@ export const RUNTIME_STATE_LABELS: Record<string, string> = {
   success: '运行正常',
   empty: '本次无新增',
   failed: '运行失败',
-  stale: '等待更新',
-  degraded: '质量降级',
-  unobserved: '尚未运行',
-  unknown: '尚未观测',
+  stale: '更新状态待确认',
+  degraded: '数据状态需关注',
+  unobserved: '等待首次回执',
+  unknown: '状态暂未确认',
+}
+
+export const RUNTIME_REASON_LABELS: Record<string, { label: string; detail: string }> = {
+  freshness_sla_exceeded: { label: '超过预期更新窗口', detail: '请核对最近一次成功回执与下一采集窗口。' },
+  data_through_in_future: { label: '数据时间需要校验', detail: '服务保留真实时间水位，不会把后续数据回填为较早时点。' },
+  storage_failed: { label: '本次写入未完成', detail: '请检查该数据集的采集回执与存储状态。' },
+  receipt_execution_inconsistent: { label: '回执完整性待确认', detail: '请核对本次执行记录与已写入事实是否一致。' },
+  provider_unavailable: { label: '上游服务暂不可用', detail: '请确认上游服务状态、授权与限流情况。' },
+  provider_error: { label: '上游调用未成功', detail: '请检查上游响应，并在合适窗口再次执行。' },
+  no_recognized_receipt: { label: '尚未找到有效运行回执', detail: '请确认该数据集是否已进入正式采集计划。' },
+}
+
+export function runtimeTone(state?: string, degraded?: boolean): BadgeTone {
+  if (degraded || state === 'degraded' || state === 'stale') return 'amber'
+  if (state === 'success') return 'green'
+  if (state === 'failed') return 'rose'
+  if (state === 'empty') return 'blue'
+  return 'slate'
+}
+
+export function runtimeLabel(state?: string, degraded?: boolean): string {
+  if (degraded && state !== 'failed') return RUNTIME_STATE_LABELS.degraded
+  return RUNTIME_STATE_LABELS[state ?? ''] ?? state ?? RUNTIME_STATE_LABELS.unknown
+}
+
+export function runtimeReason(reasons?: string[]): { label: string; detail: string; raw?: string } | null {
+  const raw = reasons?.[0]
+  if (!raw) return null
+  return { ...(RUNTIME_REASON_LABELS[raw] ?? { label: '运行状态需要确认', detail: '请查看最近回执与数据时间后继续处理。' }), raw }
+}
+
+export function RuntimeStatus({
+  state,
+  degraded = false,
+  reasons,
+  detail = false,
+}: {
+  state?: string
+  degraded?: boolean
+  reasons?: string[]
+  detail?: boolean
+}) {
+  const reason = runtimeReason(reasons)
+  return (
+    <div className="min-w-0">
+      <Badge tone={runtimeTone(state, degraded)}>{runtimeLabel(state, degraded)}</Badge>
+      {detail && reason && <p className="mt-1.5 max-w-64 truncate text-[10px] leading-4 text-[var(--td-faint)]" title={reason.raw}>{reason.label}</p>}
+    </div>
+  )
 }
 
 export const CADENCE_LABELS: Record<string, string> = {
@@ -329,7 +378,7 @@ export function fmtNumber(value: number | null | undefined): string {
 // ---------- Inputs ----------
 
 const INPUT_CLASS =
-  'min-h-10 w-full rounded-[var(--td-radius-sm)] border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 shadow-[0_1px_1px_rgb(15_23_42/0.02)] transition-[border-color,box-shadow] duration-[var(--td-duration-fast)] hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:outline-none'
+  'min-h-10 w-full rounded-[8px] border border-[var(--td-line-strong)] bg-white px-3 py-2 text-sm text-[var(--td-ink)] placeholder:text-[var(--td-faint)] shadow-[0_1px_1px_rgb(15_23_42/0.02)] transition-[border-color,box-shadow] duration-[var(--td-duration-fast)] hover:border-[#aebbd0] focus:border-[var(--td-accent)] focus:ring-4 focus:ring-[rgb(49_92_246/0.10)] focus:outline-none'
 
 export function Field({
   label,

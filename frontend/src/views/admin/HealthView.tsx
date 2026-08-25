@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Activity, AlertOctagon, CircleCheckBig, Clock3, DatabaseZap, ShieldAlert } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { HealthAlert } from '../../lib/types'
-import { Badge, CADENCE_LABELS, Card, ControlBar, EmptyState, ErrorBanner, LoadingPanel, PageIntro, StatCard, RUNTIME_STATE_LABELS } from '../../components/ui'
+import { CADENCE_LABELS, Card, ControlBar, EmptyState, ErrorBanner, LoadingPanel, PageIntro, StatCard, runtimeLabel, runtimeReason } from '../../components/ui'
 
 interface AlertsResponse {
   alerts?: HealthAlert[]
@@ -157,12 +157,17 @@ export default function HealthView({ client }: { client: ApiClient }) {
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-slate-200/70 py-3 text-xs sm:grid-cols-4">
-                <div><span className="block text-[10px] text-slate-400">状态</span><span className="mt-1 block font-medium text-slate-700">{RUNTIME_STATE_LABELS[a.runtime_state ?? ''] ?? a.runtime_state ?? '完整性'}</span></div>
+                <div><span className="block text-[10px] text-slate-400">状态</span><span className="mt-1 block font-medium text-slate-700">{runtimeLabel(a.runtime_state)}</span></div>
                 <div><span className="block text-[10px] text-slate-400">来源</span><span className="mt-1 block font-medium text-slate-700">{a.provider ?? '平台回执'}</span></div>
                 <div><span className="block text-[10px] text-slate-400">采集频率</span><span className="mt-1 block font-medium text-slate-700">{CADENCE_LABELS[a.cadence ?? ''] ?? a.cadence ?? '—'}</span></div>
                 <div><span className="block text-[10px] text-slate-400">最近观测</span><span className="mt-1 block truncate font-mono text-[10px] text-slate-600" title={a.observed_at ?? undefined}>{displayTime(a.observed_at)}</span></div>
               </div>
-              {(a.reason_codes?.length ?? 0) > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{a.reason_codes?.map((reason) => <Badge key={reason} tone="slate">{reason}</Badge>)}</div>}
+              {runtimeReason(a.reason_codes) && (
+                <div className="mt-3 flex items-start gap-2 rounded-[8px] border border-white/90 bg-white/65 px-3 py-2.5">
+                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--td-violet)]" />
+                  <div className="min-w-0"><span className="text-[10px] font-semibold text-[var(--td-ink-soft)]">状态原因：{runtimeReason(a.reason_codes)?.label}</span><p className="mt-0.5 text-[10px] leading-4 text-[var(--td-muted)]">{runtimeReason(a.reason_codes)?.detail}</p></div>
+                </div>
+              )}
               <div className="mt-4 flex items-start gap-2 rounded-lg border border-white/90 bg-white/65 px-3 py-2.5">
                 <DatabaseZap aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--td-accent)]" />
                 <div className="min-w-0">

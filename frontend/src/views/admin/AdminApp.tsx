@@ -48,8 +48,9 @@ export default function AdminApp({
       active={section}
       onSelect={onSectionChange}
       onSwitch={onViewCustomer}
-      switchLabel="预览客户门户"
+      switchLabel="查看客户门户"
       onLogout={onLogout}
+      layout="side"
     >
       {views[section]}
     </WorkspaceShell>
