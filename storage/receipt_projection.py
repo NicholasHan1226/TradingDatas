@@ -2011,10 +2011,21 @@ def _execution_context_failures(
         call_indexes = sorted(
             receipt.physical_call_index for receipt in attempt_representatives
         )
+        first_visible_call_index = call_indexes[0] if call_indexes else None
+        # The bounded catalog scan can begin in the middle of a large
+        # execution.  Its visible physical calls must still form one exact
+        # contiguous suffix, but that suffix is not required to start at zero.
         if (
             any(call_index is None for call_index in call_indexes)
             or len(set(call_indexes)) != len(call_indexes)
-            or call_indexes != list(range(len(call_indexes)))
+            or first_visible_call_index is None
+            or call_indexes
+            != list(
+                range(
+                    first_visible_call_index,
+                    first_visible_call_index + len(call_indexes),
+                )
+            )
         ):
             failures.append(
                 _InvalidReceipt(
@@ -3307,13 +3318,33 @@ def _project_registry_datasets(
         conn,
         per_dataset_limit=_MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET,
     )
+    related_rows: dict[str, list[_ScannedIngestRunRow]] = {
+        dataset_id: [] for dataset_id in known_dataset_ids
+    }
+    for scanned in rows:
+        # _validate_receipt_row only relates a row to its envelope source or
+        # claimed payload dataset.  Index those two identities once instead of
+        # presenting every recent receipt to every registry dataset.
+        candidate_ids: set[str] = set()
+        source = scanned.raw[9]
+        if type(source) is str and source in known_dataset_ids:
+            candidate_ids.add(source)
+        if scanned.payload is not None:
+            payload_dataset_id = scanned.payload.get("dataset_id")
+            if (
+                type(payload_dataset_id) is str
+                and payload_dataset_id in known_dataset_ids
+            ):
+                candidate_ids.add(payload_dataset_id)
+        for dataset_id in candidate_ids:
+            related_rows[dataset_id].append(scanned)
     projections = tuple(
         _project_dataset_runtime(
             conn,
             dataset,
             now=now,
             known_dataset_ids=known_dataset_ids,
-            rows=rows,
+            rows=tuple(related_rows[dataset.dataset_id]),
             validation_cache=validation_cache,
         )
         for dataset in registry.datasets

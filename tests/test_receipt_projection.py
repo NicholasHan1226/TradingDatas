@@ -2336,6 +2336,123 @@ def test_catalog_projection_matches_dataset_rows_without_binding_reprojection(
     assert calls.count(alternate) == 1
 
 
+def test_catalog_projection_validates_only_rows_related_to_each_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    base = load_dataset_registry()
+    first = _dataset()
+    second = replace(
+        first,
+        dataset_id="cn.equity.daily.other",
+        aliases=(),
+        provider_bindings=(
+            replace(
+                first.provider_bindings[0],
+                api_name="daily_other",
+                read_discriminator_value="tushare_daily_other",
+            ),
+        ),
+    )
+    registry = DatasetRegistry((first, second), query_defaults=base.query_defaults)
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="catalog-related-first",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset=second,
+        dataset_id=second.dataset_id,
+        provider_api="daily_other",
+        status="success",
+        attempt_id="catalog-related-second",
+        started_at="2026-07-15T00:02:00+00:00",
+        finished_at="2026-07-15T00:03:00+00:00",
+        data_through="20260715",
+    )
+    calls: list[tuple[str, object]] = []
+    original = projection_module._validate_receipt_row_memoized
+
+    def counted(scanned: Any, dataset: DatasetDefinition, *args: object) -> object:
+        calls.append((dataset.dataset_id, scanned.raw[9]))
+        return original(scanned, dataset, *args)
+
+    monkeypatch.setattr(
+        projection_module,
+        "_validate_receipt_row_memoized",
+        counted,
+    )
+
+    report = project_catalog_runtime(
+        conn,
+        registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert report["datasets"][first.dataset_id]["state"] == "success"
+    assert report["datasets"][second.dataset_id]["state"] == "success"
+    assert calls == [
+        (first.dataset_id, first.dataset_id),
+        (second.dataset_id, second.dataset_id),
+    ]
+
+
+def test_catalog_projection_keeps_cross_dataset_envelope_mismatch_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    base = load_dataset_registry()
+    first = _dataset()
+    second = replace(
+        first,
+        dataset_id="cn.equity.daily.other",
+        aliases=(),
+        provider_bindings=(
+            replace(
+                first.provider_bindings[0],
+                api_name="daily_other",
+                read_discriminator_value="tushare_daily_other",
+            ),
+        ),
+    )
+    registry = DatasetRegistry((first, second), query_defaults=base.query_defaults)
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="catalog-cross-envelope",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715",
+    )
+    conn.execute(
+        "UPDATE market_ingest_runs SET source = ? WHERE run_id = ?",
+        (second.dataset_id, receipt_id),
+    )
+    conn.commit()
+
+    report = project_catalog_runtime(
+        conn,
+        registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert report["datasets"][first.dataset_id]["state"] == "failed"
+    assert report["datasets"][second.dataset_id]["state"] == "failed"
+    assert report["datasets"][first.dataset_id]["reasons"] == [
+        "receipt_envelope_mismatch"
+    ]
+    assert report["datasets"][second.dataset_id]["reasons"] == [
+        "receipt_envelope_mismatch"
+    ]
+
+
 def test_catalog_projection_memoizes_own_dataset_receipt_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3079,6 +3196,107 @@ def test_future_data_through_does_not_cascade_execution_inconsistent(
     assert projection.state == "failed"
     assert projection.receipt_id == future_id
     assert projection.reasons == ("data_through_in_future",)
+
+
+def test_bounded_projection_accepts_contiguous_execution_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    root = "bounded-execution-suffix"
+    for transaction_index, call_index in enumerate((7, 8)):
+        _insert_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id=make_provider_call_attempt_id(
+                root,
+                call_index=call_index,
+                retry_index=0,
+            ),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=f"2026-07-15T00:0{transaction_index + 1}:00+00:00",
+            data_through="20260715",
+            transaction_index=transaction_index,
+            request_identity=ProviderRequestIdentity(
+                request_variant={"page": call_index},
+                fanout_parameter=None,
+                fanout_values=(),
+                page_offset=call_index,
+                page_index=call_index,
+            ),
+        )
+
+    dataset = _dataset()
+    known_dataset_ids = frozenset({dataset.dataset_id})
+    receipts = [
+        validated
+        for scanned in projection_module._scan_ingest_run_rows(conn)
+        if isinstance(
+            (
+                validated := projection_module._validate_receipt_row(
+                    scanned,
+                    dataset,
+                    known_dataset_ids,
+                    datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+                )
+            ),
+            projection_module._Receipt,
+        )
+    ]
+
+    assert projection_module._execution_context_failures(receipts) == ()
+
+
+def test_bounded_projection_rejects_gap_inside_execution_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    root = "bounded-execution-gap"
+    for transaction_index, call_index in enumerate((7, 9)):
+        _insert_receipt(
+            monkeypatch,
+            conn,
+            status="success",
+            attempt_id=make_provider_call_attempt_id(
+                root,
+                call_index=call_index,
+                retry_index=0,
+            ),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=f"2026-07-15T00:0{transaction_index + 1}:00+00:00",
+            data_through="20260715",
+            transaction_index=transaction_index,
+            request_identity=ProviderRequestIdentity(
+                request_variant={"page": call_index},
+                fanout_parameter=None,
+                fanout_values=(),
+                page_offset=call_index,
+                page_index=call_index,
+            ),
+        )
+
+    dataset = _dataset()
+    known_dataset_ids = frozenset({dataset.dataset_id})
+    receipts = [
+        validated
+        for scanned in projection_module._scan_ingest_run_rows(conn)
+        if isinstance(
+            (
+                validated := projection_module._validate_receipt_row(
+                    scanned,
+                    dataset,
+                    known_dataset_ids,
+                    datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+                )
+            ),
+            projection_module._Receipt,
+        )
+    ]
+    failures = projection_module._execution_context_failures(receipts)
+
+    assert [failure.reason for failure in failures] == [
+        "receipt_execution_inconsistent"
+    ]
 
 
 def test_postclose_date_partition_stays_fresh_through_its_local_day(

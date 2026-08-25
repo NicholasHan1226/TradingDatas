@@ -84,6 +84,14 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 代码回滚继续遵循 immutable release 切换与同层 receipt/API readback，索引缺失在旧 release 中是
 允许状态。
 
+catalog 的最近收据投影先按 envelope `source` 与 payload `dataset_id` 建立数据集相关行索引，
+每个数据集只校验与自己相关的 bounded rows；跨数据集 envelope/payload 不一致必须同时进入
+两个相关数据集并继续 fail closed，不能因性能索引而被跳过。最近收据窗口可能从一个大型
+execution 的中部开始，因此可见 `physical_call_index` 允许是从非零序号开始的连续后缀；
+后缀内部的重复、缺口、混合 physical/non-physical 状态、execution context 漂移或 retry 序列
+不一致仍必须返回 `receipt_execution_inconsistent`。该规则只解释已持久化收据的有界读取，
+不会补写、删除或重排历史 receipt，也不会把 provider/storage 失败改成成功。
+
 对于已经执行的 dataset，scheduler summary 可附带 `receipt_provenance`：它只按本轮已持久化且通过同一 receipt validator 的 receipt ID 投影 `status`、`returned`/`validated`/`rejected`/`committed` 计数、稳定的 `error_layer`、原始结构化 `error_codes` 与 `validation_reasons`。无法通过验证的 receipt 只保留其稳定 reason code，计数字段为 `null`；`validation_failed` 默认归入通用 `ingest_validation` 层，只有持久化证据证明更具体层级时才细分，未持久化时不推断确切谓词；读取 provenance 失败不会改变采集结果。该字段不包含 receipt payload、provider rows、请求凭据或本机路径，且不替代 SQLite receipt authority。
 
 非可恢复 fanout 的覆盖缺口在公开采集路径中保留顶层 `validation_failed`，并附带脱敏的
