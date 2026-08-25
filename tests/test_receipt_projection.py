@@ -3422,6 +3422,67 @@ def test_event_cadence_date_partition_stays_fresh_through_its_local_day(
     assert projection.degraded is False
 
 
+def test_on_demand_month_partition_is_a_valid_runtime_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = load_dataset_registry().resolve("cn.dataset.broker_recommend")
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-current-month",
+        started_at="2026-07-15T02:00:00+00:00",
+        finished_at="2026-07-15T02:01:00+00:00",
+        data_through="202607",
+        request_window={"month": "202607"},
+        dataset_id=dataset.dataset_id,
+        provider_api="broker_recommend",
+        dataset=dataset,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 3, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "success"
+    assert projection.degraded is False
+    assert projection.data_through == "202607"
+
+
+def test_future_month_partition_still_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = load_dataset_registry().resolve("cn.dataset.broker_recommend")
+    receipt_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-future-month",
+        started_at="2026-07-15T02:00:00+00:00",
+        finished_at="2026-07-15T02:01:00+00:00",
+        data_through="202608",
+        request_window={"month": "202608"},
+        dataset_id=dataset.dataset_id,
+        provider_api="broker_recommend",
+        dataset=dataset,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 3, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.receipt_id == receipt_id
+    assert projection.reasons == ("data_through_in_future",)
+
+
 def test_empty_receipt_uses_receipt_observation_for_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

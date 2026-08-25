@@ -2076,7 +2076,9 @@ def _data_through_in_utc(value: str, timezone_name: str) -> datetime:
         raise ValueError("dataset_timezone_invalid") from None
 
     candidate = value.strip()
-    if len(candidate) == 8 and candidate.isdigit():
+    if len(candidate) == 6 and candidate.isdigit():
+        parsed = datetime.strptime(candidate, "%Y%m")
+    elif len(candidate) == 8 and candidate.isdigit():
         parsed = datetime.strptime(candidate, "%Y%m%d")
     else:
         try:
