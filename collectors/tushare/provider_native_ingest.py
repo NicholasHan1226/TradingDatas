@@ -1928,7 +1928,6 @@ def collect_provider_native_dataset(
         raise ValueError("dataset is not configured for provider-native collection")
     if binding.entitlement_state != "active" or binding.activation_state != "active":
         raise ValueError("dataset binding is not entitled and active")
-    scan_budget = _provider_scan_budget(dataset, binding)
     variants = (
         binding.request_variants
         if request_variant is None
@@ -1953,6 +1952,19 @@ def collect_provider_native_dataset(
     validate_provider_dataset_store(db_path)
     if not callable(getattr(collector, "collect_outcome", None)):
         raise TypeError("collector must provide collect_outcome")
+    try:
+        scan_budget = _provider_scan_budget(dataset, binding)
+    except ValueError:
+        # An unsizable sensitive-scan budget is a registry configuration
+        # error, not a transient provider failure: record an honest
+        # terminal receipt so the schedule journal shows why no provider
+        # call was attempted instead of escaping as a bare exception.
+        return write_terminal_receipt(
+            db_path,
+            context=terminal_context,
+            status="failed",
+            errors=("config_error",),
+        )
     try:
         fanout_batches = _load_completed_fanout_batches(
             db_path,

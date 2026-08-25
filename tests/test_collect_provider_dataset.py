@@ -23,6 +23,7 @@ from dataset_registry import (
     ProviderBinding,
     ReadModelAdapter,
     RequestWindowPolicy,
+    ResumableFanoutPolicy,
     ResponseCompletenessPolicy,
     load_dataset_registry,
 )
@@ -4319,3 +4320,50 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
     assert rejected.status == "failed"
     assert rejected.errors == ("config_error",)
     assert rejected_collector.calls == []
+
+
+def test_oversized_resumable_scan_budget_records_config_error_receipt(
+    tmp_path: Path,
+) -> None:
+    base = _registry()
+    dataset = base.resolve("cn.synthetic.runner")
+    binding = base.provider_binding(dataset.dataset_id, "tushare")
+    # 1000 rows x 64 resumable batches overflows the absolute sensitive-scan
+    # node cap, so budget sizing must fail closed into an honest terminal
+    # receipt instead of raising past the schedule runner.
+    oversized = replace(
+        binding,
+        resumable_fanout=ResumableFanoutPolicy(max_batches_per_run=64),
+    )
+    registry = DatasetRegistry((replace(dataset, provider_bindings=(oversized,)),))
+    collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": "20260717",
+                    "close": 11.0,
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    db_path = tmp_path / "oversized-scan-budget.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=collector,
+        dataset_id=dataset.dataset_id,
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="oversized-scan-budget-attempt",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ("config_error",)
+    assert collector.calls == []
