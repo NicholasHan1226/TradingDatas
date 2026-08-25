@@ -581,3 +581,58 @@ def test_plan_mode_plans_the_active_flash_dataset(
     rendered = json.loads(capsys.readouterr().out)
     assert rendered["state"] == "planned"
     assert rendered["will_call_provider"] is False
+
+
+def test_bare_time_after_midnight_falls_back_to_previous_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression guard for the 2026-08 production pollution incident: sina
+    # 7x24 renders time-only entries, and just past local midnight the page
+    # still shows the previous evening.  Same-day anchoring future-dated
+    # those rows (500 stored rows carried published_local > collected_at),
+    # so the parser must fall back one day whenever the anchored instant
+    # lands beyond the observation clock plus the extraction tolerance.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    frozen = datetime(2026, 8, 25, 0, 40, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    class FrozenWallClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen.astimezone(tz) if tz is not None else frozen
+
+    monkeypatch.setattr(firecrawl_collector, "datetime", FrozenWallClock)
+    row = _normalize_item(
+        {"title": "晚间快讯", "url": "", "published_at": "23:10:41"},
+        source="https://finance.sina.com.cn/7x24/",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert row["published_at"] == "2026-08-24T23:10:41+08:00"
+    assert row["published_local"] == "2026-08-24 23:10:41"
+    assert row["event_date"] == "20260824"
+
+
+def test_bare_time_inside_future_tolerance_keeps_current_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    frozen = datetime(2026, 8, 16, 9, 30, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    class FrozenWallClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen.astimezone(tz) if tz is not None else frozen
+
+    monkeypatch.setattr(firecrawl_collector, "datetime", FrozenWallClock)
+    row = _normalize_item(
+        {"title": "刚发布的快讯", "url": "", "published_at": "09:35:00"},
+        source="https://finance.sina.com.cn/7x24/",
+        time_key="published_at",
+        summary_key=None,
+    )
+    assert row["published_local"] == "2026-08-16 09:35:00"
+    assert row["event_date"] == "20260816"

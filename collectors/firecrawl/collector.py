@@ -24,7 +24,7 @@ machinery fail-closes on any leak.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 import os
@@ -48,6 +48,13 @@ FIRECRAWL_API_KEY_FILE_ENV = "FIRECRAWL_API_KEY_FILE"
 _LOCAL_TIMEZONE = ZoneInfo("Asia/Shanghai")
 _GLOBAL_TIMEZONE = ZoneInfo("America/New_York")
 _MAX_KEY_FILE_BYTES = 4_096
+# Live flash pages render time-only entries ("23:41:06") whose calendar day
+# is implied by the source.  Just after local midnight the page still shows
+# the previous evening, so naive same-day anchoring future-dates those items;
+# an event stream can never publish in the future, so fall back one day when
+# the anchored instant lands beyond the observation clock plus a small
+# extraction-latency allowance.
+_BARE_TIME_FUTURE_TOLERANCE = timedelta(minutes=10)
 _MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 _MAX_TIMEOUT_MS = 120_000
 _MAX_AGE_MS_LIMIT = 86_400_000
@@ -191,13 +198,18 @@ def _parse_published_at(value: object, *, timezone: ZoneInfo = _LOCAL_TIMEZONE) 
     if parsed is None:
         # Realtime flash feeds sometimes emit a bare wall-clock time
         # ("08:09:28" / "08:09") with the date implied by the source
-        # timezone.  Anchor it to the source timezone's current day.
+        # timezone.  Anchor it to the source timezone's current day; when
+        # that lands in the future, the entry belongs to yesterday's
+        # evening (the page has not rolled over yet).
         for fmt in ("%H:%M:%S", "%H:%M"):
             try:
                 wall = datetime.strptime(text, fmt).time()
+                anchor_now = datetime.now(timezone)
                 parsed = datetime.combine(
-                    datetime.now(timezone).date(), wall
+                    anchor_now.date(), wall
                 ).replace(tzinfo=timezone)
+                if parsed - anchor_now > _BARE_TIME_FUTURE_TOLERANCE:
+                    parsed = parsed - timedelta(days=1)
                 break
             except ValueError:
                 continue
