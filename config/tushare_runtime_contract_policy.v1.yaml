@@ -2,7 +2,7 @@ version: 1
 policy_id: tushare-runtime-contract-policy.v1
 provider: tushare
 source_snapshot_id: tushare-official-document-contracts.v1
-source_snapshot_canonical_sha256: 5464e124e40c51fb0a6a42b78f0f4ab28a74bdcb84d8be9bfcd37119fdbf3844
+source_snapshot_canonical_sha256: 6de2a7b8dfb1d75e5f15375773c9863f14fdba23f6dbfa56b8b597b1a5b5d22f
 catalog_only_defaults:
   dataset_id_prefix: cn.dataset
   domain: provider_data

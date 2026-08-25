@@ -29352,6 +29352,12 @@ contracts:
   - name: end_date
     declared_source_type: str
     required: false
+  - name: offset
+    declared_source_type: str
+    required: false
+  - name: limit
+    declared_source_type: str
+    required: false
   fields:
   - name: ts_code
     declared_source_type: str
@@ -29436,7 +29442,11 @@ contracts:
   fanout:
     strategy: none
   pagination:
-    strategy: none
+    strategy: offset
+    limit_parameter: limit
+    offset_parameter: offset
+    page_size: 6000
+    max_pages: 8
   request_window_policy:
     required_keys:
     - ann_date
@@ -29463,7 +29473,7 @@ contracts:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 48000
   reviewed_type_overrides: []
   probe_state: executable
   probe_block_reasons: []

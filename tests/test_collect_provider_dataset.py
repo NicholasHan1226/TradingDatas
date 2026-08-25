@@ -404,6 +404,32 @@ def test_fut_settle_contract_rejects_rows_at_declared_limit() -> None:
         )
 
 
+def _share_float_binding() -> ProviderBinding:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    return registry.provider_binding("cn.dataset.share_float", "tushare")
+
+
+def test_share_float_binding_paginates_past_upstream_page_cap() -> None:
+    # 2026-08-25 incident (#339): share_float silently caps at ~6000 rows per
+    # upstream page, so pagination strategy=none stored truncated days as
+    # success receipts. The binding must page by offset until a short page and
+    # fail closed if a full page still remains at max_pages.
+    binding = _share_float_binding()
+    assert binding.pagination == PaginationPolicy(
+        strategy="offset",
+        limit_parameter="limit",
+        offset_parameter="offset",
+        page_size=6000,
+        max_pages=8,
+    )
+    # Largest upstream day observed by the 20260801..20260824 offset probe.
+    max_observed_day_rows = 20_411
+    assert binding.max_rows_per_attempt >= max_observed_day_rows
+    assert binding.max_rows_per_attempt <= (
+        binding.pagination.page_size * binding.pagination.max_pages
+    )
+
+
 def _fut_mapping_contract() -> tuple[DatasetDefinition, ProviderBinding]:
     registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
     dataset = registry.resolve("cn.dataset.fut_mapping")

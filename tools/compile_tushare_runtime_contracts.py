@@ -183,6 +183,7 @@ _REQUEST_OBSERVATION_ENTRY_KEYS = frozenset(
         "parameters",
         "fanout",
         "resumable_fanout",
+        "pagination_max_pages",
         "row_limit_observation",
         "request_variants",
     }
@@ -191,6 +192,7 @@ _REQUEST_OBSERVATION_REQUIRED_ENTRY_KEYS = _REQUEST_OBSERVATION_ENTRY_KEYS - {
     "request_variants",
     "fanout",
     "resumable_fanout",
+    "pagination_max_pages",
 }
 _REQUEST_OBSERVATION_PROVENANCE_REQUIRED_KEYS = frozenset(
     {
@@ -1007,6 +1009,10 @@ def _request_observation_index(
                 entry["resumable_fanout"],
                 label=f"{label}.resumable_fanout",
             )
+        pagination_max_pages = _positive_int(
+            entry.get("pagination_max_pages", 1),
+            f"{label}.pagination_max_pages",
+        )
         required_true = {
             name for name, required in official_inputs.items() if required == "Y"
         }
@@ -1098,6 +1104,7 @@ def _request_observation_index(
             "ingest_contract_block_reasons": activation_reasons,
             "unresolved_parameter_keys": unresolved,
             "parameters": normalized_parameters,
+            "pagination_max_pages": pagination_max_pages,
             "row_limit_observation": deepcopy(row_limit),
             "request_variants": normalized_variants,
         }
@@ -1454,6 +1461,7 @@ def _request_execution_contract(
 ) -> dict[str, Any]:
     """Project one executable observation onto the existing generic data plane."""
 
+    declared_max_pages = observation.get("pagination_max_pages", 1)
     blocked_fanout_fields = [
         declaration
         for declaration in observation["parameters"].values()
@@ -1463,6 +1471,10 @@ def _request_execution_contract(
         if reviewed_contract is not None:
             raise RuntimeContractCompilationError(
                 f"reviewed API cannot have a blocked probe: {observation['api_name']}"
+            )
+        if declared_max_pages != 1:
+            raise RuntimeContractCompilationError(
+                f"{observation['api_name']} blocked probe cannot declare pagination_max_pages"
             )
         return {
             "request_shape": observation["request_shape"],
@@ -1537,9 +1549,13 @@ def _request_execution_contract(
             "limit_parameter": "limit",
             "offset_parameter": "offset",
             "page_size": pagination_values["limit"],
-            "max_pages": 1,
+            "max_pages": declared_max_pages,
         }
     else:
+        if declared_max_pages != 1:
+            raise RuntimeContractCompilationError(
+                f"{observation['api_name']} pagination_max_pages requires limit/offset pagination"
+            )
         pagination = {"strategy": "none"}
     if window_formats:
         keys = (
