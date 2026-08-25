@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-26 00:35 CST。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-26 03:15 CST。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,13 +9,33 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `423a9f49aee26ac41c476cdf39292e680e150066`（PR #340，含 #338） | 已验收源码；文档合并不等于发布 |
+| GitHub `main` | `9f99800bcfc7a7ce4550add9199d2eef55354ca8`（PR #344，含 #340/#338/#342） | 已验收源码；文档合并不等于发布 |
 | 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
-| A 股有效 release | `423a9f49aee26ac41c476cdf39292e680e150066`（回滚点 `4f7f89456e957e2f717fd3e389cf2f2c6567558b`） | immutable 运行源码，2026-08-25 23:40 CST 切换 |
+| A 股有效 release | `9f99800bcfc7a7ce4550add9199d2eef55354ca8`（回滚点 `423a9f49aee26ac41c476cdf39292e680e150066`） | immutable 运行源码，2026-08-26 02:47 CST 切换 |
 | Crypto 有效 release | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（回滚点 `7d04a1f6fe273d81e7ea20bef29c7c7701091df2`） | 隔离 immutable 运行源码，2026-08-23 15:26 CST 切换 |
 
 上述各层必须分别读回；源码、service 或 timer 单层健康都不能写成"三端同步"、
 消费者闭环或模拟交易结果。
+
+## 2026-08-26 发布记录
+
+第七轮（02:47 CST，A 股面 → `9f99800`，PR #344）：#339 修复——share_float 上游单次
+响应静默截断在 ~6000 行而声明 pagination strategy=none，高流量 ann_date 六个分区
+（20260801/03/05/06/10/19）以成功 receipt 入库了截断数据且无失败信号。声明层改为
+offset 分页（page_size=6000、max_pages=8、budgets 48000→编译安全上限 42466，
+满页 fail-closed 语义保留）。为表达多页分页，运行时契约编译器新增可选观察键
+`pagination_max_pages`（正整数、默认 1，替代投影中硬编码的 max_pages=1，要求伴随
+limit/offset literal，阻断 probe 禁用）；share_float 官方文档节补登 limit/offset 输入
+（bak_daily 先例），下游全部哈希钉更新：runtime+cadence policy canonical SHA、
+request-profiles 文档 SHA、观察 provenance 四项、upstream contracts 与
+provider-native registry 重生成、activation wave registry 哈希重钉；双编译器字节级
+幂等复现。回归测试断言编译产物分页参数与预算覆盖最大观测日（20411 行）。
+流程：本地 build manifest（255 files）→ staging root:root 按 manifest 定模式 →
+verify 通过 → 停 timer 排空采集（02:40 一轮 firecrawl 双源 provider_error 致 exit 1
+为遗留问题非回归）→ switch-current → 服务恢复，catalog 认证回读正常。
+重补验证：六分区 on_demand 单窗重采全部 success，唯一行数
+6000→8068/17805/20411/11290/11277/10562（合计找回 43413 行），证明上游真实支持
+offset 翻页；API query 回读 `ann_date=20260805` 数据可消费。回滚点 `423a9f49`。
 
 ## 2026-08-25 发布记录
 
