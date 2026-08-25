@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ComponentType, type ReactNode } from 'react'
-import { ArrowLeft, SignOut } from '@phosphor-icons/react'
+import { ArrowLeft, ArrowSquareOut, SignOut } from '@phosphor-icons/react'
 
 type WorkspaceIcon = ComponentType<{
   size?: number | string
@@ -52,47 +52,65 @@ export default function WorkspaceShell<Key extends string>({
   }, [active])
 
   if (layout === 'side') {
+    const groups = items.reduce<Array<{ label?: string; items: WorkspaceNavItem<Key>[] }>>((result, item) => {
+      const last = result[result.length - 1]
+      if (!last || last.label !== item.group) result.push({ label: item.group, items: [item] })
+      else last.items.push(item)
+      return result
+    }, [])
+
     return (
-      <div className="min-h-full bg-[var(--td-canvas)] lg:grid lg:grid-cols-[224px_minmax(0,1fr)]" data-workspace={workspace}>
-        <aside className="sticky top-0 hidden h-screen flex-col border-r border-[var(--td-line)] bg-[#fbfaf7] lg:flex">
-          <div className="px-6 pb-7 pt-6">
-            <div className="text-[23px] font-bold tracking-[-0.065em] text-[var(--td-ink)]">
+      <div className="workspace-frame min-h-full bg-[var(--td-canvas)] lg:grid lg:grid-cols-[244px_minmax(0,1fr)]" data-workspace={workspace}>
+        <aside className="workspace-rail sticky top-0 hidden h-screen flex-col lg:flex">
+          <div className="px-6 pb-8 pt-7">
+            <div className="text-[23px] font-bold tracking-[-0.065em] text-white">
               <span className="tracking-[-0.075em]">Trading</span><span className="font-semibold tracking-[-0.045em]">Datas</span>
             </div>
-            <div className="mt-8 text-[11px] font-medium text-[var(--td-muted)]">{workspaceLabel}</div>
+            <div className="mt-8 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-[#91a5d8]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--td-cyan)] shadow-[0_0_0_4px_rgb(45_212_234/0.12)]" />
+              {workspaceLabel}
+            </div>
           </div>
 
           <nav ref={navRef} aria-label={`${workspaceLabel}导航`} className="flex-1 px-3">
-            <div className="space-y-1">
-              {items.map((item) => {
-                const Icon = item.icon
-                const selected = item.key === active
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => onSelect(item.key)}
-                    aria-current={selected ? 'page' : undefined}
-                    aria-label={`${item.label}：${item.description}`}
-                    className={`group flex min-h-11 w-full items-center gap-3 rounded-[var(--td-radius-sm)] px-3 text-left text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--td-accent)] ${selected ? 'bg-[#edf1ff] text-[var(--td-accent)]' : 'text-[var(--td-muted)] hover:bg-white hover:text-[var(--td-ink)]'}`}
-                  >
-                    <Icon aria-hidden size={17} className="shrink-0" />
-                    <span className="min-w-0 flex-1">{item.label}</span>
-                  </button>
-                )
-              })}
+            <div className="space-y-6">
+              {groups.map((group) => (
+                <div key={group.label ?? 'workspace'}>
+                  {group.label && <div className="px-3 pb-2 text-[9px] font-semibold tracking-[0.14em] text-[#6378ab]">{group.label}</div>}
+                  <div className="space-y-1">
+                    {group.items.map((item) => {
+                      const Icon = item.icon
+                      const selected = item.key === active
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => onSelect(item.key)}
+                          aria-current={selected ? 'page' : undefined}
+                          aria-label={`${item.label}：${item.description}`}
+                          className={`workspace-rail-item workspace-rail-item-${item.accent ?? 'blue'} group flex min-h-11 w-full items-center gap-3 rounded-[8px] px-3 text-left text-[13px] font-medium transition-[color,background-color,box-shadow] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#95a9ff] ${selected ? 'is-active' : ''}`}
+                        >
+                          <Icon aria-hidden size={17} className="shrink-0" />
+                          <span className="min-w-0 flex-1">{item.label}</span>
+                          {selected && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </nav>
 
-          <div className="border-t border-[var(--td-line)] p-3">
-            {identity && <div className="truncate px-3 pb-2 pt-1 text-[11px] font-medium text-[var(--td-ink-soft)]">{identity}</div>}
+          <div className="border-t border-white/8 p-3">
+            {identity && <div className="truncate px-3 pb-2 pt-1 text-[11px] font-medium text-[#afbee3]">{identity}</div>}
             {onSwitch && (
-              <button type="button" onClick={onSwitch} className="workspace-action w-full justify-start" aria-label={switchLabel}>
-                <ArrowLeft aria-hidden size={15} weight="regular" />
+              <button type="button" onClick={onSwitch} className="workspace-rail-action w-full justify-start" aria-label={switchLabel}>
+                <ArrowSquareOut aria-hidden size={15} weight="regular" />
                 <span>{switchLabel}</span>
               </button>
             )}
-            <button type="button" onClick={onLogout} className="workspace-action mt-1 w-full justify-start" aria-label="退出登录">
+            <button type="button" onClick={onLogout} className="workspace-rail-action mt-1 w-full justify-start" aria-label="退出登录">
               <SignOut aria-hidden size={15} weight="regular" />
               <span>退出登录</span>
             </button>
@@ -100,16 +118,16 @@ export default function WorkspaceShell<Key extends string>({
         </aside>
 
         <div className="min-w-0">
-          <header className="workspace-header sticky top-0 z-20 border-b border-[var(--td-line)] bg-[rgb(250_249_246/0.96)] text-[var(--td-ink)] backdrop-blur-xl lg:hidden">
+          <header className="workspace-mobile-header sticky top-0 z-20 lg:hidden">
             <div className="flex min-h-16 items-center justify-between gap-3 px-4 sm:px-7">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="shrink-0 text-[21px] font-bold tracking-[-0.065em] text-[var(--td-ink)]"><span className="tracking-[-0.075em]">Trading</span><span className="font-semibold tracking-[-0.045em]">Datas</span></div>
-                <div className="h-5 w-px bg-[var(--td-line-strong)]" />
-                <span className="truncate text-[11px] font-medium text-[var(--td-ink-soft)]">{workspaceLabel}</span>
+                <div className="shrink-0 text-[21px] font-bold tracking-[-0.065em] text-white"><span className="tracking-[-0.075em]">Trading</span><span className="font-semibold tracking-[-0.045em]">Datas</span></div>
+                <div className="h-5 w-px bg-white/20" />
+                <span className="truncate text-[11px] font-medium text-[#b4c2e6]">{workspaceLabel}</span>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {onSwitch && <button type="button" onClick={onSwitch} className="workspace-action" aria-label={switchLabel}><ArrowLeft aria-hidden size={15} /></button>}
-                <button type="button" onClick={onLogout} className="workspace-action" aria-label="退出登录"><SignOut aria-hidden size={15} /></button>
+                {onSwitch && <button type="button" onClick={onSwitch} className="workspace-mobile-action" aria-label={switchLabel}><ArrowSquareOut aria-hidden size={15} /></button>}
+                <button type="button" onClick={onLogout} className="workspace-mobile-action" aria-label="退出登录"><SignOut aria-hidden size={15} /></button>
               </div>
             </div>
             <nav ref={navRef} aria-label={`${workspaceLabel}导航`} className="workspace-nav flex snap-x snap-mandatory gap-7 overflow-x-auto px-4 sm:px-7">
@@ -131,7 +149,7 @@ export default function WorkspaceShell<Key extends string>({
             </div>
           )}
 
-          <main className="mx-auto max-w-[1480px] px-4 py-6 pb-16 sm:px-7 sm:py-8 lg:px-8 xl:px-10">
+          <main className="workspace-content mx-auto max-w-[1540px] px-4 py-6 pb-16 sm:px-7 sm:py-8 lg:px-9 xl:px-12">
             {children}
           </main>
         </div>

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Database, SearchX } from 'lucide-react'
-import type { ApiClient } from '../../lib/api'
+import { ApiError, type ApiClient } from '../../lib/api'
 import type { CollectionStatus, DatasetRow, QueryResult } from '../../lib/types'
 import { recordConsoleEvent } from '../../lib/consoleAnalytics'
 import { usePersistentState } from '../../lib/persistence'
 import {
-  Badge,
   Button,
   Card,
   CopyButton,
@@ -18,6 +17,8 @@ import {
   TABLE_ROW_CLASS,
   ACTIVATION_LABELS,
   RUNTIME_STATE_LABELS,
+  RuntimeStatus,
+  runtimeReason,
 } from '../../components/ui'
 
 type CatalogDatasetRow = Omit<DatasetRow, 'provider'> & { provider?: string }
@@ -26,12 +27,14 @@ interface CatalogResponse {
   data?: CatalogDatasetRow[]
 }
 
-const STATE_TONES: Record<string, 'green' | 'rose' | 'amber' | 'blue' | 'slate'> = {
-  success: 'green',
-  empty: 'blue',
-  failed: 'rose',
-  stale: 'amber',
-  degraded: 'amber',
+function describeQueryFailure(error: unknown): string {
+  if (error instanceof ApiError && error.status === 503) {
+    return '当前查询没有满足数据时间要求的可用结果。服务不会以其他时点的数据替代本次请求，请先核对数据截止时间与运行健康。'
+  }
+  if (error instanceof ApiError && error.status === 429) {
+    return '请求频率已到达当前账户上限。请降低并发并在下一窗口继续查询。'
+  }
+  return error instanceof Error ? error.message : '查询失败，请稍后重试。'
 }
 
 export default function DataView({ client }: { client: ApiClient }) {
@@ -124,7 +127,7 @@ export default function DataView({ client }: { client: ApiClient }) {
       recordConsoleEvent('request_failed', 'admin')
       setSample({
         loading: false,
-        error: err instanceof Error ? err.message : '查询失败',
+        error: describeQueryFailure(err),
         fields: [],
         items: [],
         cursor: null,
@@ -157,7 +160,7 @@ export default function DataView({ client }: { client: ApiClient }) {
       setSample({
         ...sample,
         loading: false,
-        error: err instanceof Error ? err.message : '翻页失败',
+        error: describeQueryFailure(err),
       })
     }
   }
@@ -207,7 +210,7 @@ export default function DataView({ client }: { client: ApiClient }) {
                       <div className="truncate font-mono text-xs font-medium text-slate-700">{d.dataset_id}</div>
                       <div className="text-[10px] text-slate-400">v{d.schema_major} · {d.market} · {d.cadence}</div>
                     </div>
-                    <Badge tone={STATE_TONES[d.runtime_state ?? ''] ?? 'slate'}>{RUNTIME_STATE_LABELS[d.runtime_state ?? ''] ?? d.runtime_state ?? '尚未观测'}</Badge>
+                    <RuntimeStatus state={d.runtime_state} degraded={d.degraded} />
                   </button>
                 )
               })
@@ -249,6 +252,15 @@ export default function DataView({ client }: { client: ApiClient }) {
                   </div>
                 ))}
               </div>
+              {(selected.degraded || selected.runtime_state === 'failed' || selected.runtime_state === 'stale' || (selected.reasons?.length ?? 0) > 0) && (
+                <div className="mt-5 flex items-start gap-3 rounded-[9px] border border-[#dce3f7] bg-[#f5f7ff] px-3.5 py-3">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-[#dfe8ff] text-[11px] font-semibold text-[var(--td-accent)]">i</span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2"><span className="text-[11px] font-semibold text-[var(--td-ink-soft)]">数据状态：{runtimeReason(selected.reasons)?.label ?? '需要确认'}</span><RuntimeStatus state={selected.runtime_state} degraded={selected.degraded} /></div>
+                    <p className="mt-1 text-[11px] leading-5 text-[var(--td-muted)]">{runtimeReason(selected.reasons)?.detail ?? '请在运行健康中核对最近回执和数据时间，再判断是否适合当前任务。'}</p>
+                  </div>
+                </div>
+              )}
             </Card>
 
             <Card title="样本数据" action={<span className="text-xs text-slate-400">{sample?.items.length ?? 0} 条</span>}>
@@ -266,6 +278,12 @@ export default function DataView({ client }: { client: ApiClient }) {
                 />
               ) : (
                 <>
+                  {(sample.metadata?.runtime_state && sample.metadata.runtime_state !== 'success') || (sample.metadata?.reasons?.length ?? 0) > 0 ? (
+                    <div className="mb-3 flex items-start gap-2.5 rounded-[8px] border border-[#dce3f7] bg-[#f7f9ff] px-3 py-2.5 text-[11px] leading-5 text-[var(--td-muted)]">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--td-violet)]" />
+                      <span>本次返回状态：{runtimeReason(sample.metadata?.reasons)?.label ?? RUNTIME_STATE_LABELS[sample.metadata?.runtime_state ?? ''] ?? '需要确认'}。{runtimeReason(sample.metadata?.reasons)?.detail ?? '请结合数据截止时间判断适用性。'}</span>
+                    </div>
+                  ) : null}
                   <div className="max-h-80 overflow-auto rounded-lg border border-slate-100">
                     <table className="w-full text-xs">
                       <thead>
@@ -303,7 +321,7 @@ export default function DataView({ client }: { client: ApiClient }) {
             </Card>
 
             <Card title="接口调用示例">
-              <pre className="overflow-x-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed whitespace-pre text-slate-200">
+              <pre className="overflow-x-auto rounded-[9px] border border-[var(--td-line)] bg-[#f7f9fd] px-4 py-3 font-mono text-[11px] leading-relaxed whitespace-pre text-[#34405b]">
 {curlExample}
               </pre>
             </Card>
