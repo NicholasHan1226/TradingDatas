@@ -489,18 +489,18 @@ def test_us_slash_date_published_at_is_normalized() -> None:
 
 
 def test_bare_wall_clock_time_is_anchored_to_source_day() -> None:
-    today = firecrawl_collector.datetime.now(
-        firecrawl_collector._LOCAL_TIMEZONE
-    ).date().strftime("%Y-%m-%d")
     row = _normalize_item(
         {"title": "快讯", "url": "https://finance.sina.com.cn/7x24/1", "published_at": "08:09:28"},
         source="https://finance.sina.com.cn/7x24/",
         time_key="published_at",
         summary_key=None,
         timezone=firecrawl_collector._LOCAL_TIMEZONE,
+        observed_at=firecrawl_collector.datetime.fromisoformat(
+            "2026-08-25T10:00:00+08:00"
+        ),
     )
-    assert row["published_at"] == f"{today}T08:09:28+08:00"
-    assert row["event_date"] == today.replace("-", "")
+    assert row["published_at"] == "2026-08-25T08:09:28+08:00"
+    assert row["event_date"] == "20260825"
 
 
 def test_bare_wall_clock_time_rolls_back_across_midnight() -> None:
