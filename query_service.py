@@ -71,7 +71,7 @@ _PROVIDER_NATIVE_ISSUE_RE = re.compile(
     r"[A-Za-z0-9_]{1,64}"
     r"|unknown_field_sha256:[0-9a-f]{64}"
     r"|type_mismatch:[A-Za-z0-9_]{1,64}:(?:text|integer|float)"
-    r"|time_format_mismatch:[A-Za-z0-9_]{1,64}:(?:yyyymmdd|rfc3339)"
+    r"|time_format_mismatch:[A-Za-z0-9_]{1,64}:(?:yyyymm|yyyymmdd|rfc3339)"
     r"|snapshot_key_fallback:(?:missing|null|non_scalar|type_mismatch):"
     r"[A-Za-z0-9_]{1,64}"
     r")\Z"

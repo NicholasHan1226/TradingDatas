@@ -2434,6 +2434,34 @@ def test_native_query_accepts_hashed_unknown_and_time_format_quality_codes(
     ]
 
 
+def test_native_query_accepts_yyyymm_time_format_quality_code(
+    native_harness: dict[str, object],
+) -> None:
+    month_mismatch = "time_format_mismatch:month:yyyymm"
+    _insert_row(
+        native_harness["conn"],
+        provider="provider-a",
+        row_key="quality-code-yyyymm",
+        payload={"symbol": "QUALITY-MONTH", "trade_date": "20260716", "big": 1},
+        issues=(month_mismatch,),
+    )
+    native_harness["conn"].commit()
+
+    response = _execute(
+        native_harness,
+        _request(
+            fields=("symbol",),
+            filters={"symbol": {"eq": "QUALITY-MONTH"}},
+        ),
+    )
+
+    assert response["data"] == [{"symbol": "QUALITY-MONTH"}]
+    assert response["metadata"]["quality"]["evidence"] == [
+        "provider_dataset_quality_degraded",
+        month_mismatch,
+    ]
+
+
 def test_native_query_select_preserves_invalid_time_when_order_uses_safe_field(
     native_harness: dict[str, object],
 ) -> None:
