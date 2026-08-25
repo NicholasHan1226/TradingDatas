@@ -97,8 +97,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     # active entries whose interfaces are not ingest-ready in the checked-in
     # observations (blocked params, unresolved enums, dataset-local pauses,
     # session-minute fanout) never appear in its candidate projection.  The gap
-    # is 20 as of the 2026-08-17 seed-unlock activation; keep it explicit.
-    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 20
+    # is 19 after daily_basic was correctly returned to the paused contract;
+    # keep the fixture boundary explicit.
+    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 19
     assert activation_projection["candidate_count"] == len(active_evidence) - (
         _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS
     )
