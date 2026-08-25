@@ -28710,7 +28710,7 @@ contracts:
     parameter: ts_code
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
-    batch_size: 10
+    batch_size: 5
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 20
@@ -28723,7 +28723,7 @@ contracts:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
     max_payload_bytes_per_row: 65536
-    max_rows_per_attempt: 10000
+    max_rows_per_attempt: 1500
   reviewed_type_overrides: []
   probe_state: blocked
   probe_block_reasons:

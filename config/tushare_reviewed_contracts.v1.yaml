@@ -2009,7 +2009,12 @@ contracts:
       parameter: ts_code
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
-      batch_size: 10
+      # One session carries at most ~241 one-minute bars per code, so five
+      # codes bound the page at <=1205 rows.  The sensitive-scan budget is
+      # sized from max_rows_per_attempt x max_batches_per_run under the
+      # absolute node cap, and the page limit must also stay above the real
+      # per-batch row count to avoid reject_at_row_limit truncation.
+      batch_size: 5
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 20
@@ -2022,7 +2027,9 @@ contracts:
       max_batch_bytes: 67108864
       max_nesting_depth: 16
       max_payload_bytes_per_row: 65536
-      max_rows_per_attempt: 10000
+      # 1500 x 20 batches x (1 + 2 * 25 fields) + fixed headroom ~= 1.53M
+      # scan nodes, inside the 2M absolute cap that 10000 rows blew through.
+      max_rows_per_attempt: 1500
     reviewed_type_overrides: []
   # The stored DC concept cohort has a complete trade_date/theme_code identity
   # with no null or duplicate keys.  Keep this a normal date-partitioned
