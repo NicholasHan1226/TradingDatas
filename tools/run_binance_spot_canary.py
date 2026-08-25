@@ -134,7 +134,11 @@ def _private_lock(path: Path):
     return descriptor
 
 
-_LOCK_WAIT_SECONDS = 120.0
+# 2026-08-25: the spot closed-5m round grew to a steady ~160s holding the shared
+# lock, so a 120s budget lost the race by seconds on nearly every slot (the
+# book-ticker collector sat at 115s waits or timed out).  300s still bounds a
+# genuinely stuck holder while covering batch holders several minutes long.
+_LOCK_WAIT_SECONDS = 300.0
 _LOCK_RETRY_INTERVAL = 0.5
 
 
