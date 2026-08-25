@@ -277,6 +277,24 @@ def _broker_recommend_contract() -> tuple[DatasetDefinition, ProviderBinding]:
     return dataset, registry.provider_binding(dataset.dataset_id, "tushare")
 
 
+def test_broker_recommend_month_drives_success_receipt_watermark() -> None:
+    dataset, binding = _broker_recommend_contract()
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=({"month": "202608", "broker": "fixture", "ts_code": "000001.SZ"},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert native_ingest._data_through(  # noqa: SLF001
+        dataset,
+        binding,
+        outcome,
+        "2026-08-25T06:47:40Z",
+    ) == "202608"
+
+
 def _validate_broker_recommend_rows(
     binding: ProviderBinding,
     rows: tuple[Mapping[str, object], ...],
