@@ -4340,6 +4340,163 @@ def test_dataset_field_fanout_reads_only_completed_sqlite_facts_stably(
     assert rejected_collector.calls == []
 
 
+def test_dataset_field_fanout_source_read_waits_on_a_bounded_shared_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fanout source read must wait out writers, not fail instantly."""
+
+    base = _registry()
+    source = base.resolve("cn.synthetic.runner")
+    source_binding = replace(
+        base.provider_binding(source.dataset_id, "tushare"),
+        response_completeness=None,
+    )
+    source = replace(
+        source,
+        fields=source.fields
+        + (
+            DatasetField(
+                name="market",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+            DatasetField(
+                name="list_status",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+            DatasetField(
+                name="curr_type",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+            DatasetField(
+                name="list_date",
+                logical_type="text",
+                nullable=True,
+                selectable=True,
+                filterable=True,
+                sortable=True,
+            ),
+        ),
+        provider_bindings=(source_binding,),
+    )
+    target_binding = replace(
+        source_binding,
+        api_name="synthetic_target",
+        read_discriminator_value="synthetic_target",
+        request_shape="entity_fanout",
+        fanout=FanoutPolicy(
+            strategy="dataset_field",
+            parameter="symbol",
+            source_dataset_id=source.dataset_id,
+            source_field="ts_code",
+            batch_size=1,
+            source_equals=(
+                ("market", "主板"),
+                ("list_status", "L"),
+                ("curr_type", "CNY"),
+            ),
+            source_date_field="list_date",
+            source_date_lte_days=30,
+        ),
+        pagination=PaginationPolicy(strategy="none"),
+        response_completeness=None,
+    )
+    target = replace(
+        source,
+        dataset_id="cn.synthetic.target",
+        aliases=("tushare.synthetic_target",),
+        provider_bindings=(target_binding,),
+    )
+    registry = DatasetRegistry((source, target))
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    source_collector = _FakeCollector(
+        ProviderCallOutcome(
+            state="success",
+            rows=(
+                {
+                    "ts_code": "600001.SH",
+                    "trade_date": "20260717",
+                    "close": 12.5,
+                    "market": "主板",
+                    "list_status": "L",
+                    "curr_type": "CNY",
+                    "list_date": "20100101",
+                },
+                {
+                    "ts_code": "600000.SH",
+                    "trade_date": "20260717",
+                    "close": 11.0,
+                    "market": "主板",
+                    "list_status": "L",
+                    "curr_type": "CNY",
+                    "list_date": "20100101",
+                },
+                {
+                    "ts_code": "300001.SZ",
+                    "trade_date": "20260717",
+                    "close": 13.0,
+                    "market": "创业板",
+                    "list_status": "L",
+                    "curr_type": "CNY",
+                    "list_date": "20100101",
+                },
+            ),
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+    )
+    source_result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=registry,
+        collector=source_collector,
+        dataset_id=source.dataset_id,
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="source-completed-attempt",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+    assert source_result.status == "success"
+
+    real_lock = native_ingest.sqlite_authority_lock
+    events: list[dict[str, object]] = []
+
+    def _recording_lock(db_path_arg, *, mode, create=False, timeout=0.0):
+        events.append({"mode": mode, "timeout": timeout})
+        return real_lock(db_path_arg, mode=mode, create=create, timeout=timeout)
+
+    monkeypatch.setattr(native_ingest, "sqlite_authority_lock", _recording_lock)
+
+    batches = native_ingest._load_completed_fanout_batches(
+        db_path,
+        registry=registry,
+        binding=target_binding,
+    )
+
+    assert events, "fanout source read never took the shared authority lock"
+    assert all(event["mode"] == "shared" for event in events)
+    assert all(
+        event["timeout"] == native_ingest._FANOUT_SOURCE_LOCK_WAIT_SECONDS
+        for event in events
+    )
+    assert [batch.values for batch in batches] == [
+        ("600000.SH",),
+        ("600001.SH",),
+    ]
+
+
 def test_oversized_resumable_scan_budget_records_config_error_receipt(
     tmp_path: Path,
 ) -> None:
