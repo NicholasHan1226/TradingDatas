@@ -13375,6 +13375,14 @@ contracts:
     declared_type: str
     description: 解禁结束日期
     required: N
+  - name: offset
+    declared_type: str
+    description: 开始行数
+    required: N
+  - name: limit
+    declared_type: str
+    description: 最大行数
+    required: N
   output_fields:
   - name: ts_code
     declared_type: str

@@ -914,11 +914,14 @@ contracts:
     request_template: {ann_date: '${window.ann_date}'}
     request_variants: [{}]
     fanout: {strategy: none}
-    pagination: {strategy: none}
+    # 2026-08-25 (#339): the endpoint silently caps at ~6000 rows per page, so
+    # strategy=none stored truncated days as success receipts. Page by offset
+    # until a short page; a full page at max_pages fails closed.
+    pagination: {strategy: offset, limit_parameter: limit, offset_parameter: offset, page_size: 6000, max_pages: 8}
     request_window_policy: {required_keys: [ann_date], formats: {ann_date: yyyymmdd}, range_start_key: ann_date, range_end_key: ann_date, max_span_days: 1}
     response_completeness: {strategy: single_partition_unique_primary_key, partition_field: ann_date, request_partition_key: ann_date, fixed_field_matches: {}, reject_at_row_limit: true}
     requested_fields: [ts_code, ann_date, float_date, float_share, float_ratio, holder_name, share_type]
-    budgets: {max_rows_per_attempt: 10000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    budgets: {max_rows_per_attempt: 48000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
   # Two real production receipt cohorts contained 164 non-null, unique
   # [trade_date, ts_code, reason] identities.
