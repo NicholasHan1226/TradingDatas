@@ -142,7 +142,11 @@ const server = http.createServer(async (request, response) => {
     const active = collectionDatasets.filter((item) => item.activation === 'active').length
     return json(response, 200, { datasets: collectionDatasets, total: collectionDatasets.length, active, paused: collectionDatasets.length - active })
   }
-  if (request.method === 'GET' && url.pathname === '/admin/api/health/alerts') return json(response, 200, { alerts: [{ severity: 'critical', title: '新闻数据源连接失败', detail: 'cn.news.flash 最近一次采集返回 provider_unavailable。' }, { severity: 'warning', title: '复权因子数据已过新鲜度窗口', detail: 'cn.dataset.adj_factor 需要检查下一次 post-close 采集。' }, { severity: 'info', title: 'Crypto 数据集本窗口为空', detail: '当前窗口未产生新增行，历史覆盖仍保留。' }] })
+  if (request.method === 'GET' && url.pathname === '/admin/api/health/alerts') return json(response, 200, { alerts: [
+    { alert_id: 'dataset:cn.news.flash:failed', kind: 'dataset_runtime', severity: 'critical', title: 'cn.news.flash: 采集失败', dataset_id: 'cn.news.flash', runtime_state: 'failed', provider: 'firecrawl', cadence: 'event', observed_at: '2026-08-25T00:43:58+08:00', reason_codes: ['provider_error'], suggested_action: '核对上游权限与调用结果，再执行有界重试。' },
+    { alert_id: 'dataset:cn.dataset.adj_factor:stale', kind: 'dataset_runtime', severity: 'warning', title: 'cn.dataset.adj_factor: 数据时效异常', dataset_id: 'cn.dataset.adj_factor', runtime_state: 'stale', provider: 'tushare', cadence: 'postclose_daily', data_through: '20260822', observed_at: '2026-08-22T18:05:00+08:00', reason_codes: ['freshness_sla_exceeded'], suggested_action: '核对最近成功回执、数据水位与下一采集窗口。' },
+    { alert_id: 'dataset:cn.dataset.demo:unobserved', kind: 'dataset_runtime', severity: 'info', title: 'cn.dataset.demo: 尚无运行回执', dataset_id: 'cn.dataset.demo', runtime_state: 'unobserved', provider: 'tushare', cadence: 'on_demand', reason_codes: ['no_recognized_receipt'], suggested_action: '确认该数据集已进入正式采集计划，并检查首次回执。' },
+  ] })
   if (request.method === 'GET' && url.pathname === '/v1/catalog') return json(response, 200, { api_version: 'v1', data: catalogDatasets })
   if (request.method === 'POST' && url.pathname === '/v1/query') {
     const body = await readBody(request)

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CircleCheckBig } from 'lucide-react'
+import { Activity, AlertOctagon, CircleCheckBig, Clock3, DatabaseZap, ShieldAlert } from 'lucide-react'
 import type { ApiClient } from '../../lib/api'
 import type { HealthAlert } from '../../lib/types'
-import { Card, ControlBar, EmptyState, ErrorBanner, LoadingPanel, PageIntro, StatCard } from '../../components/ui'
+import { Badge, CADENCE_LABELS, Card, ControlBar, EmptyState, ErrorBanner, LoadingPanel, PageIntro, StatCard, RUNTIME_STATE_LABELS } from '../../components/ui'
 
 interface AlertsResponse {
   alerts?: HealthAlert[]
@@ -26,6 +26,12 @@ const SEVERITY_META: Record<string, { label: string; card: string; badge: string
     card: 'border-l-blue-400 bg-blue-50/40',
     badge: 'bg-blue-100 text-blue-700',
   },
+}
+
+function displayTime(value?: string | null) {
+  if (!value) return '暂无'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('zh-CN', { hour12: false })
 }
 
 export default function HealthView({ client }: { client: ApiClient }) {
@@ -91,8 +97,8 @@ export default function HealthView({ client }: { client: ApiClient }) {
     <div className="space-y-6">
       <PageIntro
         eyebrow="运行诊断"
-        title="系统健康与告警"
-        description="按照影响等级汇总当前运行时风险与需要关注的服务信号。"
+        title="运行健康"
+        description="将数据采集、时效与回执完整性问题收敛为可执行的运营任务。"
         action={<span className="text-xs text-slate-400">{alerts.length} 条 · 已按严重程度排序</span>}
       />
       <div className="grid grid-cols-3 gap-3">
@@ -127,24 +133,45 @@ export default function HealthView({ client }: { client: ApiClient }) {
       </ControlBar>
       {visibleAlerts.length === 0 ? (
         <Card><EmptyState icon={CircleCheckBig} title="当前筛选下没有告警" hint="这一严重程度暂时没有需要处理的项目。" /></Card>
-      ) : <div className="space-y-3">
+      ) : <div className="grid gap-3 xl:grid-cols-2">
         {visibleAlerts.map((a, idx) => {
           const meta = SEVERITY_META[a.severity] ?? SEVERITY_META.info
+          const AlertIcon = a.kind === 'receipt_integrity' ? ShieldAlert : a.severity === 'critical' ? AlertOctagon : Activity
           return (
-            <div
-              key={idx}
-              className={`rounded-xl border border-slate-200 border-l-4 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)] ${meta.card}`}
+            <article
+              key={a.alert_id ?? `${a.title}-${idx}`}
+              className={`group relative overflow-hidden rounded-[var(--td-radius-lg)] border border-slate-200 border-l-[3px] p-5 shadow-[0_1px_3px_rgb(15_23_42/0.05)] ${meta.card}`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="text-sm font-semibold text-slate-800">{a.title}</h3>
-                <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}>
-                  {meta.label}
-                </span>
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/80 bg-white/75 shadow-[0_1px_2px_rgb(15_23_42/0.06)]">
+                  <AlertIcon aria-hidden className="h-4 w-4 text-slate-700" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <h3 className="break-all font-mono text-[12px] font-semibold leading-5 text-slate-800">{a.dataset_id ?? a.title}</h3>
+                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${meta.badge}`}>
+                      {meta.label}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[13px] font-medium text-slate-700">{a.dataset_id ? a.title.split(':').slice(1).join(':').trim() : a.title}</p>
+                </div>
               </div>
-              {a.detail && (
-                <p className="mt-1.5 text-xs leading-relaxed break-words text-slate-500">{a.detail}</p>
-              )}
-            </div>
+              <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-slate-200/70 py-3 text-xs sm:grid-cols-4">
+                <div><span className="block text-[10px] text-slate-400">状态</span><span className="mt-1 block font-medium text-slate-700">{RUNTIME_STATE_LABELS[a.runtime_state ?? ''] ?? a.runtime_state ?? '完整性'}</span></div>
+                <div><span className="block text-[10px] text-slate-400">来源</span><span className="mt-1 block font-medium text-slate-700">{a.provider ?? '平台回执'}</span></div>
+                <div><span className="block text-[10px] text-slate-400">采集频率</span><span className="mt-1 block font-medium text-slate-700">{CADENCE_LABELS[a.cadence ?? ''] ?? a.cadence ?? '—'}</span></div>
+                <div><span className="block text-[10px] text-slate-400">最近观测</span><span className="mt-1 block truncate font-mono text-[10px] text-slate-600" title={a.observed_at ?? undefined}>{displayTime(a.observed_at)}</span></div>
+              </div>
+              {(a.reason_codes?.length ?? 0) > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{a.reason_codes?.map((reason) => <Badge key={reason} tone="slate">{reason}</Badge>)}</div>}
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-white/90 bg-white/65 px-3 py-2.5">
+                <DatabaseZap aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--td-accent)]" />
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-semibold tracking-[0.04em] text-slate-400">建议处理</span>
+                  <p className="mt-0.5 text-xs leading-5 text-slate-600">{a.suggested_action ?? '查看运行详情并核对最近回执。'}</p>
+                </div>
+              </div>
+              {a.data_through && <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400"><Clock3 aria-hidden size={12} /> 数据截止 <span className="font-mono text-slate-500">{a.data_through}</span></div>}
+            </article>
           )
         })}
       </div>}

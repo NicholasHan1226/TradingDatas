@@ -2202,6 +2202,7 @@ def test_admin_data_endpoints_serve_real_catalog_runtime(
         )
         for dataset in registry.datasets
     }
+    project_calls = 0
 
     @contextmanager
     def snapshot(path: Any):
@@ -2215,6 +2216,8 @@ def test_admin_data_endpoints_serve_real_catalog_runtime(
         now: datetime,
         validation_cache: dict | None = None,
     ) -> dict[str, Any]:
+        nonlocal project_calls
+        project_calls += 1
         return {"datasets": states}
 
     monkeypatch.setattr(catalog_module, "open_verified_read_model_snapshot", snapshot)
@@ -2254,6 +2257,11 @@ def test_admin_data_endpoints_serve_real_catalog_runtime(
             by_severity.setdefault(alert["severity"], []).append(alert)
         assert {a["title"].split(":")[0] for a in by_severity["critical"]} == {failed_id}
         assert {a["title"].split(":")[0] for a in by_severity["warning"]} == {stale_id}
+        failed_alert = by_severity["critical"][0]
+        assert failed_alert["dataset_id"] == failed_id
+        assert failed_alert["runtime_state"] == "failed"
+        assert failed_alert["reason_codes"] == ["provider_error"]
+        assert failed_alert["suggested_action"]
 
         status, overview, _headers, _raw = v1_server.request(
             "GET", "/admin/api/data/overview", token="full-token"
@@ -2264,6 +2272,7 @@ def test_admin_data_endpoints_serve_real_catalog_runtime(
         assert sum(overview["by_runtime_state"].values()) == len(registry.datasets)
         assert overview["by_runtime_state"]["failed"] == 1
         assert overview["by_runtime_state"]["stale"] == 1
+        assert project_calls == 1
         assert sum(overview["by_market"].values()) == len(registry.datasets)
     finally:
         conn.close()

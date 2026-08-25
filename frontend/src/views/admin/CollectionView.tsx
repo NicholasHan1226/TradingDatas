@@ -32,6 +32,7 @@ import {
   SelectInput,
   StatCard,
   ACTIVATION_LABELS,
+  CADENCE_LABELS,
   RUNTIME_STATE_LABELS,
   TABLE_ROW_CLASS,
 } from '../../components/ui'
@@ -68,7 +69,10 @@ const COLUMNS = helper.columns([
     cell: ({ getValue }) => <span className="font-mono text-xs font-medium text-slate-700">{getValue()}</span>,
   }),
   helper.accessor('market', { header: '市场', sortFn: 'alphanumeric' }),
-  helper.accessor('cadence', { header: '频率', sortFn: 'alphanumeric' }),
+  helper.accessor('cadence', {
+    header: '频率', sortFn: 'alphanumeric',
+    cell: ({ getValue }) => CADENCE_LABELS[getValue()] ?? getValue(),
+  }),
   helper.accessor('provider', { header: '提供方', sortFn: 'alphanumeric' }),
   helper.accessor('activation', {
     header: '激活', sortFn: 'alphanumeric',

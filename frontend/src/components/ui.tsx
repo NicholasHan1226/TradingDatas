@@ -268,7 +268,22 @@ export const RUNTIME_STATE_LABELS: Record<string, string> = {
   failed: '运行失败',
   stale: '等待更新',
   degraded: '质量降级',
+  unobserved: '尚未运行',
   unknown: '尚未观测',
+}
+
+export const CADENCE_LABELS: Record<string, string> = {
+  event: '事件驱动',
+  on_demand: '按需',
+  session_minute: '盘中分钟',
+  intraday: '盘中',
+  postclose_daily: '日终',
+  daily_reference: '每日参考',
+  daily: '每日',
+  weekly: '每周',
+  monthly: '每月',
+  quarterly_reporting: '季度',
+  hourly: '每小时',
 }
 
 export const ACTIVATION_LABELS: Record<string, string> = {

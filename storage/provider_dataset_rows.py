@@ -704,6 +704,7 @@ def ingest_provider_native_rows(
         conn = sqlite3.connect(
             f"{db_binding.canonical_path.as_uri()}?mode=rw",
             uri=True,
+            timeout=180.0,
         )
         try:
             conn.execute("BEGIN IMMEDIATE")

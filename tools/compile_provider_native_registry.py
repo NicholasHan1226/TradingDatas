@@ -97,6 +97,8 @@ _PROVIDER_SCAN_FIXED_NODE_HEADROOM = 4_096
 # provider-native schema so a safe wide dataset is not needlessly paused.
 _PROVIDER_SCAN_ABSOLUTE_MAX_FIELDS = 512
 _PROVIDER_SCAN_ABSOLUTE_MAX_NODES = 2_000_000
+_PROVIDER_SCAN_WIDE_FIELD_THRESHOLD = 256
+_PROVIDER_SCAN_WIDE_MAX_NODES = 4_000_000
 _PROVIDER_SCAN_ENVELOPE_DEPTH = 4
 _PROVIDER_SCAN_ABSOLUTE_MAX_DEPTH = 64
 _ROOT_KEYS = frozenset({"version", "bundle_id", "provider", "provenance", "contracts"})
@@ -3112,8 +3114,13 @@ def _compiled_dataset(
         ):
             activation_state = "paused"
         else:
+            max_nodes = (
+                _PROVIDER_SCAN_WIDE_MAX_NODES
+                if field_budget > _PROVIDER_SCAN_WIDE_FIELD_THRESHOLD
+                else _PROVIDER_SCAN_ABSOLUTE_MAX_NODES
+            )
             safe_row_limit = (
-                _PROVIDER_SCAN_ABSOLUTE_MAX_NODES
+                max_nodes
                 - _PROVIDER_SCAN_FIXED_NODE_HEADROOM
                 - 1
             ) // (1 + 2 * field_budget)

@@ -1364,7 +1364,7 @@ def test_candidate_compiler_admits_wide_contract_with_bounded_row_budget() -> No
 
     assert binding["entitlement_state"] == "active"
     assert binding["activation_state"] == "active"
-    assert binding["max_rows_per_attempt"] < 10_000
+    assert binding["max_rows_per_attempt"] == 7_199
 
 
 def test_formal_mode_never_promotes_preactivation_evidence() -> None:
