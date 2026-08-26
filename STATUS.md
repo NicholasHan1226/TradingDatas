@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-26 03:15 CST。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-26 12:10 CST（第九轮 10:33 CST 切换）。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,15 +9,47 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `9f99800bcfc7a7ce4550add9199d2eef55354ca8`（PR #344，含 #340/#338/#342） | 已验收源码；文档合并不等于发布 |
+| GitHub `main` | `c5e84990c222d6166c203812d825f510ec5b795d`（PR #348，含 #347） | 已验收源码；文档合并不等于发布 |
 | 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
-| A 股有效 release | `9f99800bcfc7a7ce4550add9199d2eef55354ca8`（回滚点 `423a9f49aee26ac41c476cdf39292e680e150066`） | immutable 运行源码，2026-08-26 02:47 CST 切换 |
+| A 股有效 release | `c5e84990c222d6166c203812d825f510ec5b795d`（回滚点 `9f2f19c82f63c352d9166f821b3bd823e29882c9`） | immutable 运行源码，2026-08-26 10:33 CST 切换 |
 | Crypto 有效 release | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（回滚点 `7d04a1f6fe273d81e7ea20bef29c7c7701091df2`） | 隔离 immutable 运行源码，2026-08-23 15:26 CST 切换 |
 
 上述各层必须分别读回；源码、service 或 timer 单层健康都不能写成"三端同步"、
 消费者闭环或模拟交易结果。
 
 ## 2026-08-26 发布记录
+
+第九轮（10:33 CST，A 股面 → `c5e8499`，PR #348）：#319 收尾——#347 把六个财报源
+换到 ann_date 窗后，实弹探针（复刻 collector 传输 `tushare_rows_outcome`）证明
+QuickSync 端点行为：income 族逗号多码 ts_code 携带任意第二参数静默返回空（单码+
+同一 ann_date 返回 2 行；ann_date 单独被拒 20002 必填 ts_code）；pledge_stat 每
+请求静默截断在 1000 行（三长历史码恰返回 1000，单码最大观测 641）。据此七源
+（income/balancesheet/cashflow/express/fina_indicator/fina_audit/pledge_stat）
+`batch_size` 10→1，U=`1eee7462…`、registry=`7f99b8f1…` 重生成重钉，新增生成态
+registry 回归钉测并把七源移出 `TEN_CODE_FANOUT_APIS`（含原因注释）。流程同标准
+发布：build→staging root:root→verify→停 timer 排空→switch-current→恢复。排障
+记录：切链时 switch-current 报 "release directory mode must be 0555"，根因是此前
+服务器端探针以 venv python 直接从发布树 import 且未设 PYTHONDONTWRITEBYTECODE，
+在不可变树里留下 __pycache__（755）；清除并复验回滚树后切换成功。教训：对发布树
+的任何一次性 python 调用必须带 `PYTHONDONTWRITEBYTECODE=1`。后续 issue：#349
+（fina_mainbz 无 ann_date 字段需 period-window 设计）、#350（七个数据集
+cadence=on_demand 从未被调度——生产零行的直接原因是调度缺失而非采集失败；
+cb_basic 自 2026-08-14 停更待诊断）。回滚点 `9f2f19c8`。
+实弹验收（当日两次 on_demand 单窗触发）：修复形态在生产路径真实出数——income
+ann_date=20260826 落 389 行 valid（约 190 个真实公告码，半年报季）；pledge_stat
+落 399,315 行单码全史、无 1000 行截断；重跑去重语义验证通过（62,520 行全部
+unchanged）。两次扇出均在 ~1-2k 请求后遭上游同端点持续突发停滞（客户端传输超时
+fail-fast 中止；同期混合定时周期正常，属 #350 已量化的上游行为）。数据集最新周期
+state=failed 期间查询面按设计 fail-closed 返回空（`allow_rows=False`），干净周期
+完成后恢复；全宇宙覆盖需 #350 的 resumable_fanout/排期决策。
+
+第八轮（08:51 CST，A 股面 → `9f2f19c`，PR #347）：#319 第一轮——六个财报源
+（income/balancesheet/cashflow/express/fina_indicator/fina_audit）请求模板从
+run_clock 推导的 end_date/start_date 窗改为 ann_date 单日窗（公告日语义，窗口机制
+全通用无需改调度 lane），pledge_stat 去掉 end_date 改纯 ts_code 扇出（stk_rewards
+先例形态）；观察文件 registered pin → U=`8b372d0d…`、registry=`776a23a5…` 重生成
+重钉。部署后实弹验收发现多码+过滤组合静默空（见第九轮），故本轮为"必要但不充分"，
+由 #348 完成修复。回滚锚 `9f99800`。
 
 第七轮（02:47 CST，A 股面 → `9f99800`，PR #344）：#339 修复——share_float 上游单次
 响应静默截断在 ~6000 行而声明 pagination strategy=none，高流量 ann_date 六个分区
@@ -101,8 +133,10 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 当前运行面
 
-- **A 股 / Tushare 数据面：** 有效 immutable release 为 `300182f`；18082 API service
-  active/running、通用 collector timer enabled。
+- **A 股 / Tushare 数据面：** 有效 immutable release 为 `c5e8499`（2026-08-26 10:33 CST
+  切换，回滚点 `9f2f19c`）；18082 API service active、通用 collector timer enabled。
+  income 族与 pledge_stat 七源已具备正确请求形态（单码扇出），但 cadence=on_demand
+  未排期、且全宇宙单轮覆盖受上游持续突发停滞限制（见 #350）。
 - **Crypto 隔离数据面：** immutable `current` 为 `300182f`；18083 API service 为
   `active/running`，匿名 `GET /v1/catalog` 返回 `401`。Spot、rules、book-ticker、USDM、
   OI dump 和 premium-index dump 六个 timer 均 enabled。切换后首轮 spot 采集
@@ -125,11 +159,14 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 下一步
 
-1. 周一开盘后核对 A 股模拟盘自然轮次的 receipt 与决策结果，确认 rt-min 请求
-   在预算内完成且无新增 fail-closed。
-2. 观察 crypto journal 中 `lock_wait_seconds` 的频率与数值，确认锁冲突不再
-   造成整轮采集失败；异常时再评估错峰调度。
-3. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
+1. #350 排期决策：为 income 族/pledge_stat/top10_floatholders/cb_share 选定
+   cadence 与 resumable_fanout 策略（全宇宙覆盖需跨周期收敛），并诊断
+   cb_basic 自 2026-08-14 的停更；干净整轮完成后补查询面回读验收。
+2. #349：fina_mainbz period-window 策略设计（无 ann_date 字段）。
+3. #327 服务器存储劣化（11GB 无 WAL）待授权后手术。
+4. 归档候选交 Controller 收口（rt-min-daily-scan-budget 分支、rolling-simulation
+   残留、ta-365/366、fix/firecrawl-bare-time-anchor 210c02e、约 60 陈旧分支）。
+5. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
    报告；普通变更由 Git history 追溯。
-4. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
+6. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
    timer 状态复制进长期 API/Operations 合同。
