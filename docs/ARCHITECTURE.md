@@ -6,6 +6,28 @@ TradingDatas 是独立的、Agent-first 公共金融数据基础设施，不是�
 
 产品分类与技术字段必须分层：A 股和加密资产主要映射 `market`，新闻优先按内容身份映射；provider 只描述来源。账户最终授权由 endpoint scope、分类 allowlist 和运行限额共同决定。`data_categories` 由认证配置读取后，只在服务端根据当前 immutable registry 推导精确 dataset ID；显式分类账户进入 catalog/query 时不再携带宽泛数据 scope，避免 `read` 或 dataset-required scope 绕过分类限制。旧记录缺字段保持兼容全量，显式空列表无数据授权，未知分类使认证配置 fail closed。前端只展示后端投影，不能自行成为权限权威。
 
+## 公共体验、内容与商业边界
+
+公共产品在同一品牌下包含彼此独立的投影面，不能合并 authority：
+
+```text
+data plane: registry -> SQLite facts/receipts -> catalog/query
+account/commerce plane: packages/trials/add-ons/payment -> server entitlements
+content plane: Data + Recipes + Research + Docs -> versioned authored content
+target product plane: canonical/PIT model + transparent Features -> versioned derived objects
+```
+
+- data plane 是数据身份、可用性、覆盖、freshness、quality 与 lineage 的唯一权威；
+- account/commerce plane 是价格、套餐映射、试用、续费、到期和支付结果的唯一权威；在该 plane 实现并读回前，相关页面只能标记 proposal；
+- content plane 解释数据和教授准备方法，读取 data/account 投影但不反向修改 registry、facts、receipts、activation、entitlement 或 quota。
+- target product plane 只通过新合同建立 canonical/PIT 与透明 Feature 对象，并保留回链 provider-native facts/receipts；当前 `/v1` 和 SQLite 权威链不得被原地改写。
+
+Recipe 是版本化准备合同，不是当前运行时 pipeline。它可以组合多个 `catalog/query` 请求的示例、join/as-of 规则、预期输出 schema 和 synthetic/observed 教学结果，但不得由当前 API 服务器现场执行跨 dataset join、生成 feature、跑回测或返回研究结论。未来若提供可执行 Recipe，必须经过独立运行合同、版本、lineage、授权与读回。
+
+Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具和限制的透明衍生数据。它不能是 alpha、信号、排名或建议。Feature Plane 目前未实现，详情页与 manifest 只能标记为 target/product definition/planned。完整分层见 `docs/product/PRODUCT_PLANES.md`。
+
+公共路由和内部部署路径在实现前由 `docs/design/public-data-product-system-v1.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
+
 ## 权威顺序
 
 1. dataset registry：数据集身份、provider binding、schema、cadence、entitlement 和 query policy；

@@ -2,6 +2,16 @@
 
 React + TypeScript frontend for the TradingDatas login, administrator console, and customer data portal. Production assets are built into `../static/app/` and are committed with the source change.
 
+The current source tree is the authenticated console. The public Data / Cookbook / Pricing / Docs / Account candidate now lives independently in `../public-web/` and is governed by `../docs/design/public-data-product-system-v1.md`; it must not be improvised inside the operator console or presented as deployed. Public content may reuse tokens and primitives, but customer acquisition, dataset discovery, educational Cookbook entries, Agent/MCP connection, checkout, and authenticated operations remain distinct task surfaces.
+
+Frontend code must preserve three authorities:
+
+- runtime dataset state comes from catalog/query and receipt-backed metadata;
+- account access, quotas, expiry, trials, and payments come from authenticated server/commerce projections;
+- Cookbook prose and synthetic examples are versioned content and never override either authority.
+
+Do not put real tokens, customer responses, provider payloads, production status, or unverified prices into fixtures, screenshots, analytics, local storage, or committed bundles.
+
 ## Local development
 
 ```bash
@@ -36,3 +46,5 @@ npm run build
 ```
 
 The build command refreshes `../static/app/`. Verify the committed output together with the React source before publishing.
+
+For any future public experience, also verify the route/content matrix, dataset-detail responsive layout, Cookbook code-copy behavior, Agent prompt redaction/copy/test states, `zh-CN`/`en` detection and switching, package/add-on states, keyboard navigation, reduced motion, and truthful synthetic/observed labels before considering the frontend a release candidate.
