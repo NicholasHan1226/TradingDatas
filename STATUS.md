@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-26 12:10 CST（第九轮 10:33 CST 切换）。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-26 20:05 CST（第十轮 19:28 CST 切换）。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,15 +9,31 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `c5e84990c222d6166c203812d825f510ec5b795d`（PR #348，含 #347） | 已验收源码；文档合并不等于发布 |
+| GitHub `main` | `21d03183355d7de6578ab5761d83aa91a1925c1f`（PR #352，含 #348/#347） | 已验收源码；文档合并不等于发布 |
 | 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
-| A 股有效 release | `c5e84990c222d6166c203812d825f510ec5b795d`（回滚点 `9f2f19c82f63c352d9166f821b3bd823e29882c9`） | immutable 运行源码，2026-08-26 10:33 CST 切换 |
+| A 股有效 release | `21d03183355d7de6578ab5761d83aa91a1925c1f`（回滚点 `252eb9b2915350908dd0bd9ff7ffd4162a263ea0`） | immutable 运行源码，2026-08-26 19:28 CST 切换 |
 | Crypto 有效 release | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（回滚点 `7d04a1f6fe273d81e7ea20bef29c7c7701091df2`） | 隔离 immutable 运行源码，2026-08-23 15:26 CST 切换 |
 
 上述各层必须分别读回；源码、service 或 timer 单层健康都不能写成"三端同步"、
 消费者闭环或模拟交易结果。
 
 ## 2026-08-26 发布记录
+
+第十轮（19:28 CST，A 股面 → `21d0318`，PR #352）：Controller 侧修复 cls.cn 电报条目
+携带 ~12h 未来时间戳毒化 `cn.news.flash` 收据水印、导致数据集被 planner 以
+`invalid_receipt_authority` 持续跳过（09:50 起）的事故。修复为写时钳制：
+`_clamp_future_watermark` 用与投影侧 `_data_through_in_utc` 完全一致的解析阶梯
+（%Y%m/%Y%m%d/ISO，naive 按 dataset 时区），把严格晚于写入时刻的候选 data_through
+钳到 `written_at`；trade_calendar 豁免与投影层镜像。审计通过后本地全量复跑
+2322 passed / 1 skipped（25m54s），标准流程发布：build→scp→staging（manifest 驱动
+chmod 0444/0555、目录 0555、root:root）→verify→停 timer 排空在途周期（90s）→
+switch-current→恢复服务，认证 catalog readback 200/192 datasets。运维注记：本轮
+回滚点 `252eb9b` 的顶层 manifest 缺失，按确定性重建（同 commit 同树 ⇒ 字节一致）
+并先对已安装树 verify 通过后才切链；manifest 归位 `manifests/<sha>.json` 约定。
+事故语义：修复只阻断新增毒化，存量未来水印需等墙钟越过该时间戳（约当日 21:45 CST）
+后由 `state.invalid_reasons` 自然恢复干净，采集自动续跑——已排一次性验收检查。
+另：`global.news.flash` 周期 state=failed 为 firecrawl `provider_error`（既有独立
+问题，与本修复无关）。回滚点 `252eb9b2`。
 
 第九轮（10:33 CST，A 股面 → `c5e8499`，PR #348）：#319 收尾——#347 把六个财报源
 换到 ann_date 窗后，实弹探针（复刻 collector 传输 `tushare_rows_outcome`）证明
@@ -133,10 +149,11 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 当前运行面
 
-- **A 股 / Tushare 数据面：** 有效 immutable release 为 `c5e8499`（2026-08-26 10:33 CST
-  切换，回滚点 `9f2f19c`）；18082 API service active、通用 collector timer enabled。
+- **A 股 / Tushare 数据面：** 有效 immutable release 为 `21d0318`（2026-08-26 19:28 CST
+  切换，回滚点 `252eb9b`）；18082 API service active、通用 collector timer enabled。
   income 族与 pledge_stat 七源已具备正确请求形态（单码扇出），但 cadence=on_demand
-  未排期、且全宇宙单轮覆盖受上游持续突发停滞限制（见 #350）。
+  未排期、且全宇宙单轮覆盖受上游持续突发停滞限制（见 #350）。`cn.news.flash` 存量
+  毒化水印待 ~21:45 CST 墙钟自愈后恢复采集（第十轮）。
 - **Crypto 隔离数据面：** immutable `current` 为 `300182f`；18083 API service 为
   `active/running`，匿名 `GET /v1/catalog` 返回 `401`。Spot、rules、book-ticker、USDM、
   OI dump 和 premium-index dump 六个 timer 均 enabled。切换后首轮 spot 采集
@@ -162,11 +179,13 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 1. #350 排期决策：为 income 族/pledge_stat/top10_floatholders/cb_share 选定
    cadence 与 resumable_fanout 策略（全宇宙覆盖需跨周期收敛），并诊断
    cb_basic 自 2026-08-14 的停更；干净整轮完成后补查询面回读验收。
-2. #349：fina_mainbz period-window 策略设计（无 ann_date 字段）。
-3. #327 服务器存储劣化（11GB 无 WAL）待授权后手术。
-4. 归档候选交 Controller 收口（rt-min-daily-scan-budget 分支、rolling-simulation
+2. 观察 `cn.news.flash` 21:45 CST 自愈后首个采集周期（第十轮已排验收检查），
+   确认未来时间戳条目被钳制、水印不再毒化。
+3. #349：fina_mainbz period-window 策略设计（无 ann_date 字段）。
+4. #327 服务器存储劣化（11GB 无 WAL）待授权后手术。
+5. 归档候选交 Controller 收口（rt-min-daily-scan-budget 分支、rolling-simulation
    残留、ta-365/366、fix/firecrawl-bare-time-anchor 210c02e、约 60 陈旧分支）。
-5. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
+6. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
    报告；普通变更由 Git history 追溯。
-6. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
+7. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
    timer 状态复制进长期 API/Operations 合同。
