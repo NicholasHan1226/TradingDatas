@@ -66,6 +66,39 @@ _SCRAPE_PARAM_KEYS = frozenset(
 )
 _SEARCH_PARAM_KEYS = frozenset({"query", "limit", "timeout_ms"})
 _SEARCH_SOURCE_LABEL = "firecrawl.search_news"
+_UPSTREAM_TIMEOUT_MARKERS = ("timeout", "timed out")
+_UPSTREAM_REFUSAL_MARKERS = (
+    "401",
+    "403",
+    "forbidden",
+    "unauthorized",
+    "captcha",
+    "blocked",
+)
+
+
+def _safe_upstream_failure_message(payload: object) -> str:
+    """Classify a firecrawl failure envelope without retaining its raw text.
+
+    The upstream error string may embed arbitrary target-page content, so only
+    whitelisted markers may select a fixed diagnostic; everything else stays
+    generic and the original text never reaches logs or receipts.
+    """
+    error = payload.get("error") if isinstance(payload, dict) else None
+    text = error.lower() if type(error) is str else ""
+    if any(marker in text for marker in _UPSTREAM_TIMEOUT_MARKERS):
+        return "firecrawl upstream extraction timed out"
+    if any(marker in text for marker in _UPSTREAM_REFUSAL_MARKERS):
+        return "firecrawl upstream extraction refused by the target site"
+    return "firecrawl upstream extraction failed"
+
+
+class _FirecrawlUpstreamFailure(ValueError):
+    """Envelope-level upstream failure carrying only a fixed diagnostic."""
+
+    def __init__(self, safe_message: str) -> None:
+        super().__init__(safe_message)
+        self.safe_message = safe_message
 
 
 class _RejectRedirects(HTTPRedirectHandler):
@@ -352,6 +385,16 @@ class FirecrawlWebCollector:
                 sensitive_values=() if api_key is None else (api_key,),
                 scan_budget=scan_budget,
             )
+        except _FirecrawlUpstreamFailure as exc:
+            return ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=None,
+                error_code="provider_error",
+                error_message=exc.safe_message,
+                sensitive_values=() if api_key is None else (api_key,),
+                scan_budget=scan_budget,
+            )
         except Exception as exc:
             transport = isinstance(exc, (URLError, TimeoutError, ConnectionError, OSError))
             return ProviderCallOutcome(
@@ -427,7 +470,7 @@ class FirecrawlWebCollector:
             api_key=api_key,
         )
         if type(payload) is not dict or payload.get("success") is not True:
-            raise ValueError("firecrawl scrape response is not a success envelope")
+            raise _FirecrawlUpstreamFailure(_safe_upstream_failure_message(payload))
         data = payload.get("data")
         if type(data) is not dict or type(data.get("json")) is not dict:
             raise ValueError("firecrawl scrape response lacks the json extraction")
@@ -466,7 +509,7 @@ class FirecrawlWebCollector:
             api_key=api_key,
         )
         if type(payload) is not dict or payload.get("success") is not True:
-            raise ValueError("firecrawl search response is not a success envelope")
+            raise _FirecrawlUpstreamFailure(_safe_upstream_failure_message(payload))
         data = payload.get("data")
         if type(data) is not dict or type(data.get("news")) is not list:
             raise ValueError("firecrawl search response lacks the news array")
