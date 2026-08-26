@@ -1059,20 +1059,13 @@ def _validate_response_completeness_impl(
         raise ValueError("provider response completeness strategy is unsupported")
 
 
-def _validate_event_stream_unique_primary_keys(
-    dataset: DatasetDefinition,
+def _event_stream_window_bounds(
     binding: ProviderBinding,
     policy: Any,
-    rows: tuple[Mapping[str, Any], ...],
     *,
     request_window: Mapping[str, str],
-) -> None:
-    """Assert in-window event times and unique keys for content streams.
-
-    Content-stream responses (news flash, social sentiment, regulator pages)
-    carry no request echo and no fanout dimension, so only row shape can be
-    asserted; row-count completeness is deliberately not claimed here.
-    """
+) -> tuple[Any, Any]:
+    """Decode the request window for one content-stream contract."""
 
     if (
         policy.date_field is None
@@ -1091,6 +1084,32 @@ def _validate_event_stream_unique_primary_keys(
         ).anchor
     except ValueError as exc:
         raise ValueError("provider response event stream request values are invalid") from exc
+    return start, end
+
+
+def _validate_event_stream_unique_primary_keys(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    policy: Any,
+    rows: tuple[Mapping[str, Any], ...],
+    *,
+    request_window: Mapping[str, str],
+) -> None:
+    """Assert late-safe event times and unique keys for content streams.
+
+    Content-stream responses (news flash, social sentiment, regulator pages)
+    carry no request echo and no fanout dimension, so only row shape can be
+    asserted; row-count completeness is deliberately not claimed here.
+
+    Overnight pages legitimately mix items published just before the calendar
+    day window start; since 2026-08-26 those pre-window rows are dropped at
+    the storage handoff instead of failing the whole round.  Future-dated
+    rows stay a hard failure because they indicate provider-side mislabeled
+    timestamps that would poison every downstream reader.
+    """
+
+    _start, end = _event_stream_window_bounds(binding, policy, request_window=request_window)
+    window_format = binding.request_window_policy.formats[policy.request_start_key]
     _validate_unique_primary_keys(dataset, rows, dedup_duplicate_keys=policy.dedup_duplicate_keys)
     for row in rows:
         try:
@@ -1099,8 +1118,44 @@ def _validate_event_stream_unique_primary_keys(
             ).anchor
         except ValueError as exc:
             raise ValueError("provider response event time is invalid") from exc
-        if not (start <= event_time <= end):
-            raise ValueError("provider response event time falls outside the request window")
+        if event_time > end:
+            raise ValueError("provider response event time is after the request window end")
+
+
+def _in_scope_success_rows(
+    binding: ProviderBinding,
+    outcome: ProviderCallOutcome,
+    *,
+    request_window: Mapping[str, str],
+) -> tuple[Mapping[str, Any], ...]:
+    """Drop pre-window-start rows from content-stream pages before storage.
+
+    Companion to ``_validate_event_stream_unique_primary_keys``: validation
+    tolerates items published before the window start so one stale page
+    cannot fail a whole round, and this filter keeps those items out of the
+    receiving receipt's scope.  Future-dated rows never reach here because
+    validation already rejected them.
+    """
+
+    policy = binding.response_completeness
+    if (
+        outcome.state != "success"
+        or policy is None
+        or policy.strategy != "event_stream_unique_primary_key"
+    ):
+        return outcome.mutable_rows()
+    assert policy.date_field is not None
+    assert policy.request_start_key is not None
+    start, _end = _event_stream_window_bounds(binding, policy, request_window=request_window)
+    window_format = binding.request_window_policy.formats[policy.request_start_key]
+    kept = []
+    for row in outcome.mutable_rows():
+        event_time = decode_request_window_value(
+            row.get(policy.date_field), window_format
+        ).anchor
+        if event_time >= start:
+            kept.append(row)
+    return tuple(kept)
 
 
 def _validate_fanout_snapshot(
@@ -1500,7 +1555,7 @@ def _persist_provider_call(
             db_path,
             dataset=dataset,
             binding=binding,
-            rows=outcome.mutable_rows(),
+            rows=_in_scope_success_rows(binding, outcome, request_window=normalized_window),
             context=call_context,
         )
     except ProviderNativeAdmissionError as exc:

@@ -2701,7 +2701,7 @@ def test_windowed_unique_primary_key_allows_empty_fanout_partition() -> None:
         )
 
 
-def test_event_stream_unique_primary_key_asserts_window_and_identity() -> None:
+def _event_stream_contract() -> tuple[Any, Any, Any]:
     policy = ResponseCompletenessPolicy(
         strategy="event_stream_unique_primary_key",
         date_field="datetime",
@@ -2747,6 +2747,11 @@ def test_event_stream_unique_primary_key_asserts_window_and_identity() -> None:
         ),
         response_completeness=policy,
     )
+    return dataset, binding, policy
+
+
+def test_event_stream_unique_primary_key_asserts_window_and_identity() -> None:
+    dataset, binding, policy = _event_stream_contract()
     window = {
         "start_time": "2026-07-31 00:00:00",
         "end_time": "2026-07-31 23:59:59",
@@ -2770,7 +2775,17 @@ def test_event_stream_unique_primary_key_asserts_window_and_identity() -> None:
         (),
         request_window=window,
     )
-    with pytest.raises(ValueError, match="falls outside"):
+    # Since 2026-08-26 pre-window-start items no longer fail the round;
+    # overnight pages legitimately carry yesterday's last flashes.  The
+    # storage handoff drops them instead (_in_scope_success_rows below).
+    native_ingest._validate_event_stream_unique_primary_keys(  # noqa: SLF001
+        dataset,
+        binding,
+        policy,
+        ({"datetime": "2026-07-30 23:59:00", "title": "stale", "content": None},),
+        request_window=window,
+    )
+    with pytest.raises(ValueError, match="after the request window end"):
         native_ingest._validate_event_stream_unique_primary_keys(  # noqa: SLF001
             dataset,
             binding,
@@ -2786,6 +2801,52 @@ def test_event_stream_unique_primary_key_asserts_window_and_identity() -> None:
             (rows[0], dict(rows[0])),
             request_window=window,
         )
+
+
+def test_in_scope_success_rows_drop_pre_window_items_only_for_event_streams() -> None:
+    dataset, binding, policy = _event_stream_contract()
+    window = {
+        "start_time": "2026-07-31 00:00:00",
+        "end_time": "2026-07-31 23:59:59",
+    }
+
+    def outcome(state: str, rows: tuple[Mapping[str, object], ...]) -> ProviderCallOutcome:
+        return ProviderCallOutcome(
+            state=state,  # type: ignore[arg-type]
+            rows=rows,
+            provider_code=0,
+            error_code=None,
+            error_message=None,
+        )
+
+    mixed = (
+        {"datetime": "2026-07-30 23:59:00", "title": "stale", "content": None},
+        {"datetime": "2026-07-31 09:30:00", "title": "fresh", "content": None},
+    )
+    kept = native_ingest._in_scope_success_rows(  # noqa: SLF001
+        binding,
+        outcome("success", mixed),
+        request_window=window,
+    )
+    assert kept == (mixed[1],)
+
+    # Empty and failed outcomes pass through untouched regardless of shape.
+    assert (
+        native_ingest._in_scope_success_rows(  # noqa: SLF001
+            binding,
+            outcome("empty", ()),
+            request_window=window,
+        )
+        == []
+    )
+
+    # Non-event-stream strategies keep every returned row.
+    snapshot_binding = replace(binding, response_completeness=None)
+    assert native_ingest._in_scope_success_rows(  # noqa: SLF001
+        snapshot_binding,
+        outcome("success", mixed),
+        request_window=window,
+    ) == list(mixed)
 
 
 def test_fanout_row_limit_is_applied_per_provider_call() -> None:
