@@ -159,6 +159,83 @@ def test_scrape_page_normalizes_items(
     assert isinstance(formats, list) and formats[0]["type"] == "json"
 
 
+def _envelope_failure_case(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    payload: dict[str, object],
+) -> object:
+    _key_file(tmp_path, monkeypatch)
+    collector = FirecrawlWebCollector()
+    monkeypatch.setattr(
+        collector, "_post", lambda path, body, *, api_key: payload
+    )
+    return collector.collect_outcome("scrape_page_global", dict(_SCRAPE_PARAMS))
+
+
+def test_scrape_upstream_timeout_envelope_gets_safe_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_error = "Scrape timed out after 30000ms for https://www.sec.gov/x?secret=1"
+    outcome = _envelope_failure_case(
+        monkeypatch, tmp_path, {"success": False, "error": raw_error}
+    )
+    assert outcome.state == "failed"
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "firecrawl upstream extraction timed out"
+    assert raw_error not in json.dumps(outcome.error_message)
+
+
+def test_scrape_upstream_refusal_envelope_gets_safe_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_error = "403 Forbidden from target anti-bot service"
+    outcome = _envelope_failure_case(
+        monkeypatch, tmp_path, {"success": False, "error": raw_error}
+    )
+    assert outcome.state == "failed"
+    assert outcome.error_message == (
+        "firecrawl upstream extraction refused by the target site"
+    )
+    assert raw_error not in str(outcome.error_message)
+
+
+def test_scrape_upstream_unknown_envelope_stays_generic_and_leak_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_error = "weird failure mentioning ts_code=113050.SZ internals"
+    outcome = _envelope_failure_case(
+        monkeypatch, tmp_path, {"success": False, "error": raw_error}
+    )
+    assert outcome.state == "failed"
+    assert outcome.error_code == "provider_error"
+    assert outcome.error_message == "firecrawl upstream extraction failed"
+    assert raw_error not in str(outcome.error_message)
+    missing = _envelope_failure_case(monkeypatch, tmp_path, {"success": False})
+    assert missing.error_message == "firecrawl upstream extraction failed"
+
+
+def test_search_upstream_envelope_failure_uses_same_classification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _key_file(tmp_path, monkeypatch)
+    collector = FirecrawlWebCollector()
+    monkeypatch.setattr(
+        collector,
+        "_post",
+        lambda path, body, *, api_key: {
+            "success": False,
+            "error": "request blocked by upstream",
+        },
+    )
+    outcome = collector.collect_outcome(
+        "search_news", {"query": "central bank", "limit": 10}
+    )
+    assert outcome.state == "failed"
+    assert outcome.error_message == (
+        "firecrawl upstream extraction refused by the target site"
+    )
+
+
 
 def test_dotted_local_datetime_published_at_is_normalized(
     tmp_path: Path,
