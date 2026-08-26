@@ -16,7 +16,7 @@ provenance:
     sha256: 413e067715fa6796601a3f4930a49f6454d66e08f9b3e205341d41ed47481ed9
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 4085a74bd7167bdd9572dba0269d5f570315ea1b3771b8cc60102605a9e542d6
+    sha256: 8b372d0d6735027ac49f44422008538889f32d166a58cda258dd131a5982d5fd
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -159,11 +159,7 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-    start_date:
+    ann_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
@@ -309,11 +305,7 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-    start_date:
+    ann_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
@@ -1017,11 +1009,7 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-    start_date:
+    ann_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
@@ -1046,11 +1034,7 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-    start_date:
+    ann_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
@@ -1075,11 +1059,7 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-    start_date:
+    ann_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
@@ -1728,11 +1708,7 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-    start_date:
+    ann_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
@@ -2499,10 +2475,6 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
     ts_code:
       source: dataset_field
       dataset_id: cn.equity.security_master
