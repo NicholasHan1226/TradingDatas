@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  ArrowSquareOut,
   Check,
+  ClockCounterClockwise,
   Copy,
   Database,
+  FunnelSimple,
   GraduationCap,
   GlobeSimple,
   List,
@@ -16,6 +19,14 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { productManifest } from "./productManifest";
+import connectedInterfaceSnapshot from "./connectedInterfaceSnapshot.json";
+import {
+  collectionHistory,
+  connectedCoverage,
+  landscapeMeta,
+  roadmapPhases,
+  sourceCandidates,
+} from "./dataSourceLandscape";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "account"];
@@ -447,6 +458,202 @@ function ProductObjectDetail({ type, item, locale, onNavigate }) {
   );
 }
 
+const sourceFamilyLabels = {
+  "all": { zh: "全部类别", en: "All families" },
+  "china-markets": { zh: "中国市场", en: "China markets" },
+  "global-markets": { zh: "全球市场", en: "Global markets" },
+  "funds-indices": { zh: "基金与指数", en: "Funds & indices" },
+  "derivatives": { zh: "期货与期权", en: "Futures & options" },
+  "macro-rates": { zh: "宏观与利率", en: "Macro & rates" },
+  "company-regulatory": { zh: "公司与监管", en: "Company & regulatory" },
+  "news-events": { zh: "新闻与事件", en: "News & events" },
+  "crypto": { zh: "加密与链上", en: "Crypto & on-chain" },
+  "web-attention": { zh: "Web 与关注度", en: "Web & attention" },
+  "physical-world": { zh: "实体世界", en: "Physical world" },
+};
+
+const interfaceCategoryLabels = {
+  "all": { zh: "全部接口", en: "All interfaces" },
+  "market-reference": { zh: "行情与基础参考", en: "Market & reference" },
+  "intraday": { zh: "日内与微观结构", en: "Intraday & microstructure" },
+  "fundamentals": { zh: "财务与公司行动", en: "Fundamentals & actions" },
+  "funds-indices": { zh: "基金、指数与债券", en: "Funds, indices & bonds" },
+  "derivatives": { zh: "期货与期权", en: "Futures & options" },
+  "flow-positioning": { zh: "资金流与持仓", en: "Flow & positioning" },
+  "macro-policy": { zh: "宏观与政策", en: "Macro & policy" },
+  "news-events": { zh: "新闻与事件", en: "News & events" },
+};
+
+function ConnectedInterfaceExplorer({ locale }) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("all");
+  const [activation, setActivation] = useState("all");
+  const [limit, setLimit] = useState(24);
+  const interfaces = connectedInterfaceSnapshot.interfaces;
+  const categories = ["all", ...new Set(interfaces.map((item) => item.category))];
+  const visible = interfaces.filter((item) => {
+    const matchesCategory = category === "all" || item.category === category;
+    const matchesActivation = activation === "all" || item.activation === activation;
+    const haystack = `${item.apiName} ${item.datasetId} ${item.provider} ${item.cadence}`.toLowerCase();
+    return matchesCategory && matchesActivation && haystack.includes(query.trim().toLowerCase());
+  });
+
+  useEffect(() => setLimit(24), [query, category, activation]);
+
+  return (
+    <section className="connected-interface-section">
+      <div className="section-heading compact-heading">
+        <span className="mono-kicker">01 / CONNECTED INTERFACE INDEX</span>
+        <h2>{locale === "zh" ? "已接入接口，按数据材料浏览。" : "Connected interfaces, organized by material."}</h2>
+        <p>{locale === "zh" ? "目录来自当前运行注册表快照。active 表示已启用配置，不自动等于今天采集健康；真实状态仍回到 receipt 与认证 API。" : "This index comes from the current runtime-registry snapshot. Active means enabled configuration, not healthy collection today; live state still returns to receipts and authenticated APIs."}</p>
+      </div>
+      <div className="interface-summary-strip">
+        {connectedCoverage.map((item) => (
+          <article key={item.id}>
+            <span>{item.market}</span>
+            <strong>{item.provider}</strong>
+            <div><b>{item.contractCount}</b><small>{item.unit}</small></div>
+            <p>{item.note[locale]}</p>
+          </article>
+        ))}
+      </div>
+      <div className="interface-controls">
+        <label className="source-search">
+          <MagnifyingGlass size={18} />
+          <span className="sr-only">{locale === "zh" ? "搜索已接入接口" : "Search connected interfaces"}</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={locale === "zh" ? "搜索接口名、dataset ID 或 cadence" : "Search API name, dataset ID, or cadence"} />
+        </label>
+        <label className="compact-select"><span>{locale === "zh" ? "分类" : "Family"}</span><select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((value) => <option key={value} value={value}>{interfaceCategoryLabels[value]?.[locale] || value}</option>)}</select></label>
+        <label className="compact-select"><span>{locale === "zh" ? "配置状态" : "Config state"}</span><select value={activation} onChange={(event) => setActivation(event.target.value)}><option value="all">{locale === "zh" ? "全部" : "All"}</option><option value="active">active</option><option value="paused">paused</option></select></label>
+      </div>
+      <div className="landscape-readout"><span>{String(visible.length).padStart(3, "0")}</span>{locale === "zh" ? ` / ${interfaces.length} 个合同接口` : ` / ${interfaces.length} contract interfaces`}</div>
+      <div className="interface-index-list">
+        {visible.slice(0, limit).map((item, index) => (
+          <article key={`${item.provider}-${item.apiName}`}>
+            <span className="interface-index">{String(index + 1).padStart(3, "0")}</span>
+            <div><strong>{item.apiName}</strong><code>{item.datasetId}</code></div>
+            <div><span>{interfaceCategoryLabels[item.category]?.[locale]}</span><small>{item.cadence}</small></div>
+            <div className={`interface-state is-${item.activation}`}>
+              <i />
+              <span><b>{locale === "zh" ? "配置" : "config"}</b>{item.activation}</span>
+              <small><b>{locale === "zh" ? "权限观测" : "entitlement"}</b>{item.entitlement}</small>
+            </div>
+          </article>
+        ))}
+      </div>
+      {limit < visible.length && <button className="secondary-button load-more" type="button" onClick={() => setLimit((value) => value + 48)}>{locale === "zh" ? `继续显示（剩余 ${visible.length - limit}）` : `Show more (${visible.length - limit} remaining)`}<ArrowRight /></button>}
+    </section>
+  );
+}
+
+function CandidateSourceExplorer({ locale }) {
+  const [query, setQuery] = useState("");
+  const [family, setFamily] = useState("all");
+  const families = ["all", ...new Set(sourceCandidates.map((source) => source.family))];
+  const rightsLabels = locale === "zh" ? {
+    public_terms: "开放条款待确认",
+    public_market_api: "公开行情接口",
+    license_required: "需要商业许可",
+    review_required: "需逐项审核",
+    terms_review: "接口条款审核",
+    series_specific: "按序列核验",
+    dataset_specific: "按数据集授权",
+    plan_specific: "按套餐授权",
+    source_sensitive: "受原始来源约束",
+    page_level_review: "按页面审核",
+  } : {};
+  const visible = sourceCandidates.filter((source) => {
+    const matchesFamily = family === "all" || source.family === family;
+    const haystack = `${source.name} ${source.region} ${source.materials} ${source.access}`.toLowerCase();
+    return matchesFamily && haystack.includes(query.trim().toLowerCase());
+  });
+
+  return (
+    <section className="source-landscape-section">
+      <div className="section-heading compact-heading">
+        <span className="mono-kicker">04 / CANDIDATE SOURCE LANDSCAPE</span>
+        <h2>{locale === "zh" ? "未接入，不等于不可见。" : "Not connected does not mean invisible."}</h2>
+        <p>{locale === "zh" ? "候选数据源按市场、材料、接入方式和授权风险登记。这里表示研究进度，不表示已经购买、可销售或已进入采集。" : "Candidate sources are registered by market, material, access method, and rights risk. This is research progress—not purchase, resale permission, or collection state."}</p>
+      </div>
+      <div className="source-controls">
+        <label className="source-search">
+          <MagnifyingGlass size={18} />
+          <span className="sr-only">{locale === "zh" ? "搜索候选数据源" : "Search candidate sources"}</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={locale === "zh" ? "搜索来源、地区或数据材料" : "Search source, region, or material"} />
+        </label>
+        <div className="source-family-filter" aria-label={locale === "zh" ? "数据类别" : "Data family"}>
+          <FunnelSimple size={17} />
+          <select value={family} onChange={(event) => setFamily(event.target.value)}>
+            {families.map((value) => <option key={value} value={value}>{sourceFamilyLabels[value]?.[locale] || value}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="landscape-readout"><span>{String(visible.length).padStart(2, "0")}</span>{locale === "zh" ? ` / ${sourceCandidates.length} 个已研究来源` : ` / ${sourceCandidates.length} reviewed sources`}</div>
+      <div className="source-table" role="table" aria-label={locale === "zh" ? "候选数据源" : "Candidate data sources"}>
+        <div className="source-table-head" role="row">
+          <span>{locale === "zh" ? "来源 / 地区" : "Source / region"}</span>
+          <span>{locale === "zh" ? "数据材料" : "Materials"}</span>
+          <span>{locale === "zh" ? "状态 / 权利" : "Stage / rights"}</span>
+          <span>{locale === "zh" ? "计划" : "Plan"}</span>
+        </div>
+        {visible.map((source) => (
+          <article className="source-row" role="row" key={source.id}>
+            <div><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div>
+            <p>{source.materials}</p>
+            <div className="source-status"><span>{source.stage.replaceAll("_", " ")}</span><small>{rightsLabels[source.rights] || source.rights.replaceAll("_", " ")}</small></div>
+            <div className="source-plan"><span>{source.phase}</span><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut size={16} /></a></div>
+          </article>
+        ))}
+      </div>
+      <p className="landscape-note">{locale === "zh" ? `研究注册表更新于 ${landscapeMeta.reviewedAt}。它不是对全球全部接口的穷尽声明；新来源必须进入同一审核结构。` : `Research registry reviewed ${landscapeMeta.reviewedAt}. It is not an exhaustive claim about every API worldwide; new sources enter the same review structure.`}</p>
+    </section>
+  );
+}
+
+function CollectionHistorySection({ locale }) {
+  return (
+    <section className="collection-history-section">
+      <div className="section-heading compact-heading">
+        <span className="mono-kicker">03 / COLLECTION STATE HISTORY</span>
+        <h2>{locale === "zh" ? "状态保留时间，也保留边界。" : "State keeps time—and its limits."}</h2>
+        <p>{locale === "zh" ? "历史记录说明某个时间点发生了什么。它不会把过去一次成功延长成今天的健康声明。" : "History explains what happened at a point in time. It never stretches one past success into a health claim today."}</p>
+      </div>
+      <div className="history-ledger">
+        {collectionHistory.map((event) => (
+          <article key={`${event.date}-${event.provider}`}>
+            <time>{event.date}</time>
+            <div className="history-node"><i /><span /></div>
+            <div><span className="history-status"><ClockCounterClockwise size={14} />{event.status.replaceAll("_", " ")}</span><h3>{event.title[locale]}</h3><p>{event.detail[locale]}</p><small>{event.provider}</small></div>
+          </article>
+        ))}
+      </div>
+      <a href="/data/receipts" className="text-link" onClick={(event) => { event.preventDefault(); window.history.pushState({}, "", "/data/receipts"); window.dispatchEvent(new PopStateEvent("popstate")); }}>{locale === "zh" ? "阅读状态证据规则" : "Read the state-evidence rules"}<ArrowRight /></a>
+    </section>
+  );
+}
+
+function DataRoadmapSection({ locale }) {
+  return (
+    <section className="data-roadmap-section">
+      <div className="section-heading compact-heading">
+        <span className="mono-kicker">05 / INTEGRATION ROADMAP</span>
+        <h2>{locale === "zh" ? "接入顺序由可交付性决定。" : "Integration order follows deliverability."}</h2>
+        <p>{locale === "zh" ? "优先级不是接口数量竞赛。每个来源必须依次通过官方来源、授权、合同、受控采集和 receipt/API 回读。" : "Priority is not an API-count contest. Every source must pass official-source, rights, contract, bounded collection, and receipt/API readback gates."}</p>
+      </div>
+      <div className="roadmap-lanes">
+        {roadmapPhases.map((phase) => (
+          <article key={phase.id}>
+            <div><span>{phase.id}</span><small>{phase.horizon[locale]}</small></div>
+            <h3>{phase.title[locale]}</h3>
+            <ol>{phase.gates.map((gate) => <li key={gate}>{gate}</li>)}</ol>
+          </article>
+        ))}
+      </div>
+      <div className="roadmap-boundary"><ShieldCheck size={22} weight="duotone" /><p>{locale === "zh" ? "只有拿到明确再分发权、完成 provider-native 验证并产生正式 receipt/API 证据的数据，才有资格进入可售套餐。" : "Only data with clear redistribution rights, provider-native validation, and formal receipt/API evidence can enter a sellable package."}</p></div>
+    </section>
+  );
+}
+
 export function App() {
   const [locale, setLocale] = useState(() => localStorage.getItem("td-locale") || getSystemLocale());
   const [themeChoice, setThemeChoice] = useState(() => localStorage.getItem("td-theme") || "system");
@@ -658,15 +865,23 @@ export function App() {
             { path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" },
           ]} />
           <section className="page-hero data-page-hero">
-            <span className="mono-kicker">DATA CATALOG / A-SHARE FIRST</span>
-            <h1>{locale === "zh" ? "先理解数据，再决定如何使用。" : "Know the material before you query it."}</h1>
-            <p>{locale === "zh" ? "TradingDatas 把 A 股原始数据按研究与交易工作所需的材料分类，并为每个数据集说明结构、覆盖、更新与来源凭证。" : "TradingDatas organizes raw A-share data around the materials research and trading work actually needs—with schema, coverage, updates, and source receipts made explicit."}</p>
+            <span className="mono-kicker">DATA CATALOG / CONNECTED + CANDIDATE + PLANNED</span>
+            <h1>{locale === "zh" ? "看见已经接入的，也看见下一步。" : "See what is connected—and what comes next."}</h1>
+            <p>{locale === "zh" ? "TradingDatas 公开已接入接口、配置状态、历史采集证据、未接入候选来源与接入计划。A 股优先，但数据来源研究不局限于国内市场。" : "TradingDatas publishes connected interfaces, config state, historical collection evidence, candidate sources, and the integration roadmap. A-share comes first; source research is global."}</p>
+            <div className="data-hero-metrics">
+              <div><strong>222</strong><span>{locale === "zh" ? "境内只读能力目录" : "domestic read capabilities"}</span></div>
+              <div><strong>190</strong><span>{locale === "zh" ? "Tushare 标准化合同" : "normalized Tushare contracts"}</span></div>
+              <div><strong>133</strong><span>{locale === "zh" ? "配置为 active" : "configured active"}</span></div>
+              <div><strong>{sourceCandidates.length}</strong><span>{locale === "zh" ? "全球候选来源" : "global candidate sources"}</span></div>
+            </div>
           </section>
+
+          <ConnectedInterfaceExplorer locale={locale} />
 
           <section className="data-taxonomy">
             <div className="section-heading compact-heading">
-              <span className="mono-kicker">01 / CORE MATERIALS</span>
-              <h2>{locale === "zh" ? "我们有哪些数据？" : "What data do we provide?"}</h2>
+              <span className="mono-kicker">02 / USER-FACING MATERIAL TAXONOMY</span>
+              <h2>{locale === "zh" ? "接口按材料分类，不按供应商堆叠。" : "Interfaces are grouped by material—not vendor."}</h2>
               <p>{locale === "zh" ? "分类面向用户任务；底层 Catalog 仍保留 market 与 domain 等标准合同。" : "Categories are designed for user tasks; the underlying Catalog retains standard market and domain contracts."}</p>
             </div>
             <div className="data-category-grid">
@@ -676,9 +891,15 @@ export function App() {
             </div>
           </section>
 
+          <CollectionHistorySection locale={locale} />
+
+          <CandidateSourceExplorer locale={locale} />
+
+          <DataRoadmapSection locale={locale} />
+
           <section className="data-template-section">
             <div className="section-intro">
-              <span className="mono-kicker">02 / SHARED DATA TEMPLATE</span>
+              <span className="mono-kicker">06 / SHARED DATA TEMPLATE</span>
               <h2>{locale === "zh" ? "每种数据，都有可读的统一说明。" : "Every dataset follows a readable contract."}</h2>
               <p>{locale === "zh" ? "用户无需先理解不同上游接口。每个 Catalog 条目说明数据身份、所属市场、内容领域、时间覆盖、更新时间、字段与可验证 receipt。" : "Users do not need to decode upstream APIs first. Every Catalog entry describes identity, market, domain, time coverage, update cadence, fields, and a verifiable receipt."}</p>
             </div>
@@ -690,14 +911,9 @@ export function App() {
             </div>
           </section>
 
-          <section className="object-index-section">
-            <div className="section-heading compact-heading"><span className="mono-kicker">DATASET OBJECTS / EXAMPLE CONTRACTS</span><h2>{locale === "zh" ? "从数据族进入可验证的数据集对象。" : "Move from a family into a verifiable dataset object."}</h2><p>{locale === "zh" ? "这些条目用于演示内页结构；状态标签不会替代真实 Catalog 与 receipt。" : "These entries demonstrate detail-page structure; status labels never replace the live Catalog and receipts."}</p></div>
-            <div className="object-list">{productManifest.objects.datasets.map((item) => <a key={item.id} href={`/datasets/${item.id}`} onClick={(event) => navigate(event, `/datasets/${item.id}`)}><div><MaturityTag status={item.status} locale={locale} /><h3>{item.title[locale]}</h3><p>{item.detail}</p></div><ArrowRight /></a>)}</div>
-          </section>
-
           <section className="receipt-section data-receipt-section">
             <div className="section-intro">
-              <span className="mono-kicker">03 / PROVENANCE / QUALITY / COVERAGE</span>
+              <span className="mono-kicker">07 / PROVENANCE / QUALITY / COVERAGE</span>
               <h2>{copy.receipts}</h2><p>{copy.receiptsCopy}</p>
               <a href="/docs" className="text-link" onClick={(event) => navigate(event, "/docs")}>{copy.receiptAction}<ArrowRight /></a>
             </div>
@@ -706,7 +922,7 @@ export function App() {
 
           <section className="alternative-data-section">
             <div className="section-heading compact-heading">
-              <span className="mono-kicker">04 / ALTERNATIVE DATA ADD-ONS</span>
+              <span className="mono-kicker">08 / ALTERNATIVE DATA ADD-ONS</span>
               <h2>{locale === "zh" ? "另类数据独立选择，独立授权。" : "Alternative data stays separately chosen and entitled."}</h2>
               <p>{locale === "zh" ? "基础套餐用户可获得限定试用；试用结束后，由用户选择是否加购。来源与再分发边界会在下单前展示。" : "Package users may receive a limited trial. After it ends, add-on access is an explicit choice, with source and redistribution boundaries shown before ordering."}</p>
             </div>
