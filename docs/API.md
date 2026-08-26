@@ -1,5 +1,15 @@
 # TradingDatas Internal API
 
+Agent-specific connection prompts do not create Agent-specific API routes.
+Claude, Codex, OpenClaw, Hermes, and other HTTP-capable agents use the same
+authenticated endpoints and metadata semantics below. The canonical prompt and
+variant contract is documented in [AGENT_INTEGRATIONS.md](AGENT_INTEGRATIONS.md).
+
+The current public data API has exactly the two `/v1` endpoints documented
+below. Canonical/PIT objects, transparent Features, and executable Recipes are
+target product planes described in `product/PRODUCT_PLANES.md`; this document
+does not define or imply a live `/v2` route.
+
 ## GET /v1/catalog
 
 返回首期产品范围内、已经具备 provider-neutral runtime contract 的可发现数据集、

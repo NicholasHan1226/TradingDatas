@@ -2,7 +2,7 @@
 
 ## 最终目标
 
-TradingDatas 优先成为稳定运行的内部金融数据底座：属于当前产品范围、且上游能力已经通过真实调用证明可用的数据集，应尽快沿统一链路持续积累数据，并由客观证据自动提升可用等级，而不是等待整个平台一次性完成。
+TradingDatas 优先成为稳定运行的金融数据底座，并在同一事实链上逐步形成公共数据产品：属于当前产品范围、且上游能力已经通过真实调用证明可用的数据集，应尽快沿统一链路持续积累数据，并由客观证据自动提升可用等级，而不是等待采集、商业化和完整网站一次性完成。
 
 统一数据链：
 
@@ -13,7 +13,7 @@ provider
 -> SQLite facts + transaction-scoped receipt
 -> runtime metadata projection
 -> GET /v1/catalog + POST /v1/query
--> internal consumers
+-> authenticated consumers
 ```
 
 每个数据集都应：
@@ -38,7 +38,7 @@ provider
 - `stable` 由适用 cadence 的连续成功和消费者 readback 自动形成；满足冻结规则即可自动晋级，不需要人工确认。
 - 自动晋级只能扩大“内部只读数据可用性”和既有预算内的调度范围，不能绕过 provider 权限、资源预算、数据完整性或安全边界。
 - GitHub Actions 是可选验证渠道，不是生产上线门禁。Actions 不可用时，以本地/服务器确定性测试、候选 release 校验和生产 runtime readback 作为发布证据。
-- 不为未来公网 SaaS、多租户、计费、复杂 RBAC 或理论扩展提前建设系统。
+- 公共 Data/Features/Recipes/Research/Pricing/Docs/Account 可以在合同层和前端候选中独立推进，但不得在运行面、commerce、授权、再分发和 production readback 完成前伪装为 live，也不得阻断既有数据持续运行。
 
 ## Phase 0 — clean-slate 基础
 
@@ -100,6 +100,25 @@ mutable data -> /opt/investment-data/tradingdatas/
 - CI 不可用时不阻断发布，但发布脚本/服务器验证失败必须 fail closed；
 - 已稳定替代的旧运行入口按引用归零后删除，不长期维持双轨。
 
+## Phase 4 — 公共数据产品定义与内测入口
+
+公共产品继续销售同一份 receipt-backed 原始数据，不建立研究、策略或交易旁路。
+
+- 冻结 Data / Features / Recipes / Research / Pricing / Docs / Account 的对象、索引页、详情页和状态词；
+- 完成 `zh-CN`/`en` 系统语言检测、显式切换、偏好持久化、English fallback 和技术标识不翻译合同；
+- 建立 Claude、Codex、OpenClaw、Hermes 和其它 HTTP Agent 的单一 canonical prompt 编译合同、密钥隔离和连接测试状态；
+- 先完成一条 A 股付费价值纵向切片：provider-native evidence -> canonical/PIT 定义 -> 可复现 Recipe -> 私测交付；广泛 provider 扩展不作为公共商业叙事的前置条件，但既有受控采集继续独立运行；
+- 以 dataset-detail 页面连接 schema、覆盖、cadence、lineage、样本、限制、API 示例和相关 Feature/Recipe；
+- Future Feature Plane 只承载透明、版本化衍生数据；先冻结公式、输入、as-of、缺失/修订、测试与 lineage，再讨论运行时实现；
+- Recipes 只提供查询、连接、as-of 对齐、复权、缺失处理和验证方法，示例结果标明 synthetic/observed，不发布研究结论或策略绩效；
+- 冻结少量完整基础套餐与另类数据 add-on 的 server-side entitlement 映射；试用到期默认停止且不自动收费的目标只有在 commerce 实现和读回后才可对外承诺；
+- 第三方数据逐类完成使用/再分发权、provider contract、真实 receipt/API readback 和 account entitlement；
+- 实现网站账户与 API key 分离、订单/订阅/发票/webhook 幂等和客户自助 token 管理；commerce 数据不写入金融 facts SQLite；
+- 在自动价格、支付和授权完成前，公共商业 CTA 固定为申请 private beta；不得把 proposal 套餐写成可立即购买；
+- 公共前端按 `docs/product/PUBLIC_SURFACE_MAP.md` 与 `docs/design/public-data-product-system-v1.md` 完成 desktop/tablet/mobile、无障碍、错误/空/到期/试用结束状态和真实浏览器视觉验收。
+
+退出条件分两步：先让内测客户可以从 Dataset/Feature/Recipe/Research 关系理解产品并申请匹配的 A 股数据访问；随后在 commerce 实现后，客户可以购买已获授权的数据套餐、读取真实 entitlement，并用可复现 Recipe 正确准备数据。网站、commerce、数据 runtime 与生产 readback 仍分别有可验证证据。
+
 ## 文档与历史
 
 文档职责固定，避免重复维护同一事实：
@@ -111,6 +130,9 @@ mutable data -> /opt/investment-data/tradingdatas/
 - `docs/ARCHITECTURE.md`：稳定架构；
 - `docs/API.md`：接口合同；
 - `docs/OPERATIONS.md`：部署、恢复和运行操作；
+- `docs/product/PUBLIC_SURFACE_MAP.md`：公共对象、导航、分类内页与详情页合同；
+- `docs/product/PRODUCT_PLANES.md`：当前 Evidence Plane 与目标 Product/Feature/Recipe planes；
+- `docs/design/public-data-product-system-v1.md`：公共产品、商业页面与前端视觉开发合同；
 - `docs/adr/`：影响未来实现的长期决策；
 - `docs/reports/`：需要人工可读保留的日期化 readback、事故与验收报告；
 - SQLite receipts、runtime logs/evidence：机器运行历史，保存在运行数据面，不复制进 Git 文档。
@@ -119,4 +141,4 @@ mutable data -> /opt/investment-data/tradingdatas/
 
 ## 后续评估
 
-当前不开发公网数据产品。若未来新增 provider，优先复用现有 registry/receipt/query 链；只有 transport、auth、payload 或 pagination 协议确实不同，才增加最小 provider-level adapter。任何未来扩展都不能阻断当前数据持续运行和积累。
+公网产品按 Phase 4 的独立合同推进，不改变当前数据持续运行的优先级。若新增 provider，优先复用现有 registry/receipt/query 链；只有 transport、auth、payload 或 pagination 协议确实不同，才增加最小 provider-level adapter。公共页面、套餐、Feature 或 Recipe 均不能成为新增专用 route、数据表、collector、timer 或 provider 业务分支的理由。

@@ -14,6 +14,25 @@ TradingDatas 是一个类似 Tushare 的、面向公共用户但所有数据请�
 
 TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金、持仓、风控、订单、成交、执行回执或交易建议；不直接 import TradingAgent/MarketGraph 业务代码，不共享数据库，不做跨系统事务或 callback。
 
+## 公共产品与教学内容边界
+
+TradingDatas 对外销售的是可信、可追溯、可复现的金融数据原料。公共网站的信息架构固定分为 `Data`、`Features`、`Recipes`、`Research`、`Pricing`、`Docs` 与账户入口；`Research` 按 TradingDatas 自有分类体系整理外部论文，`Recipes` 回答“如何正确准备和组合数据”。它们是发现、购买、学习和管理同一个数据产品的界面，不是新的研究或交易 authority。Agent/MCP 是 Account/Docs 下的交付方式，不是首要购买理由。
+
+- `Data` 只展示 registry 与 catalog/query 可证明的数据身份、字段、覆盖、更新、lineage、样本和限制。静态文案不能把 paused/unobserved/degraded 数据写成可用，也不能从 provider 文档或一次 HTTP 200 推断历史完整性。
+- `Research` 只整理、分类和展示外部行业论文或研究，保留作者、年份、期刊/来源和外部链接，并可映射所需原始数据材料；不得改写成 TradingDatas 自有结论、推荐、绩效或数据产品 benchmark。论文元数据与摘要须标明外部来源，静态示例不得冒充已上线数据库。
+- `Features` 只允许透明、版本化的衍生数据，必须公开公式、输入、时间/as-of 对齐、缺失/修订策略、测试与限制；它不是因子排名、信号、策略或建议。当前 Feature Plane 未实现，相关页面只能标记为 `product definition` 或 `planned`。
+- `Recipes` 只教授查询、连接、时间/as-of 对齐、复权、缺失处理、去重和验证；示例必须列 dataset IDs、窗口、方法、输出 schema、限制及 synthetic/observed 身份。
+- Agent 接入提示词只允许由 `docs/AGENT_INTEGRATIONS.md` 的单一 canonical template 派生；不得在提示词、URL、fixture、日志或静态 bundle 中嵌入真实 key。Claude、Codex、OpenClaw、Hermes 与其它 Agent 共用固定 catalog/query 和同一 metadata/receipt 验证语义。
+- 公共站支持 `zh-CN`/`en`，首次跟随系统语言，显式选择可持久化；dataset ID、字段名、API route、schema、receipt ID、reason code 和 provider-native payload 永不翻译。MCP/Agent、语言与外观设置只放在独立 Account 工作区，全局导航右侧只保留账户头像，不重复放 Connect/Console/语言/主题文本操作。
+- Data、Features、Recipes、Research、Pricing、Docs 与 Account 是可复制、可回退、可直接访问的独立公共页面，并继续进入 dataset/feature/recipe/research/docs 详情页；它们不是首页锚点或承载完整任务的大下拉菜单。Account 按账户概览、数据访问、集成、账单、设置分组，前端显示不替代 portal/commerce/auth 后端事实。
+- 允许描述的“效果”仅限覆盖增加、匹配率、时间对齐、重复减少、输出形态、延迟与查询成本。禁止收益、Alpha、胜率、预测准确率、因子排名、推荐、信号或策略绩效。
+- 套餐、另类数据试用、加购、续费和价格只有在 commerce/account 后端合同实现并可读回后才可声明 live。前端标签、Feature/Recipe 或营销内容不授予数据权限。
+- 第三方和另类数据必须先完成上游使用/再分发权、provider 合同、transport entitlement、真实 receipt/API readback 和账户 entitlement 映射，继续复用固定 catalog/query API；不得因商业页面新增 provider 专用公共 route。
+
+当前 `/v1` 仍是 provider-native Evidence Plane。未来 canonical/PIT Product Plane、Feature Plane 与 Recipe Plane 必须独立版本化并保持回链 receipt；不得原地改写当前事实链，也不得在新 API 合同、迁移、测试、授权和生产读回完成前声明 live。产品层级与页面合同见 `docs/product/PRODUCT_PLANES.md` 和 `docs/product/PUBLIC_SURFACE_MAP.md`。
+
+公共产品、内容与前端合同以 `docs/PRODUCT.md`、`docs/product/` 和 `docs/design/public-data-product-system-v1.md` 为事实源。变更导航、内容语义、套餐/加购、示例 API、用户可见授权或视觉系统时，同批更新这些文档；没有对应 backend 合同时必须显式标记为 proposal，不能伪装为已实现。
+
 ## 不可漂移的数据链
 
 ```text
@@ -97,6 +116,8 @@ scope 检查（门户自加载不烧客户配额），但完整认证、每小�
 `cd frontend && npm ci && npm run build`（输出直接落到 `static/app/`）。
 千级采集目录的本地响应式/虚拟滚动验收使用 `cd frontend && npm run mock-api:stress`，
 它只生成内存中的 mock collection rows，不得作为生产数据规模或运行健康证据。
+
+**公共前端开发规范**：当前 `frontend/` 是已认证 console；公共 Data/Features/Recipes/Research/Pricing/Docs/Account 不得未经路由与部署合同直接塞进 operator workspace。公共页面可以复用 design tokens、排版、按钮、输入、代码块、图表和无障碍原语，但 acquisition、数据发现、外部文献整理、教学内容、Agent 接入、checkout 与 authenticated operations 必须保持任务边界。所有新页面至少验证 desktop/tablet/mobile、键盘焦点、reduced motion、loading/empty/error/expired/trial-ended、长中文/英文/代码溢出、语言切换与 synthetic/observed/product-definition/planned 标识。不得在 fixture、截图、localStorage、analytics 或静态 bundle 中放真实 token、客户响应、provider payload、生产状态或未经实现的价格/授权。
 
 Token 配置（`config/api_tokens.json`）支持扩展字段：
 
