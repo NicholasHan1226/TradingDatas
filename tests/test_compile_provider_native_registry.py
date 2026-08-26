@@ -123,6 +123,28 @@ def test_rt_min_full_universe_is_exact_and_resumable_in_generated_registry() -> 
     )
 
 
+def test_report_family_fanouts_are_single_code_in_generated_registry() -> None:
+    """QuickSync silently returns zero rows when comma-separated ts_code values
+    are combined with any filter parameter (income report family), and
+    pledge_stat caps every response at 1000 rows, so both shapes only deliver
+    complete data with one code per request."""
+    registry = load_dataset_registry(TARGET_PATH)
+    single_code_datasets = (
+        "cn.dataset.balancesheet",
+        "cn.dataset.cashflow",
+        "cn.dataset.express",
+        "cn.dataset.fina_audit",
+        "cn.dataset.fina_indicator",
+        "cn.dataset.income",
+        "cn.dataset.pledge_stat",
+    )
+    for dataset_id in single_code_datasets:
+        binding = registry.provider_binding(dataset_id, "tushare")
+        assert binding.fanout is not None, dataset_id
+        assert binding.fanout.strategy == "dataset_field", dataset_id
+        assert binding.fanout.batch_size == 1, dataset_id
+
+
 def test_disclosure_date_observation_projects_reviewed_identity_without_missing_field() -> (
     None
 ):

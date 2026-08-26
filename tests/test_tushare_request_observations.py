@@ -27,17 +27,16 @@ TRANSPORT_OBSERVATIONS = ROOT / "config" / "quicksync_interface_observations.v1.
 UPSTREAM_CONTRACTS = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
 PROVIDER_NATIVE_REGISTRY = ROOT / "config" / "provider_native_dataset_registry.yaml"
 
+# QuickSync silently returns zero rows when comma-separated ts_code values are
+# combined with any filter parameter, and pledge_stat caps every response at
+# 1000 rows, so the report family and pledge_stat fan out one code per request
+# (see test_report_family_fanouts_are_single_code_in_generated_registry).  The
+# APIs below stay at ten codes because their requests carry ts_code as the only
+# provider parameter or tolerate multi-value codes with their filter.
 TEN_CODE_FANOUT_APIS = {
-    "balancesheet",
-    "cashflow",
     "cyq_chips",
     "cyq_perf",
-    "express",
-    "fina_audit",
-    "fina_indicator",
     "fina_mainbz",
-    "income",
-    "pledge_stat",
     "stk_rewards",
     "top10_floatholders",
     "top10_holders",
