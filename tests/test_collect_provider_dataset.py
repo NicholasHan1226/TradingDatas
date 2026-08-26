@@ -295,6 +295,93 @@ def test_broker_recommend_month_drives_success_receipt_watermark() -> None:
     ) == "202608"
 
 
+def _news_flash_contract() -> tuple[DatasetDefinition, ProviderBinding]:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    dataset = registry.resolve("cn.news.flash")
+    return dataset, registry.provider_binding(dataset.dataset_id, "firecrawl")
+
+
+def test_mistimestamped_flash_watermark_clamps_to_write_instant() -> None:
+    dataset, binding = _news_flash_contract()
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=(
+            {"title": "ok", "published_local": "2026-08-26 09:44:00"},
+            {"title": "mistimed", "published_local": "2026-08-26 21:45:13"},
+        ),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert native_ingest._data_through(  # noqa: SLF001
+        dataset,
+        binding,
+        outcome,
+        "2026-08-26T01:40:06Z",
+        written_at="2026-08-26T01:55:00Z",
+    ) == "2026-08-26T01:55:00Z"
+
+
+def test_intra_window_and_past_flash_watermarks_stay_exact() -> None:
+    dataset, binding = _news_flash_contract()
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=(
+            {"title": "a", "published_local": "2026-08-26 09:30:10"},
+            {"title": "b", "published_local": "2026-08-26 09:44:00"},
+        ),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert native_ingest._data_through(  # noqa: SLF001
+        dataset,
+        binding,
+        outcome,
+        "2026-08-26T01:40:06Z",
+        written_at="2026-08-26T01:55:00Z",
+    ) == "2026-08-26 09:44:00"
+
+
+def test_future_dated_partition_watermark_clamps_to_write_instant() -> None:
+    dataset, binding = _broker_recommend_contract()
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=({"month": "202701", "broker": "fixture", "ts_code": "000001.SZ"},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert native_ingest._data_through(  # noqa: SLF001
+        dataset,
+        binding,
+        outcome,
+        "2026-08-25T06:47:40Z",
+        written_at="2026-08-25T07:00:00Z",
+    ) == "2026-08-25T07:00:00Z"
+
+
+def test_unparseable_flash_watermark_passes_through() -> None:
+    dataset, binding = _news_flash_contract()
+    outcome = ProviderCallOutcome(
+        state="success",
+        rows=({"title": "odd", "published_local": "not-a-timestamp"},),
+        provider_code=0,
+        error_code=None,
+        error_message=None,
+    )
+
+    assert native_ingest._data_through(  # noqa: SLF001
+        dataset,
+        binding,
+        outcome,
+        "2026-08-26T01:40:06Z",
+    ) == "not-a-timestamp"
+
+
 def _validate_broker_recommend_rows(
     binding: ProviderBinding,
     rows: tuple[Mapping[str, object], ...],

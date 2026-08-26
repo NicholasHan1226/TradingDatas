@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Protocol, Sequence
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from collectors.tushare.tushare_common import (
     ProviderCallOutcome,
@@ -911,11 +911,48 @@ def _matching_values(
     return values
 
 
+def _clamp_future_watermark(candidate: str, timezone_name: str, bound: str) -> str:
+    """Clamp a watermark claiming coverage later than its write instant.
+
+    One mistimestamped upstream event (e.g. a flash item carrying an
+    evening timestamp in the morning) otherwise drives data_through into
+    the future; storage.receipt_projection then invalidates the receipt's
+    authority with data_through_in_future and freezes the dataset until
+    wall clock catches up. Parsing mirrors _data_through_in_utc so only
+    values that parser would judge future get clamped; anything it cannot
+    parse never trips that comparison and passes through untouched.
+    """
+    try:
+        zone = ZoneInfo(timezone_name)
+        stamp = candidate.strip()
+        if len(stamp) == 6 and stamp.isdigit():
+            parsed = datetime.strptime(stamp, "%Y%m")
+        elif len(stamp) == 8 and stamp.isdigit():
+            parsed = datetime.strptime(stamp, "%Y%m%d")
+        else:
+            parsed = datetime.fromisoformat(
+                f"{stamp[:-1]}+00:00" if stamp.endswith("Z") else stamp
+            )
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            parsed = parsed.replace(tzinfo=zone)
+        bound_at = datetime.fromisoformat(
+            f"{bound[:-1]}+00:00" if bound.endswith("Z") else bound
+        )
+        if bound_at.tzinfo is None:
+            bound_at = bound_at.replace(tzinfo=timezone.utc)
+        if parsed.astimezone(timezone.utc) > bound_at.astimezone(timezone.utc):
+            return bound
+    except (ValueError, ZoneInfoNotFoundError):
+        pass
+    return candidate
+
+
 def _data_through(
     dataset: DatasetDefinition,
     binding: ProviderBinding,
     outcome: ProviderCallOutcome,
     started_at: str,
+    written_at: str | None = None,
 ) -> str | None:
     snapshot_field = (
         None
@@ -936,9 +973,19 @@ def _data_through(
         values = _matching_values(dataset, outcome.rows, field_name)
         if values:
             try:
-                return str(max(values))
+                candidate = str(max(values))
             except TypeError:
                 continue
+            # Trade calendars legitimately carry future trade dates and
+            # receipt_projection exempts them from its future check, so the
+            # clamp mirrors exactly that exemption.
+            if dataset.entity_type == "trade_calendar":
+                return candidate
+            return _clamp_future_watermark(
+                candidate,
+                dataset.timezone,
+                started_at if written_at is None else written_at,
+            )
     if (
         dataset.as_of_field is None
         and dataset.partition_field is None
@@ -1522,7 +1569,13 @@ def _persist_provider_call(
         root_attempt_id=root_attempt_id,
         started_at=started_at,
         data_through=(
-            _data_through(dataset, binding, outcome, started_at)
+            _data_through(
+                dataset,
+                binding,
+                outcome,
+                started_at,
+                written_at=datetime.now(timezone.utc).isoformat(),
+            )
             if outcome.state == "success"
             else None
         ),
