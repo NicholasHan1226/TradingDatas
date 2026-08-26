@@ -169,6 +169,11 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 
 reviewer 只能按冻结合同阻断 P0/P1，不得在候选冻结后扩大范围。普通 dataset onboarding 若需要修改 Python，直接判定架构失败。
 
+## 运维与诊断纪律
+
+- 读模型 SQLite 库内只允许 `provider_dataset_rows` 与 `market_ingest_runs` 两个对象；任何额外表、索引或视图都会使调度校验 fail-closed。运维备份、统计和诊断一律用库外 ATTACH 临时文件完成，不在业务库内创建中转对象。
+- 比较任何时间戳前先统一时区与格式：数据行内的本地时间是 naive 墙钟，采集回执时间是 RFC3339 UTC（含 `T`/`Z`）；必须先换算到同一时钟再比较，禁止直接字符串比较。SQLite 中 RFC3339 字符串与 `datetime('now')` 的空格格式不可互比。
+
 ## 并行协作
 
 registry/ingest、query/API、scheduler、deploy/docs 可在接口冻结后并行，但写域不得交叉。同一 schema、公共合同或 authority 只能有一个 owner。协作者不得自行 commit、push、deploy、改 production 或删除数据。
