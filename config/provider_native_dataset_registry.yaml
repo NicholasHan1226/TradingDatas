@@ -865,8 +865,7 @@ datasets:
       required: false
     request_shape: entity_fanout
     request_template:
-      end_date: ${window.end_date}
-      start_date: ${window.start_date}
+      ann_date: ${window.ann_date}
     request_variants:
     - {}
     fanout:
@@ -879,13 +878,11 @@ datasets:
       strategy: none
     request_window_policy:
       required_keys:
-      - start_date
-      - end_date
+      - ann_date
       formats:
-        end_date: yyyymmdd
-        start_date: yyyymmdd
-      range_start_key: start_date
-      range_end_key: end_date
+        ann_date: yyyymmdd
+      range_start_key: ann_date
+      range_end_key: ann_date
       max_span_days: 1
     response_completeness: null
     requested_fields: []
@@ -2890,8 +2887,7 @@ datasets:
       required: false
     request_shape: entity_fanout
     request_template:
-      end_date: ${window.end_date}
-      start_date: ${window.start_date}
+      ann_date: ${window.ann_date}
     request_variants:
     - {}
     fanout:
@@ -2904,13 +2900,11 @@ datasets:
       strategy: none
     request_window_policy:
       required_keys:
-      - start_date
-      - end_date
+      - ann_date
       formats:
-        end_date: yyyymmdd
-        start_date: yyyymmdd
-      range_start_key: start_date
-      range_end_key: end_date
+        ann_date: yyyymmdd
+      range_start_key: ann_date
+      range_end_key: ann_date
       max_span_days: 1
     response_completeness: null
     requested_fields: []
@@ -10196,8 +10190,7 @@ datasets:
       required: false
     request_shape: entity_fanout
     request_template:
-      end_date: ${window.end_date}
-      start_date: ${window.start_date}
+      ann_date: ${window.ann_date}
     request_variants:
     - {}
     fanout:
@@ -10210,13 +10203,11 @@ datasets:
       strategy: none
     request_window_policy:
       required_keys:
-      - start_date
-      - end_date
+      - ann_date
       formats:
-        end_date: yyyymmdd
-        start_date: yyyymmdd
-      range_start_key: start_date
-      range_end_key: end_date
+        ann_date: yyyymmdd
+      range_start_key: ann_date
+      range_end_key: ann_date
       max_span_days: 1
     response_completeness: null
     requested_fields: []
@@ -10382,8 +10373,7 @@ datasets:
       required: false
     request_shape: entity_fanout
     request_template:
-      end_date: ${window.end_date}
-      start_date: ${window.start_date}
+      ann_date: ${window.ann_date}
     request_variants:
     - {}
     fanout:
@@ -10396,13 +10386,11 @@ datasets:
       strategy: none
     request_window_policy:
       required_keys:
-      - start_date
-      - end_date
+      - ann_date
       formats:
-        end_date: yyyymmdd
-        start_date: yyyymmdd
-      range_start_key: start_date
-      range_end_key: end_date
+        ann_date: yyyymmdd
+      range_start_key: ann_date
+      range_end_key: ann_date
       max_span_days: 1
     response_completeness: null
     requested_fields: []
@@ -10519,8 +10507,7 @@ datasets:
       required: false
     request_shape: entity_fanout
     request_template:
-      end_date: ${window.end_date}
-      start_date: ${window.start_date}
+      ann_date: ${window.ann_date}
     request_variants:
     - {}
     fanout:
@@ -10533,13 +10520,11 @@ datasets:
       strategy: none
     request_window_policy:
       required_keys:
-      - start_date
-      - end_date
+      - ann_date
       formats:
-        end_date: yyyymmdd
-        start_date: yyyymmdd
-      range_start_key: start_date
-      range_end_key: end_date
+        ann_date: yyyymmdd
+      range_start_key: ann_date
+      range_end_key: ann_date
       max_span_days: 1
     response_completeness: null
     requested_fields: []
@@ -17814,8 +17799,7 @@ datasets:
       required: false
     request_shape: entity_fanout
     request_template:
-      end_date: ${window.end_date}
-      start_date: ${window.start_date}
+      ann_date: ${window.ann_date}
     request_variants:
     - {}
     fanout:
@@ -17828,13 +17812,11 @@ datasets:
       strategy: none
     request_window_policy:
       required_keys:
-      - start_date
-      - end_date
+      - ann_date
       formats:
-        end_date: yyyymmdd
-        start_date: yyyymmdd
-      range_start_key: start_date
-      range_end_key: end_date
+        ann_date: yyyymmdd
+      range_start_key: ann_date
+      range_end_key: ann_date
       max_span_days: 1
     response_completeness: null
     requested_fields: []
@@ -24865,8 +24847,7 @@ datasets:
       declared_source_type: str
       required: false
     request_shape: entity_fanout
-    request_template:
-      end_date: ${window.end_date}
+    request_template: {}
     request_variants:
     - {}
     fanout:
@@ -24877,14 +24858,7 @@ datasets:
       batch_size: 10
     pagination:
       strategy: none
-    request_window_policy:
-      required_keys:
-      - end_date
-      formats:
-        end_date: yyyymmdd
-      range_start_key: end_date
-      range_end_key: end_date
-      max_span_days: 1
+    request_window_policy: null
     response_completeness: null
     requested_fields: []
     max_batch_bytes: 67108864
