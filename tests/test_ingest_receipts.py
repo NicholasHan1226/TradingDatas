@@ -1111,3 +1111,36 @@ def test_insert_ingest_receipt_lazily_builds_source_index(tmp_path: Path) -> Non
         require_clean_sqlite_authority_schema(conn)
     finally:
         conn.close()
+
+
+def test_ingest_result_error_message_defaults_to_none_and_round_trips() -> None:
+    default = IngestResult(
+        status="failed",
+        counts=_zero_counts(),
+        receipt_ids=(),
+        errors=("provider_error",),
+    )
+    assert default.error_message is None
+    carried = IngestResult(
+        status="failed",
+        counts=_zero_counts(),
+        receipt_ids=(),
+        errors=("provider_error",),
+        error_message="firecrawl request failed with HTTP status 500",
+    )
+    assert carried.error_message == "firecrawl request failed with HTTP status 500"
+
+
+def test_ingest_result_rejects_unsafe_error_message_shapes() -> None:
+    base = {
+        "status": "failed",
+        "counts": _zero_counts(),
+        "receipt_ids": (),
+        "errors": ("provider_error",),
+    }
+    with pytest.raises(TypeError, match="error_message"):
+        IngestResult(**base, error_message=42)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="length"):
+        IngestResult(**base, error_message="x" * 401)
+    with pytest.raises(ValueError, match="one line"):
+        IngestResult(**base, error_message="line one\nline two")

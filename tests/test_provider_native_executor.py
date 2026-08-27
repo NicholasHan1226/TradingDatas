@@ -572,8 +572,14 @@ def test_row_and_byte_budgets_fail_closed_before_storage() -> None:
     assert byte_execution.outcome.error_code == "resource_budget"
 
 
-def test_retries_only_rate_limited_provider_outcomes() -> None:
-    """A transport failure may already have written bytes, so never replay it."""
+def test_retries_transient_provider_failures_but_not_permanent_ones() -> None:
+    """Transient upstream faults retry within the bounded policy.
+
+    Live firecrawl traffic serves intermittent HTTP 500 (provider_error)
+    and QuickSync stalls surface as transport timeouts; both sides of this
+    pipeline are idempotent reads (fetch then local upsert), so bounded
+    replay is safe. Permission failures are permanent and stay single-shot.
+    """
 
     retryable = "rate_limited"
     collector = _SequenceCollector([_failed(retryable), _success({"id": 1})])
@@ -585,6 +591,26 @@ def test_retries_only_rate_limited_provider_outcomes() -> None:
     assert execution.outcome.state == "success"
     assert len(collector.calls) == 2
 
+    provider_error = _SequenceCollector(
+        [_failed("provider_error"), _success({"id": 1})]
+    )
+    execution = _execute(
+        provider_error,
+        _binding(),
+        retry=RetrySettings(max_attempts=2),
+    )
+    assert execution.outcome.state == "success"
+    assert len(provider_error.calls) == 2
+
+    transport = _SequenceCollector([_failed("transport_error"), _success({"id": 1})])
+    execution = _execute(
+        transport,
+        _binding(),
+        retry=RetrySettings(max_attempts=2),
+    )
+    assert execution.outcome.state == "success"
+    assert len(transport.calls) == 2
+
     permission = _SequenceCollector([_failed("permission_denied"), _success({"id": 1})])
     execution = _execute(
         permission,
@@ -593,24 +619,6 @@ def test_retries_only_rate_limited_provider_outcomes() -> None:
     )
     assert execution.outcome.state == "failed"
     assert len(permission.calls) == 1
-
-    validation = _SequenceCollector([_failed("provider_error"), _success({"id": 1})])
-    execution = _execute(
-        validation,
-        _binding(),
-        retry=RetrySettings(max_attempts=2),
-    )
-    assert execution.outcome.state == "failed"
-    assert len(validation.calls) == 1
-
-    transport = _SequenceCollector([_failed("transport_error"), _success({"id": 1})])
-    execution = _execute(
-        transport,
-        _binding(),
-        retry=RetrySettings(max_attempts=2),
-    )
-    assert execution.outcome.state == "failed"
-    assert len(transport.calls) == 1
 
 
 def test_allowed_empty_provider_outcome_terminates_without_retry() -> None:

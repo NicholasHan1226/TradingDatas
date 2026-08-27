@@ -698,6 +698,7 @@ class IngestResult:
     counts: IngestCounts
     receipt_ids: tuple[str, ...]
     errors: tuple[str, ...]
+    error_message: str | None = None
 
     def __post_init__(self) -> None:
         status = _require_status(self.status)
@@ -709,8 +710,27 @@ class IngestResult:
         _validate_result_status_counts(status, self.counts)
         if status == "success" and not receipt_ids:
             raise ValueError("success result requires at least one receipt_id")
+        error_message = _validated_error_message(self.error_message)
         object.__setattr__(self, "receipt_ids", receipt_ids)
         object.__setattr__(self, "errors", errors)
+        object.__setattr__(self, "error_message", error_message)
+
+
+_MAX_RESULT_ERROR_MESSAGE_CHARS = 400
+
+
+def _validated_error_message(message: str | None) -> str | None:
+    """Bound the optional diagnostic; text is already sanitized upstream."""
+
+    if message is None:
+        return None
+    if type(message) is not str:
+        raise TypeError("error_message must be text or None")
+    if len(message) > _MAX_RESULT_ERROR_MESSAGE_CHARS:
+        raise ValueError("error_message exceeds the length bound")
+    if any(character in message for character in ("\n", "\r")):
+        raise ValueError("error_message must stay on one line")
+    return message
 
 
 def _require_status(status: object) -> str:

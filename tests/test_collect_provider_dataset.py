@@ -4716,3 +4716,126 @@ def test_oversized_resumable_scan_budget_records_config_error_receipt(
     assert result.status == "failed"
     assert result.errors == ("config_error",)
     assert collector.calls == []
+
+
+def test_transient_provider_error_is_now_retryable(tmp_path: Path) -> None:
+    class SequenceCollector:
+        def __init__(self) -> None:
+            self.outcomes = iter(
+                (
+                    ProviderCallOutcome(
+                        state="failed",
+                        rows=(),
+                        provider_code=500,
+                        error_code="provider_error",
+                        error_message=(
+                            "firecrawl request failed with HTTP status 500"
+                        ),
+                    ),
+                    ProviderCallOutcome(
+                        state="success",
+                        rows=(
+                            {
+                                "ts_code": "600000.SH",
+                                "trade_date": "20260717",
+                                "close": 12.5,
+                            },
+                        ),
+                        provider_code=0,
+                        error_code=None,
+                        error_message=None,
+                    ),
+                )
+            )
+
+        def collect_outcome(
+            self,
+            _api_name: str,
+            _params: dict[str, str],
+            _fields: str | None = None,
+            *,
+            scan_budget: object | None = None,
+        ) -> ProviderCallOutcome:
+            assert scan_budget is not None
+            return next(self.outcomes)
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=_registry(),
+        collector=SequenceCollector(),
+        dataset_id="cn.synthetic.runner",
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="transient-provider-error-attempt",
+        started_at="2026-07-17T01:00:00+00:00",
+        retry=native_ingest.RetrySettings(max_attempts=2),
+    )
+
+    assert result.status == "success"
+    assert len(result.receipt_ids) == 2
+
+
+def test_failed_result_carries_and_surfaces_safe_diagnostic(
+    tmp_path: Path,
+) -> None:
+    class AlwaysFailingCollector:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def collect_outcome(
+            self,
+            _api_name: str,
+            _params: dict[str, str],
+            _fields: str | None = None,
+            *,
+            scan_budget: object | None = None,
+        ) -> ProviderCallOutcome:
+            self.calls += 1
+            return ProviderCallOutcome(
+                state="failed",
+                rows=(),
+                provider_code=500,
+                error_code="provider_error",
+                error_message="firecrawl request failed with HTTP status 500",
+            )
+
+    dataset = _registry().datasets[0]
+    binding = next(
+        item
+        for item in dataset.provider_bindings
+        if item.entitlement_state == "active" and item.activation_state == "active"
+    )
+    plan = runner._CollectionPlan(
+        dataset=dataset,
+        binding=binding,
+        request_window=MappingProxyType({"start_date": "20260717", "end_date": "20260717"}),
+        request_variants=tuple(binding.request_variants),
+        parameter_keys=("end_date", "start_date"),
+    )
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    collector = AlwaysFailingCollector()
+    result = native_ingest.collect_provider_native_dataset(
+        db_path,
+        registry=_registry(),
+        collector=collector,
+        dataset_id=dataset.dataset_id,
+        request_window={"start_date": "20260717", "end_date": "20260717"},
+        attempt_id="persistent-failure-attempt",
+        started_at="2026-07-17T01:00:00+00:00",
+        retry=native_ingest.RetrySettings(max_attempts=3),
+    )
+
+    assert collector.calls == 3
+    assert result.status == "failed"
+    assert result.error_message == (
+        "firecrawl request failed with HTTP status 500"
+    )
+    exit_code, summary = runner._result_summary(plan, result)
+    assert exit_code == runner.EXIT_FAILED
+    assert summary["error_message"] == (
+        "firecrawl request failed with HTTP status 500"
+    )

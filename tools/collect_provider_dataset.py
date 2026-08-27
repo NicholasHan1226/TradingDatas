@@ -273,6 +273,8 @@ def _result_summary(
         "receipt_count": len(result.receipt_ids),
         "state": result.status,
     }
+    if result.error_message is not None:
+        summary["error_message"] = result.error_message
     if result.status == "success":
         return EXIT_SUCCESS, summary
     if result.status == "empty":

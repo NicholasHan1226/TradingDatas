@@ -83,7 +83,13 @@ _PROVIDER_ERROR_CODES = frozenset(
         "resource_budget",
     }
 )
-_RETRYABLE_PROVIDER_ERRORS = frozenset({"rate_limited"})
+# Transient upstream failures deserve the scheduler's bounded retry: live
+# traffic shows firecrawl serves intermittent HTTP 500 while scraping news
+# pages, and QuickSync stalls surface as transport timeouts. Permanent
+# provider rejections stay non-retryable so bad request shapes fail fast.
+_RETRYABLE_PROVIDER_ERRORS = frozenset(
+    {"rate_limited", "provider_error", "transport_error"}
+)
 
 
 @dataclass(frozen=True)
@@ -1775,11 +1781,17 @@ def _persist_failed_execution(
         if preserve_nonfailed_calls and partial_successes
         else _zero_counts()
     )
+    error_message = None
+    for call in reversed(calls):
+        if call.outcome.state == "failed" and call.outcome.error_message:
+            error_message = call.outcome.error_message
+            break
     return IngestResult(
         status="failed",
         counts=counts,
         receipt_ids=tuple(receipt_ids),
         errors=result_errors(),
+        error_message=error_message,
     )
 
 
