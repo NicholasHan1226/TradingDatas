@@ -29,6 +29,13 @@ show synthetic or explicitly bounded sample output, but it must not become a
 second data authority, a research publication, or a strategy-performance
 service.
 
+The public Data page may project a non-sensitive contract/config snapshot and a
+reviewed candidate-source landscape. It must keep five states distinct:
+discovered source, technically reachable source, registry contract,
+receipt/API-observed dataset, and redistribution-authorized sellable data. The
+landscape method and first reviewed source universe are defined in
+[`docs/product/DATA_SOURCE_LANDSCAPE.md`](product/DATA_SOURCE_LANDSCAPE.md).
+
 ## Primary consumers
 
 TradingDatas is Agent-first infrastructure. The main consumption path is an AI
