@@ -3587,18 +3587,38 @@ def _validated_sidecar_binding(
         100,
         unavailable_message="receipt database SHM is unavailable",
     )
-    if len(wal_header) != 32 or len(shm_header) != 100:
+    if len(shm_header) != 100:
         raise RuntimeProjectionError("receipt database sidecars are unreadable")
 
     main_page_size = int.from_bytes(main_header[16:18], "big")
     if main_page_size == 1:
         main_page_size = 65_536
-    wal_magic, wal_version, wal_page_size = struct.unpack(">III", wal_header[:12])
     byte_order = "<" if sys.byteorder == "little" else ">"
     shm_one = struct.unpack(f"{byte_order}III BB H II 2I 2I 2I", shm_header[:48])
     shm_two = struct.unpack(f"{byte_order}III BB H II 2I 2I 2I", shm_header[48:96])
     mx_frame = int(shm_one[6])
     n_backfill = int.from_bytes(shm_header[96:100], sys.byteorder)
+    if len(wal_header) == 0:
+        # SQLite keeps both sidecar names after a TRUNCATE checkpoint while
+        # resetting WAL to zero bytes and the SHM index to its empty epoch.
+        # No frame can be read from a zero-byte WAL, so accept only that exact
+        # state; a truncated live WAL retains mx_frame/backfill evidence and
+        # remains fail-closed below.
+        if (
+            main_header[18:20] != b"\x02\x02"
+            or shm_one != shm_two
+            or shm_one[0] != 3_007_000
+            or shm_one[3] != 1
+            or shm_one[5] != 0
+            or mx_frame != 0
+            or n_backfill != 0
+        ):
+            raise RuntimeProjectionError("receipt database sidecars are inconsistent")
+        return wal_identity, shm_identity
+    if len(wal_header) != 32:
+        raise RuntimeProjectionError("receipt database sidecars are unreadable")
+
+    wal_magic, wal_version, wal_page_size = struct.unpack(">III", wal_header[:12])
     committed_bytes = 32 + mx_frame * (24 + main_page_size)
     if (
         main_header[18:20] != b"\x02\x02"
