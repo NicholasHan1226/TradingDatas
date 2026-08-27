@@ -45,6 +45,7 @@ from storage.receipt_projection import (
     validated_receipt_journal_entries,
     validated_row_receipt_proofs,
 )
+from storage.sqlite_authority_lock import sqlite_authority_lock
 from storage.schema import SCHEMA_SQL
 
 
@@ -80,6 +81,81 @@ def _memory_db() -> sqlite3.Connection:
     conn.executescript(SCHEMA_SQL)
     conn.commit()
     return conn
+
+
+def test_verified_snapshot_accepts_checkpointed_empty_wal_sidecars(
+    tmp_path: Path,
+) -> None:
+    """A clean WAL checkpoint can leave a zero-byte WAL beside a live SHM file.
+
+    SQLite reads the fully checkpointed main database in this state.  The
+    receipt authority must retain its normal binding checks without turning a
+    safe read-only snapshot into a persistent 503 merely because no WAL frame
+    is pending.
+    """
+
+    db_path = tmp_path / "provider_native.sqlite"
+    writer = sqlite3.connect(db_path)
+    try:
+        writer.executescript(SCHEMA_SQL)
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        writer.commit()
+        assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone() == (0, 0, 0)
+
+        wal_path = db_path.with_name(f"{db_path.name}-wal")
+        shm_path = db_path.with_name(f"{db_path.name}-shm")
+        assert wal_path.is_file()
+        assert wal_path.stat().st_size == 0
+        assert shm_path.is_file()
+
+        with sqlite_authority_lock(
+            db_path,
+            mode="exclusive",
+            create=True,
+        ):
+            pass
+
+        with projection_module.open_verified_read_model_snapshot(db_path) as snapshot:
+            assert snapshot.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone() == (
+                0,
+            )
+    finally:
+        writer.close()
+
+
+def test_verified_snapshot_rejects_zero_wal_with_nonempty_shm_epoch(
+    tmp_path: Path,
+) -> None:
+    """A zero WAL is admissible only when SHM also proves an empty epoch."""
+
+    db_path = tmp_path / "provider_native.sqlite"
+    writer = sqlite3.connect(db_path)
+    try:
+        writer.executescript(SCHEMA_SQL)
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        writer.commit()
+        assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone() == (0, 0, 0)
+
+        shm_path = db_path.with_name(f"{db_path.name}-shm")
+        with shm_path.open("r+b") as stream:
+            # mxFrame is the seventh native-endian word in each SHM header.
+            stream.seek(16)
+            stream.write((1).to_bytes(4, sys.byteorder))
+            stream.seek(64)
+            stream.write((1).to_bytes(4, sys.byteorder))
+
+        with sqlite_authority_lock(
+            db_path,
+            mode="exclusive",
+            create=True,
+        ):
+            pass
+
+        with pytest.raises(RuntimeProjectionError, match="sidecars are inconsistent"):
+            with projection_module.open_verified_read_model_snapshot(db_path):
+                pass
+    finally:
+        writer.close()
 
 
 def _insert_receipt(
