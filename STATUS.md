@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-26 20:05 CST（第十轮 19:28 CST 切换）。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-26 23:5x CST（第十一轮记录；cf988f9 已于 23:07 CST 切换）。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,15 +9,45 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `21d03183355d7de6578ab5761d83aa91a1925c1f`（PR #352，含 #348/#347） | 已验收源码；文档合并不等于发布 |
+| GitHub `main` | `2d88158`（含 #354 诊断修复与 public-web 数据源面，Controller 持续推进中） | 已验收源码；文档合并不等于发布 |
 | 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
-| A 股有效 release | `21d03183355d7de6578ab5761d83aa91a1925c1f`（回滚点 `252eb9b2915350908dd0bd9ff7ffd4162a263ea0`） | immutable 运行源码，2026-08-26 19:28 CST 切换 |
+| A 股有效 release | `cf988f93e6dbe379f82fd0a530e081af6aab8965`（回滚点 `21d03183355d7de6578ab5761d83aa91a1925c1f`） | immutable 运行源码，2026-08-26 23:07 CST 由 Controller 切换；verify true + catalog 200 复核通过 |
 | Crypto 有效 release | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（回滚点 `7d04a1f6fe273d81e7ea20bef29c7c7701091df2`） | 隔离 immutable 运行源码，2026-08-23 15:26 CST 切换 |
 
 上述各层必须分别读回；源码、service 或 timer 单层健康都不能写成"三端同步"、
 消费者闭环或模拟交易结果。
 
 ## 2026-08-26 发布记录
+
+第十一轮（23:07 CST 切换 `cf988f9`，PR #354；自愈验收与三项诊断同轮收口）：
+
+- **#352 自愈验收（21:55 定时检查 + 查询面回读）**：`cn.news.flash` 的
+  `invalid_receipt_authority` 跳过消失、窗口内 `data_through_in_future` 零命中；
+  认证查询回读 state=success、首页 500 行、内容新鲜至当日且**零未来时间戳行**。
+  恢复期一例 provider_error 与两例 ingest validation_failed 属采集面常态波动；
+  发现缺口：validation_failed 的 `validation_reasons:[]` 为空，失败细节同样不可判读，
+  排入后续改进。消费契约实证：快照型数据集 `as_of_field=null`，带 `as_of` 的
+  `/v1/query` 一律 invalid_request——正确形状不含 as_of。
+- **PR #354 firecrawl 信封诊断修复**：根因链——SEC 页抓取常态耗时 18-22s 贴近
+  timeout_ms=30000 上限（复现 >30s 客户端超时），但生产主导失败形态是
+  `success:false` 信封且 firecrawl 错误文本被适配器整体丢弃（今日两 news 数据集
+  82 failed / 51 success 全为不可判读 provider_error）。修复按白名单标记把信封错误
+  归类为固定罐头诊断（timed-out / refused-by-target / generic），经专用内部异常
+  `_FirecrawlUpstreamFailure` 直达 outcome error_message，原文永不入日志/receipts；
+  error_code、fail-closed 语义与契约哈希零变化。+4 单测含防泄漏断言，文件级
+  35 passed、相邻套件 177 passed、CI 4/4。合并后由 Controller 于 23:07 标准流程
+  部署并切换 current → `cf988f9`；本侧复核 verify true + catalog 200。
+  待自然失败样本回报三类分布后再议 timeout_ms 上调或换源。
+- **#309 关闭（带生产证据）**：share_float 断供已由 #344 解决（ann_date=20260826
+  实测 73 行、data_through=当日）；float_date 四算子过滤实测正确生效、目录广告一致；
+  "当日公告解禁日在次日"属正确时点语义；08-24 的 503 恶化归 #327 存储病。
+- **cb_basic 停更=纯调度缺失（已回填 #350）**：cadence_policy 自 07-23 即 on_demand；
+  journal 全窗零次调度成功（08-11 前 paused、08-12 起 on_demand skip）；上游探针
+  空参快照 success 1162 行。建议归入 daily_reference 或常规 on-demand batch。
+- **fina_mainbz 探针定案（已回填 #349）**：QuickSync 端点无任何公告日暴露，唯一日期
+  杠杆是报告期 end_date；多码+start/end（现模板形态）静默空实锤；单码全史 ~150 行/码
+  （4 报告期 ×~37）；type=P 硬编码会静默丢弃地区(D)/行业(I)构成。提案：单码低频全史
+  快照扇出 + 去掉 type 过滤，实施前需解 dependency_seed_receipt_unresolved。
 
 第十轮（19:28 CST，A 股面 → `21d0318`，PR #352）：Controller 侧修复 cls.cn 电报条目
 携带 ~12h 未来时间戳毒化 `cn.news.flash` 收据水印、导致数据集被 planner 以
@@ -149,11 +179,12 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 当前运行面
 
-- **A 股 / Tushare 数据面：** 有效 immutable release 为 `21d0318`（2026-08-26 19:28 CST
-  切换，回滚点 `252eb9b`）；18082 API service active、通用 collector timer enabled。
-  income 族与 pledge_stat 七源已具备正确请求形态（单码扇出），但 cadence=on_demand
-  未排期、且全宇宙单轮覆盖受上游持续突发停滞限制（见 #350）。`cn.news.flash` 存量
-  毒化水印待 ~21:45 CST 墙钟自愈后恢复采集（第十轮）。
+- **A 股 / Tushare 数据面：** 有效 immutable release 为 `cf988f9`（2026-08-26 23:07 CST
+  由 Controller 切换，回滚点 `21d0318`）；18082 API service active、通用 collector timer
+  enabled。income 族与 pledge_stat 七源请求形态正确但 cadence=on_demand 未排期，
+  全宇宙单轮覆盖受上游持续突发停滞限制（见 #350，cb_basic 同因已定案）。
+  `cn.news.flash` 已按预期墙钟自愈（查询面 success、零未来行），两 news 数据集的
+  firecrawl 间歇失败等待 #354 新诊断字段回报类别分布。快照型数据集查询不带 as_of。
 - **Crypto 隔离数据面：** immutable `current` 为 `300182f`；18083 API service 为
   `active/running`，匿名 `GET /v1/catalog` 返回 `401`。Spot、rules、book-ticker、USDM、
   OI dump 和 premium-index dump 六个 timer 均 enabled。切换后首轮 spot 采集
@@ -176,12 +207,14 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 下一步
 
-1. #350 排期决策：为 income 族/pledge_stat/top10_floatholders/cb_share 选定
-   cadence 与 resumable_fanout 策略（全宇宙覆盖需跨周期收敛），并诊断
-   cb_basic 自 2026-08-14 的停更；干净整轮完成后补查询面回读验收。
-2. 观察 `cn.news.flash` 21:45 CST 自愈后首个采集周期（第十轮已排验收检查），
-   确认未来时间戳条目被钳制、水印不再毒化。
-3. #349：fina_mainbz period-window 策略设计（无 ann_date 字段）。
+1. #350 排期决策：为 income 族/pledge_stat/top10_floatholders/cb_share/cb_basic
+   选定 cadence 与 resumable_fanout 策略（全宇宙覆盖需跨周期收敛；cb_basic 停更
+   已定案为调度缺失）；干净整轮完成后补查询面回读验收。
+2. 依 #354 新诊断字段观察 firecrawl 失败类别分布（timeout / refused / other），
+   决定 timeout_ms 上调或换源；顺手改进 validation_failed 的空
+   `validation_reasons` 缺口。
+3. #349：fina_mainbz 按探针提案落地（单码全史快照扇出 + 去 type 过滤），
+   先解 dependency_seed_receipt_unresolved。
 4. #327 服务器存储劣化（11GB 无 WAL）待授权后手术。
 5. 归档候选交 Controller 收口（rt-min-daily-scan-budget 分支、rolling-simulation
    残留、ta-365/366、fix/firecrawl-bare-time-anchor 210c02e、约 60 陈旧分支）。
