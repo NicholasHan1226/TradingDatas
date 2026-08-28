@@ -7,8 +7,7 @@ on:
     types:
       - completed
   pull_request_target:
-    types:
-      - labeled
+    types: [labeled, unlabeled]
 
 permissions:
   contents: write
@@ -33,7 +32,8 @@ jobs:
       (github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success')
       || (github.event_name == 'pull_request_target'
-        && (github.event.label.name == 'controller-accepted'
+        && (github.event.action == 'unlabeled'
+          || github.event.label.name == 'controller-accepted'
           || github.event.label.name == 'automerge-m0'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -66,17 +66,31 @@ jobs:
           HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
           AUTHOR="$(jq -r '.user.login' <<<"$PR_JSON")"
           DRAFT="$(jq -r '.draft' <<<"$PR_JSON")"
+          AUTO_MERGE_ENABLED="$(jq -r '.auto_merge != null' <<<"$PR_JSON")"
+
+          disable_unaccepted_auto_merge() {
+            if [[ "$AUTO_MERGE_ENABLED" == "true" ]]; then
+              gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --disable-auto
+              echo "Disabled unaccepted auto-merge for PR #${PR_NUMBER}."
+            fi
+          }
+
+          reject_unaccepted() {
+            disable_unaccepted_auto_merge
+            echo "Skip: $*"
+            exit 0
+          }
 
           [[ "$STATE" == "open" ]] || { echo "Skip: PR #${PR_NUMBER} is not open."; exit 0; }
-          [[ "$BASE_REF" == "main" ]] || { echo "Skip: PR base is not main."; exit 0; }
-          [[ "$HEAD_REPO" == "$GITHUB_REPOSITORY" ]] || { echo "Skip: fork PRs never auto-merge."; exit 0; }
-          [[ "$AUTHOR" == "$TRUSTED_PR_AUTHOR" ]] || { echo "Skip: PR author is not a trusted member."; exit 0; }
-          [[ "$DRAFT" == "false" ]] || { echo "Skip: PR is still a draft."; exit 0; }
+          [[ "$BASE_REF" == "main" ]] || reject_unaccepted "PR base is not main."
+          [[ "$HEAD_REPO" == "$GITHUB_REPOSITORY" ]] || reject_unaccepted "Fork PRs never auto-merge."
+          [[ "$AUTHOR" == "$TRUSTED_PR_AUTHOR" ]] || reject_unaccepted "PR author is not a trusted member."
+          [[ "$DRAFT" == "false" ]] || reject_unaccepted "PR is still a draft."
 
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             # The CI conclusion that triggered this run belongs to this exact
             # head; refuse to act when the PR has moved on in the meantime.
-            [[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]] || { echo "Skip: tested SHA ${RUN_HEAD_SHA:0:8} no longer matches PR head ${HEAD_SHA:0:8}."; exit 0; }
+            [[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]] || reject_unaccepted "Tested SHA ${RUN_HEAD_SHA:0:8} no longer matches PR head ${HEAD_SHA:0:8}."
           fi
 
           # A label selects exactly one merge class. M0 is limited to a
@@ -88,37 +102,35 @@ jobs:
           grep -qx "$M0_AUTOMERGE_LABEL" <<<"$LABEL_NAMES" && HAS_M0=true || true
           grep -qx "$CONTROLLER_ACCEPT_LABEL" <<<"$LABEL_NAMES" && HAS_CONTROLLER=true || true
           if [[ "$HAS_M0" == true && "$HAS_CONTROLLER" == true ]]; then
-            echo "Skip: PR #${PR_NUMBER} has conflicting M0 and Controller labels."
-            exit 0
+            reject_unaccepted "PR #${PR_NUMBER} has conflicting M0 and Controller labels."
           fi
           if [[ "$HAS_M0" == true ]]; then
             M0_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
               --jq '[.[] | select(.event == "labeled" and .label.name == "automerge-m0")] | sort_by(.created_at) | last | .actor.login // empty')"
-            [[ "$M0_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || { echo "Skip: untrusted M0 label actor."; exit 0; }
+            [[ "$M0_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || reject_unaccepted "Untrusted M0 label actor."
             PR_BODY="$(jq -r '.body // ""' <<<"$PR_JSON")"
-            grep -qx 'change_class=M0' <<<"$PR_BODY" || { echo "Skip: M0 body declaration missing."; exit 0; }
-            grep -qx "candidate=$HEAD_SHA" <<<"$PR_BODY" || { echo "Skip: M0 candidate is not the current head."; exit 0; }
+            grep -qx 'change_class=M0' <<<"$PR_BODY" || reject_unaccepted "M0 body declaration missing."
+            grep -qx "candidate=$HEAD_SHA" <<<"$PR_BODY" || reject_unaccepted "M0 candidate is not the current head."
             CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
-            grep -Eqv '^(README\.md|CONTRIBUTING\.md|docs/|tests/|static/)' <<<"$CHANGED_FILES" && { echo "Skip: M0 changed a non-allowlisted path."; exit 0; }
+            grep -Eqv '^(README\.md|CONTRIBUTING\.md|docs/|tests/|static/)' <<<"$CHANGED_FILES" && reject_unaccepted "M0 changed a non-allowlisted path."
           elif [[ "$HAS_CONTROLLER" == true ]]; then
             LABEL_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
               --jq '[.[] | select(.event == "labeled" and .label.name == "controller-accepted")] | sort_by(.created_at) | last | .actor.login // empty')"
-            [[ "$LABEL_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || { echo "Skip: Controller label actor is untrusted."; exit 0; }
-            ACCEPTANCE_CANDIDATE="$(
+            [[ "$LABEL_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || reject_unaccepted "Controller label actor is untrusted."
+            ACCEPTANCE_RETURN="$(
               gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
-                --jq '[.[] | select(.user.login == "NicholasHan1226") | select(.body | contains("AUTODEV_RETURN_V1") and contains("decision=accepted"))] | sort_by(.created_at) | last | .body // ""' \
-                | sed -nE 's/^candidate=([0-9a-f]{40})$/\1/p'
+                --jq '[.[] | select(.user.login == "NicholasHan1226") | select(.body | contains("AUTODEV_RETURN_V1"))] | sort_by(.created_at) | last | .body // ""'
             )"
-            [[ "$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA" ]] || { echo "Skip: Controller return does not accept current head."; exit 0; }
+            grep -qx 'decision=accepted' <<<"$ACCEPTANCE_RETURN" || reject_unaccepted "Latest Controller return is not accepted."
+            ACCEPTANCE_CANDIDATE="$(sed -nE 's/^candidate=([0-9a-f]{40})$/\1/p' <<<"$ACCEPTANCE_RETURN")"
+            [[ "$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA" ]] || reject_unaccepted "Controller return does not accept current head."
           else
-            echo "CI green but no accepted M0 or Controller M1 label is present."
-            exit 0
+            reject_unaccepted "CI green but no accepted M0 or Controller M1 label is present."
           fi
 
           CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
           if grep -Eq '^\.github/workflows/' <<<"$CHANGED_FILES"; then
-            echo "Skip: workflow-governance changes require a separate trusted bootstrap merge."
-            exit 0
+            reject_unaccepted "Workflow-governance changes require a separate trusted bootstrap merge."
           fi
 
           if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
@@ -137,8 +149,7 @@ jobs:
 
           CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           if [[ "$HAS_M0" != true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
-            echo "M1 base advanced; do not mutate the candidate branch. The owner or Controller must refresh the PR, rerun CI, and record a new exact-head acceptance."
-            exit 0
+            reject_unaccepted "M1 base advanced; the owner or Controller must refresh, rerun CI, and record a new exact-head acceptance."
           fi
           if [[ "$HAS_M0" == true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
             echo "M0 base advanced. The exact tested head and narrow path allowlist remain sufficient only when GitHub still reports the PR mergeable; continue without rewriting the candidate branch."
