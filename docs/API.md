@@ -109,6 +109,10 @@ runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor wate
 `runtime_state`。HTTP 200 不得掩盖 dataset 级 degraded 状态；消费者必须逐数据集读取
 metadata，不能只看 HTTP 状态码。
 
+中国市场的 `session_minute` 数据集在同一交易日的 11:30--13:00
+（Asia/Shanghai）午间休市内暂停 freshness 时钟；13:00 起恢复严格 SLA 判断。该规则
+不适用于其它市场、非 `session_minute` cadence 或前一交易日的水位。
+
 `runtime_state=success` 或 `runtime_state=empty` 只有在所有 active provider binding 都声明
 `response_completeness` 时才可被视为完整。任一 active binding 缺该合同时，success
 仍可返回已有 rows，empty 仍保持 `data=[]`；两者都保留可信 receipt lineage，但公共 metadata 必须为

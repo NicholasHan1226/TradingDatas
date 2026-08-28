@@ -3230,6 +3230,66 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
     assert stale.reasons == ("freshness_sla_exceeded",)
 
 
+def test_cn_session_minute_freshness_pauses_only_for_same_day_lunch_break(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="cn-session-minute-lunch",
+        started_at="2026-07-15T03:29:00+00:00",
+        finished_at="2026-07-15T03:30:00+00:00",
+        data_through="2026-07-15T11:30:00+08:00",
+    )
+    dataset = _dataset(cadence_class="session_minute", freshness_sla_seconds=600)
+
+    lunch = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 4, 30, tzinfo=timezone.utc),
+    )
+    afternoon_open = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 5, 0, tzinfo=timezone.utc),
+    )
+
+    assert lunch.state == "success"
+    assert lunch.degraded is False
+    assert afternoon_open.state == "stale"
+    assert afternoon_open.reasons == ("freshness_sla_exceeded",)
+
+
+def test_session_minute_lunch_break_does_not_apply_outside_cn_market(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="non-cn-session-minute-lunch",
+        started_at="2026-07-15T03:29:00+00:00",
+        finished_at="2026-07-15T03:30:00+00:00",
+        data_through="2026-07-15T11:30:00+08:00",
+    )
+    dataset = replace(
+        _dataset(cadence_class="session_minute", freshness_sla_seconds=600),
+        market="CRYPTO",
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 4, 30, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "stale"
+    assert projection.reasons == ("freshness_sla_exceeded",)
+
+
 def test_on_demand_success_never_marks_stale_past_sla(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

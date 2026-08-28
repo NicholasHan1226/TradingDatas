@@ -32,7 +32,7 @@ projection or authenticated `catalog/query` readback.
 
 | Surface | Contract coverage | Boundary |
 |---|---:|---|
-| Tushare through QuickSync | 190 interfaces; 133 configured active; 57 paused | Configuration, not a continuous-health claim |
+| Tushare through QuickSync | 190 interfaces; 132 configured active; 58 paused | Configuration, not a continuous-health claim |
 | Firecrawl | 2 page-collection pipelines | Per-site rights remain source-specific |
 | Binance public market data | 6 data families across a fixed 40-symbol universe, producing 240 dataset objects | 240 objects are not 240 upstream APIs |
 | Tushare domestic discovery scope | 222 read-data capabilities | 32 discovery-only additions are not runtime contracts |
