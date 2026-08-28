@@ -48,7 +48,12 @@ def test_automerge_binds_controller_acceptance_to_the_exact_head() -> None:
 
     assert 'CONTROLLER_ACCEPT_LABEL: controller-accepted' in workflow
     assert 'ACCEPTANCE_CANDIDATE="$(' in workflow
-    assert 'contains("AUTODEV_RETURN_V1") and contains("decision=accepted")' in workflow
+    # The workflow now reads the latest Controller return first, then requires
+    # its exact decision line to be accepted.  This prevents an older accepted
+    # return from overriding a later return/change request.
+    assert 'select(.body | contains("AUTODEV_RETURN_V1"))' in workflow
+    assert "sort_by(.created_at) | last | .body // \"\"" in workflow
+    assert "grep -qx 'decision=accepted'" in workflow
     assert 'candidate=([0-9a-f]{40})' in workflow
     assert '"$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA"' in workflow
     assert 'gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge --auto' in workflow
@@ -77,7 +82,7 @@ def test_automerge_never_mutates_a_stale_candidate_branch() -> None:
     workflow = _read(".github/workflows/automerge.yml")
 
     assert 'pulls/${PR_NUMBER}/update-branch' not in workflow
-    assert "do not mutate the candidate branch" in workflow
+    assert "the owner or Controller must refresh, rerun CI" in workflow
 
 
 def test_static_deploy_has_a_published_route_readback() -> None:
