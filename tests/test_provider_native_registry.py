@@ -1293,8 +1293,8 @@ def test_every_runtime_tushare_binding_has_a_bounded_scan_budget() -> None:
     assert oversized == []
 
 
-def test_rt_min_daily_resumable_fanout_stays_inside_scan_envelope() -> None:
-    """rt_min_daily's corrected sizing: 1500 rows x 20 batches x 51 nodes.
+def test_rt_min_daily_paused_fanout_stays_inside_scan_envelope() -> None:
+    """Keep the paused rt_min_daily fanout bounded if it is explicitly resumed.
 
     The page limit must also stay above the real per-batch row count
     (batch_size 5 codes x ~241 one-minute bars) or every late-session
@@ -1306,9 +1306,12 @@ def test_rt_min_daily_resumable_fanout_stays_inside_scan_envelope() -> None:
 
     dataset = load_runtime_dataset_registry().resolve("cn.dataset.rt_min_daily")
     binding = next(
-        item
+        item for item in dataset.provider_bindings if item.entitlement_state == "active"
+    )
+    assert binding.activation_state == "paused"
+    assert not any(
+        item.entitlement_state == "active" and item.activation_state == "active"
         for item in dataset.provider_bindings
-        if item.entitlement_state == "active" and item.activation_state == "active"
     )
     assert binding.max_rows_per_attempt == 1500
     assert binding.fanout is not None and binding.fanout.batch_size == 5
