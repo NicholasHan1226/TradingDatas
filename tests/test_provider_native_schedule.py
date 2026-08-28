@@ -1131,6 +1131,7 @@ def test_terminal_failure_payload_preserves_ingest_receipt_and_error_code(
         ),
         receipt_ids=("receipt:failed-validation-attempt",),
         errors=("validation_failed",),
+        error_message="provider response fields did not match the contract",
     )
     monkeypatch.setattr(scheduler, "TushareCollector", lambda **_kwargs: object())
     monkeypatch.setattr(
@@ -1152,6 +1153,7 @@ def test_terminal_failure_payload_preserves_ingest_receipt_and_error_code(
 
     assert result.state == "validation"
     assert result.error_codes == ("validation_failed",)
+    assert result.error_message == "provider response fields did not match the contract"
     assert result.receipt_ids == ("receipt:failed-validation-attempt",)
     assert scheduler.ScheduleResult(1, "execute", (result,), ()).public_payload()[
         "datasets"
@@ -1161,9 +1163,69 @@ def test_terminal_failure_payload_preserves_ingest_receipt_and_error_code(
             "provider": "tushare",
             "state": "validation",
             "error_codes": ["validation_failed"],
+            "error_message": "provider response fields did not match the contract",
             "receipt_ids": ["receipt:failed-validation-attempt"],
         }
     ]
+
+
+def test_terminal_transport_failure_keeps_safe_diagnostic_in_scheduler_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = scheduler.ScheduledRun(
+        dataset_id="cn.equity.daily",
+        provider="tushare",
+        provider_api="daily",
+        cadence_class="postclose_daily",
+        request_window={"trade_date": "20260720"},
+    )
+    ingest_result = IngestResult(
+        status="failed",
+        counts=IngestCounts(
+            returned=0,
+            validated=0,
+            inserted=0,
+            updated=0,
+            unchanged=0,
+            rejected=0,
+            committed=0,
+            count_semantics="terminal_no_data_transaction",
+        ),
+        receipt_ids=("receipt:transport-failure",),
+        errors=("transport_error",),
+        error_message="provider transport timed out",
+    )
+    monkeypatch.setattr(scheduler, "TushareCollector", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        scheduler,
+        "collect_provider_native_dataset",
+        lambda *_args, **_kwargs: ingest_result,
+    )
+
+    result = scheduler._in_process_executor(
+        plan,
+        registry=_active_registry(),
+        db_path=Path("/not-used-by-mocked-collector.sqlite"),
+        started_at="2026-07-20T09:00:00Z",
+        attempt_id="11111111-1111-4111-8111-111111111111:000002",
+        rate_ledger=scheduler.RuntimeRateBudgetLedger(
+            scheduler.load_schedule(SCHEDULE_CONFIG)
+        ),
+    )
+
+    assert result.state == "failed"
+    assert result.error_codes == ("transport_error",)
+    assert result.error_message == "provider transport timed out"
+    assert scheduler.ScheduleResult(1, "execute", (result,), ()).public_payload()[
+        "datasets"
+    ][0] == {
+        "dataset_id": "cn.equity.daily",
+        "provider": "tushare",
+        "state": "failed",
+        "error_codes": ["transport_error"],
+        "error_message": "provider transport timed out",
+        "receipt_ids": ["receipt:transport-failure"],
+    }
 
 
 def test_terminal_failure_payload_projects_persisted_receipt_provenance(
@@ -1260,6 +1322,34 @@ def test_validation_failed_provenance_keeps_layer_generic(
         "validation_failed",
         "validation_fanout_coverage_incomplete",
     )
+    assert provenance.validation_reasons == ()
+
+
+def test_transport_failure_provenance_keeps_transport_layer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        receipt_id = _canonical_receipt(
+            monkeypatch,
+            conn,
+            dataset_id="cn.equity.daily",
+            status="failed",
+            started_at="2026-07-20T08:00:00Z",
+            finished_at="2026-07-20T08:01:00Z",
+            errors=("transport_error",),
+        )
+
+    provenance = scheduler._read_receipt_provenance(
+        db_path,
+        registry=registry,
+        receipt_ids_by_dataset={"cn.equity.daily": (receipt_id,)},
+    )["cn.equity.daily"][0]
+    assert provenance.error_layer == "transport"
+    assert provenance.error_codes == ("transport_error",)
     assert provenance.validation_reasons == ()
 
 

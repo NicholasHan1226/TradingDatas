@@ -119,6 +119,7 @@ _ERROR_CODES = frozenset(
         "rate_limited",
         "resource_budget",
         "storage_failed",
+        "transport_error",
         "unmapped_dataset",
         "validation_failed",
         VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
@@ -2654,6 +2655,8 @@ def _receipt_error_layer(
         return "request_resource_budget"
     if "rate_limited" in error_codes:
         return "transport_retry"
+    if "transport_error" in error_codes:
+        return "transport"
     if "validation_failed" in error_codes:
         return "ingest_validation"
     if any(code in {"provider_error", "permission_denied"} for code in error_codes):

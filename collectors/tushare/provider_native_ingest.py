@@ -81,6 +81,7 @@ _PROVIDER_ERROR_CODES = frozenset(
         "provider_error",
         "rate_limited",
         "resource_budget",
+        "transport_error",
     }
 )
 # Transient upstream failures deserve the scheduler's bounded retry: live

@@ -481,6 +481,29 @@ def test_insert_accepts_only_structured_error_codes() -> None:
         conn.close()
 
 
+def test_insert_accepts_transport_error_as_a_terminal_receipt() -> None:
+    conn = _memory_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        receipt_id = insert_ingest_receipt(
+            conn,
+            context=_context(),
+            target_table=None,
+            transaction_index=0,
+            status="failed",
+            counts=_zero_counts(),
+            errors=("transport_error",),
+            payload_fingerprint=PAYLOAD_FINGERPRINT,
+        )
+        notes = conn.execute(
+            "SELECT notes FROM market_ingest_runs WHERE run_id = ?", (receipt_id,)
+        ).fetchone()[0]
+        assert json.loads(notes)["errors"] == ["transport_error"]
+    finally:
+        conn.rollback()
+        conn.close()
+
+
 def test_unknown_error_code_rejection_does_not_echo_sensitive_input() -> None:
     conn = _memory_db()
     unsafe_error = "Bearer eyJhbGciOiJIUzI1NiJ9.signature /tmp/provider.py"
@@ -1144,3 +1167,5 @@ def test_ingest_result_rejects_unsafe_error_message_shapes() -> None:
         IngestResult(**base, error_message="x" * 401)
     with pytest.raises(ValueError, match="one line"):
         IngestResult(**base, error_message="line one\nline two")
+    with pytest.raises(ValueError, match="error_message"):
+        IngestResult(**base, error_message="Bearer production-token")

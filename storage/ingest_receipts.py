@@ -44,6 +44,7 @@ _ERROR_CODES = frozenset(
         "rate_limited",
         "resource_budget",
         "storage_failed",
+        "transport_error",
         "unmapped_dataset",
         "validation_failed",
         VALIDATION_FANOUT_COVERAGE_INCOMPLETE,
@@ -730,7 +731,7 @@ def _validated_error_message(message: str | None) -> str | None:
         raise ValueError("error_message exceeds the length bound")
     if any(character in message for character in ("\n", "\r")):
         raise ValueError("error_message must stay on one line")
-    return message
+    return _require_public_text(message, "error_message")
 
 
 def _require_status(status: object) -> str:
