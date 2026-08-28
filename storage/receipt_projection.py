@@ -2114,6 +2114,35 @@ def _freshness_reference_in_utc(value: str, dataset: DatasetDefinition) -> datet
     )
 
 
+def _is_cn_session_minute_lunch_break(
+    dataset: DatasetDefinition,
+    *,
+    now_utc: datetime,
+    data_through_utc: datetime,
+) -> bool:
+    """Return whether a same-day A-share minute watermark is in the lunch break.
+
+    ``session_minute`` describes a market-session cadence, not an unbroken
+    wall-clock cadence. The current class is used only by China-market
+    datasets, whose regular lunch break is 11:30--13:00 Asia/Shanghai. Keep
+    the ordinary SLA strict at and after the afternoon open; only a watermark
+    from the same local trading date is protected during the break.
+    """
+
+    if (
+        dataset.cadence_class != "session_minute"
+        or dataset.market != "CN"
+        or dataset.timezone != "Asia/Shanghai"
+    ):
+        return False
+    local_now = now_utc.astimezone(ZoneInfo("Asia/Shanghai"))
+    local_data_through = data_through_utc.astimezone(ZoneInfo("Asia/Shanghai"))
+    return (
+        local_now.date() == local_data_through.date()
+        and (local_now.hour == 11 and local_now.minute >= 30 or local_now.hour == 12)
+    )
+
+
 def _project_dataset_runtime(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
@@ -2330,6 +2359,11 @@ def _project_dataset_runtime(
         dataset.cadence_class != "on_demand"
         and now_utc - data_through_utc
         > timedelta(seconds=dataset.freshness_sla_seconds)
+        and not _is_cn_session_minute_lunch_break(
+            dataset,
+            now_utc=now_utc,
+            data_through_utc=data_through_utc,
+        )
     )
     if is_stale:
         reasons = ("freshness_sla_exceeded",)
