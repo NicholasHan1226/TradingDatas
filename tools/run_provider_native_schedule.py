@@ -149,6 +149,7 @@ class DatasetResult:
     error_codes: tuple[str, ...] = ()
     receipt_ids: tuple[str, ...] = ()
     receipt_provenance: tuple[ReceiptJournalEntry, ...] = ()
+    error_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +181,8 @@ class ScheduleResult:
             if item.state not in _SUCCESS_STATES | {"planned"}:
                 if item.error_codes:
                     dataset["error_codes"] = list(item.error_codes)
+                if item.error_message is not None:
+                    dataset["error_message"] = item.error_message
                 if item.receipt_ids:
                     dataset["receipt_ids"] = list(item.receipt_ids)
             if item.receipt_provenance:
@@ -365,6 +368,7 @@ def _in_process_executor(
             "validation",
             2,
             error_codes=result.errors,
+            error_message=result.error_message,
             receipt_ids=result.receipt_ids,
         )
     return DatasetResult(
@@ -373,6 +377,7 @@ def _in_process_executor(
         "failed",
         4,
         error_codes=result.errors,
+        error_message=result.error_message,
         receipt_ids=result.receipt_ids,
     )
 
