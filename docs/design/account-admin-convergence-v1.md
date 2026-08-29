@@ -23,6 +23,8 @@ TradingDatas has one customer-facing account experience and one restricted admin
 
 The current authenticated backend can truthfully supply account identity, entitlement, expiry, request limits, usage, and customer-scoped key management through `/portal/api/me`, `/portal/api/me/usage`, and `/portal/api/me/keys`. Billing, a same-site passwordless session, and cross-device bookmark sync remain target surfaces until their backend contracts exist.
 
+`/login` is the dedicated customer authentication entry. In the current release it verifies an existing TradingDatas access key against the same customer portal contract, stores that credential only in the current browser, restores the session on return, and sends a verified customer to `/account`. Signed-out Account actions and the header account icon route to this page. Email, SMS, password-reset, and registration flows remain unavailable until an identity contract exists; the interface must say so rather than simulate them.
+
 ### Administrator console
 
 1. Customers and access — create, suspend, expire, and scope customer credentials.
@@ -42,7 +44,7 @@ The former full `Data pipeline` table is retired from primary navigation. Its da
 
 ## Authentication boundary
 
-The existing `tradingdatas.com/account` surface is the only customer interface. It reads the current account through the customer-scoped portal endpoints and stores the bearer token only in the current browser. Credentials must not move into URLs, prompts, analytics, or public content. Customer-created keys are same-tenant, cannot inherit administrator scopes, and are shown once. A future same-site identity gateway may replace browser token entry without changing the Account information architecture; it must not rely on a cross-site third-party cookie.
+The existing `tradingdatas.com/account` surface is the only customer workspace, with `tradingdatas.com/login` as its authentication entry rather than a second portal. It reads the current account through the customer-scoped portal endpoints and stores the bearer token only in the current browser. Credentials must not move into URLs, prompts, analytics, or public content. Customer-created keys are same-tenant, cannot inherit administrator scopes, and are shown once. A future same-site identity gateway may replace browser token entry without changing the Account information architecture; it must not rely on a cross-site third-party cookie.
 
 The React application under `static/app/` is administrator-only. Customer-scoped tokens are rejected there and directed to the existing public Account page; the old separate customer workspace is retired rather than redesigned.
 
@@ -51,6 +53,7 @@ Administrator preview shows only the administrator's own portal projection. It i
 ## Acceptance
 
 - A customer sees `Account`, not a separate “customer portal” product.
+- A signed-out customer enters through `/login`; successful verification restores the existing Account workspace without duplicating its navigation.
 - An administrator sees four primary tasks: access, exceptions, usage, and verification.
 - Public collection status is not copied into another full catalog inside admin.
 - Every displayed live fact comes from authenticated portal/admin endpoints; unavailable capabilities are labeled as target surfaces.

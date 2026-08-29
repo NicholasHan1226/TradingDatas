@@ -34,7 +34,7 @@ import {
 import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
-const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "account"];
+const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
 const ACCOUNT_API_BASE = import.meta.env.VITE_ACCOUNT_API_BASE || "https://td-admin-api.tradingagent.cc";
 const ACCOUNT_TOKEN_KEY = "td-account-token";
 
@@ -898,13 +898,21 @@ export function App() {
     if (accountSection !== "keys") setAccountNewKey("");
   }, [accountSection]);
 
+  useEffect(() => {
+    if (!accountData || route !== "login") return;
+    setAccountTokenInput("");
+    window.history.replaceState({}, "", "/account");
+    setRoute("account");
+  }, [accountData, route]);
+
   function connectAccount(event) {
     event.preventDefault();
     const token = accountTokenInput.trim();
     if (!token) return;
+    setAccountLoading(true);
+    setAccountError("");
     localStorage.setItem(ACCOUNT_TOKEN_KEY, token);
     setAccountToken(token);
-    setAccountTokenInput("");
   }
 
   function disconnectAccount() {
@@ -1347,7 +1355,7 @@ export function App() {
         <div className="header-actions">
           <button className="icon-button bookmark-header-button" type="button" aria-label={locale === "zh" ? `已收藏 ${bookmarks.length} 项` : `${bookmarks.length} bookmarks`} onClick={() => openAccountSection("bookmarks")}><BookmarkSimple size={23} weight={bookmarks.length ? "fill" : "regular"} />{bookmarks.length > 0 && <span>{bookmarks.length}</span>}</button>
           <div className="popover-wrap account-wrap">
-            <button className="icon-button account-button" type="button" aria-label={copy.account} aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
+            <button className="icon-button account-button" type="button" aria-label={accountData ? copy.account : (locale === "zh" ? "登录账户" : "Sign in")} aria-expanded={accountData ? accountMenuOpen : false} onClick={() => accountData ? setAccountMenuOpen((value) => !value) : goTo("/login")}><UserCircle size={30} weight="thin" /></button>
             {accountMenuOpen && <div className="account-menu-popover">
               <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? accountData.tenant_id : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountData.tier} 套餐 · 已连接` : `${accountData.tier} plan · connected`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
               {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
@@ -1532,6 +1540,41 @@ export function App() {
 
         {primaryRoute === "docs" && routeSlug && <section className="object-detail-page docs-article"><a className="object-back" href="/docs" onClick={(event) => navigate(event, "/docs")}>← {locale === "zh" ? "返回文档" : "Back to Docs"}</a><div className="object-detail-hero"><div><span className="mono-kicker">{selectedDoc?.categoryLabel?.toUpperCase() || "DOCUMENTATION"}</span><h1>{selectedDoc?.title || (locale === "zh" ? "说明未找到" : "Guide not found")}</h1><p>{selectedDoc?.description}</p></div><span className="maturity-tag">{locale === "zh" ? "版本化说明" : "Versioned guide"}</span></div>{selectedDoc && <div className="docs-article-body"><aside><span>{locale === "zh" ? "本文回答" : "THIS GUIDE ANSWERS"}</span><p>{selectedDoc.description}</p><span>{locale === "zh" ? "权威来源" : "AUTHORITY"}</span><p>{selectedDoc.category === "api" ? "docs/API.md + authenticated runtime" : selectedDoc.category === "data" ? "registry + facts/receipts + docs/PRODUCT.md" : "docs/PRODUCT.md + backend contract"}</p></aside><article><h2>{locale === "zh" ? "说明结构" : "Guide structure"}</h2><p>{locale === "zh" ? "每篇文档会明确当前能力、目标能力、使用步骤、限制、错误状态、相关对象与下一步。它不会把产品提案写成生产事实。" : "Every guide identifies current capability, target capability, steps, limits, error states, related objects, and next action. It never turns a product proposal into a production fact."}</p><h2>{locale === "zh" ? "相关入口" : "Related entries"}</h2><div className="detail-actions"><a className="text-link" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "数据目录" : "Data catalog"}<ArrowRight /></a><a className="text-link" href="/recipes" onClick={(event) => navigate(event, "/recipes")}>Recipes<ArrowRight /></a></div></article></div>}</section>}
 
+        {primaryRoute === "login" && (
+          <section className="login-page" aria-labelledby="login-title">
+            <div className="login-intro">
+              <a href="/" onClick={(event) => navigate(event, "/")}>← {locale === "zh" ? "返回首页" : "Back home"}</a>
+              <div>
+                <span className="mono-kicker">ACCOUNT ACCESS / VERIFIED SESSION</span>
+                <h1 id="login-title">{locale === "zh" ? "进入你的数据工作区。" : "Enter your data workspace."}</h1>
+                <p>{locale === "zh" ? "查看真实套餐、有效期、数据授权和用量；登录后继续管理 Agent 与 API 密钥。" : "See your effective plan, expiry, data grants, and usage, then manage Agent and API keys."}</p>
+              </div>
+              <dl className="login-boundaries">
+                <div><dt>01</dt><dd><strong>{locale === "zh" ? "仅当前账户" : "Current account only"}</strong><span>{locale === "zh" ? "服务端只返回当前租户的数据。" : "The service returns data for the current tenant only."}</span></dd></div>
+                <div><dt>02</dt><dd><strong>{locale === "zh" ? "仅此浏览器" : "This browser only"}</strong><span>{locale === "zh" ? "密钥不进入网址、提示词或公开内容。" : "The key never enters URLs, prompts, or public content."}</span></dd></div>
+              </dl>
+            </div>
+            <form className="login-panel" onSubmit={connectAccount}>
+              <div className="login-panel-head">
+                <span><ShieldCheck weight="duotone" /> {locale === "zh" ? "安全连接" : "Secure connection"}</span>
+                <small>{locale === "zh" ? "真实账户验证" : "LIVE ACCOUNT VERIFICATION"}</small>
+              </div>
+              <div className="login-panel-copy">
+                <h2>{locale === "zh" ? "使用访问密钥登录" : "Sign in with an access key"}</h2>
+                <p>{locale === "zh" ? "当前版本使用 TradingDatas 访问密钥建立浏览器会话。邮箱与短信登录尚未开放。" : "The current version starts a browser session with a TradingDatas access key. Email and SMS sign-in are not available yet."}</p>
+              </div>
+              <label htmlFor="login-token">{locale === "zh" ? "访问密钥" : "Access key"}</label>
+              <input id="login-token" type="password" value={accountTokenInput} onChange={(event) => { setAccountTokenInput(event.target.value); setAccountError(""); }} placeholder={locale === "zh" ? "粘贴你的访问密钥" : "Paste your access key"} autoComplete="off" />
+              {accountError && <div className="login-error" role="alert">{accountError === "invalid_token" ? (locale === "zh" ? "访问密钥无效、已停用或已过期。" : "The access key is invalid, disabled, or expired.") : (locale === "zh" ? "暂时无法读取账户，请稍后重试。" : "The account is temporarily unavailable. Try again later.")}</div>}
+              <button className="primary-button login-submit" type="submit" disabled={!accountTokenInput.trim() || accountLoading}>{accountLoading ? (locale === "zh" ? "正在验证账户…" : "Verifying account…") : (locale === "zh" ? "登录账户" : "Sign in")}<ArrowRight /></button>
+              <div className="login-help">
+                <span>{locale === "zh" ? "还没有访问密钥？" : "No access key yet?"}</span>
+                <a href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐与获取方式" : "View plans and access options"}<ArrowRight /></a>
+              </div>
+            </form>
+          </section>
+        )}
+
         {primaryRoute === "account" && (
           <section className="account-page">
             <div className="account-page-heading">
@@ -1539,7 +1582,7 @@ export function App() {
               <h1>{locale === "zh" ? "你的 TradingDatas 工作区。" : "Your TradingDatas workspace."}</h1>
               <p>{locale === "zh" ? "在一个安静的工作区管理已收藏内容、数据访问、文档、Agent 接入、账单和个人设置。" : "A quiet workspace for saved materials, data access, documentation, Agent connections, billing, and preferences."}</p>
               <div className="account-entry-actions">
-                <button className="primary-button" type="button" onClick={() => { setAccountSection("overview"); window.setTimeout(() => document.getElementById("account-token")?.focus(), 40); }}>{accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "连接账户" : "Connect account")}<ArrowRight /></button>
+                <button className="primary-button" type="button" onClick={() => accountData ? setAccountSection("overview") : goTo("/login")}>{accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in")}<ArrowRight /></button>
                 <small>{locale === "zh" ? "登录后仅显示当前账户的订阅、授权和用量。" : "After sign-in, only the current account's plan, access, and usage are shown."}</small>
               </div>
             </div>
@@ -1571,14 +1614,7 @@ export function App() {
                       </dl>
                     </div>
                   ) : (
-                    <form className="account-connect-panel" onSubmit={connectAccount}>
-                      <span className="mono-kicker">SECURE ACCOUNT CONNECTION</span>
-                      <h3>{locale === "zh" ? "连接现有账户" : "Connect your existing account"}</h3>
-                      <p>{locale === "zh" ? "使用当前有效的访问密钥读取你的套餐、有效期、授权和用量。密钥只保存在此浏览器，不进入 URL、提示词或公开内容。" : "Use an active access key to read your plan, expiry, grants, and usage. The key stays in this browser and never enters URLs, prompts, or public content."}</p>
-                      <label htmlFor="account-token">{locale === "zh" ? "访问密钥" : "Access key"}</label>
-                      <div><input id="account-token" type="password" value={accountTokenInput} onChange={(event) => { setAccountTokenInput(event.target.value); setAccountError(""); }} placeholder={locale === "zh" ? "粘贴访问密钥" : "Paste access key"} autoComplete="off" /><button className="primary-button" type="submit" disabled={!accountTokenInput.trim() || accountLoading}>{accountLoading ? (locale === "zh" ? "正在验证" : "Verifying") : (locale === "zh" ? "连接" : "Connect")}</button></div>
-                      {accountError && <small role="alert">{accountError === "invalid_token" ? (locale === "zh" ? "访问密钥无效或已失效。" : "The access key is invalid or expired.") : (locale === "zh" ? "暂时无法读取账户，请稍后重试。" : "The account is temporarily unavailable. Try again later.")}</small>}
-                    </form>
+                    <div className="account-empty-state account-signin-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后查看真实账户状态" : "Sign in to see live account status"}</strong><p>{locale === "zh" ? "套餐、有效期、授权和用量只在认证后显示。" : "Plan, expiry, grants, and usage appear only after authentication."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}<ArrowRight /></button></div>
                   )
                 ) : accountSection === "keys" ? (
                   accountData ? (
@@ -1595,7 +1631,7 @@ export function App() {
                       </div>
                     </div>
                   ) : (
-                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "先连接账户" : "Connect your account first"}</strong><p>{locale === "zh" ? "连接后才能查看和管理当前租户的 API 密钥。" : "Connect before viewing or managing API keys for the current tenant."}</p><button className="primary-button" type="button" onClick={() => setAccountSection("overview")}>{locale === "zh" ? "前往连接" : "Connect account"}</button></div>
+                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "先登录账户" : "Sign in first"}</strong><p>{locale === "zh" ? "登录后才能查看和管理当前租户的 API 密钥。" : "Sign in before viewing or managing API keys for the current tenant."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
                   )
                 ) : accountSection === "bookmarks" ? (
                   <div className="account-bookmarks">

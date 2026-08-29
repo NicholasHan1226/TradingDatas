@@ -21,6 +21,7 @@ test("serves existing static assets without a fallback", async () => {
 test("falls back to the root app shell for extensionless GET and HEAD routes without redirecting", async () => {
   for (const request of [
     new Request("https://example.test/account/"),
+    new Request("https://example.test/login/"),
     new Request("https://example.test/flow/step-two?source=share", { method: "HEAD" }),
   ]) {
     const calls = [];
