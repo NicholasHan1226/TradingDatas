@@ -64,10 +64,29 @@ def _require_regular_private_file(path: Path) -> os.stat_result:
     return metadata
 
 
+def _read_only_validation_uri(path: Path) -> str:
+    """Return a WAL-safe read URI for store validation.
+
+    ``immutable=1`` skips WAL frames.  When ``-wal``/``-shm`` sidecars exist,
+    validation must use ``mode=ro`` only, matching catalog/query.
+    """
+
+    wal_path = path.with_name(f"{path.name}-wal")
+    shm_path = path.with_name(f"{path.name}-shm")
+    if (
+        wal_path.exists()
+        or wal_path.is_symlink()
+        or shm_path.exists()
+        or shm_path.is_symlink()
+    ):
+        return f"{path.as_uri()}?mode=ro"
+    return f"{path.as_uri()}?mode=ro&immutable=1"
+
+
 def _validate_store(path: Path) -> None:
     before = _require_regular_private_file(path)
     try:
-        uri = f"{path.as_uri()}?mode=ro&immutable=1"
+        uri = _read_only_validation_uri(path)
         with sqlite3.connect(uri, uri=True) as conn:
             conn.execute("PRAGMA query_only = ON")
             integrity = conn.execute("PRAGMA quick_check").fetchone()

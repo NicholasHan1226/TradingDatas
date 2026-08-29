@@ -443,6 +443,35 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
     assert _contract(bundle, "rt_min_daily")["fanout"]["batch_size"] == 5
     assert runtime_bindings["rt_min_daily"]["fanout"]["batch_size"] == 5
 
+    report_family = (
+        "balancesheet",
+        "cashflow",
+        "express",
+        "fina_audit",
+        "fina_indicator",
+        "income",
+        "pledge_stat",
+    )
+    for api_name in report_family:
+        assert _entry(observations, api_name)["resumable_fanout"] == {
+            "cursor_contract_version": 2,
+            "max_batches_per_run": 1,
+        }
+        assert _entry(observations, api_name)["parameters"]["ts_code"]["batch_size"] == 1
+        assert _contract(bundle, api_name)["cadence_class"] == "event"
+        assert _contract(bundle, api_name)["resumable_fanout"] == {
+            "cursor_contract_version": 2,
+            "max_batches_per_run": 1,
+        }
+        assert _contract(bundle, api_name)["fanout"]["batch_size"] == 1
+    assert _entry(observations, "cb_share")["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+    assert _contract(bundle, "cb_share")["cadence_class"] == "event"
+    assert _contract(bundle, "cb_basic")["cadence_class"] == "daily_reference"
+    assert "resumable_fanout" not in _contract(bundle, "cb_basic")
+
     default_observations = deepcopy(observations)
     _entry(default_observations, "express")["parameters"]["ts_code"].pop(
         "batch_size"
