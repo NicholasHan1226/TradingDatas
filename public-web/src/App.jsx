@@ -1197,6 +1197,13 @@ export function App() {
   const selectedDoc = allDocs.find((entry) => entry.slug === routeSlug);
   const activeAccountItem = accountGroups.flatMap((group) => group.items).find((item) => item.key === accountSection) || accountGroups[0].items[0];
   const activeAccountDoc = allDocs.find((entry) => entry.slug === accountDocSlug) || allDocs[0];
+  const accountPlanLabels = locale === "zh" ? { basic: "基础版", standard: "专业版", flagship: "旗舰版", free: "免费版", starter: "入门版", research: "研究版", pro: "专业版", enterprise: "企业版", internal: "内部账户" } : { basic: "Basic", standard: "Professional", flagship: "Flagship", free: "Free", starter: "Starter", research: "Research", pro: "Pro", enterprise: "Enterprise", internal: "Internal" };
+  const accountCategoryLabels = locale === "zh" ? { a_share: "A 股基础数据", crypto: "加密资产", news: "新闻与事件" } : { a_share: "A-share base data", crypto: "Crypto", news: "News & events" };
+  const accountPlanLabel = accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
+  const accountCategories = accountData ? (accountData.data_categories || []).map((category) => accountCategoryLabels[category] || category) : [];
+  const accountUsageHistory = accountUsage?.history || [];
+  const accountUsagePeak = Math.max(1, ...accountUsageHistory.map((entry) => Number(entry.total) || 0));
+  const accountCurrentKey = accountKeys.find((key) => key.is_current);
 
   const globalIndex = [
     ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
@@ -1606,15 +1613,50 @@ export function App() {
                     <div className="account-live-overview">
                       <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount}>{locale === "zh" ? "断开连接" : "Disconnect"}</button></div>
                       <dl className="account-facts account-live-facts">
-                        <div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountData.tier}</dd></div>
+                        <div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountPlanLabel}</dd></div>
                         <div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div>
                         <div><dt>{locale === "zh" ? "请求频率" : "Request frequency"}</dt><dd>{accountData.minute_request_limit ? `${accountData.minute_request_limit.toLocaleString()} / ${locale === "zh" ? "分钟" : "minute"}` : accountData.hourly_request_limit ? `${accountData.hourly_request_limit.toLocaleString()} / ${locale === "zh" ? "小时" : "hour"}` : (locale === "zh" ? "不限" : "Unlimited")}</dd></div>
                         <div><dt>{locale === "zh" ? "今日请求" : "Requests today"}</dt><dd>{(accountUsage?.today_count ?? accountData.usage?.today_count ?? 0).toLocaleString()}</dd></div>
-                        <div><dt>{locale === "zh" ? "数据授权" : "Data access"}</dt><dd>{(accountData.data_categories || []).map((category) => ({ a_share: locale === "zh" ? "A 股" : "A-share", crypto: locale === "zh" ? "加密资产" : "Crypto", news: locale === "zh" ? "新闻与事件" : "News & events" }[category] || category)).join(" · ") || (locale === "zh" ? "无数据授权" : "No data grants")}</dd></div>
+                        <div><dt>{locale === "zh" ? "数据授权" : "Data access"}</dt><dd>{accountCategories.join(" · ") || (locale === "zh" ? "无数据授权" : "No data grants")}</dd></div>
                       </dl>
                     </div>
                   ) : (
                     <div className="account-empty-state account-signin-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后查看真实账户状态" : "Sign in to see live account status"}</strong><p>{locale === "zh" ? "套餐、有效期、授权和用量只在认证后显示。" : "Plan, expiry, grants, and usage appear only after authentication."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}<ArrowRight /></button></div>
+                  )
+                ) : accountSection === "subscription" ? (
+                  accountData ? (
+                    <div className="account-plan-panel">
+                      <section className="account-plan-hero">
+                        <div><span className="mono-kicker">CURRENT BASE-DATA PLAN</span><h3>{accountPlanLabel}</h3><p>{locale === "zh" ? "当前账户的实际套餐与数据授权由认证后的 Portal API 返回。" : "The authenticated Portal API supplies this account's effective plan and data grants."}</p></div>
+                        <div><span>{accountData.enabled ? (locale === "zh" ? "账户可用" : "ACTIVE") : (locale === "zh" ? "账户暂停" : "PAUSED")}</span><strong>{accountData.minute_request_limit ? `${accountData.minute_request_limit.toLocaleString()} / ${locale === "zh" ? "分钟" : "minute"}` : accountData.hourly_request_limit ? `${accountData.hourly_request_limit.toLocaleString()} / ${locale === "zh" ? "小时" : "hour"}` : (locale === "zh" ? "不限频率" : "Unlimited")}</strong><small>{locale === "zh" ? "每日请求总量" : "Daily request volume"} · {accountData.daily_limit == null ? (locale === "zh" ? "不限" : "Unlimited") : accountData.daily_limit.toLocaleString()}</small></div>
+                      </section>
+                      <section className="account-access-list">
+                        <div><span>{locale === "zh" ? "有效期" : "EXPIRY"}</span><strong>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</strong></div>
+                        <div><span>{locale === "zh" ? "基础数据授权" : "BASE-DATA GRANTS"}</span><strong>{accountCategories.join(" · ") || (locale === "zh" ? "无数据授权" : "No data grants")}</strong></div>
+                        <div><span>{locale === "zh" ? "授权模式" : "GRANT MODE"}</span><strong>{accountData.data_category_mode === "all" ? (locale === "zh" ? "全部已登记分类" : "All registered categories") : (locale === "zh" ? "按分类授权" : "Category allowlist")}</strong></div>
+                      </section>
+                      <div className="account-boundary-note"><ShieldCheck /> <div><strong>{locale === "zh" ? "另类数据加购尚未单独投影" : "Alternative-data add-ons are not projected separately yet"}</strong><p>{locale === "zh" ? "当前接口只返回有效数据分类授权。待加购合同上线后，这里再显示试用、单独有效期和续费状态。" : "The current contract returns effective category grants only. Trials, separate expiry, and renewal will appear after the add-on contract is live."}</p></div></div>
+                      <a className="account-inline-action" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐" : "View plans"}<ArrowRight /></a>
+                    </div>
+                  ) : (
+                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后查看套餐与授权" : "Sign in to view plan and access"}</strong><p>{locale === "zh" ? "这里只显示当前租户的真实套餐、有效期和分类授权。" : "Only the current tenant's live plan, expiry, and category grants appear here."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
+                  )
+                ) : accountSection === "usage" ? (
+                  accountData ? (
+                    <div className="account-usage-panel">
+                      <div className="account-usage-summary">
+                        <article><span>{locale === "zh" ? "今日请求" : "TODAY"}</span><strong>{(accountUsage?.today_count ?? accountData.usage?.today_count ?? 0).toLocaleString()}</strong><small>{locale === "zh" ? "当前租户" : "current tenant"}</small></article>
+                        <article><span>{locale === "zh" ? "请求频率" : "RATE LIMIT"}</span><strong>{accountData.minute_request_limit ? accountData.minute_request_limit.toLocaleString() : accountData.hourly_request_limit ? accountData.hourly_request_limit.toLocaleString() : "∞"}</strong><small>{accountData.minute_request_limit ? (locale === "zh" ? "每分钟" : "per minute") : accountData.hourly_request_limit ? (locale === "zh" ? "每小时" : "per hour") : (locale === "zh" ? "不限频率" : "unlimited")}</small></article>
+                        <article><span>{locale === "zh" ? "每日总量" : "DAILY VOLUME"}</span><strong>{accountData.daily_limit == null ? "∞" : accountData.daily_limit.toLocaleString()}</strong><small>{accountData.daily_limit == null ? (locale === "zh" ? "无每日额度限制" : "no daily cap") : (locale === "zh" ? "请求上限" : "request cap")}</small></article>
+                      </div>
+                      <section className="account-usage-history">
+                        <div><div><span className="mono-kicker">30 DAY REQUEST HISTORY</span><h3>{locale === "zh" ? "请求量保持可读，不做交易终端。" : "Readable request volume, not a trading terminal."}</h3></div><small>{locale === "zh" ? "认证后的租户汇总" : "Authenticated tenant aggregate"}</small></div>
+                        {accountUsageHistory.length ? <div className="account-usage-chart" aria-label={locale === "zh" ? "最近 30 天请求量" : "Request volume for the last 30 days"}>{accountUsageHistory.map((entry) => <div key={entry.date} title={`${entry.date}: ${entry.total}`}><i style={{ height: `${Math.max(3, ((Number(entry.total) || 0) / accountUsagePeak) * 100)}%` }} /><span>{entry.date.slice(5)}</span></div>)}</div> : <div className="account-chart-empty">{locale === "zh" ? "当前周期暂无请求记录。" : "No requests in the current period."}</div>}
+                      </section>
+                      <div className="account-usage-grants"><span>{locale === "zh" ? "本周期生效的数据分类" : "DATA CATEGORIES IN THIS PERIOD"}</span><strong>{accountCategories.join(" · ") || (locale === "zh" ? "无数据授权" : "No data grants")}</strong></div>
+                    </div>
+                  ) : (
+                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后查看真实用量" : "Sign in to view live usage"}</strong><p>{locale === "zh" ? "请求历史和限制只从当前租户的 Portal API 读取。" : "Request history and limits are read only from the current tenant's Portal API."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
                   )
                 ) : accountSection === "keys" ? (
                   accountData ? (
@@ -1667,6 +1709,22 @@ export function App() {
                     <div><strong>Claude · Codex · OpenClaw · Hermes</strong><p>{locale === "zh" ? "所有 Agent 共用 provider-neutral 的 catalog/query 合同。密钥不会进入提示词。" : "Every Agent uses the same provider-neutral catalog/query contract. Secrets stay out of prompts."}</p></div>
                     <button className="primary-button" type="button" onClick={() => setAgentOpen(true)}>{copy.connect}</button>
                   </div>
+                ) : accountSection === "billing" ? (
+                  <div className="account-billing-panel">
+                    <div><span className="mono-kicker">COMMERCE BOUNDARY</span><h3>{locale === "zh" ? "账单记录尚未接入。" : "Billing records are not connected yet."}</h3><p>{locale === "zh" ? "当前账户页不展示模拟订单、支付或发票。商业合同上线后，才会按当前租户返回真实记录。" : "This account page does not show simulated orders, payments, or invoices. Records will appear per tenant only after the commerce contract is live."}</p></div>
+                    {accountData && <dl><div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountPlanLabel}</dd></div><div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div></dl>}
+                    <a className="account-inline-action" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看公开套餐" : "View public plans"}<ArrowRight /></a>
+                  </div>
+                ) : accountSection === "security" ? (
+                  accountData ? (
+                    <div className="account-security-panel">
+                      <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{accountCurrentKey?.label || (locale === "zh" ? "访问密钥会话" : "Access-key session")}</h3><p>{accountCurrentKey?.fingerprint || (locale === "zh" ? "密钥原文不会在账户页显示。" : "The raw key is never displayed in Account.")}</p></div><button type="button" onClick={disconnectAccount}>{locale === "zh" ? "退出此浏览器" : "Sign out here"}</button></section>
+                      <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{locale === "zh" ? "当前浏览器中的 TradingDatas 访问密钥" : "TradingDatas access key in this browser"}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
+                      <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "邮箱、短信和跨设备会话尚未开放" : "Email, SMS, and cross-device sessions are not available"}</strong><p>{locale === "zh" ? "在身份库、一次性验证、防重放、HttpOnly 会话和撤销审计合同上线前，不提供模拟入口。" : "No simulated entry will be offered before identity storage, one-time verification, replay protection, HttpOnly sessions, and revocation audit are live."}</p></div></div>
+                    </div>
+                  ) : (
+                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后管理当前连接" : "Sign in to manage this connection"}</strong><p>{locale === "zh" ? "当前版本通过访问密钥建立浏览器连接。" : "The current version connects this browser with an access key."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
+                  )
                 ) : (
                   <dl className="account-facts">
                     <div><dt>{locale === "zh" ? "权威来源" : "Authority"}</dt><dd>{accountSection === "billing" ? "Commerce / billing contract" : "Customer Portal API"}</dd></div>

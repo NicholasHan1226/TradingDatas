@@ -21,9 +21,18 @@ TradingDatas has one customer-facing account experience and one restricted admin
 6. Billing — orders, renewals, invoices, and payment records after commerce contracts exist.
 7. Preferences and security — language, appearance, sessions, and access audit.
 
-The current authenticated backend can truthfully supply account identity, entitlement, expiry, request limits, usage, and customer-scoped key management through `/portal/api/me`, `/portal/api/me/usage`, and `/portal/api/me/keys`. Billing, a same-site passwordless session, and cross-device bookmark sync remain target surfaces until their backend contracts exist.
+The current authenticated backend can truthfully supply account identity, entitlement, expiry, request limits, 30-day usage history, and customer-scoped key management through `/portal/api/me`, `/portal/api/me/usage`, and `/portal/api/me/keys`. Account Overview, Subscription, Usage, API Keys, and Security project only those authenticated facts. The current contract does not project alternative-data add-ons separately, so trial, add-on expiry, and renewal are labeled unavailable rather than inferred from broad category grants. Billing, a same-site passwordless session, and cross-device bookmark sync remain target surfaces until their backend contracts exist.
 
 `/login` is the dedicated customer authentication entry. In the current release it verifies an existing TradingDatas access key against the same customer portal contract, stores that credential only in the current browser, restores the session on return, and sends a verified customer to `/account`. Signed-out Account actions and the header account icon route to this page. Email, SMS, password-reset, and registration flows remain unavailable until an identity contract exists; the interface must say so rather than simulate them.
+
+Before email or passwordless sign-in may replace the browser access-key entry, the backend contract must provide all of the following as one reviewed identity boundary:
+
+1. A user identity store with a stable, server-owned user-to-tenant binding.
+2. A verified email challenge sender with short-lived one-time challenges, replay protection, attempt limits, and audit evidence.
+3. A first-party session exchange that returns an `HttpOnly`, `Secure`, and appropriate `SameSite` cookie without exposing bearer credentials to URLs, prompts, or analytics.
+4. An explicit browser-origin allowlist and credential-aware CORS policy; the current wildcard bearer API is not a cookie-session contract.
+5. Session list, revoke, expiry, and audit endpoints that remain tenant-scoped.
+6. A migration path from browser-stored access keys that never sends the existing raw key to a new identity provider or displays it back to the customer.
 
 ### Administrator console
 

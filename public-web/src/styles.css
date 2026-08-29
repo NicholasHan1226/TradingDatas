@@ -483,6 +483,62 @@ button { color: inherit; }
 .account-live-status button { margin-left: auto; border: 0; padding: 6px 0; background: transparent; color: var(--faint); cursor: pointer; font-size: 10px; }
 .account-live-status button:hover { color: var(--ink); }
 .account-live-facts { margin-top: 12px; }
+.account-plan-panel, .account-usage-panel, .account-security-panel, .account-billing-panel { margin-top: 30px; }
+.account-plan-hero { min-height: 226px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(210px, .7fr); overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(135deg, color-mix(in srgb, var(--surface-solid) 94%, var(--aqua) 6%), color-mix(in srgb, var(--surface) 91%, var(--blue) 9%)); }
+.account-plan-hero > div { display: flex; flex-direction: column; justify-content: flex-end; padding: 28px; }
+.account-plan-hero > div + div { border-left: 1px solid var(--line); background: radial-gradient(circle at 82% 15%, rgba(21, 184, 180, .15), transparent 48%); }
+.account-plan-hero h3 { margin: 54px 0 10px; font-size: clamp(42px, 4.8vw, 62px); line-height: .95; letter-spacing: -.055em; }
+.account-plan-hero p { max-width: 440px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.account-plan-hero > div + div > span { color: var(--aqua); font: 8px "IBM Plex Mono", monospace; letter-spacing: .06em; text-transform: uppercase; }
+.account-plan-hero > div + div > strong { margin-top: auto; font-size: 23px; font-weight: 500; letter-spacing: -.035em; }
+.account-plan-hero > div + div > small { margin-top: 8px; color: var(--faint); font-size: 9px; }
+.account-access-list { margin-top: 18px; border-top: 1px solid var(--line); }
+.account-access-list > div { min-height: 67px; display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 24px; align-items: center; border-bottom: 1px solid var(--line-soft); }
+.account-access-list span, .account-usage-grants span { color: var(--faint); font: 8px "IBM Plex Mono", monospace; letter-spacing: .045em; text-transform: uppercase; }
+.account-access-list strong { font-size: 12px; font-weight: 500; line-height: 1.55; }
+.account-boundary-note { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 13px; margin-top: 22px; padding: 17px 18px; border: 1px solid color-mix(in srgb, var(--aqua) 24%, var(--line)); border-radius: 9px; background: color-mix(in srgb, var(--surface-solid) 94%, var(--aqua) 6%); }
+.account-boundary-note > svg { width: 18px; height: 18px; color: var(--aqua); }
+.account-boundary-note strong { display: block; font-size: 11px; font-weight: 500; }
+.account-boundary-note p { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.account-inline-action { width: max-content; min-height: 42px; display: inline-flex; align-items: center; gap: 10px; margin-top: 22px; color: var(--blue); font-size: 11px; }
+.account-inline-action svg { width: 14px; height: 14px; transition: transform 120ms ease; }
+.account-inline-action:hover svg { transform: translateX(3px); }
+.account-usage-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.account-usage-summary article { min-height: 142px; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.account-usage-summary span { margin-bottom: auto; color: var(--faint); font: 8px "IBM Plex Mono", monospace; }
+.account-usage-summary strong { font-size: 34px; font-weight: 500; letter-spacing: -.045em; }
+.account-usage-summary small { margin-top: 5px; color: var(--muted); font-size: 9px; }
+.account-usage-history { margin-top: 38px; }
+.account-usage-history > div:first-child { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+.account-usage-history h3 { margin: 12px 0 0; font-size: 20px; font-weight: 500; letter-spacing: -.035em; }
+.account-usage-history > div:first-child > small { color: var(--faint); font: 8px "IBM Plex Mono", monospace; }
+.account-usage-chart { height: 190px; display: grid; grid-template-columns: repeat(30, minmax(3px, 1fr)); gap: 4px; align-items: end; margin-top: 24px; padding: 18px 0 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.account-usage-chart > div { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 8px; }
+.account-usage-chart i { width: min(10px, 78%); min-height: 3px; border-radius: 999px 999px 2px 2px; background: linear-gradient(180deg, var(--aqua), var(--blue)); opacity: .78; }
+.account-usage-chart span { min-height: 17px; color: var(--faint); font: 7px "IBM Plex Mono", monospace; writing-mode: vertical-rl; opacity: 0; }
+.account-usage-chart > div:nth-child(5n + 1) span, .account-usage-chart > div:last-child span { opacity: 1; }
+.account-chart-empty { min-height: 150px; display: grid; place-items: center; margin-top: 24px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--faint); font-size: 10px; }
+.account-usage-grants { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 24px; margin-top: 20px; padding-top: 20px; }
+.account-usage-grants strong { font-size: 11px; font-weight: 500; line-height: 1.55; }
+.account-billing-panel { padding: 28px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-solid); }
+.account-billing-panel h3 { margin: 16px 0 10px; font-size: 25px; font-weight: 500; letter-spacing: -.04em; }
+.account-billing-panel > div > p { max-width: 570px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.account-billing-panel dl { margin: 28px 0 0; border-top: 1px solid var(--line); }
+.account-billing-panel dl div { min-height: 58px; display: grid; grid-template-columns: 130px 1fr; align-items: center; border-bottom: 1px solid var(--line-soft); }
+.account-billing-panel dt { color: var(--faint); font: 8px "IBM Plex Mono", monospace; text-transform: uppercase; }
+.account-billing-panel dd { margin: 0; font-size: 11px; }
+.account-security-panel > section { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-solid); }
+.account-security-panel > section > svg { color: var(--aqua); }
+.account-security-panel > section span { color: var(--faint); font: 8px "IBM Plex Mono", monospace; }
+.account-security-panel > section h3 { margin: 7px 0 4px; font-size: 15px; font-weight: 500; }
+.account-security-panel > section p { margin: 0; color: var(--muted); font: 9px "IBM Plex Mono", monospace; }
+.account-security-panel > section button { border: 0; padding: 8px 0; background: transparent; color: #b44848; cursor: pointer; font-size: 10px; }
+.account-security-facts { margin: 22px 0 0; border-top: 1px solid var(--line); }
+.account-security-facts > div { min-height: 62px; display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 22px; align-items: center; border-bottom: 1px solid var(--line-soft); }
+.account-security-facts dt { color: var(--faint); font: 8px "IBM Plex Mono", monospace; text-transform: uppercase; }
+.account-security-facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 10px; }
+.account-security-facts button { display: inline-flex; align-items: center; gap: 8px; border: 0; padding: 0; background: transparent; color: var(--blue); cursor: pointer; font-size: 10px; }
+.account-security-facts button svg { width: 13px; height: 13px; }
 .account-keys-panel { margin-top: 30px; }
 .account-key-create { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .72fr); gap: 34px; align-items: end; padding: 25px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-solid); }
 .account-key-create h3 { margin: 12px 0 8px; font-size: 20px; font-weight: 500; letter-spacing: -.035em; }
@@ -1143,6 +1199,7 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .account-entry-actions { grid-column: 1; }
   .account-workspace { grid-template-columns: 220px minmax(0, 1fr); gap: 38px; }
   .account-docs-browser { grid-template-columns: 180px minmax(0, 1fr); }
+  .account-plan-hero { grid-template-columns: minmax(0, 1fr) 210px; }
   .account-setting-panels { grid-template-columns: 1fr; }
   .account-agent-panel { grid-template-columns: 38px 1fr; }
   .account-agent-panel .primary-button { grid-column: 1 / -1; width: max-content; }
@@ -1337,6 +1394,21 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .account-detail { min-height: 480px; padding: 28px 22px; }
   .account-detail h2 { font-size: 32px; }
   .account-facts div { grid-template-columns: 1fr; gap: 8px; padding: 18px 0; }
+  .account-plan-hero { display: block; }
+  .account-plan-hero > div { min-height: 190px; padding: 22px; }
+  .account-plan-hero > div + div { min-height: 142px; border-top: 1px solid var(--line); border-left: 0; }
+  .account-plan-hero h3 { margin-top: 42px; font-size: 45px; }
+  .account-access-list > div, .account-usage-grants, .account-security-facts > div { grid-template-columns: 1fr; gap: 7px; padding: 16px 0; }
+  .account-usage-summary { grid-template-columns: 1fr; border-top: 0; }
+  .account-usage-summary article { min-height: 108px; border-top: 1px solid var(--line); }
+  .account-usage-history > div:first-child { display: block; }
+  .account-usage-history > div:first-child > small { display: block; margin-top: 10px; }
+  .account-usage-chart { gap: 2px; }
+  .account-usage-chart span { display: none; }
+  .account-security-panel > section { grid-template-columns: 28px minmax(0, 1fr); }
+  .account-security-panel > section > button { grid-column: 2; justify-self: start; }
+  .account-billing-panel { padding: 22px; }
+  .account-billing-panel dl div { grid-template-columns: 1fr; gap: 7px; padding: 14px 0; }
   .account-connect-panel { padding: 22px; }
   .account-connect-panel > div { grid-template-columns: 1fr; }
   .account-key-create { grid-template-columns: 1fr; gap: 22px; padding: 20px; }
