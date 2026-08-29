@@ -43,47 +43,44 @@ def test_canary_and_timing_runtime_suites_are_marked_slow() -> None:
         assert "pytestmark = pytest.mark.slow" in _read(path)
 
 
-def test_automerge_binds_controller_acceptance_to_the_exact_head() -> None:
+def test_automerge_requires_pm_merge_and_exact_head_ci() -> None:
     workflow = _read(".github/workflows/automerge.yml")
 
-    assert 'CONTROLLER_ACCEPT_LABEL: controller-accepted' in workflow
-    assert 'ACCEPTANCE_RETURN="$(' in workflow
-    # The workflow now reads the latest Controller return first, then requires
-    # its exact decision line to be accepted.  This prevents an older accepted
-    # return from overriding a later return/change request.
-    assert 'select(.body | contains("AUTODEV_RETURN_V1"))' in workflow
-    assert "sort_by(.created_at) | last | .body // \"\"" in workflow
-    assert "grep -qx 'decision=accepted'" in workflow
-    assert 'ACCEPTANCE_CANDIDATE="$(sed -nE' in workflow
-    assert 'candidate=([0-9a-f]{40})' in workflow
-    assert '"$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA"' in workflow
+    assert "PM_MERGE_LABEL: pm-merge" in workflow
+    assert "github.event.label.name == 'pm-merge'" in workflow
+    assert 'grep -qx "$PM_MERGE_LABEL"' in workflow
+    assert "CI green but pm-merge is not present." in workflow
+    assert '[[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]]' in workflow
+    assert 'select(.name == "TradingDatas CI")' in workflow
+    assert "CI_CONCLUSION" in workflow
+    assert "controller-accepted" not in workflow
+    assert "automerge-m0" not in workflow
+    assert "AUTODEV_RETURN_V1" not in workflow
+    assert "change_class=M0" not in workflow
     assert 'gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge --auto' in workflow
-    assert 'actions: write' in workflow
-    assert 'actions/workflows/ci.yml/dispatches' in workflow
-    assert 'inputs[expected_sha]=$MERGE_SHA' in workflow
+    assert "actions: write" in workflow
+    assert "actions/workflows/ci.yml/dispatches" in workflow
+    assert "inputs[expected_sha]=$MERGE_SHA" in workflow
     assert "--auto can return before GitHub actually merges" in workflow
     assert "MERGED_AT=\"$(jq -r '.merged_at // empty' <<<\"$PR_AFTER\")\"" in workflow
-    assert 'actions/workflows/deploy.yml/dispatches' in workflow
+    assert "actions/workflows/deploy.yml/dispatches" in workflow
     assert "grep -q '^static/'" in workflow
+    assert "GZ/immutable runtime is not auto-deployed." in workflow
 
 
-def test_automerge_keeps_m0_narrow_and_m1_controller_bound() -> None:
+def test_automerge_never_merges_workflow_changes_or_forks() -> None:
     workflow = _read(".github/workflows/automerge.yml")
 
-    assert 'M0_AUTOMERGE_LABEL: automerge-m0' in workflow
-    assert "grep -qx 'change_class=M0'" in workflow
-    assert 'grep -qx "candidate=$HEAD_SHA"' in workflow
-    assert "README\\.md|CONTRIBUTING\\.md|docs/|tests/|static/" in workflow
-    assert 'AUTODEV_RETURN_V1' in workflow
-    assert 'if [[ "$HAS_M0" != true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then' in workflow
-    assert "M0 base advanced. The exact tested head and narrow path allowlist" in workflow
+    assert r"grep -Eq '^\.github/workflows/'" in workflow
+    assert "Workflow-governance changes require a separate trusted bootstrap merge." in workflow
+    assert "Fork PRs never auto-merge." in workflow
 
 
 def test_automerge_never_mutates_a_stale_candidate_branch() -> None:
     workflow = _read(".github/workflows/automerge.yml")
 
-    assert 'pulls/${PR_NUMBER}/update-branch' not in workflow
-    assert "the owner or Controller must refresh, rerun CI" in workflow
+    assert "pulls/${PR_NUMBER}/update-branch" not in workflow
+    assert "Tested SHA ${RUN_HEAD_SHA:0:8} no longer matches PR head ${HEAD_SHA:0:8}." in workflow
 
 
 def test_static_deploy_has_a_published_route_readback() -> None:
