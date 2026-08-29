@@ -590,19 +590,17 @@ def test_rate_limit_isolated_by_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_module.enforce_rate_limit(account_b["tenant_id"], account_b["tier"])
 
 
-def test_commercial_minute_tier_window(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_commercial_minute_tier_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
-    # Deterministic clock + tiny budget so the window boundary is exercisable.
     clock = {"now": 1_000_000.0}
     monkeypatch.setattr(auth_module, "_now", lambda: clock["now"])
     monkeypatch.setitem(auth_module.MINUTE_RATE_LIMITS, "basic", 2)
-
     for _ in range(2):
         auth_module.enforce_rate_limit("tenant-basic", "basic")
     with pytest.raises(auth_module.RateLimitError, match="minute rate limit"):
         auth_module.enforce_rate_limit("tenant-basic", "basic")
-
-    # Sliding past the 60s boundary frees the budget again.
     clock["now"] += auth_module.MINUTE_RATE_WINDOW_SECONDS + 1
     auth_module.enforce_rate_limit("tenant-basic", "basic")
 
@@ -626,6 +624,9 @@ def test_commercial_tier_constants_and_effective_limits(
 ) -> None:
     auth_module = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_HASHES_JSON="[]")
 
+    assert auth_module.COMMERCIAL_TIERS == frozenset(
+        {"basic", "standard", "flagship"}
+    )
     assert auth_module.MINUTE_RATE_LIMITS == {
         "basic": 200,
         "standard": 600,
@@ -634,19 +635,23 @@ def test_commercial_tier_constants_and_effective_limits(
     assert auth_module.RATE_LIMITS["basic"] is None
     assert auth_module.RATE_LIMITS["standard"] is None
     assert auth_module.RATE_LIMITS["flagship"] is None
-    assert auth_module.CONCURRENCY_LIMITS["basic"] == 4
-    assert auth_module.CONCURRENCY_LIMITS["standard"] == 8
-    assert auth_module.CONCURRENCY_LIMITS["flagship"] == 16
+    assert auth_module.CONCURRENCY_LIMITS["basic"] is None
+    assert auth_module.CONCURRENCY_LIMITS["standard"] is None
+    assert auth_module.CONCURRENCY_LIMITS["flagship"] is None
 
-    assert auth_module.effective_limits({"tier": "basic"})[
-        "minute_request_limit"
-    ] == 200
-    assert auth_module.effective_limits({"tier": "standard"})[
-        "minute_request_limit"
-    ] == 600
-    assert auth_module.effective_limits({"tier": "flagship"})[
-        "minute_request_limit"
-    ] == 1000
+    for tier, expected_minute_limit in {
+        "basic": 200,
+        "standard": 600,
+        "flagship": 1000,
+    }.items():
+        limits = auth_module.effective_limits(
+            {"tier": tier, "daily_limit": 1}
+        )
+        assert limits["request_volume_unlimited"] is False
+        assert limits["hourly_request_limit"] is None
+        assert limits["minute_request_limit"] == expected_minute_limit
+        assert limits["daily_limit"] is None
+        assert limits["concurrency_limit"] is None
     assert (
         auth_module.effective_limits({"tier": "pro"})["minute_request_limit"]
         is None
@@ -1081,19 +1086,17 @@ def test_preauth_limiter_tracks_bounded_sources():
             api_server._AUTH_ATTEMPT_TIMES.clear()
 
 
-def test_preauth_defaults_above_highest_commercial_tier(
+def test_preauth_defaults_keep_independent_abuse_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Both pre-auth walls key on the client IP and apply to authenticated
-    requests too, so either sitting below flagship's 1000/min would reject
-    paying customers before their purchased per-minute quota is consulted."""
+    """The IP wall remains a separate abuse boundary, not a plan quota."""
     import api_server
 
     # Reload without overrides: earlier tests in this file mutate the shared
     # module's threshold via env-var reloads.
     auth_module = _reload_auth(monkeypatch)
-    assert auth_module._PREAUTH_MAX_ATTEMPTS >= 1000
-    assert api_server._AUTH_ATTEMPTS_PER_WINDOW >= 1000
+    assert auth_module._PREAUTH_MAX_ATTEMPTS >= 1200
+    assert api_server._AUTH_ATTEMPTS_PER_WINDOW >= 1200
 
 
 def test_effective_client_ip_trusts_cf_header_only_from_cf_peers():

@@ -159,12 +159,12 @@ export default function WorkspaceShell<Key extends string>({
 
   return (
     <div className="min-h-full bg-[var(--td-canvas)]" data-workspace={workspace}>
-      <header className="workspace-header sticky top-0 z-20 border-b border-[var(--td-line)] bg-[rgb(250_249_246/0.96)] text-[var(--td-ink)] backdrop-blur-xl">
-        <div className="mx-auto flex min-h-16 max-w-[1480px] items-center justify-between gap-4 px-4 sm:px-7 lg:px-10">
+      <header className="workspace-header sticky top-3 z-20 mx-auto w-[calc(100%-24px)] max-w-[1480px] overflow-hidden rounded-[22px] border border-[var(--td-line)] bg-[rgb(252_251_248/0.92)] text-[var(--td-ink)] shadow-[0_14px_42px_rgb(19_30_50/0.09)] backdrop-blur-xl sm:top-4 sm:w-[calc(100%-40px)]">
+        <div className="flex min-h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-4 sm:gap-6">
-            <div className="shrink-0 text-[22px] font-bold tracking-[-0.065em] text-[var(--td-ink)] sm:text-[24px]">
+            <a href="https://tradingdatas.com/" className="shrink-0 text-[22px] font-bold tracking-[-0.065em] text-[var(--td-ink)] sm:text-[24px]" aria-label="返回 TradingDatas 首页">
               <span className="tracking-[-0.075em]">Trading</span><span className="font-semibold tracking-[-0.045em]">Datas</span>
-            </div>
+            </a>
             <div className="h-6 w-px bg-[var(--td-line-strong)]" />
             <span className="truncate text-[13px] font-medium text-[var(--td-ink-soft)]">{workspaceLabel}</span>
           </div>
@@ -184,7 +184,7 @@ export default function WorkspaceShell<Key extends string>({
           </div>
         </div>
 
-        <nav ref={navRef} aria-label={`${workspaceLabel}导航`} className="workspace-nav mx-auto flex max-w-[1480px] snap-x snap-mandatory gap-7 overflow-x-auto px-4 sm:px-7 lg:px-10">
+        <nav ref={navRef} aria-label={`${workspaceLabel}导航`} className="workspace-nav flex snap-x snap-mandatory gap-7 overflow-x-auto border-t border-[var(--td-line)] px-4 sm:px-6 lg:px-8">
           {items.map((item) => {
             const Icon = item.icon
             const selected = item.key === active
@@ -214,7 +214,7 @@ export default function WorkspaceShell<Key extends string>({
         </div>
       )}
 
-      <main className="mx-auto max-w-[1480px] px-4 py-6 pb-16 sm:px-7 sm:py-8 lg:px-10">
+      <main className="mx-auto max-w-[1480px] px-4 pb-16 pt-10 sm:px-7 sm:pt-12 lg:px-10">
         {children}
       </main>
     </div>

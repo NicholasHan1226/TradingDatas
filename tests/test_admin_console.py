@@ -141,6 +141,25 @@ def test_daily_limit_unlimited_when_not_set(monkeypatch: pytest.MonkeyPatch) -> 
         auth_mod.enforce_daily_limit(account)
 
 
+@pytest.mark.parametrize("tier", ["basic", "standard", "flagship"])
+def test_commercial_tiers_ignore_stale_daily_limit_but_keep_usage_history(
+    monkeypatch: pytest.MonkeyPatch, tier: str
+) -> None:
+    auth_mod = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT)
+    auth_mod._DAILY_REQUEST_LOG.clear()
+    account = {
+        "tenant_id": f"unmetered-{tier}",
+        "tier": tier,
+        "scopes": ["read"],
+        "daily_limit": 1,
+    }
+    for _ in range(3):
+        auth_mod.enforce_daily_limit(account)
+    usage = auth_mod.get_daily_usage()[account["tenant_id"]]
+    assert usage["count"] == 3
+    assert usage["daily_limit"] is None
+
+
 def test_parse_expires_at_formats() -> None:
     assert auth._parse_expires_at("2027-01-01T00:00:00Z") is not None
     assert auth._parse_expires_at(1893456000) == 1893456000.0
@@ -199,6 +218,8 @@ def test_data_categories_preserve_legacy_all_and_validate_explicit_allowlist(
     listed = auth_mod.list_tokens()[0]
     assert listed["data_categories"] == ["a_share", "news"]
     assert listed["data_category_mode"] == "restricted"
+    assert listed["max_concurrent"] is None
+    assert listed["minute_request_limit"] == 600
     assert auth_mod.effective_data_categories({"scopes": ["read"]}) == [
         "a_share",
         "crypto",
@@ -271,6 +292,39 @@ def test_token_mutations_persist_only_valid_category_allowlists(
 
     with pytest.raises(auth_mod.AuthError, match="must be a list"):
         auth_mod.update_token(created["token_hash"], {"data_categories": None})
+
+
+def test_commercial_token_mutations_cannot_persist_request_quota(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "api_tokens.json"
+    token_file.write_text('{"tokens": []}', encoding="utf-8")
+    token_file.chmod(0o600)
+    auth_mod = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT,
+        TRADINGDATAS_TOKEN_HASH_FILE=str(token_file),
+    )
+
+    with pytest.raises(auth_mod.AuthError, match="does not support daily_limit"):
+        auth_mod.create_token("basic-customer", tier="basic", daily_limit=10)
+    with pytest.raises(auth_mod.AuthError, match="does not support max_concurrent"):
+        auth_mod.create_token("basic-customer", tier="basic", max_concurrent=4)
+
+    legacy = auth_mod.create_token(
+        "legacy-customer", tier="research", daily_limit=10
+    )
+    with pytest.raises(auth_mod.AuthError, match="does not support daily_limit"):
+        auth_mod.update_token(legacy["token_hash"], {"tier": "standard", "daily_limit": 10})
+    with pytest.raises(auth_mod.AuthError, match="does not support max_concurrent"):
+        auth_mod.update_token(legacy["token_hash"], {"tier": "standard", "max_concurrent": 8})
+
+    auth_mod.update_token(legacy["token_hash"], {"tier": "standard"})
+    payload = json.loads(token_file.read_text(encoding="utf-8"))
+    assert payload["tokens"][0]["tier"] == "standard"
+    assert "daily_limit" not in payload["tokens"][0]
+    assert "max_concurrent" not in payload["tokens"][0]
 
 
 def test_rfc3339_expires_at_in_token_config(monkeypatch: pytest.MonkeyPatch) -> None:

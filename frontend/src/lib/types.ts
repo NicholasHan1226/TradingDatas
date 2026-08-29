@@ -12,6 +12,7 @@ export interface PortalInfo {
   hourly_request_limit: number | null
   minute_request_limit?: number | null
   daily_limit: number | null
+  request_volume_unlimited: boolean
   expires_at: string | null
   usage: {
     today_date: string | null
@@ -50,6 +51,7 @@ export interface AdminToken {
   daily_limit?: number | null
   daily_usage?: number
   max_concurrent?: number | null
+  minute_request_limit?: number | null
   expires_at?: string | null
   expired?: boolean
 }

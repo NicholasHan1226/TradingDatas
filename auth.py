@@ -35,17 +35,16 @@ RATE_LIMITS = {
     "starter": 60,
     "research": 300,
     "pro": 600,
-    # Commercial per-minute tiers (Nicholas 2026-08-23): burst quota is the
-    # minute window below; hourly is intentionally uncapped for them and
-    # daily_limit/expires_at stay per-token admin controls.
+    # Commercial tiers use a sliding minute window below, never an hourly
+    # fallback.
     "basic": None,
     "standard": None,
     "flagship": None,
     "enterprise": None,
     "internal": None,
 }
-# Per-minute request budgets for the commercial tiers (requests/minute).
-MINUTE_RATE_LIMITS = {
+COMMERCIAL_TIERS = frozenset({"basic", "standard", "flagship"})
+MINUTE_RATE_LIMITS: dict[str, int] = {
     "basic": 200,
     "standard": 600,
     "flagship": 1000,
@@ -55,10 +54,10 @@ CONCURRENCY_LIMITS = {
     "starter": 2,
     "research": 4,
     "pro": 8,
-    # Defaults for the commercial tiers; admin PATCH can override per token.
-    "basic": 4,
-    "standard": 8,
-    "flagship": 16,
+    # Commercial plans are differentiated only by minute request frequency.
+    "basic": None,
+    "standard": None,
+    "flagship": None,
     "enterprise": None,
     "internal": None,
 }
@@ -104,7 +103,7 @@ DATA_CATEGORIES = ("a_share", "crypto", "news")
 
 _STATE_LOCK = threading.Lock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
-# Sliding per-minute window for commercial tiers; same shape as _REQUEST_LOG.
+# Sliding per-minute store used by the three commercial tiers.
 MINUTE_RATE_WINDOW_SECONDS = 60
 _MINUTE_REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
 _DAILY_REQUEST_LOG: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -113,10 +112,8 @@ _ACTIVE_REQUESTS: dict[str, int] = {}
 # tokens before any expensive key derivation runs. Counts every authentication
 # attempt (JWT-shaped or bearer) per client host inside a sliding window.
 _PREAUTH_WINDOW_SECONDS = 60.0
-# Must stay above the highest commercial per-minute tier (flagship 1000):
-# this limiter keys on the client IP and applies to authenticated requests
-# too, so a lower default would reject paying customers before their real
-# per-minute quota is ever consulted.
+# Independent per-IP abuse wall. It is not a commercial request quota and stays
+# intentionally high enough for normal multi-agent traffic.
 _PREAUTH_MAX_ATTEMPTS = max(
     1, int(os.environ.get("TRADINGDATAS_PREAUTH_RATE_LIMIT", "1200"))
 )
@@ -204,7 +201,7 @@ def _cleanup_rate_log_locked(now: float) -> None:
     for tenant_id in empty_tenants:
         _REQUEST_LOG.pop(tenant_id, None)
 
-    # Same housekeeping for the commercial per-minute window log.
+    # Same housekeeping for any compatibility minute-window entries.
     empty_minute_tenants: list[str] = []
     for tenant_id, bucket in _MINUTE_REQUEST_LOG.items():
         while bucket and now - bucket[0] > MINUTE_RATE_WINDOW_SECONDS:
@@ -719,7 +716,11 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
             parsed["data_categories"] = normalize_data_categories(
                 item["data_categories"]
             )
-        if max_concurrent is not None and max_concurrent >= 0:
+        if (
+            tier not in COMMERCIAL_TIERS
+            and max_concurrent is not None
+            and max_concurrent >= 0
+        ):
             parsed["max_concurrent"] = max_concurrent
 
         raw_enabled = item.get("enabled")
@@ -727,7 +728,7 @@ def _load_token_hashes() -> dict[str, dict[str, Any]]:
             parsed["enabled"] = bool(raw_enabled)
 
         raw_daily_limit = item.get("daily_limit")
-        if raw_daily_limit is not None:
+        if raw_daily_limit is not None and tier not in COMMERCIAL_TIERS:
             try:
                 daily_limit = int(raw_daily_limit)
                 if daily_limit > 0:
@@ -941,9 +942,8 @@ def enforce_rate_limit(tenant_id: str, tier: str) -> None:
 
     hourly_limit = RATE_LIMITS.get(normalized, RATE_LIMITS["free"])
     if hourly_limit is None:
-        # Commercial tiers (and enterprise/internal) are governed by the
-        # per-minute window above plus the admin-controlled daily quota;
-        # no hourly cap applies.
+        # Enterprise/internal remain unmetered unless a per-token daily limit is
+        # explicitly configured; current commercial tiers returned above.
         return
 
     with _STATE_LOCK:
@@ -1041,8 +1041,11 @@ atexit.register(_flush_usage_history_on_exit)
 
 
 def enforce_daily_limit(account: dict[str, Any]) -> None:
-    """Count every authenticated request and enforce per-tenant daily limit."""
-    daily_limit = account.get("daily_limit")
+    """Count every authenticated request and enforce legacy per-tenant limits."""
+    tier = str(account.get("tier") or "free").lower()
+    daily_limit = (
+        None if tier in COMMERCIAL_TIERS else account.get("daily_limit")
+    )
     tenant_id = str(account.get("tenant_id") or "").strip()
     if not tenant_id:
         return
@@ -1129,9 +1132,9 @@ def list_tokens() -> list[dict[str, Any]]:
             "data_category_mode": (
                 "restricted" if "data_categories" in binding else "all"
             ),
+            "max_concurrent": _account_concurrency_limit(binding),
+            "minute_request_limit": effective_limits(binding)["minute_request_limit"],
         }
-        if "max_concurrent" in binding:
-            entry["max_concurrent"] = binding["max_concurrent"]
         if "daily_limit" in binding:
             entry["daily_limit"] = binding["daily_limit"]
         if "expires_at" in binding:
@@ -1180,6 +1183,15 @@ def create_token(
 ) -> dict[str, Any]:
     """Create a new API token and return it (only time the raw token is visible)."""
     import secrets
+    normalized_tier = str(tier or "free").strip().lower() or "free"
+    if normalized_tier in COMMERCIAL_TIERS and daily_limit is not None:
+        raise AuthError(
+            f"commercial tier={normalized_tier} does not support daily_limit"
+        )
+    if normalized_tier in COMMERCIAL_TIERS and max_concurrent is not None:
+        raise AuthError(
+            f"commercial tier={normalized_tier} does not support max_concurrent"
+        )
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_token(raw_token)
 
@@ -1190,7 +1202,7 @@ def create_token(
 
     entry: dict[str, Any] = {
         "tenant_id": tenant_id,
-        "tier": tier,
+        "tier": normalized_tier,
         "scopes": scopes or ["read"],
         "token_hash": token_hash,
         "enabled": True,
@@ -1219,6 +1231,23 @@ def update_token(token_hash: str, updates: dict[str, Any]) -> dict[str, Any]:
     for item in tokens:
         if str(item.get("token_hash", "")).lower() == token_hash.lower():
             found = True
+            target_tier = str(
+                updates.get("tier", item.get("tier", "free")) or "free"
+            ).strip().lower() or "free"
+            if (
+                target_tier in COMMERCIAL_TIERS
+                and updates.get("daily_limit") is not None
+            ):
+                raise AuthError(
+                    f"commercial tier={target_tier} does not support daily_limit"
+                )
+            if (
+                target_tier in COMMERCIAL_TIERS
+                and updates.get("max_concurrent") is not None
+            ):
+                raise AuthError(
+                    f"commercial tier={target_tier} does not support max_concurrent"
+                )
             for key in (
                 "enabled",
                 "daily_limit",
@@ -1235,6 +1264,10 @@ def update_token(token_hash: str, updates: dict[str, Any]) -> dict[str, Any]:
                         item.pop(key, None)
                     else:
                         item[key] = updates[key]
+            item["tier"] = target_tier
+            if target_tier in COMMERCIAL_TIERS:
+                item.pop("daily_limit", None)
+                item.pop("max_concurrent", None)
             break
     if not found:
         raise AuthError("token not found")
@@ -1257,6 +1290,9 @@ def delete_token(token_hash: str) -> dict[str, Any]:
     _write_token_file(payload)
     return {"token_hash": token_hash, "deleted": True}
 def _account_concurrency_limit(account: dict[str, Any]) -> int | None:
+    tier = str(account.get("tier") or "free").lower()
+    if tier in COMMERCIAL_TIERS:
+        return None
     raw_limit = account.get("max_concurrent")
     if raw_limit is not None:
         try:
@@ -1265,7 +1301,7 @@ def _account_concurrency_limit(account: dict[str, Any]) -> int | None:
             value = 0
         return None if value <= 0 else value
     return CONCURRENCY_LIMITS.get(
-        str(account.get("tier") or "free").lower(), CONCURRENCY_LIMITS["free"]
+        tier, CONCURRENCY_LIMITS["free"]
     )
 
 
@@ -1279,14 +1315,23 @@ def effective_limits(account: dict[str, Any]) -> dict[str, Any]:
     tier = str(account.get("tier") or "free").lower()
     raw_daily = account.get("daily_limit")
     daily_limit = (
-        int(raw_daily) if isinstance(raw_daily, int) and raw_daily > 0 else None
+        int(raw_daily)
+        if tier not in COMMERCIAL_TIERS
+        and isinstance(raw_daily, int)
+        and raw_daily > 0
+        else None
     )
+    hourly_limit = RATE_LIMITS.get(tier, RATE_LIMITS["free"])
+    minute_limit = MINUTE_RATE_LIMITS.get(tier)
     return {
         "tier": tier,
-        "hourly_request_limit": RATE_LIMITS.get(tier, RATE_LIMITS["free"]),
-        "minute_request_limit": MINUTE_RATE_LIMITS.get(tier),
+        "hourly_request_limit": hourly_limit,
+        "minute_request_limit": minute_limit,
         "concurrency_limit": _account_concurrency_limit(account),
         "daily_limit": daily_limit,
+        "request_volume_unlimited": (
+            hourly_limit is None and minute_limit is None and daily_limit is None
+        ),
     }
 
 

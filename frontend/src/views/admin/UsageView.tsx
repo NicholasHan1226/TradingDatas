@@ -156,7 +156,7 @@ export default function UsageView({ client }: { client: ApiClient }) {
             return (
               <div key={workspace} className="border-l-2 border-[var(--td-line-strong)] px-4 py-1">
                 <div className="flex items-center justify-between gap-4">
-                  <div><div className="text-sm font-semibold text-[var(--td-ink)]">{workspace === 'admin' ? '管理员工作台' : '客户工作台'}</div><div className="mt-1 text-[11px] text-[var(--td-muted)]">浏览 {metrics.views} · 完成 {metrics.completions} · 错误 {metrics.errors}</div></div>
+                  <div><div className="text-sm font-semibold text-[var(--td-ink)]">{workspace === 'admin' ? '管理员工作台' : '官网 Account'}</div><div className="mt-1 text-[11px] text-[var(--td-muted)]">浏览 {metrics.views} · 完成 {metrics.completions} · 错误 {metrics.errors}</div></div>
                   <span className="font-mono text-xs text-[var(--td-faint)]">{total} 次</span>
                 </div>
               </div>

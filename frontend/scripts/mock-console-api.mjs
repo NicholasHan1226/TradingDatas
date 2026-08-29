@@ -26,9 +26,10 @@ let tokens = [
     data_categories: ['a_share', 'news'],
     data_category_mode: 'restricted',
     enabled: true,
-    daily_limit: 50000,
+    daily_limit: null,
     daily_usage: 9230,
-    max_concurrent: 8,
+    max_concurrent: null,
+    minute_request_limit: 600,
     expires_at: '2027-12-31T00:00:00Z',
     expired: false,
   },
@@ -108,12 +109,12 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/portal/api/me') {
     const portal = isCustomerSession
-      ? { tenant_id: 'quant-lab', tier: 'standard', scopes: ['read'], data_categories: ['a_share', 'news'], data_category_mode: 'restricted', enabled: true, max_concurrent: 8, minute_request_limit: 600, hourly_request_limit: null, daily_limit: 50000, expires_at: '2027-12-31T00:00:00Z', usage: { today_date: '2026-08-24', today_count: 9230, hourly_count: 482, hourly_window_seconds: 60 } }
-      : { tenant_id: 'research-team', tier: 'internal', scopes: ['read', 'admin'], data_categories: ['a_share', 'crypto', 'news'], data_category_mode: 'all', enabled: true, max_concurrent: null, hourly_request_limit: null, daily_limit: null, expires_at: null, usage: { today_date: '2026-08-24', today_count: 1840, hourly_count: 121, hourly_window_seconds: 3600 } }
+      ? { tenant_id: 'quant-lab', tier: 'standard', scopes: ['read'], data_categories: ['a_share', 'news'], data_category_mode: 'restricted', enabled: true, max_concurrent: null, minute_request_limit: 600, hourly_request_limit: null, daily_limit: null, request_volume_unlimited: false, expires_at: '2027-12-31T00:00:00Z', usage: { today_date: '2026-08-24', today_count: 9230, hourly_count: 0, hourly_window_seconds: 60 } }
+      : { tenant_id: 'research-team', tier: 'internal', scopes: ['read', 'admin'], data_categories: ['a_share', 'crypto', 'news'], data_category_mode: 'all', enabled: true, max_concurrent: null, hourly_request_limit: null, minute_request_limit: null, daily_limit: null, request_volume_unlimited: true, expires_at: null, usage: { today_date: '2026-08-24', today_count: 1840, hourly_count: 121, hourly_window_seconds: 3600 } }
     return json(response, 200, { api_version: 'v1', request_id: 'mock-me', portal })
   }
   if (request.method === 'GET' && url.pathname === '/portal/api/me/usage') {
-    return json(response, 200, { api_version: 'v1', request_id: 'mock-portal-usage', portal_usage: { tenant_id: isCustomerSession ? 'quant-lab' : 'research-team', daily_limit: isCustomerSession ? 50000 : null, today_count: isCustomerSession ? 9230 : 1840, history } })
+    return json(response, 200, { api_version: 'v1', request_id: 'mock-portal-usage', portal_usage: { tenant_id: isCustomerSession ? 'quant-lab' : 'research-team', daily_limit: null, today_count: isCustomerSession ? 9230 : 1840, history } })
   }
   if (request.method === 'GET' && url.pathname === '/admin/api/tokens') return json(response, 200, { tokens, count: tokens.length })
   if (request.method === 'POST' && url.pathname === '/admin/api/tokens') {
@@ -135,7 +136,7 @@ const server = http.createServer(async (request, response) => {
     }
   }
   if (request.method === 'GET' && url.pathname === '/admin/api/usage') {
-    return json(response, 200, { daily: { 'research-team': { date: '2026-08-24', count: 1840, daily_limit: null }, 'quant-lab': { date: '2026-08-24', count: 9230, daily_limit: 50000 } }, hourly: { 'research-team': { count_in_window: 121, tier_limit: null, window_seconds: 3600 }, 'quant-lab': { count_in_window: 482, tier_limit: 600, window_seconds: 60 } }, cache: { dedup_entries: 214, dedup_bytes: 45870, active_requests: 2 } })
+    return json(response, 200, { daily: { 'research-team': { date: '2026-08-24', count: 1840, daily_limit: null }, 'quant-lab': { date: '2026-08-24', count: 9230, daily_limit: null } }, hourly: { 'research-team': { count_in_window: 121, tier_limit: null, window_seconds: 3600 }, 'quant-lab': { count_in_window: 0, tier_limit: null, window_seconds: 3600 } }, cache: { dedup_entries: 214, dedup_bytes: 45870, active_requests: 2 } })
   }
   if (request.method === 'GET' && url.pathname === '/admin/api/usage/history') return json(response, 200, { history })
   if (request.method === 'GET' && url.pathname === '/admin/api/collection/status') {

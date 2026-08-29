@@ -29,17 +29,17 @@ body {
 /* Precision utility: a shared data-workspace language for operator and customer. */
 :root {
   color-scheme: light;
-  --td-canvas: #f3f6fb;
+  --td-canvas: #f7f5f1;
   --td-surface: #ffffff;
-  --td-surface-subtle: #f7f9fd;
+  --td-surface-subtle: #faf9f6;
   --td-surface-raised: #ffffff;
   --td-shell: #0b1327;
   --td-ink: #10182d;
   --td-ink-soft: #283553;
   --td-muted: #67728a;
   --td-faint: #98a2b7;
-  --td-line: #dfe5f0;
-  --td-line-strong: #c8d1e0;
+  --td-line: #e1dfda;
+  --td-line-strong: #cbc8c1;
   --td-accent: #315cf6;
   --td-accent-strong: #2447cc;
   --td-accent-quiet: #eaf0ff;

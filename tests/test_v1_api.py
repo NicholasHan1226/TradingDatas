@@ -446,10 +446,15 @@ def _error_shape(payload: dict[str, Any], expected_code: str) -> None:
                 "budget_exceeded": "request exceeds allowed budget",
                 "unsupported_media_type": "unsupported media type",
                 "rate_limited": "rate limit exceeded",
+                "concurrency_limit_exceeded": "concurrency limit exceeded",
                 "service_unavailable": "service temporarily unavailable",
                 "internal_error": "internal error",
             }[expected_code],
-            "retryable": expected_code in {"rate_limited", "service_unavailable"},
+            "retryable": expected_code in {
+                "rate_limited",
+                "concurrency_limit_exceeded",
+                "service_unavailable",
+            },
         },
     }
 
@@ -1293,7 +1298,7 @@ def test_v1_group_21_unlimited_request_does_not_release_finite_same_tenant_claim
         )
         assert status == 429
         assert payload is not None
-        _error_shape(payload, "rate_limited")
+        _error_shape(payload, "concurrency_limit_exceeded")
         assert auth._ACTIVE_REQUESTS == {"tenant-mixed": 1}
     finally:
         auth.release_concurrency("tenant-mixed")
@@ -1696,7 +1701,7 @@ def test_v1_rate_and_concurrency_gates_run_before_json_decode(
         auth.release_concurrency("tenant-full")
     assert status == 429
     assert payload is not None
-    _error_shape(payload, "rate_limited")
+    _error_shape(payload, "concurrency_limit_exceeded")
 
 
 @pytest.mark.parametrize(
@@ -1952,7 +1957,7 @@ def test_v1_group_21_concurrency_is_per_tenant_and_released(
     )
     assert same_status == 429
     assert same_payload is not None
-    _error_shape(same_payload, "rate_limited")
+    _error_shape(same_payload, "concurrency_limit_exceeded")
 
     release.set()
     tenant_a.join(timeout=5)

@@ -6,7 +6,7 @@ TradingDatas 是一个类似 Tushare 的、面向公共用户但所有数据请�
 
 产品主要服务 Claude、Codex、OpenClaw、Hermes 等可调用 HTTP 工具的 Agent。用户侧按 A 股、加密资产、新闻等产品分类发现数据；技术 registry 仍以 `market` 与 `domain` 分开表达，公共 API 永远保持 catalog/query 两个 provider-neutral 端点。
 
-账户最终权限模型是 endpoint scope、数据分类 allowlist、运行限额三者取交集。商业档同时受每分钟请求上限、并发请求上限和每日查询上限约束。`data_categories` 只允许 `a_share`、`crypto`、`news`，由后端根据 immutable registry 推导 dataset grants，并在 catalog/query 同时强制执行；缺字段的存量 Token 保持兼容全量，显式空列表无数据授权，未知值 fail closed。管理 API、门户和前端只投影这一后端事实；生产是否生效仍须 exact-main 发布及认证 readback。
+商业权限模型是 endpoint scope、数据分类 allowlist 与每分钟请求上限三者取交集。商业套餐按 200/600/1000 次每分钟区分，不设每日查询额度，也不设置商业档并发上限。`data_categories` 只允许 `a_share`、`crypto`、`news`，由后端根据 immutable registry 推导 dataset grants，并在 catalog/query 同时强制执行；缺字段的存量 Token 保持兼容全量，显式空列表无数据授权，未知值 fail closed。当前代码已让 `basic`/`standard`/`flagship` 使用滚动 60 秒窗口、忽略旧配置残留的 `daily_limit`/`max_concurrent`，并在管理写入时拒绝商业档这两个非空字段；生产是否生效仍须 exact-main 发布及认证 readback。
 
 当前主目标：所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。Binance 公共现货行情与同一冻结 40 个 USDT 标的的 USDⓈ-M 永续 funding rate / open interest 公共只读历史共同构成独立的第二 provider 纵向切片，必须使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 端口和 timer，且继续复用同一固定 API；不得影响 A 股运行面，也不得创建或使用 Binance 账户/API key。
 
@@ -96,14 +96,15 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 
 **客户门户**：`GET /portal/api/me` 与 `GET /portal/api/me/usage?days=N` 让任意有效
 token 查看自身套餐/限额/用量，仅返回本租户数据；不计日配额、不做
-scope 检查（门户自加载不烧客户配额），但完整认证、每小时频率与并发限制照常执行。
+scope 检查（门户自加载不烧客户配额），但完整认证与该档位适用的分钟/小时频率限制
+照常执行；并发限制只适用于存量档位。
 路由冻结白名单已显式登记这三个 `/portal/api*` 字面量（见
 `tests/test_v1_api_clean_slate.py`）。合同详见 `docs/API.md` Customer Portal API。
 
-**前端角色合同**：客户 token 只进入客户工作台；带 `admin` scope 或 `internal` tier
-的管理员 token 默认进入管理工作台。平台 owner token 约定同时保留 `read` 与 `admin`，
-可在同一会话切换到明确标识的客户视角并返回，但该视角只投影管理员自身 portal 数据，
-不是客户冒充，不得修改 token 或绕过服务端授权。产品与设计合同见 `docs/PRODUCT.md`
+**前端角色合同**：公共网站的既有 `Account` 是唯一客户账户界面，客户 token 在这里
+读取自身套餐、有效期、授权与用量；`static/app/` 只保留管理员工作台，客户 token 必须
+被拒绝并引导回官网 Account。带 `admin` scope 或 `internal` tier 的 token 才能进入管理
+工作台；管理员不在该应用内切换或冒充客户视角。产品与设计合同见 `docs/PRODUCT.md`
 、`docs/design/console-product-system-v4.md` 和
 `docs/design/console-productivity-v5.md`、`docs/design/console-resilience-v6.md`、`docs/design/console-workspace-v7.md`。前端页面定位使用 hash route，避免 Pages
 刷新依赖 SPA fallback；排序、筛选、列布局和控制台体验计数只保存在当前浏览器，禁止
@@ -123,18 +124,17 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 
 - `enabled`（bool）：是否启用，默认 true
 - `expires_at`（RFC3339/Unix 时间戳）：token 有效期
-- `daily_limit`（number/null）：每日请求上限，null 或省略 = 无限
+- `daily_limit`（number/null）：仅供存量档位使用的每日请求上限；商业三档不接受非空值
 
-`tier` 档位与频率/并发（`auth.py` 常量，admin PATCH 可 per-token 覆盖并发）：
+`tier` 档位与请求频率（`auth.py` 常量）：
 
-- 商业三档：`basic` 200 次/分钟、`standard` 600 次/分钟、`flagship` 1000 次/分钟，
-  默认并发 4/8/16。按滑动 60 秒窗口计每分钟请求数，无小时窗；日配额与有效期照常。
+- 商业三档：`basic`/`standard`/`flagship` 分别为 200/600/1000 次/分钟，采用滚动 60 秒窗口；不设每日额度或商业档并发上限。
 - 存量档位不变：`free`/`starter` 60 次/小时、`research` 300 次/小时、`pro` 600 次/小时；
   `enterprise`/`internal` 不限频率。
 
-`enforce_daily_limit` 在 `enforce_rate_limit`（商业档为每分钟窗口、存量档为每小时窗口）之后执行，超限时返回 429 `daily_limit_exceeded`。
+`enforce_rate_limit` 对商业档执行分钟窗口、对存量档执行小时窗口；`enforce_daily_limit` 只对存量档形成每日额度拒绝，商业三档仍记录逐日请求趋势。
 
-**限流键与前置墙**（2026-08-24 起）：所有 per-IP 前置墙以**客户端真实 IP** 为键——公网流量经 Cloudflare 橙云代理回源时，TCP 对端是 CF 边缘而非客户，`api_server._effective_client_ip` 仅在 peer 属于 CF 回源网段时信任 `CF-Connecting-IP` 头（头缺失/畸形则回落共享边缘桶，防伪造）。两层前置墙必须高于最高商业档分钟限（flagship 1000），否则付费客户先被墙挡：`auth._PREAUTH_MAX_ATTEMPTS` 默认 1200/60s（env `TRADINGDATAS_PREAUTH_RATE_LIMIT`）、`api_server._AUTH_ATTEMPTS_PER_WINDOW` 默认 1200/60s（env `TRADINGDATAS_AUTH_ATTEMPT_RATE_LIMIT`），loopback 豁免仅 api 层有。
+**限流键与前置墙**（2026-08-24 起）：所有 per-IP 前置墙以**客户端真实 IP** 为键——公网流量经 Cloudflare 橙云代理回源时，TCP 对端是 CF 边缘而非客户，`api_server._effective_client_ip` 仅在 peer 属于 CF 回源网段时信任 `CF-Connecting-IP` 头（头缺失/畸形则回落共享边缘桶，防伪造）。前置墙是独立的安全防刷边界，不是商业套餐额度，默认 1200/60s 并高于最高商业档 1000/60s：`auth._PREAUTH_MAX_ATTEMPTS`（env `TRADINGDATAS_PREAUTH_RATE_LIMIT`）、`api_server._AUTH_ATTEMPTS_PER_WINDOW`（env `TRADINGDATAS_AUTH_ATTEMPT_RATE_LIMIT`），loopback 豁免仅 api 层有。
 
 ## 首期范围
 

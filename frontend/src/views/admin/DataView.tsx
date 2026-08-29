@@ -32,7 +32,9 @@ function describeQueryFailure(error: unknown): string {
     return '当前查询没有满足数据时间要求的可用结果。服务不会以其他时点的数据替代本次请求，请先核对数据截止时间与运行健康。'
   }
   if (error instanceof ApiError && error.status === 429) {
-    return '请求频率已到达当前账户上限。请降低并发并在下一窗口继续查询。'
+    return error.code === 'concurrency_limit_exceeded'
+      ? '当前并发请求已达到套餐上限。请等待正在运行的请求完成后重试。'
+      : '已达到当前套餐请求频率或安全窗口，请等待窗口恢复后重试。'
   }
   return error instanceof Error ? error.message : '查询失败，请稍后重试。'
 }

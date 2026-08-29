@@ -34,6 +34,11 @@ import {
 
 const SCOPE_OPTIONS = ['read', 'query', 'catalog', 'admin']
 const CURRENT_TIERS = ['basic', 'standard', 'flagship'] as const
+const COMMERCIAL_MINUTE_LIMITS: Record<(typeof CURRENT_TIERS)[number], number> = {
+  basic: 200,
+  standard: 600,
+  flagship: 1000,
+}
 const DATA_CATEGORY_OPTIONS: { value: DataCategory; label: string; hint: string }[] = [
   { value: 'a_share', label: 'A 股', hint: '境内市场行情、基础资料与基本面' },
   { value: 'crypto', label: '加密资产', hint: '公共现货与衍生品市场数据' },
@@ -98,8 +103,8 @@ function buildPayload(form: TokenForm): Record<string, unknown> {
     ],
     data_categories: form.data_categories,
   }
-  if (form.daily_limit.trim()) payload.daily_limit = parseInt(form.daily_limit, 10)
-  if (form.max_concurrent.trim()) payload.max_concurrent = parseInt(form.max_concurrent, 10)
+  if (!CURRENT_TIERS.includes(form.tier as (typeof CURRENT_TIERS)[number]) && form.daily_limit.trim()) payload.daily_limit = parseInt(form.daily_limit, 10)
+  if (!CURRENT_TIERS.includes(form.tier as (typeof CURRENT_TIERS)[number]) && form.max_concurrent.trim()) payload.max_concurrent = parseInt(form.max_concurrent, 10)
   if (form.expires_at) payload.expires_at = new Date(form.expires_at + 'T00:00:00Z').toISOString()
   return payload
 }
@@ -276,8 +281,8 @@ export default function TokensView({ client }: { client: ApiClient }) {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-1">{(t.data_categories ?? []).map((category) => <DataCategoryTag key={category} category={category} />)}{t.data_categories.length === 0 && <span className="text-xs text-rose-600">未授权</span>}</div>
                 <dl className="mt-4 grid grid-cols-3 border-y border-[var(--td-line)] py-3 text-[10px]">
-                  <div><dt className="text-[var(--td-faint)]">并发</dt><dd className="mt-1 font-mono text-[var(--td-ink-soft)]">{fmtNumber(t.max_concurrent)}</dd></div>
-                  <div><dt className="text-[var(--td-faint)]">今日用量</dt><dd className="mt-1 font-mono text-[var(--td-ink-soft)]">{t.daily_usage ?? 0} / {fmtNumber(t.daily_limit)}</dd></div>
+                  <div><dt className="text-[var(--td-faint)]">请求频率</dt><dd className="mt-1 font-mono text-[var(--td-ink-soft)]">{t.minute_request_limit ? `${fmtNumber(t.minute_request_limit)} / 分` : '存量合同'}</dd></div>
+                  <div><dt className="text-[var(--td-faint)]">今日请求</dt><dd className="mt-1 font-mono text-[var(--td-ink-soft)]">{t.daily_usage ?? 0}{t.daily_limit ? ` / ${fmtNumber(t.daily_limit)}` : ' 次'}</dd></div>
                   <div><dt className="text-[var(--td-faint)]">有效期</dt><dd className={`mt-1 ${t.expired ? 'text-rose-600' : 'text-[var(--td-ink-soft)]'}`}>{t.expires_at ? t.expires_at.slice(0, 10) : '长期有效'}</dd></div>
                 </dl>
                 <div className="mt-3 flex items-center justify-between gap-3"><div className="flex flex-wrap gap-1">{(t.scopes ?? []).map((scope) => <ScopeChip key={scope} scope={scope} />)}</div><div className="flex"><Button variant="ghost" size="sm" onClick={() => { setEditForm(formFromToken(t)); setEditTarget(t) }}>编辑</Button><Button variant="ghost" size="sm" className="!text-rose-600 hover:!bg-rose-50" onClick={() => setDeleteTarget(t)}>删除</Button></div></div>
@@ -292,7 +297,7 @@ export default function TokensView({ client }: { client: ApiClient }) {
                   <th className="px-3 py-3">套餐</th>
                   <th className="px-3 py-3">API 权限</th>
                   <th className="px-3 py-3">数据分类</th>
-                  <th className="px-3 py-3">并发</th>
+                  <th className="px-3 py-3">请求频率</th>
                   <th className="px-3 py-3">今日用量</th>
                   <th className="px-3 py-3">有效期至</th>
                   <th className="px-3 py-3">状态</th>
@@ -322,10 +327,10 @@ export default function TokensView({ client }: { client: ApiClient }) {
                         {t.data_categories.length === 0 && <span className="text-xs text-rose-600">未授权</span>}
                       </div>
                     </td>
-                    <td className="px-3 py-3.5 font-mono text-xs text-slate-600">{fmtNumber(t.max_concurrent)}</td>
+                    <td className="px-3 py-3.5 font-mono text-xs text-slate-600">{t.minute_request_limit ? `${fmtNumber(t.minute_request_limit)} / 分钟` : '存量合同'}</td>
                     <td className="px-3 py-3.5">
                       <div className="font-mono text-xs text-slate-700">
-                        {t.daily_usage ?? 0} <span className="text-slate-400">/ {fmtNumber(t.daily_limit)}</span>
+                        {t.daily_usage ?? 0} <span className="text-slate-400">{t.daily_limit ? `/ ${fmtNumber(t.daily_limit)}` : ' 次记录'}</span>
                       </div>
                       <div className="mt-1">
                         <ProgressBar value={t.daily_usage ?? 0} limit={t.daily_limit ?? null} />
@@ -439,6 +444,7 @@ function TokenFields({
   setForm: React.Dispatch<React.SetStateAction<TokenForm>>
   isNew?: boolean
 }) {
+  const isCommercialTier = CURRENT_TIERS.includes(form.tier as (typeof CURRENT_TIERS)[number])
   const update = (patch: Partial<TokenForm>) => setForm((prev) => ({ ...prev, ...patch }))
   const toggleScope = (scope: string, checked: boolean) =>
     update({
@@ -462,7 +468,7 @@ function TokenFields({
       <Field label="客户 ID（tenant）" hint="如 acme-capital，创建后不可改">
         <TextInput value={form.tenant_id} onChange={(e) => update({ tenant_id: e.target.value })} disabled={!isNew} spellCheck={false} />
       </Field>
-      <Field label="套餐档位" hint="决定默认并发与每分钟请求上限">
+      <Field label="套餐档位" hint="商业套餐只决定每分钟请求上限">
         <SelectInput value={form.tier} onChange={(e) => update({ tier: e.target.value })}>
           {!CURRENT_TIERS.includes(form.tier as (typeof CURRENT_TIERS)[number]) && (
             <option value={form.tier}>{TIER_LABELS[form.tier] ?? form.tier}（现有档位）</option>
@@ -473,12 +479,14 @@ function TokenFields({
         </SelectInput>
       </Field>
 
-      <Field label="每日请求上限" hint="留空表示不限量">
+      {isCommercialTier ? <Field label="请求频率" hint="商业套餐采用滚动 60 秒窗口">
+        <div className="flex h-10 items-center rounded-[var(--td-radius-sm)] border border-[var(--td-line)] bg-[var(--td-surface-subtle)] px-3 text-sm font-medium text-[var(--td-ink-soft)]">{COMMERCIAL_MINUTE_LIMITS[form.tier as (typeof CURRENT_TIERS)[number]].toLocaleString('zh-CN')} 次 / 分钟</div>
+      </Field> : <Field label="每日请求上限" hint="仅兼容存量档位；留空表示不限量">
         <TextInput type="number" min={1} value={form.daily_limit} onChange={(e) => update({ daily_limit: e.target.value })} placeholder="不限" />
-      </Field>
-      <Field label="最大并发请求数" hint="留空使用套餐默认档位">
+      </Field>}
+      {!isCommercialTier && <Field label="最大并发请求数" hint="仅兼容存量档位；留空使用档位默认值">
         <TextInput type="number" min={1} value={form.max_concurrent} onChange={(e) => update({ max_concurrent: e.target.value })} placeholder="套餐默认" />
-      </Field>
+      </Field>}
 
       <Field label="有效期至" hint="留空表示长期有效">
         <TextInput type="date" value={form.expires_at} onChange={(e) => update({ expires_at: e.target.value })} />
@@ -527,7 +535,7 @@ function TokenFields({
             />
           ))}
         </div>
-        {form.scopes.includes('admin') && <p className="mt-1.5 text-[11px] text-[var(--td-muted)]">管理员凭证固定保留 read 权限，因此可预览并验证客户工作台。</p>}
+        {form.scopes.includes('admin') && <p className="mt-1.5 text-[11px] text-[var(--td-muted)]">管理员凭证固定保留 read 权限，用于认证目录与样本回读；管理员应用不提供客户冒充或客户账户预览。</p>}
       </div>
     </div>
   )
