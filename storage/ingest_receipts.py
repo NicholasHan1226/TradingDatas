@@ -927,6 +927,36 @@ def require_unchanged_sqlite_binding(expected: _SqlitePathBinding) -> None:
         raise RuntimeError("db_path binding changed during terminal receipt write")
 
 
+# Matches the existing authority-lock wait on fact and terminal-receipt writers.
+_WRITABLE_SQLITE_BUSY_TIMEOUT_SECONDS = 180.0
+
+
+def open_writable_sqlite_authority(canonical_path: Path) -> sqlite3.Connection:
+    """Open the existing SQLite authority for ingest and request WAL.
+
+    ``PRAGMA journal_mode=WAL`` must run before ``BEGIN IMMEDIATE``.  The
+    connect timeout is the same 180s busy wait already used by fact and
+    terminal-receipt writers; this helper does not change synchronous or
+    other durability pragmas.  Callers still own the transaction.
+    """
+
+    if not isinstance(canonical_path, Path):
+        raise TypeError("canonical_path must be pathlib.Path")
+    conn = sqlite3.connect(
+        f"{canonical_path.as_uri()}?mode=rw",
+        uri=True,
+        timeout=_WRITABLE_SQLITE_BUSY_TIMEOUT_SECONDS,
+    )
+    try:
+        journal_mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+        if journal_mode != ("wal",):
+            raise RuntimeError("writable SQLite authority did not enter WAL")
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
 def make_receipt_id(
     context: IngestContext,
     target_table: str | None,
@@ -1159,11 +1189,7 @@ def write_terminal_receipt(
         db_binding = validated_existing_sqlite_binding(db_path)
         if db_binding != initial_db_binding:
             raise RuntimeError("db_path binding changed during terminal receipt write")
-        conn = sqlite3.connect(
-            f"{db_binding.canonical_path.as_uri()}?mode=rw",
-            uri=True,
-            timeout=180.0,
-        )
+        conn = open_writable_sqlite_authority(db_binding.canonical_path)
         try:
             conn.execute("BEGIN IMMEDIATE")
             require_clean_sqlite_authority_schema(conn)

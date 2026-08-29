@@ -3784,6 +3784,8 @@ def _open_bound_receipt_database_ro(
     binding: _ReceiptDatabaseBinding,
 ) -> sqlite3.Connection:
     try:
+        # ``immutable=1`` skips WAL and can serve a stale main-file snapshot.
+        # Sidecar presence is the production signal to open ``mode=ro`` only.
         immutable = "" if binding.wal_identity is not None else "&immutable=1"
         conn = sqlite3.connect(
             f"{binding.canonical_path.as_uri()}?mode=ro{immutable}",

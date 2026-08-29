@@ -837,6 +837,77 @@ def test_terminal_receipt_commits_an_independent_receipt_only_transaction(
     assert notes["errors"] == list(errors)
 
 
+def test_open_writable_sqlite_authority_fails_closed_when_wal_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "refuse-wal.sqlite"
+    _file_db(db_path)
+
+    class _RefusedCursor:
+        def fetchone(self) -> tuple[str]:
+            return ("delete",)
+
+    class _RefusedConnection:
+        closed = False
+
+        def execute(self, sql: object, *args: object, **kwargs: object) -> _RefusedCursor:
+            if str(sql).strip().upper() != "PRAGMA JOURNAL_MODE=WAL":
+                raise AssertionError(sql)
+            return _RefusedCursor()
+
+        def close(self) -> None:
+            self.closed = True
+
+    refused = _RefusedConnection()
+    monkeypatch.setattr(
+        receipt_module.sqlite3,
+        "connect",
+        lambda *args, **kwargs: refused,
+    )
+
+    with pytest.raises(RuntimeError, match="did not enter WAL"):
+        receipt_module.open_writable_sqlite_authority(db_path)
+    assert refused.closed is True
+
+
+def test_terminal_receipt_writable_open_requests_wal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(receipt_module, "_utc_now", lambda: FINISHED_AT)
+    db_path = tmp_path / "terminal-wal.sqlite"
+    _file_db(db_path)
+
+    result = write_terminal_receipt(
+        db_path,
+        context=_context(attempt_id="terminal-wal-attempt"),
+        status="empty",
+        errors=(),
+    )
+
+    conn = sqlite3.connect(db_path)
+    try:
+        journal_mode = conn.execute("PRAGMA journal_mode").fetchone()
+        tables = [
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        ]
+        receipt_count = conn.execute(
+            "SELECT COUNT(*) FROM market_ingest_runs"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert result.status == "empty"
+    assert journal_mode == ("wal",)
+    assert tables == ["market_ingest_runs", "provider_dataset_rows"]
+    assert receipt_count == (1,)
+
+
 def test_terminal_receipt_rejects_duplicate_without_replacing_first_row(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

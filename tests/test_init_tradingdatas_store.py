@@ -50,6 +50,32 @@ def test_initialize_store_validates_existing_without_rewriting(tmp_path: Path) -
     assert after == before
 
 
+def test_initialize_store_validates_existing_wal_store_without_rewriting(
+    tmp_path: Path,
+) -> None:
+    database = (tmp_path / "provider_native.sqlite").absolute()
+    assert initialize_store(database) == "created"
+    with sqlite3.connect(database) as conn:
+        assert conn.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        conn.commit()
+    before = (database.stat().st_dev, database.stat().st_ino)
+
+    assert initialize_store(database) == "existing"
+
+    after = (database.stat().st_dev, database.stat().st_ino)
+    assert after == before
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone() == ("wal",)
+        tables = [
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        ]
+    assert tables == ["market_ingest_runs", "provider_dataset_rows"]
+
+
 def test_initialize_store_rejects_relative_or_symlink_database(tmp_path: Path) -> None:
     with pytest.raises(StoreInitializationError, match="absolute canonical"):
         initialize_store(Path("provider_native.sqlite"))
