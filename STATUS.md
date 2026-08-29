@@ -214,9 +214,9 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 下一步
 
-1. #350 排期决策：为 income 族/pledge_stat/top10_floatholders/cb_share/cb_basic
-   选定 cadence 与 resumable_fanout 策略（全宇宙覆盖需跨周期收敛；cb_basic 停更
-   已定案为调度缺失）；干净整轮完成后补查询面回读验收。
+1. #350 调度合同已在源码完成（PR 待合入）：exact-main 发布后做生产触发与
+   catalog/query 回读。`top10_floatholders` 仍 parked（无 ann_date 窗，不是本批
+   同一 cadence 决策）。全宇宙覆盖靠 resumable_fanout 跨周期收敛，不是单轮扫完。
 2. 依 #354 新诊断字段观察 firecrawl 失败类别分布（timeout / refused / other），
    决定 timeout_ms 上调或换源；顺手改进 validation_failed 的空
    `validation_reasons` 缺口。
