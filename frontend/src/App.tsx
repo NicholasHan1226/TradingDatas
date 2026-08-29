@@ -7,14 +7,12 @@ import { recordConsoleEvent } from './lib/consoleAnalytics'
 import {
   clearWorkspaceRoute,
   commitWorkspaceRoute,
-  defaultWorkspaceRoute,
   resolveWorkspaceRoute,
   routeHash,
   type WorkspaceRoute,
 } from './lib/workspaceRoute'
 
 const AdminApp = lazy(() => import('./views/admin/AdminApp'))
-const CustomerApp = lazy(() => import('./views/customer/CustomerApp'))
 
 interface Session {
   client: ApiClient
@@ -38,10 +36,14 @@ export default function App() {
     try {
       const me = await probe.get<PortalMeResponse>('/portal/api/me')
       const role = resolveRole(me.portal.scopes, me.portal.tier)
-      const nextRoute = resolveWorkspaceRoute(role)
+      if (role !== 'admin') {
+        clearSession()
+        return '用户账户已合并到 tradingdatas.com/account，请从官网 Account 连接。'
+      }
+      const nextRoute = resolveWorkspaceRoute()
       setSession({
         client: probe,
-        role,
+        role: 'admin',
         tenantId: me.portal.tenant_id,
         tier: me.portal.tier,
       })
@@ -69,7 +71,7 @@ export default function App() {
   useEffect(() => {
     if (!session) return
     const syncFromLocation = () => {
-      const next = resolveWorkspaceRoute(session.role)
+      const next = resolveWorkspaceRoute()
       setRoute(next)
       if (window.location.hash !== routeHash(next)) {
         commitWorkspaceRoute(next, true)
@@ -119,36 +121,16 @@ export default function App() {
   return (
     <ToastProvider>
       <Suspense fallback={<div className="flex h-full items-center justify-center"><LoadingPanel label="正在打开工作台…" /></div>}>
-        {session.role === 'admin' && route.workspace === 'admin' ? (
-          <AdminApp
-            client={session.client}
-            section={route.section}
-            onSectionChange={(section) => navigate({ workspace: 'admin', section })}
-            onLogout={handleLogout}
-            onViewCustomer={() => {
-              recordConsoleEvent('workspace_switch', 'admin')
-              navigate(defaultWorkspaceRoute('customer'))
-            }}
-          />
-        ) : (
-          <CustomerApp
-            client={session.client}
-            tenantId={session.tenantId}
-            section={route.workspace === 'customer' ? route.section : 'overview'}
-            docSection={route.workspace === 'customer' ? route.doc : 'quickstart'}
-            onSectionChange={(section) => navigate({
-              workspace: 'customer',
-              section,
-              doc: route.workspace === 'customer' ? route.doc : 'quickstart',
-            })}
-            onDocSectionChange={(doc) => navigate({ workspace: 'customer', section: 'docs', doc })}
-            onLogout={handleLogout}
-            onViewAdmin={session.role === 'admin' ? () => {
-              recordConsoleEvent('workspace_switch', 'customer')
-              navigate(defaultWorkspaceRoute('admin'))
-            } : undefined}
-          />
-        )}
+        <AdminApp
+          client={session.client}
+          section={route.workspace === 'admin' ? route.section : 'tokens'}
+          onSectionChange={(section) => navigate({ workspace: 'admin', section })}
+          onLogout={handleLogout}
+          onViewCustomer={() => {
+            recordConsoleEvent('workspace_switch', 'admin')
+            window.location.assign('https://tradingdatas.com/account')
+          }}
+        />
       </Suspense>
     </ToastProvider>
   )

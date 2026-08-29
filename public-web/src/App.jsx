@@ -2,10 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowSquareOut,
+  BookmarkSimple,
+  BookOpenText,
   Check,
+  Clock,
   ClockCounterClockwise,
   Copy,
   Database,
+  FileText,
   FunnelSimple,
   GraduationCap,
   GlobeSimple,
@@ -27,9 +31,12 @@ import {
   roadmapPhases,
   sourceCandidates,
 } from "./dataSourceLandscape";
+import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "account"];
+const ACCOUNT_API_BASE = import.meta.env.VITE_ACCOUNT_API_BASE || "https://td-admin-api.tradingagent.cc";
+const ACCOUNT_TOKEN_KEY = "td-account-token";
 
 function getRouteFromPath() {
   const candidate = window.location.pathname.replace(/^\/+|\/+$/g, "") || "home";
@@ -197,9 +204,11 @@ const papers = [
   },
 ];
 
+const paperSlug = (paper) => paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
 const messages = {
   en: {
-    nav: ["Data", "Features", "Recipes", "Research", "Pricing", "Docs"],
+    nav: ["Data", "Research", "Pricing"],
     eyebrow: "RAW MATERIALS FOR FINANCIAL RESEARCH",
     title: "Research-ready\nfinancial data.",
     subtitle: "One API for high-quality, traceable, composable financial data.",
@@ -262,7 +271,7 @@ const messages = {
     menu: "Open navigation",
   },
   zh: {
-    nav: ["数据", "特征", "Recipes", "研究", "套餐", "文档"],
+    nav: ["数据", "研究", "套餐"],
     eyebrow: "金融研究的高质量原料",
     title: "面向研究的\n金融数据。",
     subtitle: "一个接口，获得高质量、可追溯、可组合的金融数据。",
@@ -414,7 +423,8 @@ function ReceiptProof({ copy }) {
 
 function MaturityTag({ status, locale }) {
   const labels = {
-    observed_example: locale === "zh" ? "观测示例" : "Observed example",
+    observed_example: locale === "zh" ? "已观测" : "Observed",
+    pending_open: locale === "zh" ? "待开放" : "Pending release",
     product_definition: locale === "zh" ? "产品定义" : "Product definition",
     planned: locale === "zh" ? "规划中" : "Planned",
   };
@@ -429,7 +439,199 @@ function SectionNav({ items, active, onNavigate, locale }) {
   );
 }
 
+function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate }) {
+  const plan = plans[activeIndex];
+  const zh = locale === "zh";
+  const move = (direction) => onChange((activeIndex + direction + plans.length) % plans.length);
+
+  const sharedFacts = zh ? [
+    ["每日总量", "不限"],
+    ["质量凭证", "来源、时间与 receipt"],
+    ["Agent 接入", "账户内 MCP 与提示词"],
+    ["统一接口", "Catalog 与 Query"],
+  ] : [
+    ["Daily total", "Unlimited"],
+    ["Data receipts", "Source, time, and receipt"],
+    ["Agent access", "MCP and prompts in Account"],
+    ["One interface", "Catalog and Query"],
+  ];
+
+  return <section className="base-plan-showcase" aria-labelledby="base-plan-showcase-title">
+    <header className="base-plan-switcher">
+      <div><span className="mono-kicker">{zh ? "3 档基础套餐" : "3 BASE PLANS"}</span><h2 id="base-plan-showcase-title">{zh ? "选择适合的数据范围。" : "Choose the data scope you need."}</h2></div>
+      <div className="base-plan-controls">
+        <button type="button" className="base-plan-arrow is-prev" onClick={() => move(-1)} aria-label={zh ? "上一档套餐" : "Previous plan"}><ArrowRight /></button>
+        <div role="tablist" aria-label={zh ? "基础套餐" : "Base plans"}>{plans.map((candidate, index) => <button type="button" role="tab" aria-selected={activeIndex === index} className={activeIndex === index ? "is-active" : ""} key={candidate.name} onClick={() => onChange(index)}><span>0{index + 1}</span>{candidate.short}</button>)}</div>
+        <button type="button" className="base-plan-arrow is-next" onClick={() => move(1)} aria-label={zh ? "下一档套餐" : "Next plan"}><ArrowRight /></button>
+      </div>
+    </header>
+
+    <article className={`base-plan-product tone-${plan.tone}`} aria-live="polite">
+      <div className="base-plan-art" aria-hidden="true"><span /><span /><span /><i /><i /></div>
+      <div className="base-plan-identity">
+        <span>{plan.label}</span>
+        <h3>{plan.name}</h3>
+        <p>{plan.audience}</p>
+        <div className="base-plan-position"><small>{zh ? "适用范围" : "POSITION"}</small><strong>{plan.position}</strong></div>
+      </div>
+      <div className="base-plan-includes">
+        <span>{zh ? "包含的数据" : "DATA INCLUDED"}</span>
+        <ul>{plan.includes.map((item) => <li key={item}><Check weight="bold" /><span>{item}</span></li>)}</ul>
+      </div>
+      <div className="base-plan-facts">
+        <div><span>{zh ? "数据覆盖" : "COVERAGE"}</span><strong>{plan.coverage}</strong></div>
+        <div><span>{zh ? "历史深度" : "HISTORY"}</span><strong>{plan.history}</strong></div>
+        <div><span>{zh ? "请求频率" : "REQUEST RATE"}</span><strong>{plan.runtime}</strong></div>
+        <div><span>{zh ? "价格" : "PRICE"}</span><strong>{zh ? "待正式发布" : "To be announced"}</strong></div>
+        <a href="/pricing/beta" onClick={(event) => onNavigate(event, "/pricing/beta")}>{zh ? "申请这一档" : "Request this plan"}<ArrowRight /></a>
+      </div>
+      <span className="base-plan-count">0{activeIndex + 1} / 0{plans.length}</span>
+    </article>
+
+    <div className="base-plan-shared" aria-label={zh ? "所有套餐共同包含" : "Included in every plan"}>
+      <span>{zh ? "所有套餐共同包含" : "INCLUDED IN EVERY PLAN"}</span>
+      {sharedFacts.map(([label, value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}
+    </div>
+  </section>;
+}
+
+function ProductMark({ item, compact = false }) {
+  const familyItems = productManifest.objects.datasets.filter((candidate) => candidate.family === item.family);
+  const variant = Math.max(0, familyItems.findIndex((candidate) => candidate.id === item.id)) % 8;
+  return <span className={`data-product-mark family-${item.family} variant-${variant} ${compact ? "is-compact" : ""}`} aria-hidden="true"><img className="mark-primary" src={item.icon} alt="" /><img className="mark-echo" src={item.icon} alt="" /></span>;
+}
+
+function StabilityTrack({ item, locale, compact = false, showStage = true }) {
+  const available = item.stability !== "—";
+  return (
+    <div className={`stability-block ${compact ? "is-compact" : ""} ${available ? "" : "is-unavailable"}`}>
+      {(showStage || available) && <div className="stability-heading">
+        {showStage && <MaturityTag status={item.status} locale={locale} />}
+        {available && <strong>{item.stability}</strong>}
+      </div>}
+      {available ? <div className="stability-dots" aria-label={item.stabilityNote[locale]}>
+        {Array.from({ length: compact ? 18 : 30 }, (_, index) => <span key={index} className={item.delayedDays.includes(index) ? "is-delayed" : ""} />)}
+      </div> : <span className="stability-empty-line" aria-hidden="true" />}
+      {(!compact || !available) && <small>{available ? item.stabilityNote[locale] : (locale === "zh" ? `尚无采集历史 · ${item.cadence}` : `No collection history · ${item.cadence}`)}</small>}
+    </div>
+  );
+}
+
+function DatasetSample({ item, locale, compact = false }) {
+  return (
+    <div className={`dataset-sample ${compact ? "is-compact" : ""}`}>
+      <div className="dataset-sample-heading">
+        <span>{locale === "zh" ? "数据内容示例" : "Sample data"}</span>
+        <small>{item.fields ? `${item.fields} ${locale === "zh" ? "个字段" : "fields"}` : (locale === "zh" ? "合同预览 · 非真实数据" : "Contract preview · not live data")}</small>
+      </div>
+      <div className="dataset-sample-scroll">
+        <table>
+          <thead><tr>{item.sampleColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+          <tbody>{item.sampleRows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={`${rowIndex}-${columnIndex}`}>{value}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DatasetProductDetail({ item, locale, onNavigate }) {
+  const [queryCopied, setQueryCopied] = useState(false);
+  if (!item) {
+    return <section className="object-detail-page"><a className="object-back" href="/data" onClick={(event) => onNavigate(event, "/data")}>← {locale === "zh" ? "返回数据目录" : "Back to Data"}</a><div className="object-detail-hero"><div><h1>{locale === "zh" ? "数据产品未找到" : "Data product not found"}</h1></div></div></section>;
+  }
+  const sameCategory = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family === item.family);
+  const otherCategories = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family !== item.family);
+  const related = [...sameCategory, ...otherCategories].slice(0, 3);
+  const queryExample = `POST /v1/query\nAuthorization: Bearer <API_TOKEN>\nContent-Type: application/json\n\n${JSON.stringify({
+    dataset_id: item.id,
+    schema_major: 1,
+    fields: item.sampleColumns,
+    filters: {},
+    as_of: null,
+    limit: 100,
+    cursor: null,
+  }, null, 2)}`;
+  const copyQueryExample = async () => {
+    await navigator.clipboard.writeText(queryExample);
+    setQueryCopied(true);
+    window.setTimeout(() => setQueryCopied(false), 1600);
+  };
+  return (
+    <section className="dataset-product-page">
+      <a className="object-back" href="/data" onClick={(event) => onNavigate(event, "/data")}>← {locale === "zh" ? "返回数据目录" : "Back to Data products"}</a>
+      <div className="dataset-product-layout">
+        <main>
+          <div className="dataset-product-identity">
+            <ProductMark item={item} />
+            <div>
+              <span className="mono-kicker">{item.category[locale].toUpperCase()} / {item.market} / VERSIONED PRODUCT</span>
+              <h1>{item.title[locale]}</h1>
+              <p>{item.description[locale]}</p>
+              <div className="dataset-tags">{item.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+              <div className="dataset-product-stage"><MaturityTag status={item.status} locale={locale} /><span>{locale === "zh" ? "产品阶段 · 与采集历史证据分开表达" : "Product stage · separate from collection evidence"}</span></div>
+            </div>
+          </div>
+          <section className="dataset-inline-access" aria-label={locale === "zh" ? "数据合同与查询示例" : "Data contract and query example"}>
+            <div className="dataset-contract-inline">
+              <span className="mono-kicker">DATA CONTRACT</span>
+              <h2>{locale === "zh" ? "数据合同" : "Data contract"}</h2>
+              <p>{locale === "zh" ? "当前产品的身份、范围和接入边界直接在本页公开。" : "Identity, scope, and onboarding boundaries are published on this page."}</p>
+              <dl>
+                <div><dt>{locale === "zh" ? "产品 ID" : "Product ID"}</dt><dd>{item.id}</dd></div>
+                <div><dt>{locale === "zh" ? "市场" : "Market"}</dt><dd>{item.market}</dd></div>
+                <div><dt>{locale === "zh" ? "频率" : "Cadence"}</dt><dd>{item.cadence}</dd></div>
+                <div><dt>{locale === "zh" ? "接入" : "Onboarding"}</dt><dd>{item.plan}</dd></div>
+              </dl>
+            </div>
+            <div className="dataset-query-inline">
+              <div className="dataset-query-heading">
+                <div><span className="mono-kicker">POST /v1/query</span><h2>{locale === "zh" ? "查询示例" : "Query example"}</h2></div>
+                <button type="button" onClick={copyQueryExample}>{queryCopied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{queryCopied ? (locale === "zh" ? "已复制" : "Copied") : (locale === "zh" ? "复制请求" : "Copy request")}</button>
+              </div>
+              <pre><code>{queryExample}</code></pre>
+              <p>{locale === "zh" ? "示例不会发起请求。使用前请先通过 GET /v1/catalog 确认正式 dataset_id、schema_major 与账户权限。" : "This example does not send a request. Confirm dataset_id, schema_major, and account access with GET /v1/catalog first."}</p>
+            </div>
+          </section>
+          <DatasetSample item={item} locale={locale} />
+          <section className="dataset-history">
+            <div><span className="mono-kicker">90 DAY COLLECTION HISTORY</span><h2>{locale === "zh" ? "公开采集稳定性与缺口" : "Public collection stability and gaps"}</h2></div>
+            <StabilityTrack item={item} locale={locale} showStage={false} />
+          </section>
+          <dl className="dataset-evidence-rail">
+            <div><dt>{locale === "zh" ? "来源" : "Source"}</dt><dd>{item.source}</dd></div>
+            <div><dt>{locale === "zh" ? "最近成功" : "Last success"}</dt><dd>{item.lastSuccess}</dd></div>
+            <div><dt>{locale === "zh" ? "覆盖" : "Coverage"}</dt><dd>{item.coverage}</dd></div>
+            <div><dt>{locale === "zh" ? "频率" : "Cadence"}</dt><dd>{item.cadence}</dd></div>
+            <div><dt>Receipt</dt><dd>{item.receipt}</dd></div>
+          </dl>
+          <div className="collection-disclosure-roadmap"><span>{locale === "zh" ? "形成真实观测后继续披露" : "Disclosed after real observations exist"}</span><div>{(locale === "zh" ? ["成功 / 空响应 / 失败分布", "数据延迟趋势", "入库行数增长", "字段漂移", "修订量"] : ["success / empty / failure mix", "delivery-lag trend", "stored-row growth", "schema drift", "revision volume"]).map((signal) => <small key={signal}>{signal}</small>)}</div></div>
+          <p className="catalog-authority-note">{locale === "zh" ? "当前页面展示产品合同与示例证据。真实可用性只来自 Registry、SQLite facts/receipts、认证 Catalog/Query 回读与账户授权。" : "This page presents the product contract and example evidence. Live availability comes only from the Registry, SQLite facts/receipts, authenticated Catalog/Query readback, and account entitlement."}</p>
+        </main>
+        <aside className="related-products">
+          <span className="mono-kicker">{locale === "zh" ? "相关数据产品" : "RELATED PRODUCTS"}</span>
+          {related.map((candidate) => <a key={candidate.id} href={`/datasets/${candidate.id}`} onClick={(event) => onNavigate(event, `/datasets/${candidate.id}`)}>
+            <ProductMark item={candidate} compact />
+            <div><span className="product-category-label">{candidate.category[locale]}</span><h2>{candidate.title[locale]}</h2><p>{candidate.description[locale]}</p><StabilityTrack item={candidate} locale={locale} compact /><small>{candidate.stability !== "—" ? candidate.lastSuccess : candidate.cadence}</small></div>
+            <ArrowRight />
+          </a>)}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function AlternativeProductList({ locale, onNavigate, compact = false, limit }) {
+  const products = productManifest.objects.datasets.filter((item) => item.family === "alternative").slice(0, limit);
+  return <div className={`alternative-product-list ${compact ? "is-compact" : ""}`}>{products.map((item) => <a key={item.id} href={`/datasets/${item.id}`} onClick={(event) => onNavigate(event, `/datasets/${item.id}`)}>
+    <ProductMark item={item} compact />
+    <div><span className="product-category-label">{item.category[locale]}</span><h3>{item.title[locale]}</h3><p>{item.description[locale]}</p></div>
+    <span className="alternative-plan"><MaturityTag status={item.status} locale={locale} />{item.plan}</span>
+    <ArrowRight />
+  </a>)}</div>;
+}
+
 function ProductObjectDetail({ type, item, locale, onNavigate }) {
+  if (type === "datasets") return <DatasetProductDetail item={item} locale={locale} onNavigate={onNavigate} />;
   const typeLabel = type === "datasets" ? (locale === "zh" ? "数据集" : "Dataset") : type === "features" ? (locale === "zh" ? "透明特征" : "Transparent feature") : (locale === "zh" ? "数据 Recipe" : "Data recipe");
   const title = item?.title?.[locale] || (locale === "zh" ? "对象未找到" : "Object not found");
   const facts = type === "datasets" ? [
@@ -458,198 +660,142 @@ function ProductObjectDetail({ type, item, locale, onNavigate }) {
   );
 }
 
-const sourceFamilyLabels = {
-  "all": { zh: "全部类别", en: "All families" },
-  "china-markets": { zh: "中国市场", en: "China markets" },
-  "global-markets": { zh: "全球市场", en: "Global markets" },
-  "funds-indices": { zh: "基金与指数", en: "Funds & indices" },
-  "derivatives": { zh: "期货与期权", en: "Futures & options" },
-  "macro-rates": { zh: "宏观与利率", en: "Macro & rates" },
-  "company-regulatory": { zh: "公司与监管", en: "Company & regulatory" },
-  "news-events": { zh: "新闻与事件", en: "News & events" },
-  "crypto": { zh: "加密与链上", en: "Crypto & on-chain" },
-  "web-attention": { zh: "Web 与关注度", en: "Web & attention" },
-  "physical-world": { zh: "实体世界", en: "Physical world" },
-};
-
-const interfaceCategoryLabels = {
-  "all": { zh: "全部接口", en: "All interfaces" },
-  "market-reference": { zh: "行情与基础参考", en: "Market & reference" },
-  "intraday": { zh: "日内与微观结构", en: "Intraday & microstructure" },
-  "fundamentals": { zh: "财务与公司行动", en: "Fundamentals & actions" },
-  "funds-indices": { zh: "基金、指数与债券", en: "Funds, indices & bonds" },
-  "derivatives": { zh: "期货与期权", en: "Futures & options" },
-  "flow-positioning": { zh: "资金流与持仓", en: "Flow & positioning" },
-  "macro-policy": { zh: "宏观与政策", en: "Macro & policy" },
-  "news-events": { zh: "新闻与事件", en: "News & events" },
-};
-
-function ConnectedInterfaceExplorer({ locale }) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("all");
-  const [activation, setActivation] = useState("all");
-  const [limit, setLimit] = useState(24);
-  const interfaces = connectedInterfaceSnapshot.interfaces;
-  const categories = ["all", ...new Set(interfaces.map((item) => item.category))];
-  const visible = interfaces.filter((item) => {
-    const matchesCategory = category === "all" || item.category === category;
-    const matchesActivation = activation === "all" || item.activation === activation;
-    const haystack = `${item.apiName} ${item.datasetId} ${item.provider} ${item.cadence}`.toLowerCase();
-    return matchesCategory && matchesActivation && haystack.includes(query.trim().toLowerCase());
-  });
-
-  useEffect(() => setLimit(24), [query, category, activation]);
-
-  return (
-    <section className="connected-interface-section">
-      <div className="section-heading compact-heading">
-        <span className="mono-kicker">01 / CONNECTED INTERFACE INDEX</span>
-        <h2>{locale === "zh" ? "已接入接口，按数据材料浏览。" : "Connected interfaces, organized by material."}</h2>
-        <p>{locale === "zh" ? "目录来自当前运行注册表快照。active 表示已启用配置，不自动等于今天采集健康；真实状态仍回到 receipt 与认证 API。" : "This index comes from the current runtime-registry snapshot. Active means enabled configuration, not healthy collection today; live state still returns to receipts and authenticated APIs."}</p>
-      </div>
-      <div className="interface-summary-strip">
-        {connectedCoverage.map((item) => (
-          <article key={item.id}>
-            <span>{item.market}</span>
-            <strong>{item.provider}</strong>
-            <div><b>{item.contractCount}</b><small>{item.unit}</small></div>
-            <p>{item.note[locale]}</p>
-          </article>
-        ))}
-      </div>
-      <div className="interface-controls">
-        <label className="source-search">
-          <MagnifyingGlass size={18} />
-          <span className="sr-only">{locale === "zh" ? "搜索已接入接口" : "Search connected interfaces"}</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={locale === "zh" ? "搜索接口名、dataset ID 或 cadence" : "Search API name, dataset ID, or cadence"} />
-        </label>
-        <label className="compact-select"><span>{locale === "zh" ? "分类" : "Family"}</span><select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((value) => <option key={value} value={value}>{interfaceCategoryLabels[value]?.[locale] || value}</option>)}</select></label>
-        <label className="compact-select"><span>{locale === "zh" ? "配置状态" : "Config state"}</span><select value={activation} onChange={(event) => setActivation(event.target.value)}><option value="all">{locale === "zh" ? "全部" : "All"}</option><option value="active">active</option><option value="paused">paused</option></select></label>
-      </div>
-      <div className="landscape-readout"><span>{String(visible.length).padStart(3, "0")}</span>{locale === "zh" ? ` / ${interfaces.length} 个合同接口` : ` / ${interfaces.length} contract interfaces`}</div>
-      <div className="interface-index-list">
-        {visible.slice(0, limit).map((item, index) => (
-          <article key={`${item.provider}-${item.apiName}`}>
-            <span className="interface-index">{String(index + 1).padStart(3, "0")}</span>
-            <div><strong>{item.apiName}</strong><code>{item.datasetId}</code></div>
-            <div><span>{interfaceCategoryLabels[item.category]?.[locale]}</span><small>{item.cadence}</small></div>
-            <div className={`interface-state is-${item.activation}`}>
-              <i />
-              <span><b>{locale === "zh" ? "配置" : "config"}</b>{item.activation}</span>
-              <small><b>{locale === "zh" ? "权限观测" : "entitlement"}</b>{item.entitlement}</small>
-            </div>
-          </article>
-        ))}
-      </div>
-      {limit < visible.length && <button className="secondary-button load-more" type="button" onClick={() => setLimit((value) => value + 48)}>{locale === "zh" ? `继续显示（剩余 ${visible.length - limit}）` : `Show more (${visible.length - limit} remaining)`}<ArrowRight /></button>}
-    </section>
-  );
-}
-
-function CandidateSourceExplorer({ locale }) {
-  const [query, setQuery] = useState("");
-  const [family, setFamily] = useState("all");
-  const families = ["all", ...new Set(sourceCandidates.map((source) => source.family))];
-  const rightsLabels = locale === "zh" ? {
-    public_terms: "开放条款待确认",
-    public_market_api: "公开行情接口",
-    license_required: "需要商业许可",
-    review_required: "需逐项审核",
-    terms_review: "接口条款审核",
-    series_specific: "按序列核验",
-    dataset_specific: "按数据集授权",
-    plan_specific: "按套餐授权",
-    source_sensitive: "受原始来源约束",
-    page_level_review: "按页面审核",
-  } : {};
-  const visible = sourceCandidates.filter((source) => {
-    const matchesFamily = family === "all" || source.family === family;
-    const haystack = `${source.name} ${source.region} ${source.materials} ${source.access}`.toLowerCase();
-    return matchesFamily && haystack.includes(query.trim().toLowerCase());
-  });
-
-  return (
-    <section className="source-landscape-section">
-      <div className="section-heading compact-heading">
-        <span className="mono-kicker">04 / CANDIDATE SOURCE LANDSCAPE</span>
-        <h2>{locale === "zh" ? "未接入，不等于不可见。" : "Not connected does not mean invisible."}</h2>
-        <p>{locale === "zh" ? "候选数据源按市场、材料、接入方式和授权风险登记。这里表示研究进度，不表示已经购买、可销售或已进入采集。" : "Candidate sources are registered by market, material, access method, and rights risk. This is research progress—not purchase, resale permission, or collection state."}</p>
-      </div>
-      <div className="source-controls">
-        <label className="source-search">
-          <MagnifyingGlass size={18} />
-          <span className="sr-only">{locale === "zh" ? "搜索候选数据源" : "Search candidate sources"}</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={locale === "zh" ? "搜索来源、地区或数据材料" : "Search source, region, or material"} />
-        </label>
-        <div className="source-family-filter" aria-label={locale === "zh" ? "数据类别" : "Data family"}>
-          <FunnelSimple size={17} />
-          <select value={family} onChange={(event) => setFamily(event.target.value)}>
-            {families.map((value) => <option key={value} value={value}>{sourceFamilyLabels[value]?.[locale] || value}</option>)}
-          </select>
+function ResearchAtlasPage({
+  locale,
+  theme,
+  copy,
+  atlas,
+  featuredPaper,
+  visiblePapers,
+  researchTopic,
+  setResearchTopic,
+  researchKind,
+  setResearchKind,
+  browseOpen,
+  setBrowseOpen,
+  libraryRef,
+  onShowLibrary,
+  onNavigate,
+  topicLabels,
+  kindLabels,
+  methods,
+  bookmarks,
+  onToggleBookmark,
+}) {
+  return <div className="research-page research-atlas" id="research">
+    <section className="research-atlas-shell">
+      <div className="research-atlas-hero">
+        <div className="research-atlas-copy">
+          <span className="mono-kicker">{atlas.eyebrow}</span>
+          <h1>{atlas.title}</h1>
+          <p>{atlas.copy}</p>
+        </div>
+        <div className="research-question-prompts">
+          <span>{locale === "zh" ? "从一个问题开始" : "START WITH A QUESTION"}</span>
+          <div>{atlas.suggestions.map((prompt) => <button key={prompt.label} type="button" onClick={() => onShowLibrary({ topic: prompt.topic })}>{prompt.label}<ArrowRight /></button>)}</div>
         </div>
       </div>
-      <div className="landscape-readout"><span>{String(visible.length).padStart(2, "0")}</span>{locale === "zh" ? ` / ${sourceCandidates.length} 个已研究来源` : ` / ${sourceCandidates.length} reviewed sources`}</div>
-      <div className="source-table" role="table" aria-label={locale === "zh" ? "候选数据源" : "Candidate data sources"}>
-        <div className="source-table-head" role="row">
-          <span>{locale === "zh" ? "来源 / 地区" : "Source / region"}</span>
-          <span>{locale === "zh" ? "数据材料" : "Materials"}</span>
-          <span>{locale === "zh" ? "状态 / 权利" : "Stage / rights"}</span>
-          <span>{locale === "zh" ? "计划" : "Plan"}</span>
+
+      <section className="research-paths" aria-labelledby="research-paths-title">
+        <header><div><h2 id="research-paths-title">{atlas.pathsTitle}</h2><p>{atlas.pathsCopy}</p></div><button type="button" onClick={() => onShowLibrary({ topic: "all" })}>{atlas.browse}<ArrowRight /></button></header>
+        <div className="research-path-grid">{atlas.paths.map((path) => {
+          const linkedPaper = papers.find((paper) => paper.title === path.paperTitle);
+          const href = linkedPaper ? `/research/${paperSlug(linkedPaper)}` : "/research";
+          return <a className="research-path-card" key={path.label} href={href} onClick={(event) => onNavigate(event, href)}>
+            <img src={theme === "dark" ? path.image : path.imageLight} alt="" />
+            <div><span>{path.label}</span><h3>{path.question}</h3><div className="research-path-meta"><small><Clock />{path.time}</small><small><FileText />{path.count}</small></div><strong>{locale === "zh" ? "所需数据材料" : "Raw data materials"}</strong><p>{path.data}</p></div>
+          </a>;
+        })}</div>
+      </section>
+
+      {featuredPaper && <section className="research-featured" aria-labelledby="featured-paper-title">
+        <header><div><h2>{atlas.featured}</h2><p>{atlas.featuredCopy}</p></div><button type="button" onClick={() => onShowLibrary({ topic: "all" })}>{atlas.browse}<ArrowRight /></button></header>
+        <div className="research-featured-grid">
+          <img className="research-paper-cover" src={theme === "dark" ? "/assets/research/featured-china-stock-market.png" : "/assets/research/featured-china-stock-market-light-v2.png"} alt="China's Stock Market — Capitalism and State Control cover" />
+          <div className="research-featured-identity"><span>{locale === "zh" ? "推荐" : "FEATURED"}</span><h3 id="featured-paper-title">{featuredPaper.title}</h3><p>{featuredPaper.authors}</p><small>{featuredPaper.venue} · {featuredPaper.year}</small><div className="research-reading-actions"><span><i />{atlas.notStarted}</span><a href={`/research/${paperSlug(featuredPaper)}`} onClick={(event) => onNavigate(event, `/research/${paperSlug(featuredPaper)}`)}><BookOpenText />{atlas.overview}</a></div></div>
+          <div className="research-featured-why"><strong>{atlas.why}</strong><p>{atlas.whyCopy}</p></div>
+          <div className="research-featured-links"><strong>{atlas.linked}</strong><a href="/data" onClick={(event) => onNavigate(event, "/data")}><Database /><span>{locale === "zh" ? "数据产品" : "Datasets"}<small>{locale === "zh" ? "行情、基础参考、公司与财务" : "market, reference, company, fundamentals"}</small></span><ArrowRight /></a><a href="#research-methods"><BookOpenText /><span>{locale === "zh" ? "研究方法" : "Methods"}<small>{locale === "zh" ? "时点对齐、事件时间线、验证" : "point-in-time, event timeline, validation"}</small></span><ArrowRight /></a></div>
         </div>
-        {visible.map((source) => (
-          <article className="source-row" role="row" key={source.id}>
-            <div><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div>
-            <p>{source.materials}</p>
-            <div className="source-status"><span>{source.stage.replaceAll("_", " ")}</span><small>{rightsLabels[source.rights] || source.rights.replaceAll("_", " ")}</small></div>
-            <div className="source-plan"><span>{source.phase}</span><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut size={16} /></a></div>
-          </article>
-        ))}
-      </div>
-      <p className="landscape-note">{locale === "zh" ? `研究注册表更新于 ${landscapeMeta.reviewedAt}。它不是对全球全部接口的穷尽声明；新来源必须进入同一审核结构。` : `Research registry reviewed ${landscapeMeta.reviewedAt}. It is not an exhaustive claim about every API worldwide; new sources enter the same review structure.`}</p>
+      </section>}
+
+      <section className="research-methods" id="research-methods" aria-labelledby="research-methods-title">
+        <header>
+          <div><span className="mono-kicker">METHODS / FOR REPRODUCIBLE PREPARATION</span><h2 id="research-methods-title">{locale === "zh" ? "从阅读进入数据准备。" : "Move from reading to data preparation."}</h2></div>
+          <p>{locale === "zh" ? "原 Cookbook 收拢为研究方法：解释如何查询、对齐、连接和验证原始数据，但不替用户完成研究结论。" : "Cookbook is now progressively disclosed as research methods: query, align, join, and validate raw data without supplying the conclusion."}</p>
+        </header>
+        <div className="research-method-list">{methods.slice(0, 3).map((method, index) => <a key={method.id} href={`/recipes/${method.id}`} onClick={(event) => onNavigate(event, `/recipes/${method.id}`)}><span>{String(index + 1).padStart(2, "0")}</span><div><small>{locale === "zh" ? "可复现方法" : "REPRODUCIBLE METHOD"}</small><h3>{method.title[locale]}</h3><p>{method.detail}</p></div><ArrowRight /></a>)}</div>
+      </section>
+
+      <div className="research-atlas-notice"><span><GraduationCap weight="duotone" />{atlas.external}</span><span>{locale === "zh" ? "更新于 2026-08-27" : "Updated Aug 27, 2026"}</span></div>
+
+      <section className={`research-library-drawer ${browseOpen ? "is-open" : ""}`} ref={libraryRef} aria-hidden={!browseOpen}>
+        <header><div><span className="mono-kicker">RESEARCH LIBRARY / EXTERNAL SOURCES</span><h2>{locale === "zh" ? "完整研究库" : "Full research library"}</h2></div><button type="button" onClick={() => setBrowseOpen(false)}>{locale === "zh" ? "收起" : "Close"}<X /></button></header>
+        <div className="research-library-controls">
+          <div><span className="filter-label">{locale === "zh" ? "内容形式" : "FORMAT"}</span><div className="research-topics research-kinds" aria-label="Research formats">{copy.researchKinds.map(([kind, label]) => <button key={kind} type="button" className={researchKind === kind ? "is-active" : ""} onClick={() => setResearchKind(kind)}>{label}</button>)}</div></div>
+          <div><span className="filter-label">{locale === "zh" ? "研究主题" : "TOPIC"}</span><div className="research-topics" aria-label="Research topics">{copy.researchTopics.map(([topic, label]) => <button key={topic} type="button" className={researchTopic === topic ? "is-active" : ""} onClick={() => setResearchTopic(topic)}>{label}</button>)}</div></div>
+        </div>
+        <div className="research-count"><span>{String(visiblePapers.length).padStart(2, "0")}</span>{copy.researchResults}</div>
+        <div className="paper-list">{visiblePapers.length ? visiblePapers.map((paper, index) => {
+          const bookmarkKey = `research:${paperSlug(paper)}`;
+          const isSaved = bookmarks.includes(bookmarkKey);
+          return <article className="paper-row" key={paper.title}><span className="paper-index">{String(index + 1).padStart(2, "0")}</span><div className="paper-main"><div className="paper-meta"><span>{kindLabels[paper.kind]}</span><span>{topicLabels[paper.topic]}</span><span>{paper.year}</span><span>{paper.venue}</span></div><h3>{paper.title}</h3><p>{paper.authors}</p><p className="paper-summary">{paper.summary[locale]}</p><div className="paper-data"><span>{copy.requiredData}</span><code>{paper.data}</code></div></div><div className="paper-actions"><button type="button" className={isSaved ? "is-saved" : ""} onClick={() => onToggleBookmark(bookmarkKey)} aria-label={isSaved ? (locale === "zh" ? "取消收藏" : "Remove bookmark") : (locale === "zh" ? "收藏" : "Bookmark")}><BookmarkSimple weight={isSaved ? "fill" : "regular"} /></button><a href={`/research/${paperSlug(paper)}`} onClick={(event) => onNavigate(event, `/research/${paperSlug(paper)}`)} aria-label={`${locale === "zh" ? "阅读 TradingDatas 整理页" : "Read TradingDatas record"}: ${paper.title}`}><ArrowRight /></a></div></article>;
+        }) : <div className="research-empty">{copy.researchEmpty}</div>}</div>
+      </section>
     </section>
-  );
+  </div>;
 }
 
-function CollectionHistorySection({ locale }) {
-  return (
-    <section className="collection-history-section">
-      <div className="section-heading compact-heading">
-        <span className="mono-kicker">03 / COLLECTION STATE HISTORY</span>
-        <h2>{locale === "zh" ? "状态保留时间，也保留边界。" : "State keeps time—and its limits."}</h2>
-        <p>{locale === "zh" ? "历史记录说明某个时间点发生了什么。它不会把过去一次成功延长成今天的健康声明。" : "History explains what happened at a point in time. It never stretches one past success into a health claim today."}</p>
-      </div>
-      <div className="history-ledger">
-        {collectionHistory.map((event) => (
-          <article key={`${event.date}-${event.provider}`}>
-            <time>{event.date}</time>
-            <div className="history-node"><i /><span /></div>
-            <div><span className="history-status"><ClockCounterClockwise size={14} />{event.status.replaceAll("_", " ")}</span><h3>{event.title[locale]}</h3><p>{event.detail[locale]}</p><small>{event.provider}</small></div>
-          </article>
-        ))}
-      </div>
-      <a href="/data/receipts" className="text-link" onClick={(event) => { event.preventDefault(); window.history.pushState({}, "", "/data/receipts"); window.dispatchEvent(new PopStateEvent("popstate")); }}>{locale === "zh" ? "阅读状态证据规则" : "Read the state-evidence rules"}<ArrowRight /></a>
-    </section>
-  );
-}
+function DataSourceLandscapePage({ locale, onNavigate }) {
+  const familyLabels = {
+    "china-markets": { zh: "中国市场", en: "China markets" },
+    "global-markets": { zh: "全球市场", en: "Global markets" },
+    "funds-indices": { zh: "基金与指数", en: "Funds & indices" },
+    derivatives: { zh: "期货与期权", en: "Futures & options" },
+    "macro-rates": { zh: "宏观与利率", en: "Macro & rates" },
+    "company-regulatory": { zh: "公司与监管", en: "Company & regulatory" },
+    "news-events": { zh: "新闻与事件", en: "News & events" },
+    crypto: { zh: "加密与链上", en: "Crypto & on-chain" },
+    "web-attention": { zh: "Web 与关注度", en: "Web & attention" },
+    "physical-world": { zh: "实体世界", en: "Physical world" },
+  };
+  const connected = connectedInterfaceSnapshot.interfaces;
+  const activeCount = connected.filter((item) => item.activation === "active").length;
 
-function DataRoadmapSection({ locale }) {
   return (
-    <section className="data-roadmap-section">
-      <div className="section-heading compact-heading">
-        <span className="mono-kicker">05 / INTEGRATION ROADMAP</span>
-        <h2>{locale === "zh" ? "接入顺序由可交付性决定。" : "Integration order follows deliverability."}</h2>
-        <p>{locale === "zh" ? "优先级不是接口数量竞赛。每个来源必须依次通过官方来源、授权、合同、受控采集和 receipt/API 回读。" : "Priority is not an API-count contest. Every source must pass official-source, rights, contract, bounded collection, and receipt/API readback gates."}</p>
-      </div>
-      <div className="roadmap-lanes">
-        {roadmapPhases.map((phase) => (
-          <article key={phase.id}>
-            <div><span>{phase.id}</span><small>{phase.horizon[locale]}</small></div>
-            <h3>{phase.title[locale]}</h3>
-            <ol>{phase.gates.map((gate) => <li key={gate}>{gate}</li>)}</ol>
-          </article>
-        ))}
-      </div>
-      <div className="roadmap-boundary"><ShieldCheck size={22} weight="duotone" /><p>{locale === "zh" ? "只有拿到明确再分发权、完成 provider-native 验证并产生正式 receipt/API 证据的数据，才有资格进入可售套餐。" : "Only data with clear redistribution rights, provider-native validation, and formal receipt/API evidence can enter a sellable package."}</p></div>
+    <section className="data-source-page">
+      <SectionNav locale={locale} active="/data/sources" onNavigate={onNavigate} items={locale === "zh" ? [
+        { path: "/data", label: "数据产品" }, { path: "/data/sources", label: "来源与计划" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" },
+      ] : [
+        { path: "/data", label: "Data products" }, { path: "/data/sources", label: "Sources & roadmap" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" },
+      ]} />
+      <header className="data-source-hero">
+        <span className="mono-kicker">SOURCE LANDSCAPE / CONNECTED + CANDIDATE</span>
+        <h1>{locale === "zh" ? "把已接入、历史观测与下一步分开看。" : "Separate connected data, historical observations, and what comes next."}</h1>
+        <p>{locale === "zh" ? "这里公开接口合同、候选来源与接入门槛；任何规划都不自动等于已购买、可再分发或正在稳定采集。" : "This view publishes interface contracts, candidate sources, and onboarding gates. A plan never means purchased, redistributable, or stably collected."}</p>
+        <dl>
+          <div><dt>{locale === "zh" ? "合同接口" : "Contract interfaces"}</dt><dd>{connected.length}</dd></div>
+          <div><dt>{locale === "zh" ? "配置 active" : "Configured active"}</dt><dd>{activeCount}</dd></div>
+          <div><dt>{locale === "zh" ? "候选来源" : "Candidate sources"}</dt><dd>{sourceCandidates.length}</dd></div>
+          <div><dt>{locale === "zh" ? "最后审阅" : "Last reviewed"}</dt><dd>{landscapeMeta.reviewedAt}</dd></div>
+        </dl>
+      </header>
+      <section className="source-evidence-section">
+        <div className="section-heading compact-heading"><span className="mono-kicker">01 / CONNECTED CONTRACTS</span><h2>{locale === "zh" ? "已接入合同按运行面汇总。" : "Connected contracts by runtime plane."}</h2></div>
+        <div className="source-summary-grid">{connectedCoverage.map((item) => <article key={item.id}><span>{item.market}</span><strong>{item.provider}</strong><b>{item.contractCount}</b><small>{item.unit}</small><p>{item.note[locale]}</p></article>)}</div>
+      </section>
+      <section className="source-evidence-section">
+        <div className="section-heading compact-heading"><span className="mono-kicker">02 / OBSERVATION HISTORY</span><h2>{locale === "zh" ? "历史只说明当时发生了什么。" : "History only states what happened then."}</h2></div>
+        <div className="source-history-list">{collectionHistory.map((event) => <article key={`${event.date}-${event.provider}`}><time>{event.date}</time><ClockCounterClockwise size={17} /><div><strong>{event.title[locale]}</strong><p>{event.detail[locale]}</p><small>{event.provider} · {event.status.replaceAll("_", " ")}</small></div></article>)}</div>
+      </section>
+      <section className="source-evidence-section">
+        <div className="section-heading compact-heading"><span className="mono-kicker">03 / CANDIDATE SOURCES</span><h2>{locale === "zh" ? "候选来源保持轻量可读。" : "Candidate sources, kept lightweight."}</h2><p>{locale === "zh" ? "不增加第二个搜索框；使用全站搜索发现具体来源。" : "No second search box; use global search to discover a specific source."}</p></div>
+        <div className="source-candidate-list">{sourceCandidates.map((source) => <article key={source.id}><div><span>{familyLabels[source.family]?.[locale] || source.family}</span><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div><p>{source.materials}</p><div><span>{source.stage.replaceAll("_", " ")}</span><small>{source.rights.replaceAll("_", " ")}</small></div><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut /></a></article>)}</div>
+      </section>
+      <section className="source-evidence-section source-roadmap-section">
+        <div className="section-heading compact-heading"><span className="mono-kicker">04 / INTEGRATION ROADMAP</span><h2>{locale === "zh" ? "按证据门槛，而不是接口数量推进。" : "Progress by evidence gates, not interface count."}</h2></div>
+        <div className="source-roadmap-grid">{roadmapPhases.map((phase) => <article key={phase.id}><span>{phase.id} · {phase.horizon[locale]}</span><h3>{phase.title[locale]}</h3><ol>{phase.gates.map((gate) => <li key={gate}>{gate}</li>)}</ol></article>)}</div>
+        <p className="source-roadmap-boundary"><ShieldCheck weight="duotone" />{locale === "zh" ? "只有明确再分发权、provider-native 验证、正式 receipt 与认证 API 回读都成立的数据，才可能进入可售范围。" : "Only data with clear redistribution rights, provider-native validation, formal receipts, and authenticated API readback may enter a sellable scope."}</p>
+      </section>
     </section>
   );
 }
@@ -660,14 +806,87 @@ export function App() {
   const [theme, setTheme] = useState(() => themeChoice === "system" ? getSystemTheme() : themeChoice);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [route, setRoute] = useState(getRouteFromPath);
   const [accountSection, setAccountSection] = useState("overview");
-  const [researchQuery, setResearchQuery] = useState("");
+  const [accountDocSlug, setAccountDocSlug] = useState("start-1");
+  const [bookmarks, setBookmarks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("td-bookmarks") || "[]"); } catch { return []; }
+  });
+  const [globalQuery, setGlobalQuery] = useState("");
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const [expandedSearchGroups, setExpandedSearchGroups] = useState([]);
+  const [recentSearches, setRecentSearches] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("td-recent-searches") || "[]"); } catch { return []; }
+  });
   const [researchTopic, setResearchTopic] = useState("all");
   const [researchKind, setResearchKind] = useState("all");
-  const [docsQuery, setDocsQuery] = useState("");
+  const [researchBrowseOpen, setResearchBrowseOpen] = useState(false);
+  const researchLibraryRef = useRef(null);
+  const desktopSearchInputRef = useRef(null);
+  const mobileSearchInputRef = useRef(null);
+  const [dataFamily, setDataFamily] = useState("all");
+  const [dataStage, setDataStage] = useState("all");
   const [docsCategory, setDocsCategory] = useState("all");
+  const [pricingPlanIndex, setPricingPlanIndex] = useState(0);
+  const [accountToken, setAccountToken] = useState(() => localStorage.getItem(ACCOUNT_TOKEN_KEY) || "");
+  const [accountTokenInput, setAccountTokenInput] = useState("");
+  const [accountData, setAccountData] = useState(null);
+  const [accountUsage, setAccountUsage] = useState(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountError, setAccountError] = useState("");
   const copy = messages[locale];
+
+  useEffect(() => {
+    if (!accountToken) {
+      setAccountData(null);
+      setAccountUsage(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setAccountLoading(true);
+    setAccountError("");
+    Promise.all([
+      fetch(`${ACCOUNT_API_BASE}/portal/api/me`, { headers: { Authorization: `Bearer ${accountToken}` }, signal: controller.signal }),
+      fetch(`${ACCOUNT_API_BASE}/portal/api/me/usage?days=30`, { headers: { Authorization: `Bearer ${accountToken}` }, signal: controller.signal }),
+    ]).then(async ([accountResponse, usageResponse]) => {
+      if (!accountResponse.ok) throw new Error(accountResponse.status === 401 ? "invalid_token" : "account_unavailable");
+      if (!usageResponse.ok) throw new Error("usage_unavailable");
+      const [accountPayload, usagePayload] = await Promise.all([accountResponse.json(), usageResponse.json()]);
+      setAccountData(accountPayload.portal);
+      setAccountUsage(usagePayload.portal_usage);
+    }).catch((error) => {
+      if (error.name === "AbortError") return;
+      setAccountData(null);
+      setAccountUsage(null);
+      setAccountError(error.message);
+      if (error.message === "invalid_token") {
+        localStorage.removeItem(ACCOUNT_TOKEN_KEY);
+        setAccountToken("");
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setAccountLoading(false);
+    });
+    return () => controller.abort();
+  }, [accountToken]);
+
+  function connectAccount(event) {
+    event.preventDefault();
+    const token = accountTokenInput.trim();
+    if (!token) return;
+    localStorage.setItem(ACCOUNT_TOKEN_KEY, token);
+    setAccountToken(token);
+    setAccountTokenInput("");
+  }
+
+  function disconnectAccount() {
+    localStorage.removeItem(ACCOUNT_TOKEN_KEY);
+    setAccountToken("");
+    setAccountData(null);
+    setAccountUsage(null);
+    setAccountError("");
+  }
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -683,6 +902,18 @@ export function App() {
   }, [theme, locale]);
 
   useEffect(() => {
+    localStorage.setItem("td-bookmarks", JSON.stringify(bookmarks));
+  }, [bookmarks]);
+
+  useEffect(() => {
+    localStorage.setItem("td-recent-searches", JSON.stringify(recentSearches));
+  }, [recentSearches]);
+
+  useEffect(() => {
+    setExpandedSearchGroups([]);
+  }, [globalQuery]);
+
+  useEffect(() => {
     const syncRoute = () => setRoute(getRouteFromPath());
     window.addEventListener("popstate", syncRoute);
     return () => window.removeEventListener("popstate", syncRoute);
@@ -691,6 +922,22 @@ export function App() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [route]);
+
+  useEffect(() => {
+    const focusGlobalSearch = (event) => {
+      if (!isGlobalSearchShortcut(event)) return;
+      event.preventDefault();
+      setGlobalSearchOpen(true);
+      if (window.matchMedia("(max-width: 1020px)").matches) {
+        setMobileOpen(true);
+        window.setTimeout(() => mobileSearchInputRef.current?.focus(), 0);
+      } else {
+        desktopSearchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", focusGlobalSearch);
+    return () => document.removeEventListener("keydown", focusGlobalSearch);
+  }, []);
 
   function chooseLocale(next) {
     setLocale(next);
@@ -704,116 +951,316 @@ export function App() {
 
   const primaryRoute = route.split("/")[0];
   const routeSlug = route.split("/").slice(1).join("/");
-  const sections = ["data", "features", "recipes", "research", "pricing", "docs"];
+  const sections = ["data", "research", "pricing"];
   const navPaths = sections.map((section) => `/${section}`);
-  function navigate(event, path) {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
+  function goTo(path) {
     window.history.pushState({}, "", path);
     const pathname = new URL(path, window.location.origin).pathname;
     setRoute(pathname === "/" ? "home" : pathname.replace(/^\/+|\/+$/g, ""));
     setMobileOpen(false);
+    setAccountMenuOpen(false);
+  }
+  function navigate(event, path) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    goTo(path);
+  }
+  function openAccountSection(key) {
+    setAccountSection(key);
+    goTo("/account");
+  }
+  function toggleBookmark(key) {
+    setBookmarks((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
   }
   const topicLabels = Object.fromEntries(copy.researchTopics);
   const kindLabels = Object.fromEntries(copy.researchKinds);
   const visiblePapers = papers.filter((paper) => {
     const matchesTopic = researchTopic === "all" || paper.topic === researchTopic;
     const matchesKind = researchKind === "all" || paper.kind === researchKind;
-    const haystack = `${paper.title} ${paper.authors} ${paper.venue} ${paper.data} ${paper.summary.en} ${paper.summary.zh}`.toLowerCase();
-    return matchesTopic && matchesKind && haystack.includes(researchQuery.trim().toLowerCase());
+    return matchesTopic && matchesKind;
   });
+  const featuredPaper = papers.find((paper) => paper.title === "China's Stock Market: A Marriage of Capitalism and State Control");
+  const researchAtlas = locale === "zh" ? {
+    eyebrow: "研究地图",
+    title: "问题驱动的研究地图。",
+    copy: "从问题开始，把它连接到外部研究、原始数据材料和准备方法。你不必先读完一篇论文，才能找到正确的研究起点。",
+    search: "输入你想理解的研究问题",
+    suggestions: [
+      { label: "财务数据如何避免未来信息？", topic: "corporate-fundamentals" },
+      { label: "价格、成交量与流动性如何关联？", topic: "market-microstructure" },
+      { label: "公告应按哪个时点进入研究？", topic: "alternative-data" },
+    ],
+    pathsTitle: "精选研究路径",
+    pathsCopy: "三个经过整理的起点，把问题连接到论文和所需的数据材料。",
+    browse: "浏览完整研究库",
+    paths: [
+      { label: "时点一致财务", question: "财务数据如何避免未来信息？", time: "42 分钟", count: "4 篇资料", data: "财务报表 · 公告时点 · 修订记录", image: "/assets/research/path-pit-fundamentals-cover-v2.png", imageLight: "/assets/research/path-pit-fundamentals-cover-light-v3.png", paperTitle: "The Cross-Section of Expected Stock Returns" },
+      { label: "A 股微观结构", question: "价格、成交量与流动性如何关联？", time: "36 分钟", count: "3 篇资料", data: "日线与分钟 · 成交量 · 集合竞价", image: "/assets/research/path-market-microstructure-cover-v2.png", imageLight: "/assets/research/path-market-microstructure-cover-light-v3.png", paperTitle: "Continuous Auctions and Insider Trading" },
+      { label: "公告与事件", question: "公告应按哪个时点进入研究？", time: "31 分钟", count: "3 篇资料", data: "公告 · 新闻 · 公司事件 · 价格", image: "/assets/research/path-announcement-events-cover-v2.png", imageLight: "/assets/research/path-announcement-events-cover-light-v3.png", paperTitle: "Media Coverage and the Cross-section of Stock Returns" },
+    ],
+    featured: "推荐阅读",
+    featuredCopy: "一篇值得先花十分钟理解的高信息密度资料。",
+    why: "为什么值得读",
+    whyCopy: "这篇论文从所有权、制度结构和市场演进理解中国股票市场，为后续研究数据的范围、可得性和市场语境提供基础。",
+    linked: "关联到 TradingDatas",
+    overview: "10 分钟导读",
+    notStarted: "尚未开始",
+    external: "外部文献 · TradingDatas 不发表其中的研究结论",
+  } : {
+    eyebrow: "RESEARCH ATLAS",
+    title: "Question-led research atlas.",
+    copy: "Start with the question. We map it to external research, raw data materials, and preparation methods—so you can find the right entry point before reading every paper.",
+    search: "Ask a research question",
+    suggestions: [
+      { label: "How do fundamentals avoid look-ahead?", topic: "corporate-fundamentals" },
+      { label: "How do price, volume, and liquidity interact?", topic: "market-microstructure" },
+      { label: "When should an announcement enter a study?", topic: "alternative-data" },
+    ],
+    pathsTitle: "Curated research paths",
+    pathsCopy: "Three prepared starting points connect a question to papers and the raw data that matter.",
+    browse: "Browse the full library",
+    paths: [
+      { label: "POINT-IN-TIME FUNDAMENTALS", question: "How do fundamentals avoid look-ahead?", time: "42 min", count: "4 readings", data: "financials · announcement time · revisions", image: "/assets/research/path-pit-fundamentals-cover-v2.png", imageLight: "/assets/research/path-pit-fundamentals-cover-light-v3.png", paperTitle: "The Cross-Section of Expected Stock Returns" },
+      { label: "A-SHARE MICROSTRUCTURE", question: "How do price, volume, and liquidity interact?", time: "36 min", count: "3 readings", data: "daily & minute · volume · auctions", image: "/assets/research/path-market-microstructure-cover-v2.png", imageLight: "/assets/research/path-market-microstructure-cover-light-v3.png", paperTitle: "Continuous Auctions and Insider Trading" },
+      { label: "ANNOUNCEMENTS & EVENTS", question: "When should an announcement enter a study?", time: "31 min", count: "3 readings", data: "announcements · news · events · prices", image: "/assets/research/path-announcement-events-cover-v2.png", imageLight: "/assets/research/path-announcement-events-cover-light-v3.png", paperTitle: "Media Coverage and the Cross-section of Stock Returns" },
+    ],
+    featured: "Featured paper",
+    featuredCopy: "One high-signal paper worth ten minutes of orientation.",
+    why: "Why it matters",
+    whyCopy: "This paper uses ownership, institutions, and market development to frame China's stock market—useful context for data scope, availability, and interpretation.",
+    linked: "Linked in TradingDatas",
+    overview: "10 min overview",
+    notStarted: "Not started",
+    external: "External literature · TradingDatas does not publish the conclusions",
+  };
+
+  function showResearchLibrary({ topic = researchTopic } = {}) {
+    setResearchTopic(topic);
+    setResearchBrowseOpen(true);
+    window.setTimeout(() => researchLibraryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
+  }
   const accountGroups = locale === "zh" ? [
+    { label: "你的资料库", items: [{ key: "bookmarks", label: "已收藏", description: "集中查看保存的数据产品、研究内容、方法和文档。" }] },
     { label: "账户", items: [{ key: "overview", label: "账户概览", description: "查看订阅、用量、密钥和另类数据状态的统一摘要。" }] },
     { label: "数据访问", items: [
       { key: "subscription", label: "订阅与加购", description: "管理基础套餐、另类数据试用、有效期和续费选择。" },
-      { key: "usage", label: "用量与限制", description: "查看分钟频率、并发、每日查询和分类授权。" },
+      { key: "usage", label: "用量与限制", description: "查看每分钟请求上限、请求历史和分类授权。" },
       { key: "keys", label: "API 密钥", description: "创建、停用和轮换用于 catalog/query 的访问密钥。" },
     ] },
-    { label: "集成", items: [{ key: "agents", label: "Agent 与 MCP", description: "为 Claude、Codex、OpenClaw、Hermes 和其它 Agent 生成安全接入说明。" }] },
+    { label: "连接与学习", items: [
+      { key: "agents", label: "Agent 与 MCP", description: "为 Claude、Codex、OpenClaw、Hermes 和其它 Agent 生成安全接入说明。" },
+      { key: "docs", label: "文档", description: "查阅平台说明、数据合同、API、Agent 接入和账户帮助。" },
+    ] },
     { label: "账单", items: [{ key: "billing", label: "账单与发票", description: "查看订单、续费、支付记录和发票资料。" }] },
     { label: "设置", items: [
       { key: "preferences", label: "语言与外观", description: "设置网站语言以及跟随系统、明亮或暗色外观。" },
       { key: "security", label: "安全", description: "管理登录会话、账户安全和访问审计。" },
     ] },
   ] : [
+    { label: "Your library", items: [{ key: "bookmarks", label: "Bookmarks", description: "Review saved datasets, research, methods, and documentation in one place." }] },
     { label: "Account", items: [{ key: "overview", label: "Overview", description: "A single summary of subscription, usage, keys, and alternative-data access." }] },
     { label: "Data access", items: [
       { key: "subscription", label: "Subscription & add-ons", description: "Manage base packages, alternative-data trials, expiry, and renewal choices." },
-      { key: "usage", label: "Usage & limits", description: "Review minute rate, concurrency, daily queries, and category access." },
+      { key: "usage", label: "Usage & limits", description: "Review per-minute request limits, request history, and category access." },
       { key: "keys", label: "API keys", description: "Create, disable, and rotate credentials for catalog and query." },
     ] },
-    { label: "Integrations", items: [{ key: "agents", label: "Agents & MCP", description: "Generate safe setup guidance for Claude, Codex, OpenClaw, Hermes, and other Agents." }] },
+    { label: "Connect & learn", items: [
+      { key: "agents", label: "Agents & MCP", description: "Generate safe setup guidance for Claude, Codex, OpenClaw, Hermes, and other Agents." },
+      { key: "docs", label: "Documentation", description: "Browse platform guidance, data contracts, APIs, Agent setup, and account help." },
+    ] },
     { label: "Billing", items: [{ key: "billing", label: "Billing & invoices", description: "Review orders, renewals, payment records, and invoice details." }] },
     { label: "Settings", items: [
       { key: "preferences", label: "Language & appearance", description: "Choose the site language and system, light, or dark appearance." },
       { key: "security", label: "Security", description: "Manage sign-in sessions, account security, and access audit." },
     ] },
   ];
-  const dataGroups = locale === "zh" ? [
-    { id: "market-reference", title: "行情与基础参考", description: "A 股日线、复权因子、停复牌、交易日历、证券与市场基础信息。", examples: "daily · adj_factor · suspend · trade_cal" },
-    { id: "intraday", title: "日内与微观结构", description: "历史分钟、集合竞价、盘前股本以及 ETF、指数相关分钟观测。", examples: "minute · auction · premarket · etf/index" },
-    { id: "fundamentals", title: "财务与公司行动", description: "财务报表、业绩、分红、股本、股东与公司行动等研究原料。", examples: "financials · dividend · share_float · holders" },
-    { id: "indices", title: "指数与基金", description: "指数成分、权重、日线、ETF 参考与申赎相关数据。", examples: "index · constituent · weight · etf" },
-  ] : [
-    { id: "market-reference", title: "Market & reference", description: "A-share daily prices, adjustment factors, suspensions, calendars, instruments, and market reference.", examples: "daily · adj_factor · suspend · trade_cal" },
-    { id: "intraday", title: "Intraday & microstructure", description: "Historical minutes, auctions, pre-market share capital, and ETF/index minute observations.", examples: "minute · auction · premarket · etf/index" },
-    { id: "fundamentals", title: "Fundamentals & corporate actions", description: "Financial statements, earnings, dividends, capital structure, holders, and company actions.", examples: "financials · dividend · share_float · holders" },
-    { id: "indices", title: "Indices & funds", description: "Index constituents, weights, daily observations, ETF reference, and creation/redemption material.", examples: "index · constituent · weight · etf" },
-  ];
-  const alternativeGroups = locale === "zh" ? [
-    { title: "公司与监管信息", description: "公告、董秘问答、券商研报及公司事件文本。", examples: "announcements · Q&A · broker research" },
-    { title: "新闻与政策", description: "新闻快讯、政策法规、央行报告与宏观发布。", examples: "news · policy · central bank reports" },
-    { title: "市场关注与互动", description: "客观覆盖度、互动和来源标记，不生成情绪信号或交易建议。", examples: "coverage · interaction · source metadata" },
-  ] : [
-    { title: "Company & regulatory intelligence", description: "Announcements, secretary Q&A, broker research, and company-event text.", examples: "announcements · Q&A · broker research" },
-    { title: "News & policy", description: "News flashes, regulations, central-bank reports, and macro releases.", examples: "news · policy · central bank reports" },
-    { title: "Attention & interaction", description: "Objective coverage and interaction metadata—never sentiment signals or trading advice.", examples: "coverage · interaction · source metadata" },
-  ];
   const packageCards = locale === "zh" ? [
-    { name: "A 股研究包", audience: "基本面、行业与事件研究", includes: ["日线与复权", "财务与公司行动", "指数与基础参考", "标准 Catalog / Query 访问"] },
-    { name: "量化系统包", audience: "因子、横截面与历史回测准备", includes: ["包含研究包全部数据", "历史分钟与集合竞价", "ETF / 指数分钟", "更高运行限额（以后端为准）"] },
-    { name: "交易数据包", audience: "盘中观察与交易系统数据准备", includes: ["包含量化系统包全部数据", "A 股 / ETF / 指数实时数据候选", "分钟级实时数据候选", "最高运行限额（以后端为准）"] },
+    { name: "基础版", short: "基础", label: "BASE / 01", audience: "覆盖国内市场研究所需的核心日频、公司、事件与参考数据。", position: "完整的 A 股基础数据入口", coverage: "核心日频与公司数据", history: "日频完整历史", runtime: "200 次 / 分钟", tone: "research", includes: ["A 股日线、复权与交易日历", "公司基础、财务与公司行动", "公告、指数、基金与宏观参考", "每日请求总量不限"] },
+    { name: "专业版", short: "专业", label: "PRO / 02", audience: "在基础版之上加入历史分钟、竞价与更完整的国内交易数据。", position: "面向更高频的数据准备", coverage: "基础版 + 历史分钟", history: "日频与分钟历史", runtime: "600 次 / 分钟", tone: "systematic", includes: ["包含基础版全部数据", "A 股历史分钟与集合竞价", "ETF、指数、期货与期权历史分钟", "每日请求总量不限"] },
+    { name: "旗舰版", short: "旗舰", label: "FLAGSHIP / 03", audience: "覆盖当前最高等级的基础金融数据范围与运行能力。", position: "完整基础数据能力候选", coverage: "专业版 + 实时数据候选", history: "历史数据与盘中候选", runtime: "1,000 次 / 分钟", tone: "trading", includes: ["包含专业版全部数据", "A 股、ETF 与指数实时日线候选", "分钟级实时数据候选", "每日请求总量不限"] },
   ] : [
-    { name: "A-share Research", audience: "Fundamental, industry, and event research", includes: ["Daily & adjusted prices", "Financials & corporate actions", "Indices & reference", "Standard Catalog / Query access"] },
-    { name: "Systematic Research", audience: "Factor, cross-sectional, and historical-test preparation", includes: ["Everything in A-share Research", "Historical minutes & auctions", "ETF / index minutes", "Higher runtime limits (backend-defined)"] },
-    { name: "Trading Data", audience: "Intraday observation and trading-system data preparation", includes: ["Everything in Systematic Research", "Candidate A-share / ETF / index real-time data", "Candidate real-time minute data", "Highest runtime limits (backend-defined)"] },
+    { name: "Basic", short: "Basic", label: "BASE / 01", audience: "Core daily, company, event, and reference data for China's domestic markets.", position: "The complete A-share data foundation", coverage: "Core daily and company data", history: "Complete daily history", runtime: "200 requests / minute", tone: "research", includes: ["A-share daily, adjusted prices, and calendar", "Company master, financials, and actions", "Announcements, indices, funds, and macro reference", "No daily request cap"] },
+    { name: "Professional", short: "Pro", label: "PRO / 02", audience: "Adds historical minutes, auctions, and broader domestic trading data to Basic.", position: "For higher-frequency data preparation", coverage: "Basic + historical minutes", history: "Daily and minute history", runtime: "600 requests / minute", tone: "systematic", includes: ["Everything in Basic", "A-share historical minutes and auctions", "ETF, index, futures, and options history", "No daily request cap"] },
+    { name: "Flagship", short: "Flagship", label: "FLAGSHIP / 03", audience: "The broadest proposed base financial-data scope and runtime profile.", position: "Full base-data capability candidate", coverage: "Professional + real-time candidates", history: "History plus intraday candidates", runtime: "1,000 requests / minute", tone: "trading", includes: ["Everything in Professional", "Candidate A-share, ETF, and index real-time daily", "Candidate real-time minute data", "No daily request cap"] },
   ];
   const readingSteps = locale === "zh" ? [
     ["01", "先看研究问题", "这篇内容试图解释、测量或重建什么。"],
     ["02", "再看证据与数据", "需要哪些市场、财务、另类数据和时间窗口。"],
     ["03", "理解方法与限制", "识别对齐、样本、假设以及不能外推的部分。"],
-    ["04", "进入 Data 与 Cookbook", "找到对应数据材料和可复现的数据准备方法。"],
+    ["04", "进入 Data 与研究方法", "找到对应数据材料和可复现的数据准备方法。"],
   ] : [
     ["01", "Start with the question", "What is the work trying to explain, measure, or reconstruct?"],
     ["02", "Inspect evidence and data", "Which market, fundamental, alternative datasets, and time windows are required?"],
     ["03", "Understand method and limits", "Identify alignment, samples, assumptions, and what cannot be generalized."],
-    ["04", "Continue in Data and Cookbook", "Find the matching raw materials and reproducible preparation method."],
+    ["04", "Continue in Data and Methods", "Find the matching raw materials and reproducible preparation method."],
   ];
   const docsCategories = locale === "zh" ? [
-    { key: "start", label: "开始使用", items: [["平台概览", "了解 Data、Research、Cookbook、Pricing、Docs 与 Account 的关系。"], ["首次接入", "创建账户、选择套餐、生成密钥并完成第一条 Catalog 查询。"]] },
+    { key: "start", label: "开始使用", items: [["平台概览", "了解 Data、Research、Pricing、全站搜索与 Account 的关系。"], ["首次接入", "创建账户、选择套餐、生成密钥并完成第一条 Catalog 查询。"]] },
     { key: "data", label: "数据说明", items: [["数据分类与模板", "市场、domain、字段、覆盖、更新时间与 receipt 的统一结构。"], ["另类数据", "来源、再分发边界、试用、加购和授权读回。"], ["数据凭证", "如何阅读 source、quality、freshness、coverage 与 receipt。"]] },
     { key: "api", label: "API 与 Agent", items: [["Catalog", "发现已授权数据集及其结构、覆盖与限制。"], ["Query", "字段、游标、预算、错误和 fail-closed 行为。"], ["Agent 与 MCP", "Claude、Codex、OpenClaw、Hermes 的安全接入说明。"]] },
-    { key: "learn", label: "学习与方法", items: [["Research 阅读指南", "如何阅读外部论文、行业研究和案例。"], ["Cookbook 方法", "查询、连接、时点对齐、复权、缺失与验证。"]] },
-    { key: "commerce", label: "套餐与账户", items: [["套餐比较", "A 股研究、量化系统与交易数据包的范围。"], ["订阅与账单", "有效期、试用、加购、续费、账单和发票。"], ["账户与安全", "用量、密钥、会话、语言、主题与访问审计。"]] },
+    { key: "learn", label: "学习与方法", items: [["Research 阅读指南", "如何阅读外部论文、行业研究和案例。"], ["研究方法", "查询、连接、时点对齐、复权、缺失与验证。"]] },
+    { key: "commerce", label: "套餐与账户", items: [["套餐比较", "基础版、专业版与旗舰版的范围、历史深度和目标运行档。"], ["订阅与账单", "有效期、试用、加购、续费、账单和发票。"], ["账户与安全", "用量、密钥、会话、语言、主题与访问审计。"]] },
   ] : [
-    { key: "start", label: "Get started", items: [["Platform overview", "How Data, Research, Cookbook, Pricing, Docs, and Account fit together."], ["First connection", "Create an account, choose a package, generate a key, and make the first Catalog request."]] },
+    { key: "start", label: "Get started", items: [["Platform overview", "How Data, Research, Pricing, site search, and Account fit together."], ["First connection", "Create an account, choose a package, generate a key, and make the first Catalog request."]] },
     { key: "data", label: "Data guide", items: [["Classification & template", "The shared market, domain, field, coverage, update, and receipt structure."], ["Alternative data", "Source, redistribution boundary, trial, add-on, and entitlement readback."], ["Data receipts", "How to read source, quality, freshness, coverage, and receipt evidence."]] },
     { key: "api", label: "API & Agents", items: [["Catalog", "Discover authorized datasets, schemas, coverage, and limitations."], ["Query", "Fields, cursors, budgets, errors, and fail-closed behavior."], ["Agents & MCP", "Safe setup for Claude, Codex, OpenClaw, Hermes, and other Agents."]] },
-    { key: "learn", label: "Learning & methods", items: [["Research reading guide", "How to read external papers, industry research, and cases."], ["Cookbook methods", "Querying, joins, point-in-time alignment, adjustment, missingness, and validation."]] },
-    { key: "commerce", label: "Plans & account", items: [["Compare packages", "Scope of A-share Research, Systematic Research, and Trading Data."], ["Subscription & billing", "Expiry, trials, add-ons, renewal, billing, and invoices."], ["Account & security", "Usage, keys, sessions, language, appearance, and access audit."]] },
+    { key: "learn", label: "Learning & methods", items: [["Research reading guide", "How to read external papers, industry research, and cases."], ["Research methods", "Querying, joins, point-in-time alignment, adjustment, missingness, and validation."]] },
+    { key: "commerce", label: "Plans & account", items: [["Compare packages", "Scope, history depth, and target runtime for Basic, Professional, and Flagship."], ["Subscription & billing", "Expiry, trials, add-ons, renewal, billing, and invoices."], ["Account & security", "Usage, keys, sessions, language, appearance, and access audit."]] },
   ];
   const allDocs = docsCategories.flatMap((category) => category.items.map(([title, description], index) => ({ category: category.key, categoryLabel: category.label, title, description, slug: `${category.key}-${index + 1}` })));
   const visibleDocs = allDocs.filter((entry) => {
     const matchesCategory = docsCategory === "all" || entry.category === docsCategory;
-    return matchesCategory && `${entry.title} ${entry.description} ${entry.categoryLabel}`.toLowerCase().includes(docsQuery.trim().toLowerCase());
+    return matchesCategory;
   });
   const selectedDoc = allDocs.find((entry) => entry.slug === routeSlug);
   const activeAccountItem = accountGroups.flatMap((group) => group.items).find((item) => item.key === accountSection) || accountGroups[0].items[0];
+  const activeAccountDoc = allDocs.find((entry) => entry.slug === accountDocSlug) || allDocs[0];
+
+  const globalIndex = [
+    ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
+    ...papers.map((paper) => ({ key: `research:${paperSlug(paper)}`, id: paperSlug(paper), group: "research", type: locale === "zh" ? "研究" : "Research", label: paper.title, description: `${paper.authors} · ${paper.year}`, aliases: [paper.venue, paper.kind, paper.topic, paper.data, paper.summary.en, paper.summary.zh], path: `/research/${paperSlug(paper)}` })),
+    ...productManifest.objects.recipes.map((item) => ({ key: `method:${item.id}`, id: item.id, group: "methods", type: locale === "zh" ? "研究方法" : "Method", label: item.title[locale], description: item.detail, aliases: [item.title.en, item.title.zh, item.status], path: `/recipes/${item.id}` })),
+    ...allDocs.map((entry) => ({ key: `doc:${entry.slug}`, id: entry.slug, group: "docs", type: locale === "zh" ? "文档" : "Docs", label: entry.title, description: entry.description, aliases: [entry.category, entry.categoryLabel], path: "/account", accountSection: "docs", docSlug: entry.slug })),
+  ].map((item) => ({ ...item, searchDocument: createSearchDocument([item.id, item.type, item.label, item.description, item.aliases]) }));
+  const savedItems = globalIndex.filter((item) => bookmarks.includes(item.key));
+  const normalizedGlobalQuery = normalizeSearchValue(globalQuery);
+  const globalSearchGroupDefinitions = [
+    { key: "data", label: locale === "zh" ? "数据产品" : "DATA" },
+    { key: "research", label: locale === "zh" ? "研究" : "RESEARCH" },
+    { key: "methods", label: locale === "zh" ? "方法" : "METHODS" },
+    { key: "docs", label: locale === "zh" ? "文档" : "DOCS" },
+  ];
+  const globalSearchGroups = searchGroups(globalIndex, normalizedGlobalQuery, globalSearchGroupDefinitions, Number.POSITIVE_INFINITY)
+    .map((group) => ({
+      ...group,
+      items: expandedSearchGroups.includes(group.key) ? group.items : group.items.slice(0, 4),
+    }));
+  const globalResults = globalSearchGroups.flatMap((group) => group.items);
+  const globalResultCount = globalSearchGroups.reduce((total, group) => total + group.totalCount, 0);
+  const accountMenuGroups = locale === "zh" ? [
+    { label: "你的资料库", items: [{ key: "bookmarks", label: `已收藏 · ${bookmarks.length}` }] },
+    { label: "账户", items: [{ key: "overview", label: "账户概览" }, { key: "subscription", label: "订阅与套餐" }, { key: "preferences", label: "语言与外观" }] },
+    { label: "连接与学习", items: [{ key: "agents", label: "Agent 与 MCP" }, { key: "docs", label: "文档" }] },
+  ] : [
+    { label: "Your library", items: [{ key: "bookmarks", label: `Bookmarks · ${bookmarks.length}` }] },
+    { label: "Account", items: [{ key: "overview", label: "Overview" }, { key: "subscription", label: "Access & plan" }, { key: "preferences", label: "Appearance" }] },
+    { label: "Connect & learn", items: [{ key: "agents", label: "Agent connections" }, { key: "docs", label: "Documentation" }] },
+  ];
+  function openSearchItem(event, item) {
+    event.preventDefault();
+    if (item.accountSection) {
+      setAccountSection(item.accountSection);
+      if (item.docSlug) setAccountDocSlug(item.docSlug);
+    }
+    const query = globalQuery.trim();
+    if (query) setRecentSearches((current) => [query, ...current.filter((value) => value.toLowerCase() !== query.toLowerCase())].slice(0, 5));
+    setGlobalQuery("");
+    setGlobalSearchOpen(false);
+    setActiveSearchIndex(-1);
+    goTo(item.path);
+  }
+
+  function renderGlobalSearch(className = "") {
+    const placeholder = locale === "zh" ? "搜索数据、研究、方法或文档" : "Search data, research, methods, or docs";
+    const searchSuggestions = locale === "zh" ? ["A 股日线", "时点一致财务", "论文"] : ["A-share daily", "Point-in-time fundamentals", "Papers"];
+    const isMobileSearch = className.includes("mobile");
+    const searchInputRef = isMobileSearch ? mobileSearchInputRef : desktopSearchInputRef;
+    const searchShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
+    const resultsId = className.includes("mobile") ? "mobile-global-search-results" : "desktop-global-search-results";
+    const activeResultId = activeSearchIndex >= 0 ? `${resultsId}-${activeSearchIndex}` : undefined;
+    function handleSearchKeyDown(event) {
+      if (event.key === "Escape") {
+        setGlobalSearchOpen(false);
+        setActiveSearchIndex(-1);
+        event.currentTarget.blur();
+        return;
+      }
+      if (!globalResults.length) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setGlobalSearchOpen(true);
+        setActiveSearchIndex((current) => getSearchNavigationIndex(current, globalResults.length, event.key));
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setGlobalSearchOpen(true);
+        setActiveSearchIndex((current) => getSearchNavigationIndex(current, globalResults.length, event.key));
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setGlobalSearchOpen(true);
+        setActiveSearchIndex((current) => getSearchNavigationIndex(current, globalResults.length, event.key));
+      } else if (event.key === "End") {
+        event.preventDefault();
+        setGlobalSearchOpen(true);
+        setActiveSearchIndex((current) => getSearchNavigationIndex(current, globalResults.length, event.key));
+      } else if (event.key === "Enter" && activeSearchIndex >= 0) {
+        event.preventDefault();
+        openSearchItem(event, globalResults[activeSearchIndex]);
+      }
+    }
+    return <div className={`global-search-wrap ${className}`} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setGlobalSearchOpen(false);
+    }}>
+      <label className="global-search-field">
+        <MagnifyingGlass aria-hidden="true" />
+        <span className="sr-only">{placeholder}</span>
+        <input ref={searchInputRef} type="search" role="combobox" aria-autocomplete="list" aria-expanded={globalSearchOpen && Boolean(normalizedGlobalQuery || recentSearches.length)} aria-controls={resultsId} aria-activedescendant={activeResultId} value={globalQuery} placeholder={placeholder} onFocus={() => setGlobalSearchOpen(true)} onChange={(event) => { setGlobalQuery(event.target.value); setGlobalSearchOpen(true); setActiveSearchIndex(-1); }} onKeyDown={handleSearchKeyDown} />
+        {globalQuery ? <button type="button" onClick={() => setGlobalQuery("")} aria-label={locale === "zh" ? "清除搜索" : "Clear search"}><X /></button> : <kbd aria-hidden="true">{searchShortcut}</kbd>}
+      </label>
+      {globalSearchOpen && normalizedGlobalQuery && <div className="global-search-results" id={resultsId} role={globalSearchGroups.length ? "listbox" : "status"} aria-label={locale === "zh" ? "全站搜索结果" : "Site search results"}>
+        <div className="global-search-result-heading"><span>{locale === "zh" ? "搜索结果" : "SEARCH RESULTS"}</span><small aria-live="polite" aria-atomic="true">{globalResultCount}</small></div>
+        {globalSearchGroups.length ? globalSearchGroups.map((group) => <section className="global-search-group" key={group.key} aria-label={group.label}>
+          <h3>{group.label}</h3>
+          {group.items.map((item) => {
+            const resultIndex = globalResults.findIndex((result) => result.key === item.key);
+            return <div className={`global-search-result ${activeSearchIndex === resultIndex ? "is-active" : ""}`} key={item.key}>
+              <a id={`${resultsId}-${resultIndex}`} role="option" aria-selected={activeSearchIndex === resultIndex} href={item.path} onMouseEnter={() => setActiveSearchIndex(resultIndex)} onClick={(event) => openSearchItem(event, item)}><span className="global-search-result-title"><strong>{item.label}</strong>{item.matchKind && <em>{item.matchKind === "id" ? "ID" : item.matchKind === "fuzzy" ? (locale === "zh" ? "近似" : "CLOSE") : (locale === "zh" ? "别名" : "ALIAS")}</em>}</span><small>{item.description}</small></a>
+              <button type="button" className={bookmarks.includes(item.key) ? "is-saved" : ""} onClick={() => toggleBookmark(item.key)} aria-label={bookmarks.includes(item.key) ? (locale === "zh" ? "取消收藏" : "Remove bookmark") : (locale === "zh" ? "收藏" : "Bookmark")}><BookmarkSimple weight={bookmarks.includes(item.key) ? "fill" : "regular"} /></button>
+            </div>;
+          })}
+          {group.totalCount > group.items.length && <button className="global-search-expand" type="button" onClick={() => setExpandedSearchGroups((current) => current.includes(group.key) ? current : [...current, group.key])}>{locale === "zh" ? `查看全部 ${group.totalCount}` : `Show all ${group.totalCount}`}<ArrowRight /></button>}
+        </section>) : <div className="global-search-empty"><p>{locale === "zh" ? "没有匹配内容。" : "No matching content."}</p><small>{locale === "zh" ? "可以试试" : "TRY"}</small><div>{searchSuggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => { setGlobalQuery(suggestion); setActiveSearchIndex(-1); }}>{suggestion}</button>)}</div></div>}
+      </div>}
+      {globalSearchOpen && !normalizedGlobalQuery && recentSearches.length > 0 && <div className="global-search-results global-search-recents" id={resultsId}>
+        <div className="global-search-result-heading"><span>{locale === "zh" ? "最近搜索 · 仅此浏览器" : "RECENT · THIS BROWSER"}</span><button type="button" onClick={() => setRecentSearches([])}>{locale === "zh" ? "清除" : "Clear"}</button></div>
+        {recentSearches.map((query) => <div className="global-recent-row" key={query}><button className="global-recent-query" type="button" onClick={() => { setGlobalQuery(query); setActiveSearchIndex(-1); }}><Clock /><span>{query}</span><ArrowRight /></button><button className="global-recent-remove" type="button" onClick={() => setRecentSearches((current) => current.filter((value) => value !== query))} aria-label={locale === "zh" ? `删除最近搜索：${query}` : `Remove recent search: ${query}`}><X /></button></div>)}
+      </div>}
+    </div>;
+  }
 
   const selectedDataset = productManifest.objects.datasets.find((item) => item.id === routeSlug);
   const selectedFeature = productManifest.objects.features.find((item) => item.id === routeSlug);
   const selectedRecipe = productManifest.objects.recipes.find((item) => item.id === routeSlug);
   const selectedPaper = routeSlug ? papers.find((paper) => paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") === routeSlug) : null;
+  const dataCategories = locale === "zh" ? [
+    { family: "market", label: "行情", description: "价格、交易状态与市场基础参考" },
+    { family: "fundamentals", label: "公司与财务", description: "公司身份、财务披露与所有权结构" },
+    { family: "events", label: "事件", description: "公告、公司行动与上市里程碑" },
+    { family: "funds", label: "指数与基金", description: "指数、ETF、基金与可转债" },
+    { family: "macro", label: "宏观与利率", description: "宏观发布、利率、央行与商品" },
+    { family: "text", label: "新闻与文本", description: "新闻、政策、研报与版本化文档" },
+    { family: "alternative", label: "另类数据", description: "活动、关注、供应链与地理观测" },
+    { family: "global", label: "全球市场", description: "香港、美国与全球宏观候选" },
+    { family: "crypto", label: "加密资产", description: "隔离的公共只读市场数据" },
+  ] : [
+    { family: "market", label: "Markets", description: "Prices, trading states, and market reference" },
+    { family: "fundamentals", label: "Companies", description: "Identity, disclosures, and ownership" },
+    { family: "events", label: "Events", description: "Announcements, actions, and listing milestones" },
+    { family: "funds", label: "Indices & funds", description: "Indices, ETFs, funds, and convertibles" },
+    { family: "macro", label: "Macro & rates", description: "Releases, rates, central banks, and commodities" },
+    { family: "text", label: "News & text", description: "News, policy, research, and versioned documents" },
+    { family: "alternative", label: "Alternative", description: "Activity, attention, supply chain, and geospatial data" },
+    { family: "global", label: "Global markets", description: "Hong Kong, US, and global macro candidates" },
+    { family: "crypto", label: "Crypto", description: "Isolated public read-only market data" },
+  ];
+  const visibleDataProducts = productManifest.objects.datasets.filter((item) => {
+    const matchesFamily = dataFamily === "all" || item.family === dataFamily;
+    const matchesStage = dataStage === "all" || item.status === dataStage;
+    return matchesFamily && matchesStage;
+  });
+  const dataStageCounts = productManifest.objects.datasets.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] || 0) + 1 }), { all: productManifest.objects.datasets.length });
+  const showDataDirectory = dataFamily === "all" && dataStage === "all";
+  const activeDataCategory = dataCategories.find((category) => category.family === dataFamily);
+  const dataResultTitle = activeDataCategory?.label || (dataStage === "observed_example" ? (locale === "zh" ? "已观测" : "Observed") : dataStage === "pending_open" ? (locale === "zh" ? "待开放" : "Pending release") : (locale === "zh" ? "规划中" : "Planned"));
 
   return (
     <div className={`site-shell route-${primaryRoute}`} id="top">
@@ -822,13 +1269,19 @@ export function App() {
         <nav className="desktop-nav" aria-label="Primary navigation">
           {copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])} aria-current={primaryRoute === sections[index] ? "page" : undefined}>{label}</a>)}
         </nav>
+        {renderGlobalSearch("desktop-global-search")}
         <div className="header-actions">
+          <button className="icon-button bookmark-header-button" type="button" aria-label={locale === "zh" ? `已收藏 ${bookmarks.length} 项` : `${bookmarks.length} bookmarks`} onClick={() => openAccountSection("bookmarks")}><BookmarkSimple size={23} weight={bookmarks.length ? "fill" : "regular"} />{bookmarks.length > 0 && <span>{bookmarks.length}</span>}</button>
           <div className="popover-wrap account-wrap">
-            <a className="icon-button account-button" href="/account" aria-label={copy.account} aria-current={primaryRoute === "account" ? "page" : undefined} onClick={(event) => navigate(event, "/account")}><UserCircle size={30} weight="thin" /></a>
+            <button className="icon-button account-button" type="button" aria-label={copy.account} aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
+            {accountMenuOpen && <div className="account-menu-popover">
+              <div className="account-menu-identity"><span>NH</span><div><strong>Nicholas</strong><small>{locale === "zh" ? "账户原型 · 尚未连接" : "Account prototype · not connected"}</small></div></div>
+              {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
+            </div>}
           </div>
           <button className="icon-button mobile-menu-button" type="button" aria-label={copy.menu} onClick={() => setMobileOpen((value) => !value)}>{mobileOpen ? <X size={24} /> : <List size={24} />}</button>
         </div>
-        {mobileOpen && <nav className="mobile-nav" aria-label="Mobile navigation">{copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])}>{label}<ArrowRight /></a>)}</nav>}
+        {mobileOpen && <nav className="mobile-nav" aria-label="Mobile navigation">{renderGlobalSearch("mobile-global-search")}{copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])}>{label}<ArrowRight /></a>)}</nav>}
       </header>
 
       <main>
@@ -858,86 +1311,86 @@ export function App() {
           </div>
         </section>}
 
-        {primaryRoute === "data" && !routeSlug && <div className="data-page" id="data">
-          <SectionNav locale={locale} active="/data" onNavigate={navigate} items={locale === "zh" ? [
-            { path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" },
-          ] : [
-            { path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" },
-          ]} />
-          <section className="page-hero data-page-hero">
-            <span className="mono-kicker">DATA CATALOG / CONNECTED + CANDIDATE + PLANNED</span>
-            <h1>{locale === "zh" ? "看见已经接入的，也看见下一步。" : "See what is connected—and what comes next."}</h1>
-            <p>{locale === "zh" ? "TradingDatas 公开已接入接口、配置状态、历史采集证据、未接入候选来源与接入计划。A 股优先，但数据来源研究不局限于国内市场。" : "TradingDatas publishes connected interfaces, config state, historical collection evidence, candidate sources, and the integration roadmap. A-share comes first; source research is global."}</p>
-            <div className="data-hero-metrics">
-              <div><strong>222</strong><span>{locale === "zh" ? "境内只读能力目录" : "domestic read capabilities"}</span></div>
-              <div><strong>190</strong><span>{locale === "zh" ? "Tushare 标准化合同" : "normalized Tushare contracts"}</span></div>
-              <div><strong>133</strong><span>{locale === "zh" ? "配置为 active" : "configured active"}</span></div>
-              <div><strong>{sourceCandidates.length}</strong><span>{locale === "zh" ? "全球候选来源" : "global candidate sources"}</span></div>
+        {primaryRoute === "data" && !routeSlug && <main className="data-catalog-page" id="data">
+          <section className="data-catalog-intro">
+            <h1>{locale === "zh" ? "找到你需要的数据。" : "Find the data you need."}</h1>
+            <p>{locale === "zh" ? "可追溯的数据产品，为研究与生产系统准备。" : "Traceable data products, packaged for research and production."}</p>
+            <div className="data-family-filters" aria-label={locale === "zh" ? "数据分类" : "Data categories"}>
+              {(locale === "zh" ? [["all", "全部"], ["market", "行情"], ["fundamentals", "公司与财务"], ["events", "事件"], ["funds", "指数与基金"], ["macro", "宏观与利率"], ["text", "新闻与文本"], ["alternative", "另类数据"], ["global", "全球市场"], ["crypto", "加密资产"]] : [["all", "All"], ["market", "Markets"], ["fundamentals", "Companies"], ["events", "Events"], ["funds", "Indices & funds"], ["macro", "Macro & rates"], ["text", "News & text"], ["alternative", "Alternative"], ["global", "Global markets"], ["crypto", "Crypto"]]).map(([value, label]) => <button key={value} type="button" className={dataFamily === value ? "is-active" : ""} onClick={() => setDataFamily(value)}>{label}</button>)}
+              <span>{locale === "zh" ? "先按分类发现 · 再进入具体数据产品" : "Discover by category · open individual data products"}</span>
+            </div>
+            <div className="data-stage-filters" aria-label={locale === "zh" ? "接入状态" : "Onboarding stage"}>
+              <span>{locale === "zh" ? "状态" : "Stage"}</span>
+              {(locale === "zh" ? [["all", "全部"], ["observed_example", "已观测"], ["planned", "规划中"], ["pending_open", "待开放"]] : [["all", "All"], ["observed_example", "Observed"], ["planned", "Planned"], ["pending_open", "Pending release"]]).map(([value, label]) => <button key={value} type="button" className={dataStage === value ? "is-active" : ""} onClick={() => setDataStage(value)}><span>{label}</span><small>{dataStageCounts[value] || 0}</small></button>)}
             </div>
           </section>
 
-          <ConnectedInterfaceExplorer locale={locale} />
-
-          <section className="data-taxonomy">
-            <div className="section-heading compact-heading">
-              <span className="mono-kicker">02 / USER-FACING MATERIAL TAXONOMY</span>
-              <h2>{locale === "zh" ? "接口按材料分类，不按供应商堆叠。" : "Interfaces are grouped by material—not vendor."}</h2>
-              <p>{locale === "zh" ? "分类面向用户任务；底层 Catalog 仍保留 market 与 domain 等标准合同。" : "Categories are designed for user tasks; the underlying Catalog retains standard market and domain contracts."}</p>
+          {showDataDirectory ? <section className="data-category-directory" aria-label={locale === "zh" ? "数据分类目录" : "Data category directory"}>
+            <div className="data-directory-summary"><span>{locale === "zh" ? "9 个分类 · 41 个数据产品" : "9 categories · 41 data products"}</span><span>{locale === "zh" ? "选择分类后查看完整产品与接入计划" : "Choose a category for complete products and onboarding plans"}</span></div>
+            {dataCategories.map((category, categoryIndex) => {
+              const products = productManifest.objects.datasets.filter((item) => item.family === category.family);
+              return <article className="data-category-shelf" key={category.family}>
+                <header>
+                  <span>{String(categoryIndex + 1).padStart(2, "0")}</span>
+                  <h2>{category.label}</h2>
+                  <p>{category.description}</p>
+                  <button type="button" onClick={() => setDataFamily(category.family)}>{locale === "zh" ? `查看全部 ${products.length} 个` : `View all ${products.length}`}<ArrowRight /></button>
+                </header>
+                <div className="data-shelf-products">
+                  {products.slice(0, 4).map((item) => <a key={item.id} href={`/datasets/${item.id}`} onClick={(event) => navigate(event, `/datasets/${item.id}`)}>
+                    <ProductMark item={item} compact />
+                    <div><h3>{item.title[locale]}</h3><p>{item.description[locale]}</p><MaturityTag status={item.status} locale={locale} /></div>
+                    <ArrowRight />
+                  </a>)}
+                </div>
+              </article>;
+            })}
+          </section> : <>
+            <div className="data-result-context">
+              <div><span>{locale === "zh" ? "当前视图" : "CURRENT VIEW"}</span><h2>{dataResultTitle}</h2><p>{locale === "zh" ? `${visibleDataProducts.length} 个数据产品` : `${visibleDataProducts.length} data products`}</p></div>
+              <button type="button" onClick={() => { setDataFamily("all"); setDataStage("all"); }}>{locale === "zh" ? "返回分类目录" : "Back to categories"}</button>
             </div>
-            <div className="data-category-grid">
-              {dataGroups.map((group, index) => <article className="data-category-card" key={group.id}>
-                <span>0{index + 1}</span><h3>{group.title}</h3><p>{group.description}</p><code>{group.examples}</code>
-              </article>)}
-            </div>
-          </section>
+            <section className="data-product-list" aria-live="polite">
+              {visibleDataProducts.map((item) => {
+                const hasCollectionHistory = item.stability !== "—";
+                return <article className={`data-product-row ${hasCollectionHistory ? "" : "is-unobserved"}`} key={item.id}>
+                <ProductMark item={item} />
+                <div className="data-product-copy">
+                  <div><span className="product-category-label">{item.category[locale]}</span><h2>{item.title[locale]}</h2><p>{item.description[locale]}</p></div>
+                  <div className="dataset-tags">{item.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+                </div>
+                {hasCollectionHistory ? <>
+                  <StabilityTrack item={item} locale={locale} compact />
+                  <dl className="data-product-meta">
+                    <div><dt>{locale === "zh" ? "最近成功" : "Last success"}</dt><dd>{item.lastSuccess}</dd></div>
+                    <div><dt>{locale === "zh" ? "频率" : "Cadence"}</dt><dd>{item.cadence}</dd></div>
+                    <div><dt>{locale === "zh" ? "覆盖" : "Coverage"}</dt><dd>{item.coverage}</dd></div>
+                    <div><dt>{locale === "zh" ? "接入计划" : "Onboarding plan"}</dt><dd>{item.plan}</dd></div>
+                  </dl>
+                </> : <div className="data-product-readiness">
+                  <div className="collection-readiness"><MaturityTag status={item.status} locale={locale} /><StabilityTrack item={item} locale={locale} compact showStage={false} /></div>
+                  <dl>
+                    <div><dt>{locale === "zh" ? "频率" : "Cadence"}</dt><dd>{item.cadence}</dd></div>
+                    <div><dt>{locale === "zh" ? "接入" : "Onboarding"}</dt><dd>{item.plan}</dd></div>
+                  </dl>
+                </div>}
+                <a className="data-product-open" href={`/datasets/${item.id}`} onClick={(event) => navigate(event, `/datasets/${item.id}`)}>{locale === "zh" ? "打开产品" : "Open product"}<ArrowRight /></a>
+              </article>})}
+              {visibleDataProducts.length === 0 && <div className="data-product-empty">{locale === "zh" ? "没有匹配的数据产品。" : "No data products match this search."}</div>}
+            </section>
+          </>}
 
-          <CollectionHistorySection locale={locale} />
-
-          <CandidateSourceExplorer locale={locale} />
-
-          <DataRoadmapSection locale={locale} />
-
-          <section className="data-template-section">
-            <div className="section-intro">
-              <span className="mono-kicker">06 / SHARED DATA TEMPLATE</span>
-              <h2>{locale === "zh" ? "每种数据，都有可读的统一说明。" : "Every dataset follows a readable contract."}</h2>
-              <p>{locale === "zh" ? "用户无需先理解不同上游接口。每个 Catalog 条目说明数据身份、所属市场、内容领域、时间覆盖、更新时间、字段与可验证 receipt。" : "Users do not need to decode upstream APIs first. Every Catalog entry describes identity, market, domain, time coverage, update cadence, fields, and a verifiable receipt."}</p>
-            </div>
-            <div className="template-contract" aria-label={locale === "zh" ? "数据模板示例" : "Dataset template example"}>
-              {[
-                ["dataset_id", "cn.equity.daily"], ["market / domain", "CN / a_share"], ["coverage", "2010-01-04 → 2026-08-26"],
-                ["cadence", "postclose_daily"], ["fields", "symbol · trade_date · open · close …"], ["receipt_id", "rcpt_9f3b7e21…"],
-              ].map(([label, value]) => <div key={label}><span>{label}</span><code>{value}</code></div>)}
-            </div>
-          </section>
-
-          <section className="receipt-section data-receipt-section">
-            <div className="section-intro">
-              <span className="mono-kicker">07 / PROVENANCE / QUALITY / COVERAGE</span>
-              <h2>{copy.receipts}</h2><p>{copy.receiptsCopy}</p>
-              <a href="/docs" className="text-link" onClick={(event) => navigate(event, "/docs")}>{copy.receiptAction}<ArrowRight /></a>
-            </div>
-            <ReceiptProof copy={copy} />
-          </section>
-
-          <section className="alternative-data-section">
-            <div className="section-heading compact-heading">
-              <span className="mono-kicker">08 / ALTERNATIVE DATA ADD-ONS</span>
-              <h2>{locale === "zh" ? "另类数据独立选择，独立授权。" : "Alternative data stays separately chosen and entitled."}</h2>
-              <p>{locale === "zh" ? "基础套餐用户可获得限定试用；试用结束后，由用户选择是否加购。来源与再分发边界会在下单前展示。" : "Package users may receive a limited trial. After it ends, add-on access is an explicit choice, with source and redistribution boundaries shown before ordering."}</p>
-            </div>
-            <div className="alternative-grid">{alternativeGroups.map((group) => <article key={group.title}><h3>{group.title}</h3><p>{group.description}</p><code>{group.examples}</code></article>)}</div>
-            <div className="order-flow">
-              {(locale === "zh" ? [["01", "选择加购", "查看包含的数据集与来源"], ["02", "确认试用与有效期", "核对开始、结束与续费选择"], ["03", "登录并下单", "价格与支付以后端合同为准"], ["04", "读取授权", "账户中确认数据分类与到期日"]] : [["01", "Choose an add-on", "Review included datasets and sources"], ["02", "Confirm trial & term", "Check start, expiry, and renewal choice"], ["03", "Sign in & order", "Price and payment are backend-defined"], ["04", "Read back access", "Confirm categories and expiry in Account"]]).map(([index, title, text]) => <div key={index}><span>{index}</span><strong>{title}</strong><small>{text}</small></div>)}
-              <a className="primary-button" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐与加购" : "View packages & add-ons"}<ArrowRight /></a>
-            </div>
-            <p className="commercial-disclaimer">{locale === "zh" ? "商业界面提案 · 真实价格、试用期与可购买范围尚待 commerce backend 合同确认。" : "Commercial surface proposal · Live prices, trial periods, and purchasable scope remain subject to the commerce backend contract."}</p>
-          </section>
-        </div>}
+          <div className="data-catalog-footer">
+            <p>{locale === "zh" ? "产品合同示例 · 真实状态由 Registry、receipts、认证 API 回读与账户授权共同确定。" : "Product-contract examples · live status is determined by the Registry, receipts, authenticated API readback, and account entitlement."}</p>
+            <div><a href="/data/sources" onClick={(event) => navigate(event, "/data/sources")}>{locale === "zh" ? "来源与接入计划" : "Sources & roadmap"}<ArrowRight /></a><a href="/data/receipts" onClick={(event) => navigate(event, "/data/receipts")}>{locale === "zh" ? "了解采集凭证" : "How receipts work"}<ArrowRight /></a><a href="/data/alternative" onClick={(event) => navigate(event, "/data/alternative")}>{locale === "zh" ? "浏览另类数据" : "Browse alternative data"}<ArrowRight /></a></div>
+          </div>
+        </main>}
 
         {primaryRoute === "datasets" && <ProductObjectDetail type="datasets" item={selectedDataset} locale={locale} onNavigate={navigate} />}
 
-        {primaryRoute === "data" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / SEPARATE ADD-ONS</span><h1>{locale === "zh" ? "第三方来源，清洗交付，单独授权。" : "Third-party sourced, cleanly delivered, separately entitled."}</h1><p>{locale === "zh" ? "按来源、许可、覆盖和更新方式理解每一种另类数据；套餐试用与后续加购保持显式。" : "Understand every alternative dataset by source, license, coverage, and update model; package trials and later add-ons stay explicit."}</p></div><MaturityTag status="product_definition" locale={locale} /></div><div className="alternative-grid">{alternativeGroups.map((group) => <article key={group.title}><h3>{group.title}</h3><p>{group.description}</p><code>{group.examples}</code></article>)}</div><section className="object-boundary"><h2>{locale === "zh" ? "购买前必须可见" : "Visible before purchase"}</h2><p>{locale === "zh" ? "来源、许可与再分发边界、样例字段、历史覆盖、更新频率、试用期限、价格、到期与续费选择。" : "Source, license and redistribution boundary, sample fields, history, cadence, trial term, price, expiry, and renewal choice."}</p><a className="primary-button" href="/pricing/alternative" onClick={(event) => navigate(event, "/pricing/alternative")}>{locale === "zh" ? "查看加购逻辑" : "Review add-on logic"}<ArrowRight /></a></section></section>}
+        {primaryRoute === "data" && routeSlug === "sources" && <DataSourceLandscapePage locale={locale} onNavigate={navigate} />}
+
+        {primaryRoute === "data" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / PRODUCT CATEGORY</span><h1>{locale === "zh" ? "另类数据是分类，每一种指数都是独立产品。" : "Alternative data is a category; every index is its own product."}</h1><p>{locale === "zh" ? "从 Pizza 指数到客流、招聘、应用关注、航运、卫星和消费价格，每个产品分别披露来源、许可、覆盖和接入计划。" : "From Pizza Index to foot traffic, hiring, app attention, shipping, satellite, and consumer prices, every product discloses its own source, license, coverage, and onboarding plan."}</p></div><MaturityTag status="planned" locale={locale} /></div><AlternativeProductList locale={locale} onNavigate={navigate} /><section className="object-boundary"><h2>{locale === "zh" ? "购买前必须可见" : "Visible before purchase"}</h2><p>{locale === "zh" ? "来源、许可与再分发边界、样例字段、历史覆盖、更新频率、试用期限、价格、到期与续费选择。" : "Source, license and redistribution boundary, sample fields, history, cadence, trial term, price, expiry, and renewal choice."}</p><a className="primary-button" href="/pricing/alternative" onClick={(event) => navigate(event, "/pricing/alternative")}>{locale === "zh" ? "查看加购逻辑" : "Review add-on logic"}<ArrowRight /></a></section></section>}
 
         {primaryRoute === "data" && routeSlug === "receipts" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/receipts" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">DATA WITH RECEIPTS</span><h1>{locale === "zh" ? "每个可用性声明，都回到证据。" : "Every availability claim returns to evidence."}</h1><p>{locale === "zh" ? "Registry 定义身份，事实与 receipt 记录观测，API 只投影同一权威链。" : "Registry defines identity, facts and receipts record observations, and the API projects the same authority chain."}</p></div><MaturityTag status="observed_example" locale={locale} /></div><ReceiptProof copy={copy} /><section className="object-boundary"><h2>{locale === "zh" ? "Receipt 能证明什么，也不能证明什么" : "What a receipt proves—and what it does not"}</h2><p>{locale === "zh" ? "它证明一次来源绑定的采集、验证与落库事务；单次成功不等于连续健康、历史完整或时点一致。" : "It proves one source-bound collection, validation, and storage transaction. One success is not continuous health, complete history, or point-in-time correctness."}</p></section></section>}
 
@@ -957,52 +1410,7 @@ export function App() {
         </section>}
         {primaryRoute === "recipes" && routeSlug && <ProductObjectDetail type="recipes" item={selectedRecipe} locale={locale} onNavigate={navigate} />}
 
-        {primaryRoute === "research" && !routeSlug && <div className="research-page" id="research"><section className="research-section">
-          <SectionNav locale={locale} active="/research" onNavigate={navigate} items={locale === "zh" ? [{ path: "/research", label: "全部研究" }, { path: "/research?topic=a-share", label: "A 股" }, { path: "/research?format=paper", label: "论文" }, { path: "/research?format=case", label: "案例" }] : [{ path: "/research", label: "All research" }, { path: "/research?topic=a-share", label: "A-share" }, { path: "/research?format=paper", label: "Papers" }, { path: "/research?format=case", label: "Cases" }]} />
-          <div className="research-intro">
-            <span className="mono-kicker">RESEARCH LIBRARY / EXTERNAL LITERATURE</span>
-            <h2>{copy.researchTitle}</h2>
-            <p>{copy.researchCopy}</p>
-            <div className="research-notice"><GraduationCap weight="duotone" />{copy.researchNotice}</div>
-            <div className="reading-guide">
-              <span className="filter-label">{locale === "zh" ? "如何阅读" : "HOW TO READ"}</span>
-              {readingSteps.map(([index, title, description]) => <div className="reading-step" key={index}><span>{index}</span><div><strong>{title}</strong><p>{description}</p></div></div>)}
-            </div>
-          </div>
-          <div className="research-library">
-            <label className="research-search">
-              <MagnifyingGlass size={19} />
-              <span className="sr-only">{copy.researchSearch}</span>
-              <input value={researchQuery} onChange={(event) => setResearchQuery(event.target.value)} placeholder={copy.researchSearch} />
-            </label>
-            <span className="filter-label">{locale === "zh" ? "内容形式" : "FORMAT"}</span>
-            <div className="research-topics research-kinds" aria-label="Research formats">
-              {copy.researchKinds.map(([kind, label]) => <button key={kind} type="button" className={researchKind === kind ? "is-active" : ""} onClick={() => setResearchKind(kind)}>{label}</button>)}
-            </div>
-            <span className="filter-label">{locale === "zh" ? "研究主题" : "TOPIC"}</span>
-            <div className="research-topics" aria-label="Research topics">
-              {copy.researchTopics.map(([topic, label]) => (
-                <button key={topic} type="button" className={researchTopic === topic ? "is-active" : ""} onClick={() => setResearchTopic(topic)}>{label}</button>
-              ))}
-            </div>
-            <div className="research-count"><span>{String(visiblePapers.length).padStart(2, "0")}</span>{copy.researchResults}</div>
-            <div className="paper-list">
-              {visiblePapers.length ? visiblePapers.map((paper, index) => (
-                <article className="paper-row" key={paper.title}>
-                  <span className="paper-index">{String(index + 1).padStart(2, "0")}</span>
-                  <div className="paper-main">
-                    <div className="paper-meta"><span>{kindLabels[paper.kind]}</span><span>{topicLabels[paper.topic]}</span><span>{paper.year}</span><span>{paper.venue}</span></div>
-                    <h3>{paper.title}</h3>
-                    <p>{paper.authors}</p>
-                    <p className="paper-summary">{paper.summary[locale]}</p>
-                    <div className="paper-data"><span>{copy.requiredData}</span><code>{paper.data}</code></div>
-                  </div>
-                  <a href={`/research/${paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`} onClick={(event) => navigate(event, `/research/${paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`)} aria-label={`${locale === "zh" ? "阅读 TradingDatas 整理页" : "Read TradingDatas record"}: ${paper.title}`}><ArrowRight /></a>
-                </article>
-              )) : <div className="research-empty">{copy.researchEmpty}</div>}
-            </div>
-          </div>
-        </section></div>}
+        {primaryRoute === "research" && !routeSlug && <ResearchAtlasPage locale={locale} theme={theme} copy={copy} atlas={researchAtlas} featuredPaper={featuredPaper} visiblePapers={visiblePapers} researchTopic={researchTopic} setResearchTopic={setResearchTopic} researchKind={researchKind} setResearchKind={setResearchKind} browseOpen={researchBrowseOpen} setBrowseOpen={setResearchBrowseOpen} libraryRef={researchLibraryRef} onShowLibrary={showResearchLibrary} onNavigate={navigate} topicLabels={topicLabels} kindLabels={kindLabels} methods={productManifest.objects.recipes} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} />}
 
         {primaryRoute === "research" && routeSlug && <section className="object-detail-page research-record"><a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a><div className="object-detail-hero"><div><span className="mono-kicker">EXTERNAL RESEARCH / CURATED RECORD</span><h1>{selectedPaper?.title || (locale === "zh" ? "研究记录未找到" : "Research record not found")}</h1><p>{selectedPaper ? `${selectedPaper.authors} · ${selectedPaper.venue} · ${selectedPaper.year}` : ""}</p></div><span className="maturity-tag">{locale === "zh" ? "外部来源" : "External source"}</span></div>{selectedPaper && <><div className="research-record-grid"><article><span>01 / QUESTION</span><h2>{locale === "zh" ? "研究问题" : "Research question"}</h2><p>{selectedPaper.summary[locale]}</p></article><article><span>02 / EVIDENCE</span><h2>{locale === "zh" ? "所需数据材料" : "Required data"}</h2><p>{selectedPaper.data}</p></article><article><span>03 / LIMITS</span><h2>{locale === "zh" ? "方法与限制" : "Method & limits"}</h2><p>{locale === "zh" ? "先核对样本、时间范围、可得时点、修订、幸存者偏差与市场适用性，再决定能否复现或迁移。" : "Check sample, time range, point-in-time availability, revisions, survivorship, and market applicability before replication or transfer."}</p></article></div><section className="object-boundary"><h2>{locale === "zh" ? "从阅读进入数据准备" : "Continue from reading to data preparation"}</h2><p>{locale === "zh" ? "下一步是检查对应 Dataset、透明 Feature 与 Recipe；TradingDatas 不发表或验证论文结论。" : "Next inspect the related Dataset, transparent Feature, and Recipe. TradingDatas neither publishes nor validates the paper's conclusions."}</p><div className="detail-actions"><a className="primary-button" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "查看数据" : "View data"}<ArrowRight /></a><a className="text-link" href={`https://scholar.google.com/scholar?q=${encodeURIComponent(selectedPaper.title)}`} target="_blank" rel="noreferrer">{copy.sourcePaper}<ArrowRight /></a></div></section></>}</section>}
 
@@ -1017,31 +1425,18 @@ export function App() {
         </section>}
 
         {primaryRoute === "pricing" && !routeSlug && <section className="pricing-section pricing-page" id="pricing">
-          <SectionNav locale={locale} active="/pricing" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "套餐比较" }, { path: "/pricing/alternative", label: "另类数据加购" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Compare plans" }, { path: "/pricing/alternative", label: "Alternative add-ons" }, { path: "/pricing/beta", label: "Request beta" }]} />
-          <div className="section-heading">
-            <span className="mono-kicker">PACKAGES / A-SHARE FIRST</span>
-            <h2>{copy.pricingTitle}</h2>
-            <p>{copy.pricingCopy}</p>
-          </div>
-          <div className="package-grid">
-            {packageCards.map((plan, index) => <article className="package-card" key={plan.name}>
-              <div className="package-card-head"><span>0{index + 1}</span><small>{locale === "zh" ? "A 股场景套餐" : "A-SHARE WORKFLOW"}</small></div>
-              <h3>{plan.name}</h3><p>{plan.audience}</p>
-              <ul>{plan.includes.map((item) => <li key={item}><Check weight="bold" />{item}</li>)}</ul>
-              <div className="package-status"><strong>{locale === "zh" ? "套餐定义中" : "Package definition"}</strong><span>{locale === "zh" ? "价格与最终权限待后端确认" : "Price and final entitlements pending"}</span></div>
-              <a href="/pricing/beta" onClick={(event) => navigate(event, "/pricing/beta")}>{locale === "zh" ? "申请内测" : "Request private beta"}<ArrowRight /></a>
-            </article>)}
-          </div>
-          <section className="pricing-addons">
-            <div><span className="mono-kicker">ALTERNATIVE DATA / OPTIONAL</span><h2>{locale === "zh" ? "另类数据不塞进套餐。" : "Alternative data is never forced into a package."}</h2><p>{locale === "zh" ? "基础套餐保持清晰。你可以试用指定另类数据，到期后再决定是否按类别加购。" : "Base packages stay clear. Trial selected alternative data, then decide by category whether to add it after expiry."}</p></div>
-            <div className="addon-list">{alternativeGroups.map((group) => <article key={group.title}><h3>{group.title}</h3><p>{group.description}</p><span>{locale === "zh" ? "试用与单独加购 · 待后端合同" : "Trial & separate add-on · backend contract pending"}</span></article>)}</div>
-          </section>
-          <p className="commercial-disclaimer">{locale === "zh" ? "本页是产品套餐结构提案，不代表已上线价格、实时权限或完成支付。" : "This page is a product-package proposal, not evidence of live pricing, real-time entitlement, or completed payment."}</p>
+          <header className="pricing-intro">
+            <span className="mono-kicker">BASE DATA / THREE PLANS</span>
+            <h1>{locale === "zh" ? "三档基础套餐。" : "Three base-data plans."}</h1>
+            <p>{locale === "zh" ? "基础版、专业版、旗舰版。数据范围、历史深度与运行能力逐档扩展；本页套餐均不包含另类数据。" : "Basic, Professional, and Flagship. Data scope, history, and runtime expand by tier. Alternative data is not included here."}</p>
+          </header>
+          <BasePlanShowcase locale={locale} plans={packageCards} activeIndex={pricingPlanIndex} onChange={setPricingPlanIndex} onNavigate={navigate} />
+          <p className="commercial-disclaimer">{locale === "zh" ? "本页固定三档基础套餐结构。价格、实时数据开放范围和最终授权仍以正式商业合同及账户读回为准。" : "This page fixes the three-tier base-plan structure. Price, real-time scope, and final grants remain subject to the commercial contract and authenticated account readback."}</p>
         </section>}
 
-        {primaryRoute === "pricing" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/pricing/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "套餐比较" }, { path: "/pricing/alternative", label: "另类数据加购" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Compare plans" }, { path: "/pricing/alternative", label: "Alternative add-ons" }, { path: "/pricing/beta", label: "Request beta" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / OPTIONAL</span><h1>{locale === "zh" ? "先试用，再明确选择是否加购。" : "Trial first, then explicitly choose whether to add it."}</h1><p>{locale === "zh" ? "另类数据按类别、来源和授权范围单独展示，不用复杂的逐接口自选。" : "Alternative data is presented by category, source, and entitlement—not as a maze of per-endpoint choices."}</p></div><MaturityTag status="product_definition" locale={locale} /></div><div className="alternative-grid">{alternativeGroups.map((group) => <article key={group.title}><h2>{group.title}</h2><p>{group.description}</p><code>{group.examples}</code></article>)}</div><p className="commercial-disclaimer">{locale === "zh" ? "试用期限、价格、支付、续费和可购买范围等待 commerce backend 合同。" : "Trial term, price, payment, renewal, and purchasable scope await the commerce backend contract."}</p></section>}
+        {primaryRoute === "pricing" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/pricing/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "套餐比较" }, { path: "/pricing/alternative", label: "另类数据加购" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Compare plans" }, { path: "/pricing/alternative", label: "Alternative add-ons" }, { path: "/pricing/beta", label: "Request beta" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / OPTIONAL PRODUCTS</span><h1>{locale === "zh" ? "按具体产品试用，再明确选择是否加购。" : "Trial a specific product, then explicitly choose whether to add it."}</h1><p>{locale === "zh" ? "Pizza 指数、客流、招聘、应用关注等分别展示来源、授权范围和未来价格，不把整个另类数据分类打成一个模糊套餐。" : "Pizza Index, foot traffic, hiring, app attention, and other products show source, entitlement, and future price separately—not as one vague alternative-data bundle."}</p></div><MaturityTag status="planned" locale={locale} /></div><AlternativeProductList locale={locale} onNavigate={navigate} /><p className="commercial-disclaimer">{locale === "zh" ? "试用期限、价格、支付、续费和可购买范围等待 commerce backend 合同。" : "Trial term, price, payment, renewal, and purchasable scope await the commerce backend contract."}</p></section>}
 
-        {primaryRoute === "pricing" && routeSlug === "beta" && <section className="object-detail-page"><SectionNav locale={locale} active="/pricing/beta" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "套餐比较" }, { path: "/pricing/alternative", label: "另类数据加购" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Compare plans" }, { path: "/pricing/alternative", label: "Alternative add-ons" }, { path: "/pricing/beta", label: "Request beta" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">PRIVATE BETA / HONEST CONVERSION</span><h1>{locale === "zh" ? "告诉我们你的数据工作流。" : "Tell us about your data workflow."}</h1><p>{locale === "zh" ? "在价格、支付和自动授权完成前，申请内测是唯一真实的商业入口。" : "Before pricing, payment, and automatic entitlement are implemented, private-beta access is the only honest commercial entry."}</p></div><MaturityTag status="product_definition" locale={locale} /></div><div className="beta-intake"><label>{locale === "zh" ? "主要用途" : "Primary use"}<select><option>{locale === "zh" ? "基本面与行业研究" : "Fundamental and industry research"}</option><option>{locale === "zh" ? "量化数据准备" : "Systematic data preparation"}</option><option>{locale === "zh" ? "交易系统数据" : "Trading-system data"}</option></select></label><label>{locale === "zh" ? "最需要的数据" : "Most-needed data"}<input placeholder={locale === "zh" ? "例如：时点一致财务、分钟、公告" : "e.g. PIT fundamentals, minutes, announcements"} /></label><button className="primary-button" type="button" disabled>{locale === "zh" ? "提交功能待接后端" : "Submission awaits backend"}</button></div></section>}
+        {primaryRoute === "pricing" && routeSlug === "beta" && <section className="object-detail-page"><SectionNav locale={locale} active="/pricing/beta" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "基础套餐" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Base plans" }, { path: "/pricing/beta", label: "Request beta" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">PRIVATE BETA / HONEST CONVERSION</span><h1>{locale === "zh" ? "告诉我们你的数据工作流。" : "Tell us about your data workflow."}</h1><p>{locale === "zh" ? "在价格、支付和自动授权完成前，申请内测是唯一真实的商业入口。" : "Before pricing, payment, and automatic entitlement are implemented, private-beta access is the only honest commercial entry."}</p></div><MaturityTag status="product_definition" locale={locale} /></div><div className="beta-intake"><label>{locale === "zh" ? "主要用途" : "Primary use"}<select><option>{locale === "zh" ? "基本面与行业研究" : "Fundamental and industry research"}</option><option>{locale === "zh" ? "量化数据准备" : "Systematic data preparation"}</option><option>{locale === "zh" ? "交易系统数据" : "Trading-system data"}</option></select></label><label>{locale === "zh" ? "最需要的数据" : "Most-needed data"}<input placeholder={locale === "zh" ? "例如：时点一致财务、分钟、公告" : "e.g. PIT fundamentals, minutes, announcements"} /></label><button className="primary-button" type="button" disabled>{locale === "zh" ? "提交功能待接后端" : "Submission awaits backend"}</button></div></section>}
 
         {primaryRoute === "docs" && !routeSlug && <section className="docs-hub" id="docs">
           <SectionNav locale={locale} active="/docs" onNavigate={navigate} items={locale === "zh" ? [{ path: "/docs", label: "文档首页" }, { path: "/docs/data-1", label: "数据模型" }, { path: "/docs/api-1", label: "Catalog" }, { path: "/docs/commerce-1", label: "套餐" }] : [{ path: "/docs", label: "Docs home" }, { path: "/docs/data-1", label: "Data model" }, { path: "/docs/api-1", label: "Catalog" }, { path: "/docs/commerce-1", label: "Plans" }]} />
@@ -1049,7 +1444,6 @@ export function App() {
             <span className="mono-kicker">PLATFORM GUIDE / DATA / API / ACCOUNT</span>
             <h1>{locale === "zh" ? "理解并使用 TradingDatas 的所有说明。" : "Everything needed to understand and use TradingDatas."}</h1>
             <p>{locale === "zh" ? "Docs 汇集网站各板块、数据合同、Agent 接入、套餐与账户的说明；API 只是其中一个部分。" : "Docs brings together guidance for every product area, data contract, Agent connection, package, and account workflow. API is one part—not the whole hub."}</p>
-            <label className="docs-search"><MagnifyingGlass size={20} /><span className="sr-only">{locale === "zh" ? "搜索文档" : "Search documentation"}</span><input value={docsQuery} onChange={(event) => setDocsQuery(event.target.value)} placeholder={locale === "zh" ? "搜索数据、API、套餐或账户说明" : "Search data, API, plans, or account guidance"} /></label>
           </div>
           <div className="docs-category-tabs" aria-label={locale === "zh" ? "文档分类" : "Documentation categories"}>
             <button type="button" className={docsCategory === "all" ? "is-active" : ""} onClick={() => setDocsCategory("all")}>{locale === "zh" ? "全部" : "All"}</button>
@@ -1067,9 +1461,13 @@ export function App() {
         {primaryRoute === "account" && (
           <section className="account-page">
             <div className="account-page-heading">
-              <span className="mono-kicker">ACCOUNT / DATA ACCESS / INTEGRATIONS</span>
+              <span className="mono-kicker">ACCOUNT / LIBRARY / DATA ACCESS</span>
               <h1>{locale === "zh" ? "你的 TradingDatas 工作区。" : "Your TradingDatas workspace."}</h1>
-              <p>{locale === "zh" ? "账户只负责管理数据访问、Agent 接入、账单和个人设置；研究内容与数据目录保持独立。" : "Account is for data access, Agent connections, billing, and personal settings. Research content and the data catalog stay separate."}</p>
+              <p>{locale === "zh" ? "在一个安静的工作区管理已收藏内容、数据访问、文档、Agent 接入、账单和个人设置。" : "A quiet workspace for saved materials, data access, documentation, Agent connections, billing, and preferences."}</p>
+              <div className="account-entry-actions">
+                <button className="primary-button" type="button" onClick={() => { setAccountSection("overview"); window.setTimeout(() => document.getElementById("account-token")?.focus(), 40); }}>{accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "连接账户" : "Connect account")}<ArrowRight /></button>
+                <small>{locale === "zh" ? "登录后仅显示当前账户的订阅、授权和用量。" : "After sign-in, only the current account's plan, access, and usage are shown."}</small>
+              </div>
             </div>
             <div className="account-workspace">
               <aside className="account-sidebar" aria-label={locale === "zh" ? "账户分类" : "Account sections"}>
@@ -1082,11 +1480,43 @@ export function App() {
               </aside>
               <article className="account-detail">
                 <div className="account-detail-head">
-                  <span className="account-surface-label">{locale === "zh" ? "产品界面 · 待接后端" : "PRODUCT SURFACE · BACKEND PENDING"}</span>
+                  <span className="account-surface-label">{locale === "zh" ? "账户主页" : "ACCOUNT HOME"}</span>
                   <h2>{activeAccountItem.label}</h2>
                   <p>{activeAccountItem.description}</p>
                 </div>
-                {accountSection === "preferences" ? (
+                {accountSection === "overview" ? (
+                  accountData ? (
+                    <div className="account-live-overview">
+                      <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount}>{locale === "zh" ? "断开连接" : "Disconnect"}</button></div>
+                      <dl className="account-facts account-live-facts">
+                        <div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountData.tier}</dd></div>
+                        <div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div>
+                        <div><dt>{locale === "zh" ? "请求频率" : "Request frequency"}</dt><dd>{accountData.minute_request_limit ? `${accountData.minute_request_limit.toLocaleString()} / ${locale === "zh" ? "分钟" : "minute"}` : accountData.hourly_request_limit ? `${accountData.hourly_request_limit.toLocaleString()} / ${locale === "zh" ? "小时" : "hour"}` : (locale === "zh" ? "不限" : "Unlimited")}</dd></div>
+                        <div><dt>{locale === "zh" ? "今日请求" : "Requests today"}</dt><dd>{(accountUsage?.today_count ?? accountData.usage?.today_count ?? 0).toLocaleString()}</dd></div>
+                        <div><dt>{locale === "zh" ? "数据授权" : "Data access"}</dt><dd>{(accountData.data_categories || []).map((category) => ({ a_share: locale === "zh" ? "A 股" : "A-share", crypto: locale === "zh" ? "加密资产" : "Crypto", news: locale === "zh" ? "新闻与事件" : "News & events" }[category] || category)).join(" · ") || (locale === "zh" ? "无数据授权" : "No data grants")}</dd></div>
+                      </dl>
+                    </div>
+                  ) : (
+                    <form className="account-connect-panel" onSubmit={connectAccount}>
+                      <span className="mono-kicker">SECURE ACCOUNT CONNECTION</span>
+                      <h3>{locale === "zh" ? "连接现有账户" : "Connect your existing account"}</h3>
+                      <p>{locale === "zh" ? "使用当前有效的访问密钥读取你的套餐、有效期、授权和用量。密钥只保存在此浏览器，不进入 URL、提示词或公开内容。" : "Use an active access key to read your plan, expiry, grants, and usage. The key stays in this browser and never enters URLs, prompts, or public content."}</p>
+                      <label htmlFor="account-token">{locale === "zh" ? "访问密钥" : "Access key"}</label>
+                      <div><input id="account-token" type="password" value={accountTokenInput} onChange={(event) => { setAccountTokenInput(event.target.value); setAccountError(""); }} placeholder={locale === "zh" ? "粘贴访问密钥" : "Paste access key"} autoComplete="off" /><button className="primary-button" type="submit" disabled={!accountTokenInput.trim() || accountLoading}>{accountLoading ? (locale === "zh" ? "正在验证" : "Verifying") : (locale === "zh" ? "连接" : "Connect")}</button></div>
+                      {accountError && <small role="alert">{accountError === "invalid_token" ? (locale === "zh" ? "访问密钥无效或已失效。" : "The access key is invalid or expired.") : (locale === "zh" ? "暂时无法读取账户，请稍后重试。" : "The account is temporarily unavailable. Try again later.")}</small>}
+                    </form>
+                  )
+                ) : accountSection === "bookmarks" ? (
+                  <div className="account-bookmarks">
+                    <div className="account-local-note"><BookmarkSimple />{locale === "zh" ? "当前收藏保存在此浏览器。登录账户同步功能尚未连接。" : "Bookmarks currently stay in this browser. Account sync is not connected yet."}</div>
+                    {savedItems.length ? savedItems.map((item) => <div className="account-bookmark-row" key={item.key}><a href={item.path} onClick={(event) => openSearchItem(event, item)}><span>{item.type}</span><strong>{item.label}</strong><small>{item.description}</small></a><button type="button" onClick={() => toggleBookmark(item.key)} aria-label={locale === "zh" ? "取消收藏" : "Remove bookmark"}><BookmarkSimple weight="fill" /></button></div>) : <div className="account-empty-state"><BookmarkSimple size={28} /><strong>{locale === "zh" ? "还没有收藏内容" : "Nothing saved yet"}</strong><p>{locale === "zh" ? "可从全站搜索或研究库收藏数据产品、论文、方法和文档。" : "Save datasets, papers, methods, and docs from site search or the Research library."}</p></div>}
+                  </div>
+                ) : accountSection === "docs" ? (
+                  <div className="account-docs-browser">
+                    <aside>{docsCategories.map((category) => <section key={category.key}><span>{category.label}</span>{category.items.map(([title], index) => { const slug = `${category.key}-${index + 1}`; return <button key={slug} type="button" className={activeAccountDoc.slug === slug ? "is-active" : ""} onClick={() => setAccountDocSlug(slug)}>{title}</button>; })}</section>)}</aside>
+                    <article><span className="mono-kicker">{activeAccountDoc.categoryLabel.toUpperCase()}</span><h3>{activeAccountDoc.title}</h3><p>{activeAccountDoc.description}</p><dl><div><dt>{locale === "zh" ? "说明范围" : "Guide scope"}</dt><dd>{locale === "zh" ? "当前能力、目标能力、操作步骤、限制和相关入口。" : "Current capability, target capability, steps, limits, and related entries."}</dd></div><div><dt>{locale === "zh" ? "权威来源" : "Authority"}</dt><dd>{activeAccountDoc.category === "api" ? "docs/API.md + authenticated runtime" : activeAccountDoc.category === "data" ? "registry + facts/receipts + docs/PRODUCT.md" : "docs/PRODUCT.md + backend contract"}</dd></div></dl><a className="text-link" href={`/docs/${activeAccountDoc.slug}`} onClick={(event) => navigate(event, `/docs/${activeAccountDoc.slug}`)}>{locale === "zh" ? "打开完整说明" : "Open full guide"}<ArrowRight /></a></article>
+                  </div>
+                ) : accountSection === "preferences" ? (
                   <div className="account-setting-panels">
                     <section>
                       <span className="popover-title">{copy.language}</span>
@@ -1113,7 +1543,7 @@ export function App() {
                 ) : (
                   <dl className="account-facts">
                     <div><dt>{locale === "zh" ? "权威来源" : "Authority"}</dt><dd>{accountSection === "billing" ? "Commerce / billing contract" : "Customer Portal API"}</dd></div>
-                    <div><dt>{locale === "zh" ? "当前状态" : "Current state"}</dt><dd>{locale === "zh" ? "原型界面，尚未连接真实账户数据" : "Prototype surface; live account data is not connected"}</dd></div>
+                    <div><dt>{locale === "zh" ? "当前状态" : "Current state"}</dt><dd>{locale === "zh" ? "连接账户后读取当前密钥的真实授权与用量" : "Connect an account to read effective access and usage for the current key"}</dd></div>
                     <div><dt>{locale === "zh" ? "访问边界" : "Access boundary"}</dt><dd>{locale === "zh" ? "认证后仅显示当前租户数据" : "Authenticated, current-tenant data only"}</dd></div>
                   </dl>
                 )}

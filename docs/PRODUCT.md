@@ -107,14 +107,18 @@ trial duration, renewal behavior, and invoice terms become real only when the
 commerce contract and server-side entitlements implement them.
 
 The current backend tier identifiers remain `basic`, `standard`, and
-`flagship`. Future customer-facing names may map to them, but the frontend may
-not infer that mapping or grant access by itself. Exact rate, concurrency, daily
-quota, expiry, and category access always come from the authenticated backend.
+`flagship`. The target customer-facing mapping is **Basic / 基础版** to `basic`,
+**Professional / 专业版** to `standard`, and **Flagship / 旗舰版** to `flagship`.
+The commercial contract differentiates the three tiers only by a rolling
+per-minute request limit: 200, 600, and 1000. It has no daily quota or
+commercial concurrency limit. The frontend may not grant those limits by
+itself: authenticated Account readback remains the authority for the effective
+tier, request frequency, expiry, and category access.
 
-The current public package proposal uses three workload names: **A-share
-Research**, **Systematic Research**, and **Trading Data**. They are a content and
-information-architecture proposal only until the server maps them to concrete
-tiers, grants, limits, prices, and checkout behavior.
+The backend contract in this code tree enforces those three rolling minute
+limits, rejects commercial `daily_limit` and `max_concurrent` writes, and retains
+request counts as usage history without a daily quota. Production behavior remains unverified
+until the exact main release and authenticated Account readback confirm it.
 
 Alternative data is a separate product area and may be offered as an add-on.
 Any free trial must state the included datasets, start/end timestamps, post-trial
@@ -225,56 +229,58 @@ access policy must not overload one ambiguous field to represent both concepts.
 
 ## Account access and limits
 
-The intended account decision is the intersection of three independent gates:
+The target commercial account decision is the intersection of three independent
+gates:
 
 ```text
 endpoint scope (catalog/read/query)
 AND allowed data categories (market/domain allowlist)
-AND runtime limits (rate, concurrency, daily quota)
+AND per-minute request limit
 ```
 
 - Endpoint scope decides whether the key may discover or query data.
 - Category entitlement decides which A-share, Crypto, News, or future datasets
   appear in catalog and may be queried.
-- The commercial tier supplies a requests-per-minute ceiling and a default
-  simultaneous-request ceiling; a per-key daily query ceiling applies in
-  parallel. Passing one ceiling never bypasses another.
+- The commercial tier supplies only a rolling per-minute request ceiling: 200
+  for Basic, 600 for Professional, and 1000 for Flagship. There is no daily
+  quota or commercial concurrency limit in the target contract.
 
-Current canonical commercial tiers are Basic, Standard, and Flagship. Existing
-legacy tiers remain readable and editable for compatibility but are not offered
-for new credentials. Exact numeric defaults remain authoritative in `auth.py`
-and the API contract, not in marketing copy.
+Target customer-facing tiers are Basic, Professional, and Flagship. Existing
+backend and legacy tier identifiers remain readable for compatibility. The code
+tree now enforces the target commercial limit model; production remains
+unverified until the exact main release and authenticated Account readback
+confirm it.
 
-## Console roles
+## Account and administrator surfaces
 
-The Pages application contains two task-specific workspaces behind the same
-bearer-token login:
+There are two deliberately separate surfaces, not two competing customer
+workspaces:
 
-- the **customer workspace** is for paying API customers. It shows only that
-  token's plan, enabled data categories, rate/concurrency/daily limits, expiry,
-  usage history, and copy-ready API/Agent integration documentation;
-- the **admin workspace** is for the platform owner. It manages customer keys,
-  quotas, collection state, alerts, and catalog/query readback;
-- a customer token enters the customer workspace and cannot enter admin;
-- an owner token is intended to carry both `read` and `admin` scopes. It enters
-  admin by default and may switch to a customer-view preview using the same
-  account projection, then return to admin without re-authenticating.
+- the existing public **Account** at `tradingdatas.com/account` is the only
+  customer account UI. It reads only that token's plan, enabled data categories,
+  request-frequency limit, expiry, request history, documentation, and Agent
+  integration guidance through the customer Portal API;
+- the React application under `static/app/` is administrator-only. It manages
+  customer access, runtime exceptions, platform usage, and authenticated
+  catalog/query verification;
+- a customer token is rejected by `static/app/` and directed to the public
+  Account instead of entering a second customer workspace;
+- only a token with `admin` scope or `internal` tier enters the administrator
+  application, and it does not impersonate or switch into a customer UI.
 
-The preview is a presentation mode, not impersonation: it never reads another
-customer's portal data and never changes the token. The frontend derives the
-initial workspace from server-projected scopes/tier; it does not grant access.
-
-Workspace sections have durable hash routes so reload, copied links and browser
-history preserve the current admin/customer task without requiring a Pages SPA
-fallback. Table preferences and the console-experience counters are browser-local
+Administrator sections keep durable hash routes so reload, copied links, and
+browser history preserve the current task without requiring a Pages SPA
+fallback. Table preferences and console-experience counters are browser-local
 only. The counters are aggregate product-QA signals and never contain or transmit
-tokens, tenant IDs, dataset IDs, request bodies, API responses or device identity.
+tokens, tenant IDs, dataset IDs, request bodies, API responses, or device identity.
 
 ## Implementation truth and stop line
 
-As of 2026-08-24, bearer authentication, endpoint scopes, per-minute commercial
-rate limits, simultaneous-request limits, per-key daily limits, and per-account
-data-category allowlists are implemented. The allowlist is enforced server-side
+Bearer authentication, endpoint scopes, rolling commercial per-minute request
+limits, legacy-tier hourly/daily/concurrency limits, and per-account
+data-category allowlists are implemented in this code tree. Commercial tiers
+have no daily quota or concurrency ceiling; they are still bounded by their
+200/600/1000 request-per-minute contracts. The allowlist is enforced server-side
 for both catalog visibility and query authorization, projected through the
 customer portal, and editable through the admin token API.
 

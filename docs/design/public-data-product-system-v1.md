@@ -5,8 +5,9 @@
 This document freezes the visual system and original public product direction.
 The current object/navigation contract is superseded by
 `docs/product/PUBLIC_SURFACE_MAP.md`; the current-vs-target capability boundary
-is defined in `docs/product/PRODUCT_PLANES.md`. Where this v1 document says
-`Cookbook`, read the current public label as `Recipes`.
+is defined in `docs/product/PRODUCT_PLANES.md`. Cookbook/Recipes now appears as
+the preparation-method layer inside Research, while its direct detail routes
+remain compatible.
 
 This document freezes the public information architecture, content boundary,
 visual direction, component contract, commerce states, and frontend acceptance
@@ -67,7 +68,7 @@ The website composes three authorities but never merges them:
 | --- | --- | --- | --- |
 | Data | registry + facts/receipts + catalog/query | dataset identity, coverage, freshness, quality, lineage, samples | invent availability or bypass the API |
 | Account/commerce | authenticated account and future commerce service | package, grant, quota, expiry, trial, renewal, invoice, payment | infer access from a label or client state |
-| Content | versioned Data/Features/Recipes/Research/Docs/Account content | explanation, methods, Agent setup prompts, translated authored copy, synthetic/observed examples | activate data, grant access, write facts, publish research conclusions |
+| Content | versioned Data/Features/Research/Methods/Docs/Account content | explanation, methods, Agent setup prompts, translated authored copy, synthetic/observed examples | activate data, grant access, write facts, publish research conclusions |
 
 Marketing, content, and client-side state are never runtime evidence.
 
@@ -77,22 +78,52 @@ Marketing, content, and client-side state are never runtime evidence.
 
 1. **Data** — core and alternative dataset discovery, shared data template,
    receipt evidence, and alternative-data ordering explanation;
-2. **Features** — transparent, versioned derived data with methodology and
-   limitations; target capability only until runtime evidence exists;
-3. **Recipes** — preparation goals and reproducible combination methods;
-4. **Research** — externally authored papers, industry research, and cases,
+2. **Research** — externally authored papers, industry research, and cases,
    reorganized by TradingDatas' format/topic taxonomies with source attribution,
-   a reading guide, and related data materials;
-5. **Pricing** — three complete A-share workload packages and explicit
-   alternative-data add-ons;
-6. **Docs** — searchable platform help spanning product orientation, data,
-   API/Agents, methods, plans, account, schema, receipt, and errors;
-7. **Account** — authenticated data access, Agent/MCP, usage, billing, and security.
+   a reading guide, related data materials, and progressively disclosed
+   preparation methods;
+3. **Pricing** — three progressively broader base-data plans; alternative-data
+   commerce is a later independent surface and is not part of the main page.
 
-The header's right side contains only the compact account avatar/icon. Language,
-appearance, and Agent/MCP connection live inside the dedicated Account
-workspace; they are not duplicated in global navigation or placed in a large
-header dropdown. A public hero action may deep-link to that destination.
+The header is a compact floating rounded surface containing the three primary
+destinations, one global search field, Bookmarks, and the Account icon. Its
+desktop hierarchy stays single-layer: Data, Research, and Pricing are quiet
+text links placed directly on the shared surface, with a fine current-location
+underline instead of a nested segmented pill or filled active tab. Desktop
+search uses a bounded responsive width so it remains prominent without taking
+over the whole navigation surface. Brand and primary destinations stay grouped,
+while flexible space separates search from saved/account actions. Homepage and
+inner-page headers share one desktop top-edge offset. Global
+search spans datasets, external research, preparation methods, and
+documentation. Data, Research, the expanded research library, and Documentation
+do not duplicate keyword search boxes; they retain only task-specific taxonomy
+and status controls. On mobile, global search moves into the expanded floating
+navigation. Documentation, language, appearance, Agent/MCP connection, access,
+billing, and security live inside Account rather than as top-navigation items.
+Bookmarks remain explicitly browser-local until authenticated sync exists.
+Global results are grouped by Data, Research, Methods, and Docs and implement
+combobox keyboard behavior: Arrow Up/Down changes the active result, Home/End
+jumps to the first/last visible result, Enter opens it, and Escape closes the
+surface. The complete result count is announced politely. Each group initially
+shows four results and may expand in place, preserving a single search surface.
+Up to five recent query strings may be kept in this browser only, with visible
+per-item removal and clear-all actions; they are never account sync, analytics,
+entitlement evidence, or server-side history.
+Discovery matches both authored languages plus stable IDs, market, category,
+cadence, and restrained Chinese/English/pinyin aliases. Ranking is deterministic:
+exact labels and dataset IDs precede descriptive or synonym matches, explicit
+Research/Methods/Docs intent may promote that group, and equal-score products
+retain catalog order. This index remains static product-content projection, not
+runtime availability, account entitlement, or behavioral profiling.
+Latin-token typo recovery is intentionally narrow: one insertion, deletion,
+substitution, or adjacent transposition, with a minimum token length of four.
+Chinese text and short technical codes are never fuzzed. If no object matches,
+the search surface presents three authored example queries; selecting one
+replaces the query explicitly rather than broadening it invisibly.
+`Command/Ctrl + K` focuses the single global search; on mobile it first opens
+the floating navigation. Results explain only otherwise invisible match paths:
+stable ID, authored alias, or bounded approximate match. Direct title and
+description matches remain visually quiet.
 
 Each primary navigation item resolves to an independent, directly addressable
 page with its own task depth. The homepage remains a focused value proposition;
@@ -191,10 +222,38 @@ above the product explanation.
 
 The catalog helps users choose material, not permissions.
 
+The catalog uses a strict two-level product taxonomy:
+
+```text
+data category -> individually packaged data product -> product detail
+```
+
+A category is a discovery and navigation layer, never a dataset or purchasable
+object. For example, `Alternative data` is the category and `Pizza Index` is a
+data product inside it. The same distinction applies to market data,
+company/fundamentals, corporate events, indices/funds, macro/rates,
+news/documents, global markets, and crypto assets. Every data product has its
+own stable identity, display mark, contents, sample contract, cadence,
+coverage/stability evidence, access boundary, and addressable detail page.
+
+The public planning vocabulary is limited to three customer-readable stages:
+
+- `Observed` / `已观测`: bounded observation evidence exists; any example-only
+  evidence remains explicitly labelled and is not a public-access claim;
+- `Planned` / `规划中`: collection has not started and the source/product
+  contract remains on the roadmap;
+- `Pending release` / `待开放`: the product is an active onboarding candidate
+  but public purchase/query access has not opened.
+
+Provider permission, source rights, receipt history, runtime readback, and
+commercial entitlement stay visible inside the product detail instead of
+becoming additional ambiguous catalog badges.
+
 - search by customer language, dataset name, market, domain, cadence, and
   availability state;
 - group by data family rather than upstream vendor;
-- provide a clearly labelled `Alternative Data` collection and filter;
+- provide a clearly labelled `Alternative Data` category and filter, then list
+  individual products such as `Pizza Index` beneath it;
 - show concise coverage/cadence/lineage facts from catalog;
 - distinguish `available`, `degraded`, `paused`, and `unobserved` without
   marketing euphemisms;
@@ -206,8 +265,65 @@ exists, how datasets are classified, what the shared data template looks like,
 and how alternative data is tried and ordered. The initial A-share presentation
 uses four workload-readable families: market/reference, intraday/microstructure,
 fundamentals/corporate actions, and indices/funds. Alternative data stays a
-separate family grouped as company/regulatory intelligence, news/policy, and
-objective attention/interaction metadata.
+separate category. Its internal source or subject tags may cover activity,
+mobility, hiring, app/web attention, supply chain, geospatial observations,
+consumer pricing, and delayed regulatory holdings disclosures, but those tags
+never replace the individual product identity.
+
+Data-product marks use a softly blended, filled abstract mini-cover system.
+Every category owns one stable color family and one base geometric grammar.
+Products inside that category inherit both, then vary the arrangement via
+direction, module order, density, crop, offset, mirroring, local scale, or a
+restrained two-layer echo. The system supports at least eight repeatable
+variants before an arrangement is reused. The result must read as one
+recognizable family with distinct members. Status colors never recolor product
+identity. The marks are identity assets, not literal finance icons, status
+indicators, decorative emoji, or CSS-drawn approximations.
+
+Every category base must be visually distinct in geometry as well as color;
+changing only hue does not create a new category family. The current asset
+families use bars for market data, a modular ledger for company/fundamentals,
+concentric fields for events, segmented arcs for indices/funds, layered
+contours for macro/rates, staggered streams for news/text, crossing fields for
+alternative data, interlocking geographic fields for global markets, and a
+calm faceted lattice for crypto assets.
+
+Catalog maturity (`Observed`, `Planned`, `Pending release`) appears at the start
+of the evidence area on focused lists and details. It must not sit beside the
+product name as if it were part of product identity. Real stability percentage,
+receipt window, cadence, and empty-history explanation follow beneath the
+stage. Compact category shelves may place the stage at the bottom of the
+preview because no evidence column is present.
+
+The current public design-contract catalog plans 40 product objects across nine
+categories. This is a roadmap projection, not runtime authority:
+
+| Category | Planned product objects |
+| --- | --- |
+| Market data | A-share daily; historical minutes; auction/pre-market; market reference/adjustments; real-time snapshot |
+| Company & fundamentals | point-in-time fundamentals; company master/industry; ownership/holdings; valuation/financial indicators |
+| Corporate events | company actions; announcements; investor Q&A; IPO/listing calendar |
+| Indices & funds | constituents/weights; ETF NAV/IOPV; fund portfolio disclosures; convertible bonds |
+| Macro & rates | China macro calendar; rates/yield curves; central-bank operations; futures/commodity reference |
+| News & documents | financial news/flashes; policy/regulation library; broker research; central-bank reports |
+| Alternative data | Pizza Index; Foot Traffic Index; Hiring Activity Index; App Attention Index; Web Attention Index; Shipping Congestion Index; Night Lights Activity; Consumer Price Basket; Notable Investor 13F Holdings |
+| Global markets | Hong Kong equity daily; US equity daily; SEC filings/XBRL; global macro indicators |
+| Crypto assets | Binance spot 5-minute bars; Binance funding/open interest; Coinbase spot market |
+
+The current prototype projection contains one explicitly bounded observed
+example, six pending-release candidates, and 34 planned products. These labels
+must be replaced by authenticated catalog/receipt/account evidence before any
+production or commercial claim.
+
+The catalog uses progressive disclosure to keep this heavy material readable.
+Its default state is a lightweight directory of the nine categories, with up
+to four representative products per category. A category, status, or search
+selection opens the focused product list. Product samples, complete evidence,
+schema, and limitations remain on the addressable product detail page. Products
+without collection history show a concise empty-evidence state with cadence and
+onboarding plan; they must not render decorative empty stability charts or
+repeat pseudo-operational metrics. Stability trends appear only when bounded
+observation evidence exists.
 
 ### 5.3 Dataset detail
 
@@ -225,12 +341,18 @@ Required modules:
 8. package/add-on requirement and truthful availability;
 9. limitations, revision/as-of caveats, and licensing notes.
 
+The product-specific data contract and bounded query request are rendered
+inline on this detail page. They are not separate Docs drill-down destinations.
+The request remains copy-only and must tell the reader to confirm the
+authoritative `dataset_id`, `schema_major`, and entitlement through
+`GET /v1/catalog` and authenticated account evidence before use.
+
 `Use with` is a relationship guide, not a precomputed joined dataset or a claim
 of investment usefulness.
 
-### 5.4 Cookbook
+### 5.4 Research methods (Cookbook/Recipes compatibility layer)
 
-A Cookbook entry starts with a customer preparation job and, when execution detail is
+A method entry starts with a customer preparation job and, when execution detail is
 useful, continues into the reproducible preparation method. This combines the
 previous Use Case and Cookbook destinations without losing either content type.
 
@@ -269,7 +391,7 @@ Allowed effect evidence:
 - time alignment and point-in-time correctness;
 - duplicate removal;
 - output dimensions/schema;
-- query count, latency, and quota cost.
+- query count, latency, and concurrency pressure.
 
 Disallowed effect evidence:
 
@@ -288,10 +410,26 @@ trial, renewal, tax, invoice, and payment copy are proposal-only. The current
 backend tiers remain `basic`, `standard`, and `flagship`; any public naming layer
 must map on the server.
 
-The proposed customer-facing package names are **A-share Research**,
-**Systematic Research**, and **Trading Data**. These names express increasing
-workflow depth; they do not create grants, imply a tier mapping, or prove that
-real-time candidates are commercially available.
+The customer-facing base-plan names are **Basic / 基础版**,
+**Professional / 专业版**, and **Flagship / 旗舰版**. Basic covers the core
+domestic daily, company, event, and reference foundation. Professional adds
+historical minutes, auctions, and broader domestic trading history. Flagship
+adds the proposed real-time candidates and highest request-frequency profile.
+The customer-facing contract uses rolling per-minute limits of 200/600/1000,
+with no commercial daily quota or concurrency limit. The target server mapping
+remains `basic`, `standard`, and `flagship`, respectively. The backend contract
+in this code tree enforces only those commercial minute limits and removes
+commercial daily/concurrent request ceilings. Production remains unverified until exact-main release and
+authenticated Account readback.
+
+The main Pricing page currently contains only these three base plans. It shows
+one plan as a focused product at a time, with direct tier tabs and previous/next
+controls. Scope, history, target runtime, included data, and the proposal-only
+price state remain visible without comparing three equal-weight SaaS cards.
+Alternative data is absent from this page; it is neither preselected nor
+summarized beside the base plan. The page has no needs quiz, workload
+configurator, granularity slider, upstream-provider matrix, per-dataset cart,
+or base-plus-add-on receipt.
 
 Alternative data is a separate add-on surface. The target behavior is a bounded
 free trial that stops without automatic charging, followed by an explicit
@@ -326,17 +464,19 @@ guidance remains equally discoverable.
 
 The account workspace is grouped by customer task:
 
-1. **Overview** — account identity, plan, expiry, service notices;
-2. **Data & subscription** — current package, dataset access, alternative-data
+1. **Saved materials** — browser-local bookmarks until authenticated sync exists;
+2. **Overview** — account identity, plan, expiry, service notices;
+3. **Data & subscription** — current package, dataset access, alternative-data
    trials/add-ons, renewal and cancellation state;
-3. **Usage & limits** — requests, quota, rate/concurrency limits and history;
-4. **API keys** — create, name, rotate and revoke credentials;
-5. **Agent Connections** — MCP and prompt-based connection for Claude, Codex,
+4. **Usage & limits** — per-minute request limit and request history;
+5. **API keys** — create, name, rotate and revoke credentials;
+6. **Agent Connections** — MCP and prompt-based connection for Claude, Codex,
    OpenClaw, Hermes, and Other Agent;
-6. **Billing & invoices** — payment method, billing identity, invoices and
+7. **Documentation** — platform, data, API, method, plan, and account guides;
+8. **Billing & invoices** — payment method, billing identity, invoices and
    transaction history;
-7. **Security** — sessions, sign-in methods and security events;
-8. **Preferences** — language and notification preferences.
+9. **Security** — sessions, sign-in methods and security events;
+10. **Preferences** — language and appearance preferences.
 
 The `/account/agent-connections` surface presents Claude, Codex, OpenClaw,
 Hermes, and `Other Agent` as a lightweight selector. Selecting an Agent changes
@@ -431,17 +571,32 @@ method, and emphasis; they do not encode price movement or runtime health.
 
 ## 7. Component contract
 
-- **GlobalNav**: Data, Research, Cookbook, Pricing, Docs, and account avatar/icon;
-  no duplicate Connect Agent, language, theme, or Console text action.
+- **GlobalNav**: one floating rounded surface with Data, Research, Pricing,
+  global search, Bookmarks, and Account; desktop primary links use a Hovvi-like
+  single-layer text treatment and fine current-location underline, never a
+  nested pill. There is no duplicate page-level keyword search, Connect Agent,
+  language, theme, Docs, or Console text action.
+- **GlobalSearch**: grouped Data/Research/Methods/Docs results, accessible
+  combobox semantics, Arrow Up/Down + Home/End + Enter + Escape + Command/Ctrl K
+  interaction, polite total-result announcement, bookmark action, empty state,
+  in-place per-group expansion, and a five-item browser-local recent-query list
+  with per-item removal and explicit clear-all controls. Search documents include both authored languages,
+  stable object IDs, taxonomy metadata, and bounded bilingual/pinyin aliases;
+  deterministic relevance ranks identity before description and preserves
+  catalog order for ties. Bounded Latin typo recovery and an authored three-chip
+  empty state help users recover without opaque semantic expansion. Compact
+  ID/alias/approximate notes explain non-obvious matches without labelling
+  ordinary title or description matches.
 - **LanguageSwitcher**: lives inside Account, exposes 中文/English, shows the
   effective locale, works before sign-in, and never changes technical identifiers.
 - **ResearchLibrary**: searchable external literature, TradingDatas-owned topic
   taxonomy, preserved author/year/venue/source, related data-material labels,
   empty state, and explicit external-conclusion disclaimer.
-- **AccountWorkspace**: a dedicated page grouped as Account overview, Data
-  access (subscription/add-ons, usage/limits, API keys), Integrations
-  (Agents/MCP), Billing, and Settings (language/appearance, security). It is not
-  a large header dropdown and never invents live account state.
+- **AccountWorkspace**: a dedicated page grouped as Saved materials, Account
+  overview, Data access (subscription/add-ons, usage/limits, API keys), Connect
+  & learn (Agents/MCP and Documentation), Billing, and Settings
+  (language/appearance, security). Its compact header menu is only a task
+  launcher; it never invents live account state.
 - **AgentConnect**: Agent selector, redacted setup prompt, copy feedback, secure
   credential instruction, and explicit connection test.
 - **ReceiptPassport**: one dominant source-bound summary of freshness, quality,
@@ -460,8 +615,12 @@ method, and emphasis; they do not encode price movement or runtime health.
   precomputed factor or strategy.
 - **CookbookFigure**: inputs -> method -> output schema with synthetic/observed
   label and method/version metadata.
-- **PackageSummary**: complete package, backend-projected quotas/grants, renewal
+- **PackageSummary**: complete package, backend-projected request frequency/grants, renewal
   and invoice facts.
+- **BasePlanShowcase**: one focused Basic, Professional, or Flagship product at
+  a time with direct tier tabs, previous/next controls, included scope, history,
+  request frequency, proposal-only price state, and a shared data-trust foundation.
+  Client selection is orientation only and never implies access or payment.
 - **AddonTrial**: included families, exact dates, post-trial behavior, current
   entitlement, and explicit action.
 - **CheckoutSummary**: package/add-on, billing period, tax/invoice, amount due,
@@ -469,6 +628,28 @@ method, and emphasis; they do not encode price movement or runtime health.
 
 Every interactive component implements default, hover, focus-visible, active,
 disabled, loading, empty, error, and relevant expired/trial-ended states.
+
+### 7.1 Public visual primitives
+
+- Floating navigation uses a full pill radius, a one-pixel semantic border,
+  translucent light/dark surface, restrained blur, and one low-opacity shadow.
+  It never becomes a full-width dashboard bar. The outer navigation surface is
+  the only capsule: primary destinations remain unboxed, with active state
+  carried by typography and a one-pixel underline.
+- Section-level navigation is an unboxed editorial text index with compact gaps
+  and the same one-pixel current-location underline. It never repeats the global
+  capsule, filled active tab, translucent background, or shadow.
+- Content surfaces use an 8/12/18px radius ladder for controls, grouped objects,
+  and modal workspaces; full pills are reserved for navigation, filters, and
+  compact state controls.
+- Public editorial pages share a 1240px maximum reading canvas. Heavy material
+  stays visually light through whitespace, thin rules, quiet metadata, and
+  localized hover feedback rather than repeated boxed cards.
+- Blue communicates action/current location, aqua communicates verified or
+  observed evidence, yellow is reserved for receipt verification, and product
+  identity colors never substitute for runtime status.
+- Data rows may receive a subtle surface tint on hover, but their taxonomy,
+  evidence, cadence, and access information remain in a stable reading order.
 
 ## 8. Frontend engineering rules
 
@@ -508,7 +689,8 @@ Minimum release-candidate checks:
 - viewports: 1440, 1024, 768, 390px;
 - states: loading, empty, degraded, paused, unauthorized, expired,
   trial-active, trial-ended, payment-failed when applicable;
-- keyboard: navigation, search, tabs, copy, code language, tables, dialogs;
+- keyboard: navigation, global search, tabs, copy, code language, tables,
+  dialogs;
 - Agent connect: all variants render, copy text is deterministic, no secret is
   included, connection test is opt-in, and errors remain visible;
 - localization: system detection, manual switch, remembered preference,

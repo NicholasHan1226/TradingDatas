@@ -256,7 +256,7 @@ export const TIER_LABELS: Record<string, string> = {
   research: '研究版',
   pro: '专业版',
   basic: '基础版',
-  standard: '标准版',
+  standard: '专业版',
   flagship: '旗舰版',
   enterprise: '企业版',
   internal: '平台管理',

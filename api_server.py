@@ -103,8 +103,7 @@ _INVALID_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 # anonymous client spraying bearer tokens converts request volume directly
 # into CPU load.  Bound attempts per source address well above any legit
 # internal consumer while capping the unauthenticated work multiplier.
-# Must stay above the highest commercial per-minute tier (flagship 1000)
-# or paying customers get rejected before their real quota applies.
+# Independent per-IP abuse wall; this is not a commercial request quota.
 _AUTH_ATTEMPT_WINDOW_SECONDS = 60.0
 _AUTH_ATTEMPTS_PER_WINDOW = max(
     1,
@@ -217,6 +216,7 @@ _V1_ERROR_DETAILS: dict[str, tuple[str, bool]] = {
     "budget_exceeded": ("request exceeds allowed budget", False),
     "unsupported_media_type": ("unsupported media type", False),
     "rate_limited": ("rate limit exceeded", True),
+    "concurrency_limit_exceeded": ("concurrency limit exceeded", True),
     "daily_limit_exceeded": ("daily request limit exceeded", True),
     "service_unavailable": ("service temporarily unavailable", True),
     "internal_error": ("internal error", False),
@@ -1344,6 +1344,7 @@ class Handler(BaseHTTPRequestHandler):
                 "hourly_request_limit": limits["hourly_request_limit"],
                 "minute_request_limit": limits["minute_request_limit"],
                 "daily_limit": limits["daily_limit"],
+                "request_volume_unlimited": limits["request_volume_unlimited"],
                 "expires_at": expires_at_iso,
                 "usage": {
                     "today_date": daily.get("date"),
@@ -1500,7 +1501,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._write_v1_error(
                 request_id,
                 status=429,
-                code="rate_limited",
+                code="concurrency_limit_exceeded",
                 suppress_body=suppress_body,
             )
 

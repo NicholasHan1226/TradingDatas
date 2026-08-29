@@ -270,31 +270,29 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
   "tenant_id": "new-tenant",
   "tier": "standard",
   "scopes": ["read"],
-  "daily_limit": 10000,
-  "expires_at": "2027-12-31T23:59:59Z",
-  "max_concurrent": 8
+  "expires_at": "2027-12-31T23:59:59Z"
 }
 ```
 
-`tier` 决定请求频率与默认并发档位：
+`tier` 决定请求频率合同；商业档只以每分钟频率区分：
 
-| tier | 定位 | 频率上限 | 默认并发 |
+| tier | 定位 | 频率上限 | 并发上限 |
 |---|---|---|---|
 | `free` / `starter` | 试用/入门 | 60 次/小时 | 2 |
 | `research` | 研究 | 300 次/小时 | 4 |
 | `pro` | 专业 | 600 次/小时 | 8 |
-| `basic` | 商业·基础版 | **200 次/分钟** | 4 |
-| `standard` | 商业·标准版 | **600 次/分钟** | 8 |
-| `flagship` | 商业·旗舰版 | **1000 次/分钟** | 16 |
+| `basic` | 商业·基础版 | **200 次/分钟** | 不限 |
+| `standard` | 商业·专业版 | **600 次/分钟** | 不限 |
+| `flagship` | 商业·旗舰版 | **1000 次/分钟** | 不限 |
 | `enterprise` / `internal` | 内部 | 不限（仅日配额管控） | 不限 |
 
-商业三档（basic/standard/flagship）按**滑动 60 秒窗口**计每分钟请求数，超限返回
-`429 code=rate_limited`；这三档不设小时窗，日配额（`daily_limit`）与有效期
-（`expires_at`）仍按 token 单独控制。并发默认值可被 per-token `max_concurrent`
-覆盖。
+商业三档（basic/standard/flagship）采用滚动 60 秒窗口，不设每日额度或并发上限；
+达到分钟上限返回 `429 code=rate_limited`。为商业档创建或更新非空 `daily_limit`
+或 `max_concurrent` 会被拒绝，避免管理员界面与真实执行合同分叉。有效期
+（`expires_at`）仍按 token 单独控制。
 
-滥用防护墙（对认证与匿名请求一视同仁）按**来源 IP** 计 1200 次/60 秒，远高于
-最高套餐额度；经 Cloudflare 访问时以 `CF-Connecting-IP` 识别真实来源，正常
+滥用防护墙（对认证与匿名请求一视同仁）按**来源 IP** 计 1200 次/60 秒，高于
+最高商业套餐的 1000 次/分钟且与套餐合同相互独立；经 Cloudflare 访问时以 `CF-Connecting-IP` 识别真实来源，正常
 使用不会触墙。若你的出口 IP 由多台机器共享且触发该墙，返回的同样是
 `429 code=rate_limited`，等待窗口滑过即可恢复。
 
@@ -310,7 +308,7 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 
 ### PATCH /admin/api/tokens/{token_hash}
 
-更新 token 设置。可更新字段：`enabled`、`daily_limit`、`expires_at`、`tier`、`scopes`、`max_concurrent`。
+更新 token 设置。可更新字段：`enabled`、`daily_limit`、`expires_at`、`tier`、`scopes`、`max_concurrent`。商业档不接受非空 `daily_limit` 或 `max_concurrent`；后二者只用于兼容存量档位。
 
 ### DELETE /admin/api/tokens/{token_hash}
 
@@ -363,6 +361,7 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
     "hourly_request_limit": 300,
     "minute_request_limit": null,
     "daily_limit": 10000,
+    "request_volume_unlimited": false,
     "expires_at": "2027-12-31T23:59:59Z",
     "usage": {
       "today_date": "2026-08-23",
@@ -374,9 +373,10 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 }
 ```
 
-`max_concurrent <= 0` 与 `daily_limit`/`hourly_request_limit` 为 null 均表示不限。
-`minute_request_limit` 仅商业三档（basic/standard/flagship）非空，表示每分钟请求上限
-（滑动 60 秒窗口）；其余档位为 null。
+`max_concurrent <= 0` 表示不限制并发。商业三档的 `max_concurrent=null`、
+`daily_limit=null`、`hourly_request_limit=null`，`minute_request_limit` 分别为
+200/600/1000，且 `request_volume_unlimited=false`；调用次数仍保留在 `usage` 与历史趋势中。
+存量档位继续按对应小时、每日和并发合同投影。
 
 ### GET /portal/api/me/usage?days=30
 
@@ -397,7 +397,7 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 
 **设计边界**：portal 查询是客户查看自身信息的入口，**不计入每日配额、不做 scope
 检查**（否则门户页面自身的加载会烧客户的日配额）；但仍执行完整的 token 认证
-（disabled/expired 拒绝）、每小时频率限制与并发限制。认证失败语义与 v1 一致
+（disabled/expired 拒绝）、适用的分钟/小时频率限制与存量档位并发限制。认证失败语义与 v1 一致
 （401/429，同一错误信封）。
 
 ## Token 配置扩展字段
@@ -408,4 +408,4 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 |---|---|---|
 | `enabled` | bool | 是否启用（默认 true） |
 | `expires_at` | string/number | 过期时间（RFC3339 或 Unix 时间戳） |
-| `daily_limit` | number/null | 每日请求上限（null 或省略 = 无限） |
+| `daily_limit` | number/null | 存量档位每日请求上限（null 或省略 = 无限；商业档不接受） |

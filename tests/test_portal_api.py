@@ -110,6 +110,13 @@ def portal_server(monkeypatch: pytest.MonkeyPatch) -> _Harness:
             ),
             _token_record("admin-token", "tenant-admin", ["read"], tier="internal"),
             _token_record(
+                "commercial-token",
+                "tenant-commercial",
+                ["read"],
+                tier="standard",
+                daily_limit=1,
+            ),
+            _token_record(
                 "expired-token", "tenant-expired", ["read"], expires_at=PAST_TS
             ),
             _token_record(
@@ -178,6 +185,7 @@ def test_portal_me_returns_only_own_account(portal_server: _Harness) -> None:
         "hourly_request_limit": 60,
         "minute_request_limit": None,
         "daily_limit": 5000,
+        "request_volume_unlimited": False,
         "expires_at": time.strftime(
             "%Y-%m-%dT%H:%M:%SZ", time.gmtime(FUTURE_TS)
         ),
@@ -197,6 +205,23 @@ def test_portal_me_disabled_token_rejected(portal_server: _Harness) -> None:
     assert status == 401
     assert payload is not None
     _error_shape(payload, "unauthenticated")
+
+
+def test_portal_me_projects_commercial_tier_as_unmetered(
+    portal_server: _Harness,
+) -> None:
+    status, payload, _, _ = portal_server.request(
+        "GET", "/portal/api/me", token="commercial-token"
+    )
+    assert status == 200
+    assert payload is not None
+    portal = payload["portal"]
+    assert portal["tier"] == "standard"
+    assert portal["max_concurrent"] is None
+    assert portal["request_volume_unlimited"] is False
+    assert portal["hourly_request_limit"] is None
+    assert portal["minute_request_limit"] == 600
+    assert portal["daily_limit"] is None
 
 
 def test_portal_me_expired_token_rejected(portal_server: _Harness) -> None:
@@ -338,15 +363,20 @@ def test_effective_limits_resolution() -> None:
         "minute_request_limit": None,
         "concurrency_limit": None,
         "daily_limit": None,
+        "request_volume_unlimited": True,
     }
     free = auth.effective_limits({"tenant_id": "t"})
     assert free["tier"] == "free"
     assert free["hourly_request_limit"] == auth.RATE_LIMITS["free"]
     assert free["minute_request_limit"] is None
     assert free["concurrency_limit"] == auth.CONCURRENCY_LIMITS["free"]
+    assert free["request_volume_unlimited"] is False
     standard = auth.effective_limits({"tenant_id": "t", "tier": "standard"})
     assert standard["hourly_request_limit"] is None
     assert standard["minute_request_limit"] == 600
+    assert standard["daily_limit"] is None
+    assert standard["concurrency_limit"] is None
+    assert standard["request_volume_unlimited"] is False
     override = auth.effective_limits(
         {"tenant_id": "t", "tier": "research", "max_concurrent": 9}
     )

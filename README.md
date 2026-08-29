@@ -4,7 +4,7 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的公共金融数�
 
 它在 Finance 中只承担跨市场数据平台职责：接入数据接口、稳定采集、规范化写入数据库、持续积累、保留 lineage/receipt，并通过固定 `catalog/query` API 稳定供应各市场。TradingAgent/Quant Core 才是终局个人自动量化交易系统；TradingCopilot 只是过渡性的 A 股实盘辅助与观察工具。TradingDatas 不拥有预测、策略、模型晋级、资金、风险或订单 authority。
 
-面向公共用户时，TradingDatas 的商品是**可信、可追溯、可复现的金融数据原料**，不是研究报告、策略或交易结论。网站通过 Data、Features、Recipes、Research、Pricing、Docs 和账户入口帮助用户发现、理解、组合、购买和管理数据；Research 整理外部论文并保留来源，Features 只表示公开方法和版本的透明衍生数据，Recipes 教授如何正确准备与组合数据。公共站候选实现在 `public-web/`，支持中英双语、跟随系统语言与明暗主题。已注册公共品牌域名为 `tradingdatas.com`，但 DNS、HTTPS、部署和 API 子域仍须分别验证。Agent/MCP 是 Account/Docs 下的交付方式，不是首要购买理由。当前 `/v1` 仍是 provider-native Evidence Plane；canonical/PIT、Feature 与 Recipe 运行面都属于待实现目标。完整公共产品与内容合同见 [docs/PRODUCT.md](docs/PRODUCT.md)、[公共页面地图](docs/product/PUBLIC_SURFACE_MAP.md) 与 [产品分层](docs/product/PRODUCT_PLANES.md)。
+面向公共用户时，TradingDatas 的商品是**可信、可追溯、可复现的金融数据原料**，不是研究报告、策略或交易结论。公共网站以 Data、Research、Pricing、全站搜索和 Account 为主入口；研究方法与外部文献统一收敛在 Research。公共站实现在 `public-web/`，支持中英双语、跟随系统语言与明暗主题；`tradingdatas.com` 已通过 Cloudflare 静态资源 Worker 完成公开页面与深层路由读回。Agent/MCP 是 Account/Docs 下的交付方式，不是首要购买理由。当前 `/v1` 仍是 provider-native Evidence Plane；canonical/PIT 与衍生运行面都属于待实现目标。完整公共产品与内容合同见 [docs/PRODUCT.md](docs/PRODUCT.md)、[公共页面地图](docs/product/PUBLIC_SURFACE_MAP.md)、[产品分层](docs/product/PRODUCT_PLANES.md) 与 [账户/管理员收敛设计](docs/design/account-admin-convergence-v1.md)。
 
 当前主目标是把属于首期范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 只读数据接口，按照合适频率稳定采集到 SQLite，并通过固定 API 供内部系统调用。Binance 公共数据作为隔离的第二 provider 纵向切片，覆盖冻结 40 个 USDT 标的的现货 5 分钟行情与公开 exchangeInfo 交易约束元数据，以及同一冻结标的的 USDⓈ-M 永续 funding rate / open interest 公共只读历史。Crypto 的 timer 可在隔离、只读、预算受控且 fail-closed 的观察期运行，以持续积累 receipt；单个 dataset 是否 `observed` 或 `stable` 仍只由其真实 receipt 与认证 API 回读决定。该切片使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 服务和 timer；无需且禁止 Binance 账户/API key。未来新增新闻、公告、研报、政策和客观舆情等数据源时，继续复用同一套 catalog、ingest、receipt、query 和 scheduler，不增加公共 API 路由。Crypto 运行合同见 [docs/CRYPTO_LOOPBACK_RUNTIME.md](docs/CRYPTO_LOOPBACK_RUNTIME.md)，实际部署状态以 [STATUS.md](STATUS.md) 为准。
 
@@ -12,7 +12,7 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的公共金融数�
 
 当前实现先把已批准的数据稳定写入 SQLite，再通过统一 `catalog/query` API 供 Agent 和受控用户消费。公共产品定位不改变数据事实门禁：对外开放某一数据分类前，仍须完成上游再分发条款、dataset entitlement、真实 receipt、认证 API readback 和账户隔离验证。不得为公共产品按 provider 或单个接口拆分新的公共路由、业务表或定时任务。
 
-用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 表达技术数据身份。账户权限是 endpoint scope、分类 allowlist 与配额的交集；后端已在 catalog/query 两条路径强制执行 `data_categories`，管理台可配置，用户门户只展示当前密钥真实生效的分类。旧 Token 缺字段时保留原访问范围，显式空列表不授权任何数据集。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
+用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 表达技术数据身份。账户权限是 endpoint scope、分类 allowlist 与运行限额的交集；后端已在 catalog/query 两条路径强制执行 `data_categories`，管理员控制台可配置，Account 只展示当前密钥真实生效的分类。旧 Token 缺字段时保留原访问范围，显式空列表不授权任何数据集。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
 
 接口接入按广度优先推进：每批 valid rows/receipts 立即入库积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级并排队修正该 dataset，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的能力保持显式暂停。`stable` 仍按 dataset 独立验证，但不是全部接口继续接入的总门禁。
 
