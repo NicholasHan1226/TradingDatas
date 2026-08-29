@@ -1293,12 +1293,12 @@ def test_every_runtime_tushare_binding_has_a_bounded_scan_budget() -> None:
     assert oversized == []
 
 
-def test_rt_min_daily_paused_fanout_stays_inside_scan_envelope() -> None:
-    """Keep the paused rt_min_daily fanout bounded if it is explicitly resumed.
+def test_rt_min_daily_resumable_fanout_stays_inside_scan_envelope() -> None:
+    """Resumed rt_min_daily sizing: 1500 rows x 20 batches under the 2M cap.
 
-    The page limit must also stay above the real per-batch row count
-    (batch_size 5 codes x ~241 one-minute bars) or every late-session
-    response would trip reject_at_row_limit truncation.
+    A realistic afternoon page is 5 codes x ~241 one-minute bars. The page
+    limit must stay above that count or every late-session response would
+    trip reject_at_row_limit truncation; ten codes would not.
     """
 
     from collectors.tushare.provider_native_ingest import _provider_scan_budget
@@ -1306,15 +1306,19 @@ def test_rt_min_daily_paused_fanout_stays_inside_scan_envelope() -> None:
 
     dataset = load_runtime_dataset_registry().resolve("cn.dataset.rt_min_daily")
     binding = next(
-        item for item in dataset.provider_bindings if item.entitlement_state == "active"
+        item
+        for item in dataset.provider_bindings
+        if item.entitlement_state == "active" and item.activation_state == "active"
     )
-    assert binding.activation_state == "paused"
     assert not any(
-        item.entitlement_state == "active" and item.activation_state == "active"
+        item.entitlement_state == "active" and item.activation_state == "paused"
         for item in dataset.provider_bindings
     )
     assert binding.max_rows_per_attempt == 1500
     assert binding.fanout is not None and binding.fanout.batch_size == 5
     assert binding.resumable_fanout is not None
+    afternoon_rows = 5 * 241
+    ten_code_afternoon_rows = 10 * 241
+    assert afternoon_rows <= binding.max_rows_per_attempt < ten_code_afternoon_rows
     budget = _provider_scan_budget(dataset, binding)
     assert 0 < budget.max_nodes <= 2_000_000

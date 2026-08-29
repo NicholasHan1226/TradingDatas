@@ -175,6 +175,7 @@ def _insert_receipt(
     config_hash: str | None = None,
     dataset: DatasetDefinition | None = None,
     commit: bool = True,
+    errors: tuple[str, ...] | None = None,
 ) -> str:
     monkeypatch.setattr(receipt_module, "_utc_now", lambda: finished_at)
     dataset = _dataset() if dataset is None else dataset
@@ -225,7 +226,11 @@ def _insert_receipt(
             count_semantics=count_semantics,
         )
         target_table = None
-        errors = ("provider_error",) if status == "failed" else ()
+        errors = (
+            errors
+            if errors is not None
+            else (("provider_error",) if status == "failed" else ())
+        )
     receipt_id = insert_ingest_receipt(
         conn,
         context=context,
@@ -1470,6 +1475,34 @@ def test_projector_round_trips_complete_cursor_v2_identity(
     assert entry.frozen_universe_sha256 == "a" * 64
     assert (entry.batch_index, entry.batch_count) == (0, 2)
     assert entry.batch_values_sha256 == "b" * 64
+
+
+def test_planner_history_exposes_resource_budget_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    identity = ProviderRequestIdentity(
+        request_variant={}, fanout_parameter="ts_code",
+        fanout_values=("000001.SZ",), page_offset=None, page_index=0,
+        cursor_contract_version=2, frozen_universe_sha256="a" * 64,
+        batch_index=1, batch_count=3, batch_values_sha256="b" * 64,
+    )
+    _insert_receipt(
+        monkeypatch, conn, status="failed", attempt_id="budget-history",
+        started_at="2026-08-19T07:00:00+00:00",
+        finished_at="2026-08-19T07:05:00+00:00",
+        data_through=None, request_identity=identity,
+        errors=("resource_budget",),
+    )
+    base = load_dataset_registry()
+    histories = projection_module.validated_receipt_histories_by_dataset(
+        conn, DatasetRegistry((_dataset(),), query_defaults=base.query_defaults),
+        now=datetime(2026, 8, 19, 8, tzinfo=timezone.utc),
+    )
+    entry = histories.entries_by_dataset["cn.equity.daily"][0]
+    assert entry.status == "failed"
+    assert entry.errors == ("resource_budget",)
+    assert entry.batch_index == 1
 
 
 @pytest.mark.parametrize(

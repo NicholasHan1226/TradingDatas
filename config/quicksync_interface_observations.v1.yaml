@@ -470,6 +470,7 @@ active_evidence:
   repurchase: server-evidence/20260722TQkgWsk-1def337-provider-native
   research_report: server-evidence/20260722TQkgWsk-1def337-provider-native
   rt_min: mcp-evidence/20260727T161911Z-rt-min-5min-10-mainboard
+  rt_min_daily: server-evidence/20260817T120000Z-quicksync-seed-unlock-probe
   shibor: server-evidence/20260801T-shibor-daily-reference-probe
   shibor_quote: server-evidence/20260801T-shibor-daily-reference-probe
   sf_month: server-evidence/20260727T091112Z-periodic-window-probe-r2

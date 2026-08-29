@@ -361,6 +361,7 @@ class ValidatedReceiptHistoryEntry:
     request_variant: Mapping[str, object]
     execution_id: str
     config_hash: str | None
+    errors: tuple[str, ...] = ()
     cursor_contract_version: int | None = None
     frozen_universe_sha256: str | None = None
     batch_index: int | None = None
@@ -2533,6 +2534,7 @@ def _validated_history_for_dataset_rows(
             request_variant=receipt.request_variant,
             execution_id=receipt.execution_id,
             config_hash=receipt.config_hash,
+            errors=receipt.errors,
             cursor_contract_version=receipt.cursor_contract_version,
             frozen_universe_sha256=receipt.frozen_universe_sha256,
             batch_index=receipt.batch_index,
