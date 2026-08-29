@@ -81,7 +81,8 @@ jobs:
           test -n "$expected_asset"
           for route in / /account/ /data/ /research/ /pricing/; do
             body="$(curl --fail --show-error --silent --location --retry 3 --retry-all-errors \
-              --connect-timeout 10 --max-time 30 "https://tradingdatas.com${route}")"
+              --connect-timeout 10 --max-time 30 -H 'Accept: text/html' \
+              "https://tradingdatas.com${route}")"
             grep -qiF '<!doctype html>' <<<"$body"
             grep -qF "$expected_asset" <<<"$body"
           done
