@@ -578,9 +578,7 @@ def test_fanout_row_budget_is_applied_per_provider_call() -> None:
     assert len(execution.calls) == 2
 
 
-def _session_minute_rows(code_count: int, bars: int = 241) -> tuple[dict[str, object], ...]:
-    """One A-share session is ~241 one-minute bars; afternoon pages are largest."""
-
+def _session_minute_rows(code_count: int, bars: int) -> tuple[dict[str, object], ...]:
     rows: list[dict[str, object]] = []
     for index in range(code_count):
         ts_code = f"00000{index}.SZ"
@@ -606,8 +604,17 @@ def test_afternoon_fanout_page_fits_five_codes_and_trips_ten() -> None:
 
     Five codes stay inside max_rows_per_attempt=1500; ten codes overflow
     that page cap and fail closed as resource_budget instead of nailing
-    the rest of the universe.
+    the rest of the universe. The execute path is checked with a scaled
+    page that preserves the same 5-fits / 10-overflow ratio.
     """
+
+    session_bars = 241
+    max_rows = 1500
+    assert 5 * session_bars <= max_rows < 10 * session_bars
+
+    scaled_bars = 3
+    scaled_max_rows = 16
+    assert 5 * scaled_bars <= scaled_max_rows < 10 * scaled_bars
 
     five_codes = tuple(f"00000{index}.SZ" for index in range(5))
     binding = _binding(
@@ -618,10 +625,8 @@ def test_afternoon_fanout_page_fits_five_codes_and_trips_ten() -> None:
             source_field="ts_code",
             batch_size=5,
         ),
-        max_rows=1500,
-    )
-    five_batch = _stable_fanout_batches(
-        five_codes, parameter="ts_code", batch_size=5
+        max_rows=scaled_max_rows,
+        max_batch_bytes=67_108_864,
     )
     _, params = _resolved_request(
         binding,
@@ -629,11 +634,15 @@ def test_afternoon_fanout_page_fits_five_codes_and_trips_ten() -> None:
         request_variant={"exchange": "SZSE", "limit": 100},
     )
     fitted = _execute_provider_requests(
-        collector=_SequenceCollector([_success(*_session_minute_rows(5))]),
+        collector=_SequenceCollector(
+            [_success(*_session_minute_rows(5, scaled_bars))]
+        ),
         binding=binding,
         base_params=params,
         request_variant={"exchange": "SZSE", "limit": 100},
-        fanout_batches=five_batch,
+        fanout_batches=_stable_fanout_batches(
+            five_codes, parameter="ts_code", batch_size=5
+        ),
         requested_fields=None,
         scan_budget=SensitiveScanBudget(max_depth=20, max_nodes=2_000_000),
         retry=RetrySettings(),
@@ -641,18 +650,23 @@ def test_afternoon_fanout_page_fits_five_codes_and_trips_ten() -> None:
         sleep=lambda _seconds: None,
     )
     assert fitted.outcome.state == "success"
-    assert len(fitted.outcome.rows) == 5 * 241
+    assert len(fitted.outcome.rows) == 5 * scaled_bars
 
     ten_codes = tuple(f"00000{index}.SZ" for index in range(10))
-    ten_binding = replace(binding, fanout=FanoutPolicy(
-        strategy="dataset_field",
-        parameter="ts_code",
-        source_dataset_id="cn.equity.security_master",
-        source_field="ts_code",
-        batch_size=10,
-    ))
+    ten_binding = replace(
+        binding,
+        fanout=FanoutPolicy(
+            strategy="dataset_field",
+            parameter="ts_code",
+            source_dataset_id="cn.equity.security_master",
+            source_field="ts_code",
+            batch_size=10,
+        ),
+    )
     overflowed = _execute_provider_requests(
-        collector=_SequenceCollector([_success(*_session_minute_rows(10))]),
+        collector=_SequenceCollector(
+            [_success(*_session_minute_rows(10, scaled_bars))]
+        ),
         binding=ten_binding,
         base_params=params,
         request_variant={"exchange": "SZSE", "limit": 100},
