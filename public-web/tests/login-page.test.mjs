@@ -12,6 +12,14 @@ test("registers a dedicated login route backed by the existing account session",
   assert.match(appSource, /window\.history\.replaceState\(\{\}, "", "\/account"\)/);
 });
 
+test("prefers the same-site session gateway and never leaves the access key in persistent storage", () => {
+  assert.match(appSource, /fetch\("\/api\/account\/session"/);
+  assert.match(appSource, /credentials: "same-origin"/);
+  assert.match(appSource, /sessionStorage\.setItem\(TAB_ACCOUNT_TOKEN_KEY/);
+  assert.match(appSource, /localStorage\.removeItem\(LEGACY_ACCOUNT_TOKEN_KEY\)/);
+  assert.doesNotMatch(appSource, /localStorage\.setItem\(LEGACY_ACCOUNT_TOKEN_KEY/);
+});
+
 test("keeps unavailable identity methods explicit and sends signed-out account actions to login", () => {
   assert.match(appSource, /邮箱与短信登录尚未开放/);
   assert.match(appSource, /goTo\("\/login"\)/);

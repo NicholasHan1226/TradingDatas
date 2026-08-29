@@ -60,6 +60,14 @@ internally, so the requested deep-link URL is retained. Missing API routes,
 assets, extensionful files, and non-navigation methods remain ordinary
 fail-closed `404`s.
 
+The Worker also contains a disabled-by-default same-site Account session bridge
+under `/api/account/*`. It returns `503 identity_gateway_unavailable` until the
+production `SESSION_ENCRYPTION_KEY` secret and `ACCOUNT_API_BASE` binding are
+reviewed and configured. In that state the UI uses a current-tab-only
+`sessionStorage` compatibility connection and removes the former persistent
+`localStorage` credential. See `docs/API.md` and `docs/OPERATIONS.md`; a code
+deploy alone is not evidence that the secure session path is active.
+
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,
 then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to return

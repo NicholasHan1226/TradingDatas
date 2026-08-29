@@ -65,6 +65,80 @@ test("keeps API, asset, extensionful, and write-request 404s fail-closed", async
   }
 });
 
+test("account session gateway stays explicitly unavailable until its secret and upstream are bound", async () => {
+  let assetCalls = 0;
+  const response = await worker.fetch(new Request("https://example.test/api/account/me"), {
+    ASSETS: { fetch: async () => { assetCalls += 1; return new Response("missing", { status: 404 }); } },
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(assetCalls, 0);
+  assert.deepEqual(await response.json(), { error: "identity_gateway_unavailable" });
+});
+
+test("account session exchange seals the key in an HttpOnly same-site cookie and proxies reads", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (request, init = {}) => {
+    const url = new URL(request);
+    upstreamCalls.push({ path: url.pathname + url.search, authorization: new Headers(init.headers).get("authorization") });
+    return Response.json({ portal: { tenant_id: "tenant-a", tier: "basic" } });
+  };
+  try {
+    const env = {
+      ACCOUNT_API_BASE: "https://account-api.example.test",
+      SESSION_ENCRYPTION_KEY: "test-only-session-secret-with-sufficient-entropy",
+      ASSETS: { fetch: async () => new Response("missing", { status: 404 }) },
+    };
+    const login = await worker.fetch(new Request("https://example.test/api/account/session", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://example.test" },
+      body: JSON.stringify({ access_key: "customer-secret" }),
+    }), env);
+
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get("set-cookie");
+    assert.match(cookie, /^td_account_session=[A-Za-z0-9_-]+;/u);
+    assert.match(cookie, /HttpOnly/u);
+    assert.match(cookie, /Secure/u);
+    assert.match(cookie, /SameSite=Strict/u);
+    assert.ok(!cookie.includes("customer-secret"));
+
+    const sessionPair = cookie.split(";", 1)[0];
+    const account = await worker.fetch(new Request("https://example.test/api/account/me", {
+      headers: { cookie: sessionPair },
+    }), env);
+    assert.equal(account.status, 200);
+    assert.deepEqual(await account.json(), { portal: { tenant_id: "tenant-a", tier: "basic" } });
+    assert.deepEqual(upstreamCalls, [
+      { path: "/portal/api/me", authorization: "Bearer customer-secret" },
+      { path: "/portal/api/me", authorization: "Bearer customer-secret" },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("account session gateway rejects cross-origin mutation and clears invalid sessions", async () => {
+  const env = {
+    ACCOUNT_API_BASE: "https://account-api.example.test",
+    SESSION_ENCRYPTION_KEY: "test-only-session-secret-with-sufficient-entropy",
+    ASSETS: { fetch: async () => new Response("missing", { status: 404 }) },
+  };
+  const crossOrigin = await worker.fetch(new Request("https://example.test/api/account/session", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "https://attacker.test" },
+    body: JSON.stringify({ access_key: "customer-secret" }),
+  }), env);
+  assert.equal(crossOrigin.status, 403);
+
+  const invalid = await worker.fetch(new Request("https://example.test/api/account/me", {
+    headers: { cookie: "td_account_session=invalid" },
+  }), env);
+  assert.equal(invalid.status, 401);
+  assert.match(invalid.headers.get("set-cookie"), /Max-Age=0/u);
+});
+
 test("emits the files required by Sites packaging", async () => {
   await access(new URL("../dist/client/index.html", import.meta.url));
   await access(new URL("../dist/server/index.js", import.meta.url));

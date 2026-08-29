@@ -327,6 +327,30 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 
 返回数据概览（按市场、Provider、cadence 分类的数据集数量）。
 
+## Public Account session bridge
+
+`tradingdatas.com` 的静态资源 Worker 包含一个同站 Account 代理合同。该合同是浏览器
+credential-containment bridge，不是邮箱身份库，也不改变 Agent 继续使用 bearer token
+调用固定数据 API 的方式。生产环境只有在 Cloudflare secret `SESSION_ENCRYPTION_KEY` 和
+非密钥 binding `ACCOUNT_API_BASE` 均存在时才启用；否则所有 `/api/account/*` 请求返回
+`503 {"error":"identity_gateway_unavailable"}`，不得推断为生产已启用。
+
+- `POST /api/account/session`：同源请求提交 `{"access_key":"..."}`，通过
+  `GET /portal/api/me` 验证后返回相同 account projection，并设置 8 小时、AES-GCM 封装的
+  `HttpOnly; Secure; SameSite=Strict; Path=/api/account` cookie。原始 key 不写入响应、URL、
+  analytics 或持久化浏览器存储。
+- `GET /api/account/me`、`GET /api/account/usage?days=N`、`GET /api/account/keys`：从
+  同站 cookie 恢复上游 credential，并分别代理到当前 Customer Portal API。
+- `POST /api/account/keys`、`PATCH /api/account/keys/{key_id}`：要求同源 `Origin`，保持
+  原有同租户、非管理员 scope、一次显示和不可停用当前 key 的后端约束。
+- `DELETE /api/account/session`：要求同源 `Origin`，清除当前浏览器 cookie。当前桥接为
+  短期无状态会话；完整的跨设备 session list、单会话服务端 revoke 与审计仍属于后续
+  identity store 合同，不能由清 Cookie 冒充。
+
+浏览器兼容路径只在桥接未配置时使用，并将访问 key 保存在当前标签页的
+`sessionStorage`；旧 `localStorage` 值会迁移后立即删除。这个兼容路径不等于
+passwordless identity，也不提供跨设备恢复。
+
 ## Customer Portal API
 
 客户自助端点：任意有效 token 认证后仅返回**当前租户**的套餐、限额、用量与
