@@ -843,28 +843,32 @@ def test_open_writable_sqlite_authority_fails_closed_when_wal_is_refused(
 ) -> None:
     db_path = tmp_path / "refuse-wal.sqlite"
     _file_db(db_path)
-    real_connect = sqlite3.connect
 
-    def connect_without_wal(*args: object, **kwargs: object):
-        conn = real_connect(*args, **kwargs)
-        original_execute = conn.execute
+    class _RefusedCursor:
+        def fetchone(self) -> tuple[str]:
+            return ("delete",)
 
-        def refuse_wal(sql: object, *query_args: object, **query_kwargs: object):
-            if str(sql).strip().upper() == "PRAGMA JOURNAL_MODE=WAL":
-                class _Refused:
-                    def fetchone(self) -> tuple[str]:
-                        return ("delete",)
+    class _RefusedConnection:
+        closed = False
 
-                return _Refused()
-            return original_execute(sql, *query_args, **query_kwargs)
+        def execute(self, sql: object, *args: object, **kwargs: object) -> _RefusedCursor:
+            if str(sql).strip().upper() != "PRAGMA JOURNAL_MODE=WAL":
+                raise AssertionError(sql)
+            return _RefusedCursor()
 
-        conn.execute = refuse_wal  # type: ignore[method-assign]
-        return conn
+        def close(self) -> None:
+            self.closed = True
 
-    monkeypatch.setattr(receipt_module.sqlite3, "connect", connect_without_wal)
+    refused = _RefusedConnection()
+    monkeypatch.setattr(
+        receipt_module.sqlite3,
+        "connect",
+        lambda *args, **kwargs: refused,
+    )
 
     with pytest.raises(RuntimeError, match="did not enter WAL"):
         receipt_module.open_writable_sqlite_authority(db_path)
+    assert refused.closed is True
 
 
 def test_terminal_receipt_writable_open_requests_wal(

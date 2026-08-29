@@ -188,8 +188,12 @@ def test_writable_ingest_requests_wal_and_production_reader_sees_committed_rows(
         assert writer.execute("PRAGMA journal_mode").fetchone() == ("wal",)
         writer.execute("PRAGMA wal_autocheckpoint=0")
         writer.execute("BEGIN IMMEDIATE")
+        original_state = writer.execute(
+            "SELECT quality_state FROM provider_dataset_rows"
+        ).fetchone()
+        assert original_state == ("valid",)
         changed = writer.execute(
-            "UPDATE provider_dataset_rows SET quality_state = 'ok'"
+            "UPDATE provider_dataset_rows SET quality_state = 'degraded'"
         ).rowcount
         assert changed == 1
         writer.commit()
@@ -221,8 +225,8 @@ def test_writable_ingest_requests_wal_and_production_reader_sees_committed_rows(
                 and not str(row[1]).startswith("sqlite_")
             }
 
-        assert stale_state == ("degraded",)
-        assert live_state == ("ok",)
+        assert stale_state == ("valid",)
+        assert live_state == ("degraded",)
         assert live_count == (1,)
         assert authority_tables == {"market_ingest_runs", "provider_dataset_rows"}
 
@@ -231,7 +235,7 @@ def test_writable_ingest_requests_wal_and_production_reader_sees_committed_rows(
             concurrent_state = snapshot.execute(
                 "SELECT quality_state FROM provider_dataset_rows"
             ).fetchone()
-        assert concurrent_state == ("ok",)
+        assert concurrent_state == ("degraded",)
         writer.rollback()
     finally:
         writer.close()
