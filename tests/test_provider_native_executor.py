@@ -267,7 +267,14 @@ def test_resumable_fanout_batch_identity_is_deterministic_and_legacy_is_unchange
     )
 
 
-def _history_for_batch(batch: FanoutBatch, *, status: str, dataset_id: str = "cn.synthetic", config_hash: str = "c" * 64):
+def _history_for_batch(
+    batch: FanoutBatch,
+    *,
+    status: str,
+    dataset_id: str = "cn.synthetic",
+    config_hash: str = "c" * 64,
+    errors: tuple[str, ...] = (),
+):
     return ValidatedReceiptHistoryEntry(
         dataset_id=dataset_id,
         provider="tushare",
@@ -280,6 +287,7 @@ def _history_for_batch(batch: FanoutBatch, *, status: str, dataset_id: str = "cn
         request_variant={"exchange": "SSE", "limit": 100},
         execution_id=f"execution-{batch.batch_index}",
         config_hash=config_hash,
+        errors=errors,
         cursor_contract_version=2,
         frozen_universe_sha256=batch.frozen_universe_sha256,
         batch_index=batch.batch_index,
@@ -331,6 +339,72 @@ def test_resumable_selection_skips_completed_and_retries_only_failed_batch() -> 
         batches, dataset=dataset, binding=binding,
         request_window={"trade_date": "20260813"}, histories=histories,
     )
+
+
+def test_resumable_selection_skips_resource_budget_nail_and_continues_pending() -> None:
+    """A doomed afternoon page must not consume every later retry.
+
+    rt_min_daily 08-19 failed batch 4 with resource_budget; retry-priority then
+    selected only that batch, so pending codes never moved. Transient failures
+    still retry first.
+    """
+
+    batches = _stable_fanout_batches(
+        ("000001.SZ", "000002.SZ", "600000.SH"),
+        parameter="ts_code",
+        batch_size=1,
+        resumable=True,
+    )
+    policy = ResumableFanoutPolicy(cursor_contract_version=2, max_batches_per_run=1)
+    binding = replace(_binding(fanout=FanoutPolicy(
+        strategy="literal_values", parameter="ts_code",
+        values=("000001.SZ", "000002.SZ", "600000.SH"), batch_size=1,
+    )), resumable_fanout=policy, request_variants=(MappingProxyType({"exchange": "SSE", "limit": 100}),))
+    dataset = _synthetic_dataset(binding)
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    budget_histories = (
+        _history_for_batch(batches[0], status="success", config_hash=config_hash),
+        _history_for_batch(
+            batches[1],
+            status="failed",
+            config_hash=config_hash,
+            errors=("resource_budget",),
+        ),
+    )
+    selected = _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260813"}, histories=budget_histories,
+    )
+    assert selected == (batches[2],)
+
+    transient_histories = (
+        _history_for_batch(batches[0], status="success", config_hash=config_hash),
+        _history_for_batch(
+            batches[1],
+            status="failed",
+            config_hash=config_hash,
+            errors=("rate_limited",),
+        ),
+    )
+    assert _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260813"}, histories=transient_histories,
+    ) == (batches[1],)
+
+    only_budget = (
+        _history_for_batch(batches[0], status="success", config_hash=config_hash),
+        _history_for_batch(
+            batches[1],
+            status="failed",
+            config_hash=config_hash,
+            errors=("resource_budget",),
+        ),
+        _history_for_batch(batches[2], status="success", config_hash=config_hash),
+    )
+    assert _select_resumable_fanout_batches(
+        batches, dataset=dataset, binding=binding,
+        request_window={"trade_date": "20260813"}, histories=only_budget,
+    ) == ()
 
 
 @pytest.mark.parametrize(
@@ -502,6 +576,111 @@ def test_fanout_row_budget_is_applied_per_provider_call() -> None:
     assert execution.outcome.state == "success"
     assert len(execution.outcome.rows) == 4
     assert len(execution.calls) == 2
+
+
+def _session_minute_rows(code_count: int, bars: int) -> tuple[dict[str, object], ...]:
+    rows: list[dict[str, object]] = []
+    for index in range(code_count):
+        ts_code = f"00000{index}.SZ"
+        for bar in range(bars):
+            rows.append(
+                {
+                    "ts_code": ts_code,
+                    "freq": "1MIN",
+                    "time": f"2026-08-19 15:00:{bar:02d}",
+                    "open": 10.0,
+                    "close": 10.0,
+                    "high": 10.0,
+                    "low": 10.0,
+                    "vol": 1.0,
+                    "amount": 1.0,
+                }
+            )
+    return tuple(rows)
+
+
+def test_afternoon_fanout_page_fits_five_codes_and_trips_ten() -> None:
+    """Late-session rt_min_daily pages grow to ~241 bars per code.
+
+    Five codes stay inside max_rows_per_attempt=1500; ten codes overflow
+    that page cap and fail closed as resource_budget instead of nailing
+    the rest of the universe. The execute path is checked with a scaled
+    page that preserves the same 5-fits / 10-overflow ratio.
+    """
+
+    session_bars = 241
+    max_rows = 1500
+    assert 5 * session_bars <= max_rows < 10 * session_bars
+
+    scaled_bars = 3
+    scaled_max_rows = 16
+    assert 5 * scaled_bars <= scaled_max_rows < 10 * scaled_bars
+
+    five_codes = tuple(f"00000{index}.SZ" for index in range(5))
+    binding = _binding(
+        fanout=FanoutPolicy(
+            strategy="dataset_field",
+            parameter="ts_code",
+            source_dataset_id="cn.equity.security_master",
+            source_field="ts_code",
+            batch_size=5,
+        ),
+        max_rows=scaled_max_rows,
+        max_batch_bytes=67_108_864,
+    )
+    _, params = _resolved_request(
+        binding,
+        {"trade_date": "20260819"},
+        request_variant={"exchange": "SZSE", "limit": 100},
+    )
+    fitted = _execute_provider_requests(
+        collector=_SequenceCollector(
+            [_success(*_session_minute_rows(5, scaled_bars))]
+        ),
+        binding=binding,
+        base_params=params,
+        request_variant={"exchange": "SZSE", "limit": 100},
+        fanout_batches=_stable_fanout_batches(
+            five_codes, parameter="ts_code", batch_size=5
+        ),
+        requested_fields=None,
+        scan_budget=SensitiveScanBudget(max_depth=20, max_nodes=2_000_000),
+        retry=RetrySettings(),
+        retry_empty=False,
+        sleep=lambda _seconds: None,
+    )
+    assert fitted.outcome.state == "success"
+    assert len(fitted.outcome.rows) == 5 * scaled_bars
+
+    ten_codes = tuple(f"00000{index}.SZ" for index in range(10))
+    ten_binding = replace(
+        binding,
+        fanout=FanoutPolicy(
+            strategy="dataset_field",
+            parameter="ts_code",
+            source_dataset_id="cn.equity.security_master",
+            source_field="ts_code",
+            batch_size=10,
+        ),
+    )
+    overflowed = _execute_provider_requests(
+        collector=_SequenceCollector(
+            [_success(*_session_minute_rows(10, scaled_bars))]
+        ),
+        binding=ten_binding,
+        base_params=params,
+        request_variant={"exchange": "SZSE", "limit": 100},
+        fanout_batches=_stable_fanout_batches(
+            ten_codes, parameter="ts_code", batch_size=10
+        ),
+        requested_fields=None,
+        scan_budget=SensitiveScanBudget(max_depth=20, max_nodes=2_000_000),
+        retry=RetrySettings(),
+        retry_empty=False,
+        sleep=lambda _seconds: None,
+    )
+    assert overflowed.outcome.state == "failed"
+    assert overflowed.outcome.error_code == "resource_budget"
 
 
 def test_offset_pagination_stops_on_short_page_and_preserves_rows() -> None:

@@ -95,11 +95,10 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     assert isinstance(active_evidence, dict)
     # The generic synthetic fixture only evidences the ingest-ready cohort;
     # active entries whose interfaces are not ingest-ready in the checked-in
-    # observations (blocked params, unresolved enums, dataset-local pauses,
-    # session-minute fanout) never appear in its candidate projection.  The gap
-    # is 18 after rt_min_daily was correctly returned to the paused contract;
-    # keep the fixture boundary explicit.
-    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 18
+    # observations (blocked params, unresolved enums, session-minute fanout)
+    # never appear in its candidate projection.  The gap is 19 once
+    # rt_min_daily is restored to active_evidence as a seed-dependent.
+    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 19
     assert activation_projection["candidate_count"] == len(active_evidence) - (
         _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS
     )
@@ -272,7 +271,7 @@ def test_fail_closed_state_classes_map_except_explicit_wave4_evidence() -> None:
         "credential_rejected": "unknown",
         "unsupported": "excluded",
     }
-    explicitly_empty_active = {"stk_alert", "stk_high_shock"}
+    explicitly_empty_active = {"stk_alert", "stk_high_shock", "rt_min_daily"}
     for classification, entitlement in expected.items():
         for api_name in classifications[classification]:
             binding = bindings[api_name]["provider_bindings"][0]  # type: ignore[index]

@@ -91,6 +91,12 @@ _PROVIDER_ERROR_CODES = frozenset(
 _RETRYABLE_PROVIDER_ERRORS = frozenset(
     {"rate_limited", "provider_error", "transport_error"}
 )
+# Resumable fanout otherwise retries every failed batch first. A
+# resource_budget (or other deterministic) failure on one afternoon page
+# would otherwise nail the rest of the universe for that window.
+_NON_RETRYABLE_FANOUT_ERRORS = frozenset(
+    {"config_error", "permission_denied", "resource_budget", "validation_failed"}
+)
 
 
 @dataclass(frozen=True)
@@ -639,9 +645,17 @@ def _resumable_batch_state(
                 item.receipt_id,
             ),
         )
-        states.append("failed" if latest.status == "failed" else latest.status)
+        if latest.status != "failed":
+            states.append(latest.status)
+            continue
+        if frozenset(latest.errors) & _NON_RETRYABLE_FANOUT_ERRORS:
+            states.append("blocked")
+            continue
+        states.append("failed")
     if any(state == "failed" for state in states):
         return "failed"
+    if any(state == "blocked" for state in states):
+        return "blocked"
     if all(state in {"success", "empty"} for state in states):
         return "complete"
     return "pending"
@@ -655,7 +669,11 @@ def _select_resumable_fanout_batches(
     request_window: Mapping[str, str],
     histories: Sequence[ValidatedReceiptHistoryEntry],
 ) -> tuple[FanoutBatch, ...]:
-    """Select only failed batches or the next pending batches, deterministically."""
+    """Select retryable failed batches or the next pending batches.
+
+    Deterministic resource failures are skipped so they cannot nail the
+    remainder of a resumable fanout for the rest of the window.
+    """
 
     policy = binding.resumable_fanout
     if policy is None:
