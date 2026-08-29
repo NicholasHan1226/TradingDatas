@@ -3,6 +3,9 @@
   "name": "tradingdatas",
   "main": "./dist/server/index.js",
   "compatibility_date": "2026-08-29",
+  "vars": {
+    "ACCOUNT_API_BASE": "https://td-admin-api.tradingagent.cc"
+  },
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",

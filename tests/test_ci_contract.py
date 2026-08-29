@@ -64,7 +64,8 @@ def test_automerge_requires_pm_merge_and_exact_head_ci() -> None:
     assert "--auto can return before GitHub actually merges" in workflow
     assert "MERGED_AT=\"$(jq -r '.merged_at // empty' <<<\"$PR_AFTER\")\"" in workflow
     assert "actions/workflows/deploy.yml/dispatches" in workflow
-    assert "grep -q '^static/'" in workflow
+    assert "grep -Eq '^(static/|public-web/)'" in workflow
+    assert "plus Cloudflare deploy when static or public-web changed." in workflow
     assert "GZ/immutable runtime is not auto-deployed." in workflow
 
 
@@ -92,3 +93,13 @@ def test_static_deploy_has_a_published_route_readback() -> None:
     assert "Verify checkout identity" in workflow
     assert "Read back published static route" in workflow
     assert "https://tradingdatas-admin.pages.dev/" in workflow
+    assert "workingDirectory: public-web" in workflow
+    assert "SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}" in workflow
+    assert "secrets: |\n            SESSION_ENCRYPTION_KEY" in workflow
+
+
+def test_public_worker_commits_only_the_non_secret_account_upstream() -> None:
+    config = _read("public-web/wrangler.jsonc")
+
+    assert '"ACCOUNT_API_BASE": "https://td-admin-api.tradingagent.cc"' in config
+    assert "SESSION_ENCRYPTION_KEY" not in config

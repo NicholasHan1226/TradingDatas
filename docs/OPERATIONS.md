@@ -498,15 +498,18 @@ snapshot（如 security master）及有界 calendar 可按 registry 默认排序
 
 ## 公开站 Account 同站会话桥接
 
-`public-web/worker/index.js` 包含 `/api/account/*` 同站代理，但仓库默认不配置其生产
-secret/binding。仅代码合入或 Worker 静态页发布不能声称会话桥接已启用。启用前必须：
+`public-web/worker/index.js` 包含 `/api/account/*` 同站代理。仓库只提交非密钥上游
+binding；加密密钥必须通过 GitHub Actions secret 注入 Cloudflare Worker。仅代码合入或
+Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 
 1. 确认目标 Worker 是 `tradingdatas`、目标 route 是 `tradingdatas.com`，且现有静态资源
    回退可回滚；
-2. 将高熵 `SESSION_ENCRYPTION_KEY` 作为 Cloudflare secret 写入，不能进入 shell history、
-   仓库、Actions 输出、Worker vars 或运行报告；
-3. 将 `ACCOUNT_API_BASE=https://td-admin-api.tradingagent.cc` 作为非密钥 Worker binding
-   配置，并确认该 origin 的无凭据 Portal readback 仍为 `401`；
+2. 将高熵 `SESSION_ENCRYPTION_KEY` 保存为 GitHub Actions repository secret；发布工作流
+   通过 Wrangler Action 的 `secrets` 输入将其写入同名 Cloudflare Worker secret，不能进入
+   shell history、仓库、Actions 输出、Worker vars 或运行报告；
+3. 确认 `public-web/wrangler.jsonc` 中的非密钥 Worker binding 为
+   `ACCOUNT_API_BASE=https://td-admin-api.tradingagent.cc`，并确认该 origin 的无凭据 Portal
+   readback 仍为 `401`；
 4. 发布 immutable main SHA，依次验证登录 exchange、`/api/account/me`、usage、key list、
    create/disable 的后端权限语义，以及 `DELETE /api/account/session` 后再次读取为 `401`；
 5. 在浏览器确认响应 cookie 为 `HttpOnly; Secure; SameSite=Strict; Path=/api/account`，
