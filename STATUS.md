@@ -181,8 +181,12 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 - **A 股 / Tushare 数据面：** 有效 immutable release 为 `cf988f9`（2026-08-26 23:07 CST
   由 Controller 切换，回滚点 `21d0318`）；18082 API service active、通用 collector timer
-  enabled。income 族与 pledge_stat 七源请求形态正确但 cadence=on_demand 未排期，
-  全宇宙单轮覆盖受上游持续突发停滞限制（见 #350，cb_basic 同因已定案）。
+  enabled。#350 调度合同已在源码完成、尚未 exact-main 发布：`cb_basic` 改为
+  `daily_reference`（每轮 1 个空参快照）；income/balancesheet/cashflow/express/
+  fina_indicator/fina_audit/pledge_stat 与 `cb_share` 离开 `on_demand`，改为
+  `event`（与 `stk_holdernumber`/`disclosure_date` 的 ann_date 窗一致）并复用
+  `cyq_chips` 的 `resumable_fanout.max_batches_per_run=1`。`top10_floatholders`
+  仍 parked。生产触发/验收是发布后的运维步骤，本状态不声称已排期出数。
   `cn.news.flash` 已按预期墙钟自愈（查询面 success、零未来行），两 news 数据集的
   firecrawl 间歇失败等待 #354 新诊断字段回报类别分布。快照型数据集查询不带 as_of。
 - **Crypto 隔离数据面：** immutable `current` 为 `300182f`；18083 API service 为
@@ -210,9 +214,9 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 下一步
 
-1. #350 排期决策：为 income 族/pledge_stat/top10_floatholders/cb_share/cb_basic
-   选定 cadence 与 resumable_fanout 策略（全宇宙覆盖需跨周期收敛；cb_basic 停更
-   已定案为调度缺失）；干净整轮完成后补查询面回读验收。
+1. #350 调度合同已在源码完成（PR 待合入）：exact-main 发布后做生产触发与
+   catalog/query 回读。`top10_floatholders` 仍 parked（无 ann_date 窗，不是本批
+   同一 cadence 决策）。全宇宙覆盖靠 resumable_fanout 跨周期收敛，不是单轮扫完。
 2. 依 #354 新诊断字段观察 firecrawl 失败类别分布（timeout / refused / other），
    决定 timeout_ms 上调或换源；顺手改进 validation_failed 的空
    `validation_reasons` 缺口。

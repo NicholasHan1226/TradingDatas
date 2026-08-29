@@ -1726,6 +1726,22 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         "cn.dataset.disclosure_date",
         "cn.dataset.share_float",
     } <= planned
+    # #350: cb_basic is daily_reference (1 empty-param snapshot); the report
+    # family plus cb_share leave on_demand via event so the timer plans them.
+    assert "cn.dataset.cb_basic" in planned
+    assert skipped.get("cn.dataset.cb_basic") != "on_demand"
+    report_family = {
+        "cn.dataset.balancesheet",
+        "cn.dataset.cashflow",
+        "cn.dataset.express",
+        "cn.dataset.fina_audit",
+        "cn.dataset.fina_indicator",
+        "cn.dataset.income",
+        "cn.dataset.pledge_stat",
+        "cn.dataset.cb_share",
+    }
+    assert report_family <= planned
+    assert not any(skipped.get(dataset_id) == "on_demand" for dataset_id in report_family)
 
 
 def test_recent_receipt_with_replaced_contract_is_replanned(
