@@ -18,13 +18,13 @@ test("serves existing static assets without a fallback", async () => {
   assert.deepEqual(calls, ["/assets/app.js"]);
 });
 
-test("falls back to index.html for an unknown app route", async () => {
-  const calls = [];
-  const response = await worker.fetch(
-    new Request("https://example.test/flow/step-two?source=share", {
-      headers: { accept: "text/html" },
-    }),
-    {
+test("falls back to index.html for extensionless GET and HEAD app routes without an Accept header", async () => {
+  for (const request of [
+    new Request("https://example.test/account/"),
+    new Request("https://example.test/flow/step-two?source=share", { method: "HEAD" }),
+  ]) {
+    const calls = [];
+    const response = await worker.fetch(request, {
       ASSETS: {
         fetch: async (request) => {
           const url = new URL(request.url);
@@ -34,16 +34,19 @@ test("falls back to index.html for an unknown app route", async () => {
           });
         },
       },
-    },
-  );
+    });
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(calls, ["/flow/step-two?source=share", "/index.html"]);
+    assert.equal(response.status, 200);
+    assert.equal(calls.at(-1), "/index.html");
+  }
 });
 
-test("does not turn missing API or write requests into the app shell", async () => {
+test("keeps API, asset, extensionful, and write-request 404s fail-closed", async () => {
   for (const request of [
     new Request("https://example.test/api/missing", { headers: { accept: "application/json" } }),
+    new Request("https://example.test/assets/missing"),
+    new Request("https://example.test/assets/missing.js", { headers: { accept: "text/html" } }),
+    new Request("https://example.test/missing.json", { headers: { accept: "text/html" } }),
     new Request("https://example.test/flow", { method: "POST", headers: { accept: "text/html" } }),
   ]) {
     let calls = 0;

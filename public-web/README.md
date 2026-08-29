@@ -53,6 +53,10 @@ mark or data-material artwork with CSS, inline SVG, or placeholder elements.
 The public website is deployed to the existing Cloudflare static-assets Worker
 named `tradingdatas`. `public-web/wrangler.jsonc` binds the committed
 `dist/client` build to the small SPA fallback Worker in `dist/server/index.js`.
+For direct navigation, that Worker serves the app shell for extensionless
+`GET`/`HEAD` routes outside `/api/` and `/assets/`, even when a generic client
+does not send `Accept: text/html`. Missing API routes, assets, extensionful
+files, and non-navigation methods remain ordinary fail-closed `404`s.
 
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,
