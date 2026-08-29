@@ -136,12 +136,12 @@ jobs:
                   -f ref=main \
                   -f 'inputs[suite]=pr' \
                   -f "inputs[expected_sha]=$MERGE_SHA"
-                if grep -q '^static/' <<<"$CHANGED_FILES"; then
+                if grep -Eq '^(static/|public-web/)' <<<"$CHANGED_FILES"; then
                   gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/dispatches" \
                     -f ref=main \
                     -f "inputs[expected_sha]=$MERGE_SHA"
                 fi
-                echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}, plus static deploy when applicable. GZ/immutable runtime is not auto-deployed."
+                echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}, plus Cloudflare deploy when static or public-web changed. GZ/immutable runtime is not auto-deployed."
                 exit 0
               fi
               sleep 3

@@ -72,7 +72,12 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config public-web/wrangler.jsonc
+          workingDirectory: public-web
+          command: deploy --config wrangler.jsonc
+          secrets: |
+            SESSION_ENCRYPTION_KEY
+        env:
+          SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
 
       - name: Read back public routes and exact asset
         run: |
