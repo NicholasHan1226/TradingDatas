@@ -1,6 +1,7 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-26 23:5x CST（第十一轮记录；cf988f9 已于 23:07 CST 切换）。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-30 01:45 CST（公开站账户会话补充；数据运行面仍沿用 2026-08-26
+第十一轮记录）。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -9,7 +10,8 @@
 
 | 层 | 本轮事实 | 声明边界 |
 |---|---|---|
-| GitHub `main` | `2d88158`（含 #354 诊断修复与 public-web 数据源面，Controller 持续推进中） | 已验收源码；文档合并不等于发布 |
+| GitHub `main` | `4869268`（PR #380/#381；公开站账户同站会话与 Cloudflare 发布门禁修复） | exact-main CI `33266061920` 四分片通过；不替代数据运行面 release 验证 |
+| 公开站 Worker | `4869268`，Cloudflare run `33266061919` | `/`、`/login/`、`/account/`、`/data/`、`/research/`、`/pricing/` 均 200 且精确资源回读；未登录账户 API 401、跨源换取会话 403；真实客户 key 的成功换取本轮未验证 |
 | 本地 canonical | `cbde095b4080264e71e037ff95d60f024c2a7d4a`，behind 更多 | 已保留的非权威分叉；owner 交接前不 reset/清理；其 rt-min fanout 子集保留逻辑已被 main 等价覆盖 |
 | A 股有效 release | `cf988f93e6dbe379f82fd0a530e081af6aab8965`（回滚点 `21d03183355d7de6578ab5761d83aa91a1925c1f`） | immutable 运行源码，2026-08-26 23:07 CST 由 Controller 切换；verify true + catalog 200 复核通过 |
 | Crypto 有效 release | `f5388759cec0fb3f8f78af97c6f900587eb74b62`（回滚点 `7d04a1f6fe273d81e7ea20bef29c7c7701091df2`） | 隔离 immutable 运行源码，2026-08-23 15:26 CST 切换 |
