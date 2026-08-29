@@ -558,7 +558,7 @@ export function CopyButton({ text, label = '复制' }: { text: string; label?: s
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text)
-      const workspace = (document.querySelector('[data-workspace]')?.getAttribute('data-workspace') ?? 'customer') as ConsoleWorkspace
+      const workspace = (document.querySelector('[data-workspace]')?.getAttribute('data-workspace') ?? 'admin') as ConsoleWorkspace
       recordConsoleEvent('copy_succeeded', workspace)
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)

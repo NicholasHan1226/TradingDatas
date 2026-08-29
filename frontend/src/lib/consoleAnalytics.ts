@@ -1,10 +1,9 @@
 import { useSyncExternalStore } from 'react'
 
-export type ConsoleWorkspace = 'admin' | 'customer'
+export type ConsoleWorkspace = 'admin'
 export type ConsoleEvent =
   | 'login_success'
   | 'workspace_view'
-  | 'workspace_switch'
   | 'copy_succeeded'
   | 'credential_created'
   | 'credential_updated'
@@ -42,7 +41,6 @@ function emptySnapshot(): ConsoleAnalyticsSnapshot {
     total_events: 0,
     workspaces: {
       admin: { ...EMPTY_WORKSPACE },
-      customer: { ...EMPTY_WORKSPACE },
     },
     events: {},
   }

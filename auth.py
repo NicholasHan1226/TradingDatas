@@ -1100,18 +1100,47 @@ def get_daily_usage() -> dict[str, dict[str, Any]]:
 
 
 def get_hourly_usage() -> dict[str, dict[str, Any]]:
-    """Return current hourly rate-limit usage for all tenants."""
+    """Return current effective rate-window usage for all tenants.
+
+    The public admin response keeps its legacy ``hourly`` key for compatibility,
+    while every row carries its actual ``window_seconds``. Commercial plans use
+    the minute bucket; legacy plans continue to use the hourly bucket.
+    """
     now = _now()
+    bindings = list(_load_token_hashes().values())
+    hourly_limits: dict[str, list[int]] = {}
+    minute_limits: dict[str, list[int]] = {}
+    for binding in bindings:
+        tenant_id = str(binding.get("tenant_id") or "").strip()
+        tier = str(binding.get("tier") or "free").lower()
+        if not tenant_id:
+            continue
+        hourly_limit = RATE_LIMITS.get(tier, RATE_LIMITS["free"])
+        minute_limit = MINUTE_RATE_LIMITS.get(tier)
+        if hourly_limit is not None:
+            hourly_limits.setdefault(tenant_id, []).append(hourly_limit)
+        if minute_limit is not None:
+            minute_limits.setdefault(tenant_id, []).append(minute_limit)
+
     with _STATE_LOCK:
         result: dict[str, dict[str, Any]] = {}
         for tenant_id, bucket in _REQUEST_LOG.items():
             count = sum(1 for t in bucket if now - t <= RATE_WINDOW_SECONDS)
             if count > 0:
-                tier_limit = RATE_LIMITS.get("free", 60)
+                limits = hourly_limits.get(tenant_id, [])
                 result[tenant_id] = {
                     "count_in_window": count,
                     "window_seconds": RATE_WINDOW_SECONDS,
-                    "tier_limit": tier_limit,
+                    "tier_limit": min(limits) if limits else RATE_LIMITS["free"],
+                }
+        for tenant_id, bucket in _MINUTE_REQUEST_LOG.items():
+            count = sum(1 for t in bucket if now - t <= MINUTE_RATE_WINDOW_SECONDS)
+            if count > 0:
+                limits = minute_limits.get(tenant_id, [])
+                result[tenant_id] = {
+                    "count_in_window": count,
+                    "window_seconds": MINUTE_RATE_WINDOW_SECONDS,
+                    "tier_limit": min(limits) if limits else None,
                 }
         return result
 
@@ -1595,7 +1624,7 @@ def cache_stats() -> dict[str, Any]:
         return {
             "dedup_entries": len(_DEDUP_CACHE),
             "dedup_bytes": _DEDUP_CACHE_BYTES,
-            "request_log_tenants": len(_REQUEST_LOG),
+            "request_log_tenants": len(set(_REQUEST_LOG) | set(_MINUTE_REQUEST_LOG)),
             "active_request_tenants": len(_ACTIVE_REQUESTS),
             "active_requests": sum(_ACTIVE_REQUESTS.values()),
             "concurrency_limits": dict(CONCURRENCY_LIMITS),

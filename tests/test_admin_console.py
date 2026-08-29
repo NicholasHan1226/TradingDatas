@@ -178,8 +178,44 @@ def test_get_daily_usage_returns_empty_initially(monkeypatch: pytest.MonkeyPatch
 def test_get_hourly_usage_returns_empty_initially(monkeypatch: pytest.MonkeyPatch) -> None:
     auth_mod = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT)
     auth_mod._REQUEST_LOG.clear()
+    auth_mod._MINUTE_REQUEST_LOG.clear()
     usage = auth_mod.get_hourly_usage()
     assert isinstance(usage, dict)
+
+
+def test_get_hourly_usage_projects_effective_minute_and_hour_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_mod = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT)
+    auth_mod._REQUEST_LOG.clear()
+    auth_mod._MINUTE_REQUEST_LOG.clear()
+    auth_mod._TOKEN_HASHES = {
+        "a" * 64: {
+            "tenant_id": "commercial-tenant",
+            "tier": "standard",
+            "scopes": ["read"],
+        },
+        "b" * 64: {
+            "tenant_id": "legacy-tenant",
+            "tier": "research",
+            "scopes": ["read"],
+        },
+    }
+
+    auth_mod.enforce_rate_limit("commercial-tenant", "standard")
+    auth_mod.enforce_rate_limit("legacy-tenant", "research")
+
+    usage = auth_mod.get_hourly_usage()
+    assert usage["commercial-tenant"] == {
+        "count_in_window": 1,
+        "window_seconds": 60,
+        "tier_limit": 600,
+    }
+    assert usage["legacy-tenant"] == {
+        "count_in_window": 1,
+        "window_seconds": 3600,
+        "tier_limit": 300,
+    }
 
 
 def test_admin_scope_in_scope_endpoints() -> None:
