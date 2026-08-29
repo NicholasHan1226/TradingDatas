@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { ApiClient, ApiError, clearSession, loadSession, saveSession } from './lib/api'
-import type { PortalMeResponse, Role } from './lib/types'
+import type { PortalMeResponse } from './lib/types'
 import { LoadingPanel, ToastProvider } from './components/ui'
 import Login from './views/Login'
 import { recordConsoleEvent } from './lib/consoleAnalytics'
@@ -16,14 +16,13 @@ const AdminApp = lazy(() => import('./views/admin/AdminApp'))
 
 interface Session {
   client: ApiClient
-  role: Role
   tenantId: string
   tier: string
 }
 
-function resolveRole(scopes: string[], tier: string): Role {
+function hasAdminAccess(scopes: string[], tier: string): boolean {
   // Mirrors the backend admin gate: "admin" scope or internal tier.
-  return scopes.includes('admin') || tier === 'internal' ? 'admin' : 'customer'
+  return scopes.includes('admin') || tier === 'internal'
 }
 
 export default function App() {
@@ -35,15 +34,13 @@ export default function App() {
     const probe = new ApiClient(base, token)
     try {
       const me = await probe.get<PortalMeResponse>('/portal/api/me')
-      const role = resolveRole(me.portal.scopes, me.portal.tier)
-      if (role !== 'admin') {
+      if (!hasAdminAccess(me.portal.scopes, me.portal.tier)) {
         clearSession()
         return '用户账户已合并到 tradingdatas.com/account，请从官网 Account 连接。'
       }
       const nextRoute = resolveWorkspaceRoute()
       setSession({
         client: probe,
-        role: 'admin',
         tenantId: me.portal.tenant_id,
         tier: me.portal.tier,
       })
@@ -127,7 +124,6 @@ export default function App() {
           onSectionChange={(section) => navigate({ workspace: 'admin', section })}
           onLogout={handleLogout}
           onViewCustomer={() => {
-            recordConsoleEvent('workspace_switch', 'admin')
             window.location.assign('https://tradingdatas.com/account')
           }}
         />

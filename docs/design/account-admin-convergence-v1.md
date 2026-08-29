@@ -38,7 +38,7 @@ Before email or passwordless sign-in may replace the browser access-key entry, t
 
 1. Customers and access — create, suspend, expire, and scope customer credentials.
 2. Runtime exceptions — only failed, degraded, stale, or receipt-integrity cases that require action.
-3. Usage — aggregate request trends and limit pressure; not a customer analytics product.
+3. Usage — aggregate request trends and limit pressure; not a customer analytics product. The compatibility field `hourly` must be rendered from each row's actual `window_seconds`, so commercial 60-second limits and legacy 3600-second limits are never mislabeled.
 4. Data verification — authenticated catalog/query readback for operator confirmation.
 
 The former full `Data pipeline` table is retired from primary navigation. Its data remains available to diagnostics, while the public Data and dataset-product pages carry readable collection status and history.
@@ -57,7 +57,7 @@ The existing `tradingdatas.com/account` surface is the only customer workspace, 
 
 The React application under `static/app/` is administrator-only. Customer-scoped tokens are rejected there and directed to the existing public Account page; the old separate customer workspace is retired rather than redesigned.
 
-Administrator preview shows only the administrator's own portal projection. It is not customer impersonation and cannot bypass server-side authorization.
+The administrator console links out to the public Account instead of rendering an embedded customer preview. This keeps customer session state, customer navigation, and administrator authority visibly separate.
 
 ## Acceptance
 

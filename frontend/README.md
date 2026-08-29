@@ -1,8 +1,8 @@
 # TradingDatas console frontend
 
-React + TypeScript frontend for the TradingDatas login, administrator console, and customer data portal. Production assets are built into `../static/app/` and are committed with the source change.
+React + TypeScript frontend for the restricted TradingDatas administrator console. Production assets are built into `../static/app/` and are committed with the source change. The customer workspace lives only at `tradingdatas.com/account`; this application rejects customer-scoped credentials instead of rendering a second portal.
 
-The current source tree is the authenticated console. The public Data / Cookbook / Pricing / Docs / Account candidate now lives independently in `../public-web/` and is governed by `../docs/design/public-data-product-system-v1.md`; it must not be improvised inside the operator console or presented as deployed. Public content may reuse tokens and primitives, but customer acquisition, dataset discovery, educational Cookbook entries, Agent/MCP connection, checkout, and authenticated operations remain distinct task surfaces.
+The current source tree is the authenticated operator console. The public Data / Research / Pricing / Account product lives independently in `../public-web/` and is governed by `../docs/design/public-data-product-system-v1.md`; it must not be improvised inside the operator console. Public content may reuse tokens and primitives, but customer acquisition, dataset discovery, research guidance, Agent/MCP connection, checkout, and customer account operations remain distinct task surfaces.
 
 Frontend code must preserve three authorities:
 
@@ -25,7 +25,7 @@ The application defaults to the official API endpoint. For local UI verification
 npm run mock-api
 ```
 
-The mock listens on `127.0.0.1:4174` and contains only synthetic records. Use `ui-test-token` for the administrator flow or `ui-customer-token` for the customer-only flow. It exists for browser interaction tests and must not be used as production data evidence.
+The mock listens on `127.0.0.1:4174` and contains only synthetic records. Use `ui-test-token` for the administrator flow. `ui-customer-token` exists only to verify that customer credentials are rejected and directed to the public Account; it is not a second customer flow. These fixtures must not be used as production evidence.
 
 For the collection-table stress lane, start 1,000 synthetic collection rows:
 

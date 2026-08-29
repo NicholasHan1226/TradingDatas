@@ -41,7 +41,6 @@ export default function AdminApp({
 
   return (
     <WorkspaceShell
-      workspace="admin"
       workspaceLabel="管理员控制台"
       items={NAV}
       active={section}
@@ -49,7 +48,6 @@ export default function AdminApp({
       onSwitch={onViewCustomer}
       switchLabel="打开官网 Account"
       onLogout={onLogout}
-      layout="top"
     >
       {views[section]}
     </WorkspaceShell>

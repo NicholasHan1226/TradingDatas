@@ -316,7 +316,8 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 
 ### GET /admin/api/usage
 
-返回当前日用量、小时用量和系统统计。
+返回当前日用量、各租户实际限流窗口用量和系统统计。为兼容既有客户端，限流窗口仍位于
+`hourly` 字段；每行必须按 `window_seconds` 解读：商业档为 60 秒，存量档为 3600 秒。
 
 ### GET /admin/api/collection/status
 

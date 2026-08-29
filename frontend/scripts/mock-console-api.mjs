@@ -136,7 +136,7 @@ const server = http.createServer(async (request, response) => {
     }
   }
   if (request.method === 'GET' && url.pathname === '/admin/api/usage') {
-    return json(response, 200, { daily: { 'research-team': { date: '2026-08-24', count: 1840, daily_limit: null }, 'quant-lab': { date: '2026-08-24', count: 9230, daily_limit: null } }, hourly: { 'research-team': { count_in_window: 121, tier_limit: null, window_seconds: 3600 }, 'quant-lab': { count_in_window: 0, tier_limit: null, window_seconds: 3600 } }, cache: { dedup_entries: 214, dedup_bytes: 45870, active_requests: 2 } })
+    return json(response, 200, { daily: { 'research-team': { date: '2026-08-24', count: 1840, daily_limit: null }, 'quant-lab': { date: '2026-08-24', count: 9230, daily_limit: null } }, hourly: { 'research-team': { count_in_window: 121, tier_limit: null, window_seconds: 3600 }, 'quant-lab': { count_in_window: 84, tier_limit: 600, window_seconds: 60 } }, cache: { dedup_entries: 214, dedup_bytes: 45870, active_requests: 2 } })
   }
   if (request.method === 'GET' && url.pathname === '/admin/api/usage/history') return json(response, 200, { history })
   if (request.method === 'GET' && url.pathname === '/admin/api/collection/status') {

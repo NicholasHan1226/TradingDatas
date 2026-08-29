@@ -141,5 +141,4 @@ export interface QueryResult {
   }
 }
 
-export type Role = 'admin' | 'customer'
 export type DataCategory = 'a_share' | 'crypto' | 'news'
