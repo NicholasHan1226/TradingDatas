@@ -67,17 +67,26 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
 
+      - name: Configure public Worker session secret
+        working-directory: public-web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SESSION_ENCRYPTION_KEY"
+          printf '%s' "$SESSION_ENCRYPTION_KEY" \
+            | npx --yes wrangler@4.127.1 secret put SESSION_ENCRYPTION_KEY --config wrangler.jsonc
+
       - name: Deploy public website Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: public-web
+          wranglerVersion: "4.127.1"
           command: deploy --config wrangler.jsonc
-          secrets: |
-            SESSION_ENCRYPTION_KEY
-        env:
-          SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
 
       - name: Read back public routes and exact asset
         run: |

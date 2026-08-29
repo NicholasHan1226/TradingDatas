@@ -93,9 +93,12 @@ def test_static_deploy_has_a_published_route_readback() -> None:
     assert "Verify checkout identity" in workflow
     assert "Read back published static route" in workflow
     assert "https://tradingdatas-admin.pages.dev/" in workflow
-    assert "workingDirectory: public-web" in workflow
+    assert "Configure public Worker session secret" in workflow
+    assert "working-directory: public-web" in workflow
     assert "SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}" in workflow
-    assert "secrets: |\n            SESSION_ENCRYPTION_KEY" in workflow
+    assert "npx --yes wrangler@4.127.1 secret put SESSION_ENCRYPTION_KEY --config wrangler.jsonc" in workflow
+    assert 'wranglerVersion: "4.127.1"' in workflow
+    assert "secrets: |\n            SESSION_ENCRYPTION_KEY" not in workflow
 
 
 def test_public_worker_commits_only_the_non_secret_account_upstream() -> None:
