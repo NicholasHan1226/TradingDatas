@@ -2093,7 +2093,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -2112,6 +2112,9 @@ contracts:
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -3862,7 +3865,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -3881,6 +3884,9 @@ contracts:
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -4238,7 +4244,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: daily_reference
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -6251,7 +6257,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -6270,6 +6276,9 @@ contracts:
     source_dataset_id: cn.dataset.cb_basic
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -11186,7 +11195,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -11205,6 +11214,9 @@ contracts:
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -11320,7 +11332,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -11339,6 +11351,9 @@ contracts:
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -12667,7 +12682,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -12686,6 +12701,9 @@ contracts:
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -19848,7 +19866,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -19867,6 +19885,9 @@ contracts:
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -26457,7 +26478,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only
@@ -26475,6 +26496,9 @@ contracts:
     source_dataset_id: cn.equity.security_master
     source_field: ts_code
     batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy: null

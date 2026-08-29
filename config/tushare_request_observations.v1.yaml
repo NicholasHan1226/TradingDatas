@@ -16,7 +16,7 @@ provenance:
     sha256: 413e067715fa6796601a3f4930a49f6454d66e08f9b3e205341d41ed47481ed9
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 1eee74621db853e7954c6970d5b23a1f1be366f57218763b7558140727d7b45a
+    sha256: fb3c6f92efc815f71825d42d136f54ff34535bfd5b57460a60b65de98cfec69d
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -169,6 +169,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: bc_bestotcqt
   scope_labels:
@@ -315,6 +318,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: cb_basic
   scope_labels:
@@ -480,6 +486,9 @@ entries:
       dataset_id: cn.dataset.cb_basic
       field: ts_code
       requires_fresh_success_receipt: true
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: cctv_news
   scope_labels:
@@ -1019,6 +1028,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: fina_audit
   scope_labels:
@@ -1044,6 +1056,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: fina_indicator
   scope_labels:
@@ -1069,6 +1084,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: fina_mainbz
   scope_labels:
@@ -1718,6 +1736,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: index_basic
   scope_labels:
@@ -2481,6 +2502,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: repo_daily
   scope_labels:

@@ -145,6 +145,51 @@ def test_report_family_fanouts_are_single_code_in_generated_registry() -> None:
         assert binding.fanout.batch_size == 1, dataset_id
 
 
+def test_issue_350_report_family_leaves_on_demand_with_cyq_chips_resumable_cap() -> None:
+    """#350: planner skipped these as on_demand; event + resumable_fanout=1.
+
+    Sibling binding is stk_holdernumber / disclosure_date (ann_date window ->
+    event, not quarterly_reporting).  max_batches_per_run=1 matches cyq_chips
+    so wide report tables stay inside the 2M scan envelope; 1 request/run is
+    well under the 2026-08-26 1-2k same-endpoint stall band.  batch_size=1
+    from #348 is unchanged.
+    """
+
+    registry = load_dataset_registry(TARGET_PATH)
+    report_family = (
+        "cn.dataset.balancesheet",
+        "cn.dataset.cashflow",
+        "cn.dataset.express",
+        "cn.dataset.fina_audit",
+        "cn.dataset.fina_indicator",
+        "cn.dataset.income",
+        "cn.dataset.pledge_stat",
+    )
+    for dataset_id in report_family:
+        dataset = registry.resolve(dataset_id)
+        binding = registry.provider_binding(dataset_id, "tushare")
+        assert dataset.cadence_class == "event", dataset_id
+        assert binding.fanout is not None and binding.fanout.batch_size == 1, dataset_id
+        assert binding.resumable_fanout is not None, dataset_id
+        assert binding.resumable_fanout.cursor_contract_version == 2, dataset_id
+        assert binding.resumable_fanout.max_batches_per_run == 1, dataset_id
+        _provider_scan_budget(dataset, binding)
+
+    cb_share = registry.resolve("cn.dataset.cb_share")
+    cb_share_binding = registry.provider_binding("cn.dataset.cb_share", "tushare")
+    assert cb_share.cadence_class == "event"
+    assert cb_share_binding.resumable_fanout is not None
+    assert cb_share_binding.resumable_fanout.max_batches_per_run == 1
+    _provider_scan_budget(cb_share, cb_share_binding)
+
+    cb_basic = registry.resolve("cn.dataset.cb_basic")
+    cb_basic_binding = registry.provider_binding("cn.dataset.cb_basic", "tushare")
+    assert cb_basic.cadence_class == "daily_reference"
+    assert cb_basic_binding.fanout is None or cb_basic_binding.fanout.strategy == "none"
+    assert cb_basic_binding.resumable_fanout is None
+    _provider_scan_budget(cb_basic, cb_basic_binding)
+
+
 def test_disclosure_date_observation_projects_reviewed_identity_without_missing_field() -> (
     None
 ):

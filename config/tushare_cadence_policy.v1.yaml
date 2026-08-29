@@ -25,10 +25,15 @@ entries:
   source_document_sha256: a6605573b916cbc59a4bb8f2cf562070175a1d34f8006608287bed7f3a26b49f
   reason_code: no_document_frequency_evidence
 - api_name: balancesheet
-  cadence_class: on_demand
+  # 2026-08-29 #350: leave on_demand so the 5-minute timer actually plans
+  # it.  Request window is ann_date (daily announcement semantics after
+  # #348), same binding as stk_holdernumber / disclosure_date / share_float.
+  # quarterly_reporting would miss announcement days.  Coverage spreads
+  # via existing resumable_fanout (cyq_chips max_batches_per_run=1).
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: e5887135350b3471c64b5097371c5f3449f6e466e4fa2698c7d9e9e4dc8169c4
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: bc_bestotcqt
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -65,15 +70,20 @@ entries:
   source_document_sha256: a8aaeb3b8515fbedafccbfd24bec7a0a281582049b8f7a090a054f9d60a5e67b
   reason_code: no_document_frequency_evidence
 - api_name: cashflow
-  cadence_class: on_demand
+  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 38c507182d7ce1b4e7dd0289a1ff559ff1929fea0e33248e3061596f01e25135
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: cb_basic
-  cadence_class: on_demand
+  # 2026-08-29 #350: empty-param full-table snapshot, 1 request per round.
+  # Planner never scheduled it (skipped on_demand) since policy birth
+  # 2026-07-23; upstream probe succeeded (~1162 rows).  Same slow-changing
+  # reference class as etf_sz_cons / etf_sh_cons.
+  cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 5cd90a086284b750fd59445854022b3bdbeee77f5f4cc62af35dd58b88073083
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_daily_reference
 - api_name: cb_call
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -110,10 +120,14 @@ entries:
   source_document_sha256: fffb0a27935089fa08a9258f2228ac5b5dc25b08332ab7ad67bb26a0d76d8e0f
   reason_code: no_document_frequency_evidence
 - api_name: cb_share
-  cadence_class: on_demand
+  # 2026-08-29 #350: same never-scheduled on_demand pattern as the report
+  # family; ann_date window + single-code fanout over cb_basic.  Event
+  # matches that window.  Starved until cb_basic has a fresh success
+  # receipt; daily_reference on cb_basic unblocks the seed.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 9e19ad255be99b9ba0b0168872e71cdfd720d25658ac01a1b2935f75207a175e
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: cctv_news
   cadence_class: event
   freshness_sla_seconds: 86400
@@ -255,20 +269,23 @@ entries:
   source_document_sha256: 0fab4415b86b33e770b82756df4206cedea024e9f32064862c7bdab644022156
   reason_code: doc_explicit_daily_reference
 - api_name: express
-  cadence_class: on_demand
+  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 5331510b6cc64a8aca6f6f747aeb5221e887238e6b327e71537a73b7d999affe
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: fina_audit
-  cadence_class: on_demand
+  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 9ea741dfcfa5fc06548ca3431c18bd3b1febebedcfbd6359ff8f41e553c4b185
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: fina_indicator
-  cadence_class: on_demand
+  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 9f0674906f6e042b1de527d5a087285c59c8046b4508cb2e09cfa592311b21d4
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: fina_mainbz
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -425,10 +442,11 @@ entries:
   source_document_sha256: 3b53fa880171c36a9e3bdad2a6c3fdb37e24bb199f9dd852356cc9252d11939e
   reason_code: ambiguous_insufficient_document_frequency
 - api_name: income
-  cadence_class: on_demand
+  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: c69332b9c0602681ffbbe11dcab8d6b1ee94ceef2543f5d065f770a3126875cb
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: index_basic
   cadence_class: on_demand
   freshness_sla_seconds: 86400
@@ -625,10 +643,14 @@ entries:
   source_document_sha256: 5c87560857e3fa3af7c4a6395cbad9fc79d26571c2503bb6f67f49c057a1e15a
   reason_code: no_document_frequency_evidence
 - api_name: pledge_stat
-  cadence_class: on_demand
+  # 2026-08-29 #350: grouped with the report family (never-scheduled
+  # on_demand).  Windowless single-code history fanout; event still
+  # leaves on_demand so the timer plans it.  Resume uses the same
+  # resumable_fanout cap as the ann_date siblings.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 7ab82a7351002f9dbb3a74da3444c7adb97148b2bf8e1f1a42b68e1daf19740f
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: repo_daily
   cadence_class: on_demand
   freshness_sla_seconds: 86400
