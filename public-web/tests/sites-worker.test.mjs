@@ -18,7 +18,7 @@ test("serves existing static assets without a fallback", async () => {
   assert.deepEqual(calls, ["/assets/app.js"]);
 });
 
-test("falls back to index.html for extensionless GET and HEAD app routes without an Accept header", async () => {
+test("falls back to the root app shell for extensionless GET and HEAD routes without redirecting", async () => {
   for (const request of [
     new Request("https://example.test/account/"),
     new Request("https://example.test/flow/step-two?source=share", { method: "HEAD" }),
@@ -29,15 +29,15 @@ test("falls back to index.html for extensionless GET and HEAD app routes without
         fetch: async (request) => {
           const url = new URL(request.url);
           calls.push(url.pathname + url.search);
-          return new Response(url.pathname === "/index.html" ? "app" : "missing", {
-            status: url.pathname === "/index.html" ? 200 : 404,
+          return new Response(url.pathname === "/" ? "app" : "missing", {
+            status: url.pathname === "/" ? 200 : 404,
           });
         },
       },
     });
 
     assert.equal(response.status, 200);
-    assert.equal(calls.at(-1), "/index.html");
+    assert.equal(calls.at(-1), "/");
   }
 });
 
