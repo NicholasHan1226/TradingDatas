@@ -505,8 +505,8 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 1. 确认目标 Worker 是 `tradingdatas`、目标 route 是 `tradingdatas.com`，且现有静态资源
    回退可回滚；
 2. 将高熵 `SESSION_ENCRYPTION_KEY` 保存为 GitHub Actions repository secret；发布工作流
-   通过 Wrangler Action 的 `secrets` 输入将其写入同名 Cloudflare Worker secret，不能进入
-   shell history、仓库、Actions 输出、Worker vars 或运行报告；
+   在 `public-web` 工作目录内以显式 `--config wrangler.jsonc` 写入同名 Cloudflare Worker
+   secret，不能进入 shell history、仓库、Actions 输出、Worker vars 或运行报告；
 3. 确认 `public-web/wrangler.jsonc` 中的非密钥 Worker binding 为
    `ACCOUNT_API_BASE=https://td-admin-api.tradingagent.cc`，并确认该 origin 的无凭据 Portal
    readback 仍为 `401`；
