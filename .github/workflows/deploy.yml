@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'static/**'
+      - 'public-web/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -23,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  deploy-admin:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -50,3 +52,36 @@ jobs:
           curl --fail --show-error --silent --location --retry 3 --retry-all-errors \
             --connect-timeout 10 --max-time 30 https://tradingdatas-admin.pages.dev/ \
             | grep -iF '<!doctype html>'
+
+  deploy-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify checkout identity
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+
+      - name: Deploy public website Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config public-web/wrangler.jsonc
+
+      - name: Read back public routes and exact asset
+        run: |
+          set -euo pipefail
+          expected_asset="$(sed -nE 's/.*src="\/assets\/([^"]+\.js)".*/\1/p' public-web/dist/client/index.html)"
+          test -n "$expected_asset"
+          for route in / /account/ /data/ /research/ /pricing/; do
+            body="$(curl --fail --show-error --silent --location --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 "https://tradingdatas.com${route}")"
+            grep -qiF '<!doctype html>' <<<"$body"
+            grep -qF "$expected_asset" <<<"$body"
+          done

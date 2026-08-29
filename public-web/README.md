@@ -47,3 +47,15 @@ npm run test:sites
 
 Keep the generated raster assets in `public/assets/`. Do not rebuild the brand
 mark or data-material artwork with CSS, inline SVG, or placeholder elements.
+
+## Production release
+
+The public website is deployed to the existing Cloudflare static-assets Worker
+named `tradingdatas`. `public-web/wrangler.jsonc` binds the committed
+`dist/client` build to the small SPA fallback Worker in `dist/server/index.js`.
+
+Pushes to `main` that change `public-web/**` run the repository Cloudflare
+workflow. The workflow checks out the immutable source SHA, deploys the Worker,
+then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to return
+the exact JavaScript asset referenced by that checkout. A local build or a
+successful upload alone is not production evidence.
