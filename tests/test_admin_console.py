@@ -392,6 +392,28 @@ def test_customer_token_management_requires_hash_credential(
         auth_mod.list_customer_tokens(jwt_account)
 
 
+def test_customer_token_creation_never_adds_read_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "api_tokens.json"
+    token_file.write_text('{"tokens": []}', encoding="utf-8")
+    token_file.chmod(0o600)
+    auth_mod = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT,
+        TRADINGDATAS_TOKEN_HASH_FILE=str(token_file),
+    )
+    admin_only = auth_mod.create_token(
+        "operator", tier="internal", scopes=["admin"], label="Admin only"
+    )
+    account = auth_mod.authenticate(_headers(admin_only["token"]), "127.0.0.1")
+    before = token_file.read_bytes()
+    with pytest.raises(auth_mod.AuthError, match="no delegable data scope"):
+        auth_mod.create_customer_token(account, "Must not gain read")
+    assert token_file.read_bytes() == before
+
+
 def test_rfc3339_expires_at_in_token_config(monkeypatch: pytest.MonkeyPatch) -> None:
     token = "test-rfc3339-token"
     auth_mod = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT)

@@ -410,6 +410,8 @@ token-hash credential 可管理 key，JWT 会话在同站身份网关合同完�
 
 请求体只允许 `{"label":"Codex on MacBook"}`。新 key 固定继承当前账户的 tenant、
 tier、非管理员 scopes、data categories、有效期与适用限额，不能通过请求字段提升权限。
+当前 credential 没有可委派的数据 scope（例如只有 `admin`）时创建请求 fail closed，
+不会回退补授 `read`。
 每个租户最多保留 10 个 key。成功时原始 `key` **仅在 201 响应中出现一次**，随后只保留
 脱敏投影。
 

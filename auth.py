@@ -1332,7 +1332,9 @@ def create_customer_token(account: dict[str, Any], label: str) -> dict[str, Any]
         str(scope)
         for scope in account.get("scopes", [])
         if str(scope) not in {"admin", "*", "full"}
-    ] or ["read"]
+    ]
+    if not inherited_scopes:
+        raise AuthError("current credential has no delegable data scope")
     created = create_token(
         tenant_id=tenant_id,
         tier=str(account.get("tier") or "free"),
