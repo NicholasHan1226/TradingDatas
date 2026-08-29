@@ -15,13 +15,13 @@ TradingDatas has one customer-facing account experience and one restricted admin
 
 1. Overview — plan, expiry, effective data categories, request frequency, and recent usage.
 2. Data access — base package, alternative-data add-ons, trials, expiry, and category grants.
-3. API keys — create, disable, and rotate credentials. This requires a dedicated customer-scoped backend contract before activation.
+3. API keys — list, create, and disable same-tenant credentials. New keys inherit effective access; the raw secret is shown once and the current credential cannot disable itself. Rotation remains a guided create-and-disable sequence until a dedicated atomic rotation contract exists.
 4. Agents and MCP — one-click setup guidance for supported Agents without embedding secrets in prompts.
 5. Bookmarks — saved datasets, research, methods, and documentation.
 6. Billing — orders, renewals, invoices, and payment records after commerce contracts exist.
 7. Preferences and security — language, appearance, sessions, and access audit.
 
-The current authenticated backend can truthfully supply account identity, entitlement, expiry, request limits, and usage through `/portal/api/me` and `/portal/api/me/usage`. Keys, billing, and cross-device bookmark sync remain product surfaces until their backend contracts exist.
+The current authenticated backend can truthfully supply account identity, entitlement, expiry, request limits, usage, and customer-scoped key management through `/portal/api/me`, `/portal/api/me/usage`, and `/portal/api/me/keys`. Billing, a same-site passwordless session, and cross-device bookmark sync remain target surfaces until their backend contracts exist.
 
 ### Administrator console
 
@@ -42,7 +42,7 @@ The former full `Data pipeline` table is retired from primary navigation. Its da
 
 ## Authentication boundary
 
-The existing `tradingdatas.com/account` surface is the only customer interface. It reads the current account through the customer-scoped portal endpoints and stores the bearer token only in the current browser. Credentials must not move into URLs, prompts, analytics, or public content. A future same-domain session service may replace browser token entry without changing the Account information architecture.
+The existing `tradingdatas.com/account` surface is the only customer interface. It reads the current account through the customer-scoped portal endpoints and stores the bearer token only in the current browser. Credentials must not move into URLs, prompts, analytics, or public content. Customer-created keys are same-tenant, cannot inherit administrator scopes, and are shown once. A future same-site identity gateway may replace browser token entry without changing the Account information architecture; it must not rely on a cross-site third-party cookie.
 
 The React application under `static/app/` is administrator-only. Customer-scoped tokens are rejected there and directed to the existing public Account page; the old separate customer workspace is retired rather than redesigned.
 

@@ -8,12 +8,15 @@ import base64
 import binascii
 import copy
 import datetime
+import functools
 import hashlib
 import hmac
 import json
 import os
+import re
 import stat
 import threading
+import tempfile
 import time
 from collections import OrderedDict, deque
 from pathlib import Path
@@ -102,6 +105,7 @@ SCOPE_ENDPOINTS: dict[str, set[str]] = {
 DATA_CATEGORIES = ("a_share", "crypto", "news")
 
 _STATE_LOCK = threading.Lock()
+_TOKEN_MUTATION_LOCK = threading.RLock()
 _REQUEST_LOG: OrderedDict[str, deque[float]] = OrderedDict()
 # Sliding per-minute store used by the three commercial tiers.
 MINUTE_RATE_WINDOW_SECONDS = 60
@@ -880,7 +884,11 @@ def authenticate(headers: Any, client_host: str) -> dict[str, Any]:
         expires_at = binding.get("expires_at")
         if expires_at is not None and _now() >= float(expires_at):
             raise AuthError("token has expired")
-        return binding
+        account = dict(binding)
+        # Internal request context for tenant-scoped credential management.
+        # Never project this value in a public response.
+        account["_credential_hash"] = token_hash
+        return account
     raise AuthError("invalid token")
 
 
@@ -1161,17 +1169,42 @@ def _read_token_file() -> dict[str, Any]:
 
 
 def _write_token_file(payload: dict[str, Any]) -> None:
-    """Write token config back to file. File must already exist and be writable."""
+    """Atomically replace the existing private token config file."""
     if os.environ.get("TRADINGDATAS_TOKEN_HASHES_JSON", "").strip():
         raise AuthError("token management not supported with env-based config")
     path = Path(TOKEN_HASH_FILE_RAW)
     if not path.exists():
         raise AuthError("token config file does not exist; create it first")
+    if path.is_symlink():
+        raise AuthError("token config file must not be a symlink")
     data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-    path.write_bytes(data)
+    mode = stat.S_IMODE(path.stat().st_mode)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            temp_path = Path(handle.name)
+            os.chmod(temp_path, mode)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
     reload_token_hashes()
 
 
+def _serialized_token_mutation(function):
+    @functools.wraps(function)
+    def _wrapped(*args, **kwargs):
+        with _TOKEN_MUTATION_LOCK:
+            return function(*args, **kwargs)
+
+    return _wrapped
+
+
+@_serialized_token_mutation
 def create_token(
     tenant_id: str,
     tier: str = "free",
@@ -1180,6 +1213,7 @@ def create_token(
     daily_limit: int | None = None,
     expires_at: str | None = None,
     data_categories: list[str] | None = None,
+    label: str | None = None,
 ) -> dict[str, Any]:
     """Create a new API token and return it (only time the raw token is visible)."""
     import secrets
@@ -1206,7 +1240,11 @@ def create_token(
         "scopes": scopes or ["read"],
         "token_hash": token_hash,
         "enabled": True,
+        "created_at": datetime.datetime.now(_UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if label is not None:
+        normalized_label = _normalize_token_label(label)
+        entry["label"] = normalized_label
     if max_concurrent is not None:
         entry["max_concurrent"] = max_concurrent
     if daily_limit is not None:
@@ -1223,6 +1261,137 @@ def create_token(
     return {"token": raw_token, "token_hash": token_hash, "tenant_id": tenant_id}
 
 
+def _normalize_token_label(raw: Any) -> str:
+    if type(raw) is not str:
+        raise AuthError("key label must be a string")
+    label = " ".join(raw.strip().split())
+    if not label or len(label) > 64:
+        raise AuthError("key label must contain 1 to 64 characters")
+    return label
+
+
+def _customer_key_id(token_hash: str) -> str:
+    return f"key_{token_hash[:16]}"
+
+
+def _customer_credential_hash(account: dict[str, Any]) -> str:
+    token_hash = str(account.get("_credential_hash") or "").lower()
+    if len(token_hash) != 64:
+        raise AuthError("API key management requires a token-hash credential")
+    return token_hash
+
+
+def _customer_key_projection(
+    item: dict[str, Any], *, current_hash: str
+) -> dict[str, Any]:
+    token_hash = str(item.get("token_hash") or "").lower()
+    return {
+        "key_id": _customer_key_id(token_hash),
+        "label": str(item.get("label") or "API key"),
+        "enabled": item.get("enabled") is not False,
+        "created_at": item.get("created_at"),
+        "last_used_at": item.get("last_used_at"),
+        "is_current": token_hash == current_hash,
+        "fingerprint": f"{token_hash[:8]}...{token_hash[-4:]}",
+    }
+
+
+def list_customer_tokens(account: dict[str, Any]) -> list[dict[str, Any]]:
+    """List only the authenticated tenant's keys without exposing hashes."""
+
+    current_hash = _customer_credential_hash(account)
+    tenant_id = str(account.get("tenant_id") or "").strip()
+    payload = _read_token_file()
+    tokens = payload.get("tokens", [])
+    visible = [
+        _customer_key_projection(item, current_hash=current_hash)
+        for item in tokens
+        if str(item.get("tenant_id") or item.get("tenant") or "").strip()
+        == tenant_id
+        and len(str(item.get("token_hash") or "")) == 64
+    ]
+    return sorted(
+        visible,
+        key=lambda item: (not item["is_current"], str(item.get("created_at") or "")),
+    )
+
+
+@_serialized_token_mutation
+def create_customer_token(account: dict[str, Any], label: str) -> dict[str, Any]:
+    """Create one same-tenant key that cannot exceed current effective access."""
+
+    current_hash = _customer_credential_hash(account)
+    normalized_label = _normalize_token_label(label)
+    tenant_id = str(account.get("tenant_id") or "").strip()
+    if not tenant_id:
+        raise AuthError("missing tenant id")
+    existing = list_customer_tokens(account)
+    if len(existing) >= 10:
+        raise AuthError("customer API key limit reached")
+    inherited_scopes = [
+        str(scope)
+        for scope in account.get("scopes", [])
+        if str(scope) not in {"admin", "*", "full"}
+    ] or ["read"]
+    created = create_token(
+        tenant_id=tenant_id,
+        tier=str(account.get("tier") or "free"),
+        scopes=inherited_scopes,
+        max_concurrent=account.get("max_concurrent"),
+        daily_limit=account.get("daily_limit"),
+        expires_at=account.get("expires_at"),
+        data_categories=(
+            effective_data_categories(account)
+            if "data_categories" in account
+            else None
+        ),
+        label=normalized_label,
+    )
+    item = {
+        "token_hash": created["token_hash"],
+        "label": normalized_label,
+        "enabled": True,
+        "created_at": datetime.datetime.now(_UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return {
+        "key": created["token"],
+        "api_key": _customer_key_projection(item, current_hash=current_hash),
+    }
+
+
+@_serialized_token_mutation
+def disable_customer_token(
+    account: dict[str, Any], key_id: str
+) -> dict[str, Any]:
+    """Disable a same-tenant non-current key; never permit self-lockout."""
+
+    current_hash = _customer_credential_hash(account)
+    tenant_id = str(account.get("tenant_id") or "").strip()
+    if not re.fullmatch(r"key_[0-9a-f]{16}", str(key_id or "")):
+        raise AuthError("invalid key id")
+    payload = _read_token_file()
+    tokens = payload.get("tokens", [])
+    matches = [
+        item
+        for item in tokens
+        if str(item.get("tenant_id") or item.get("tenant") or "").strip()
+        == tenant_id
+        and _customer_key_id(str(item.get("token_hash") or "").lower()) == key_id
+    ]
+    if len(matches) != 1:
+        raise AuthError("API key not found")
+    target = matches[0]
+    token_hash = str(target.get("token_hash") or "").lower()
+    if token_hash == current_hash:
+        raise AuthError("current credential cannot be disabled")
+    target["enabled"] = False
+    _write_token_file({"tokens": tokens})
+    return {
+        "api_key": _customer_key_projection(target, current_hash=current_hash)
+    }
+
+
+@_serialized_token_mutation
 def update_token(token_hash: str, updates: dict[str, Any]) -> dict[str, Any]:
     """Update an existing token's settings."""
     payload = _read_token_file()
@@ -1276,6 +1445,7 @@ def update_token(token_hash: str, updates: dict[str, Any]) -> dict[str, Any]:
     return {"token_hash": token_hash, "updated": True}
 
 
+@_serialized_token_mutation
 def delete_token(token_hash: str) -> dict[str, Any]:
     """Remove a token from the config."""
     payload = _read_token_file()

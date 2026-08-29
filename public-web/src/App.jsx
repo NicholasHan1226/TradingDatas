@@ -834,6 +834,11 @@ export function App() {
   const [accountTokenInput, setAccountTokenInput] = useState("");
   const [accountData, setAccountData] = useState(null);
   const [accountUsage, setAccountUsage] = useState(null);
+  const [accountKeys, setAccountKeys] = useState([]);
+  const [accountKeyLabel, setAccountKeyLabel] = useState("");
+  const [accountNewKey, setAccountNewKey] = useState("");
+  const [accountKeyLoading, setAccountKeyLoading] = useState(false);
+  const [accountKeyError, setAccountKeyError] = useState("");
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState("");
   const copy = messages[locale];
@@ -842,6 +847,7 @@ export function App() {
     if (!accountToken) {
       setAccountData(null);
       setAccountUsage(null);
+      setAccountKeys([]);
       return undefined;
     }
     const controller = new AbortController();
@@ -871,6 +877,27 @@ export function App() {
     return () => controller.abort();
   }, [accountToken]);
 
+  useEffect(() => {
+    if (!accountToken || !accountData) return undefined;
+    const controller = new AbortController();
+    setAccountKeyError("");
+    fetch(`${ACCOUNT_API_BASE}/portal/api/me/keys`, {
+      headers: { Authorization: `Bearer ${accountToken}` },
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("keys_unavailable");
+      const payload = await response.json();
+      setAccountKeys(payload.api_keys || []);
+    }).catch((error) => {
+      if (error.name !== "AbortError") setAccountKeyError(error.message);
+    });
+    return () => controller.abort();
+  }, [accountToken, accountData]);
+
+  useEffect(() => {
+    if (accountSection !== "keys") setAccountNewKey("");
+  }, [accountSection]);
+
   function connectAccount(event) {
     event.preventDefault();
     const token = accountTokenInput.trim();
@@ -885,7 +912,54 @@ export function App() {
     setAccountToken("");
     setAccountData(null);
     setAccountUsage(null);
+    setAccountKeys([]);
+    setAccountNewKey("");
     setAccountError("");
+  }
+
+  async function createAccountKey(event) {
+    event.preventDefault();
+    const label = accountKeyLabel.trim();
+    if (!label || !accountToken) return;
+    setAccountKeyLoading(true);
+    setAccountKeyError("");
+    setAccountNewKey("");
+    try {
+      const response = await fetch(`${ACCOUNT_API_BASE}/portal/api/me/keys`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accountToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "key_create_failed");
+      setAccountKeys((current) => [...current, payload.api_key]);
+      setAccountNewKey(payload.key);
+      setAccountKeyLabel("");
+    } catch (error) {
+      setAccountKeyError(error.message);
+    } finally {
+      setAccountKeyLoading(false);
+    }
+  }
+
+  async function disableAccountKey(key) {
+    if (!accountToken || key.is_current || !window.confirm(locale === "zh" ? `停用“${key.label}”？已使用它的 Agent 将立即失去访问。` : `Disable “${key.label}”? Agents using it will immediately lose access.`)) return;
+    setAccountKeyLoading(true);
+    setAccountKeyError("");
+    try {
+      const response = await fetch(`${ACCOUNT_API_BASE}/portal/api/me/keys/${key.key_id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${accountToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "key_disable_failed");
+      setAccountKeys((current) => current.map((item) => item.key_id === key.key_id ? payload.api_key : item));
+    } catch (error) {
+      setAccountKeyError(error.message);
+    } finally {
+      setAccountKeyLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -1275,7 +1349,7 @@ export function App() {
           <div className="popover-wrap account-wrap">
             <button className="icon-button account-button" type="button" aria-label={copy.account} aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
             {accountMenuOpen && <div className="account-menu-popover">
-              <div className="account-menu-identity"><span>NH</span><div><strong>Nicholas</strong><small>{locale === "zh" ? "账户原型 · 尚未连接" : "Account prototype · not connected"}</small></div></div>
+              <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? accountData.tenant_id : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountData.tier} 套餐 · 已连接` : `${accountData.tier} plan · connected`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
               {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
             </div>}
           </div>
@@ -1505,6 +1579,23 @@ export function App() {
                       <div><input id="account-token" type="password" value={accountTokenInput} onChange={(event) => { setAccountTokenInput(event.target.value); setAccountError(""); }} placeholder={locale === "zh" ? "粘贴访问密钥" : "Paste access key"} autoComplete="off" /><button className="primary-button" type="submit" disabled={!accountTokenInput.trim() || accountLoading}>{accountLoading ? (locale === "zh" ? "正在验证" : "Verifying") : (locale === "zh" ? "连接" : "Connect")}</button></div>
                       {accountError && <small role="alert">{accountError === "invalid_token" ? (locale === "zh" ? "访问密钥无效或已失效。" : "The access key is invalid or expired.") : (locale === "zh" ? "暂时无法读取账户，请稍后重试。" : "The account is temporarily unavailable. Try again later.")}</small>}
                     </form>
+                  )
+                ) : accountSection === "keys" ? (
+                  accountData ? (
+                    <div className="account-keys-panel">
+                      <form className="account-key-create" onSubmit={createAccountKey}>
+                        <div><span className="mono-kicker">CUSTOMER-SCOPED CREDENTIALS</span><h3>{locale === "zh" ? "为设备或 Agent 创建独立密钥" : "Create one key per device or Agent"}</h3><p>{locale === "zh" ? "新密钥继承当前套餐、数据授权、有效期和限额，不能提升权限。" : "New keys inherit the current plan, data grants, expiry, and limits. They cannot elevate access."}</p></div>
+                        <div className="account-key-create-controls"><label htmlFor="account-key-label">{locale === "zh" ? "密钥名称" : "Key name"}</label><div><input id="account-key-label" value={accountKeyLabel} maxLength={64} onChange={(event) => { setAccountKeyLabel(event.target.value); setAccountKeyError(""); }} placeholder={locale === "zh" ? "例如：MacBook 上的 Codex" : "e.g. Codex on MacBook"} /><button className="primary-button" type="submit" disabled={!accountKeyLabel.trim() || accountKeyLoading}>{locale === "zh" ? "创建密钥" : "Create key"}</button></div></div>
+                      </form>
+                      {accountNewKey && <div className="account-new-key" role="status"><div><span>{locale === "zh" ? "只显示一次" : "SHOWN ONCE"}</span><strong>{accountNewKey}</strong><small>{locale === "zh" ? "现在复制并保存在密码管理器中，离开此页面后无法再次查看。" : "Copy it now and store it in a password manager. It cannot be shown again."}</small></div><button type="button" onClick={() => navigator.clipboard.writeText(accountNewKey)}><Copy />{locale === "zh" ? "复制" : "Copy"}</button></div>}
+                      {accountKeyError && <div className="account-key-error" role="alert">{locale === "zh" ? "密钥操作暂时无法完成，请稍后重试。" : "The key action could not be completed. Try again later."}</div>}
+                      <div className="account-key-list">
+                        {accountKeys.map((key) => <article key={key.key_id} className={!key.enabled ? "is-disabled" : ""}><div><span>{key.is_current ? (locale === "zh" ? "当前连接" : "CURRENT CONNECTION") : key.enabled ? (locale === "zh" ? "可用" : "ACTIVE") : (locale === "zh" ? "已停用" : "DISABLED")}</span><strong>{key.label}</strong><small>{key.fingerprint}{key.created_at ? ` · ${key.created_at.slice(0, 10)}` : ""}</small></div>{key.is_current ? <em>{locale === "zh" ? "不可在当前会话停用" : "Protected in this session"}</em> : key.enabled ? <button type="button" disabled={accountKeyLoading} onClick={() => disableAccountKey(key)}>{locale === "zh" ? "停用" : "Disable"}</button> : <em>{locale === "zh" ? "已停用" : "Disabled"}</em>}</article>)}
+                        {!accountKeys.length && !accountKeyError && <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在读取密钥" : "Loading keys"}</strong></div>}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "先连接账户" : "Connect your account first"}</strong><p>{locale === "zh" ? "连接后才能查看和管理当前租户的 API 密钥。" : "Connect before viewing or managing API keys for the current tenant."}</p><button className="primary-button" type="button" onClick={() => setAccountSection("overview")}>{locale === "zh" ? "前往连接" : "Connect account"}</button></div>
                   )
                 ) : accountSection === "bookmarks" ? (
                   <div className="account-bookmarks">

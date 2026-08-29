@@ -40,6 +40,7 @@ def test_v1_server_source_contains_only_the_fixed_public_routes() -> None:
         "/",
         "/portal/api/",
         "/portal/api/me",
+        "/portal/api/me/keys",
         "/portal/api/me/usage",
         "/admin",
         "/admin/",
