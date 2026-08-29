@@ -80,8 +80,16 @@ jobs:
           expected_asset="$(sed -nE 's/.*src="\/assets\/([^"]+\.js)".*/\1/p' public-web/dist/client/index.html)"
           test -n "$expected_asset"
           for route in / /account/ /data/ /research/ /pricing/; do
-            body="$(curl --fail --show-error --silent --location --retry 3 --retry-all-errors \
-              --connect-timeout 10 --max-time 30 "https://tradingdatas.com${route}")"
+            readback="$(curl --fail --show-error --silent --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              --write-out $'\n%{http_code}\n%{url_effective}' \
+              "https://tradingdatas.com${route}")"
+            effective_url="${readback##*$'\n'}"
+            readback="${readback%$'\n'*}"
+            response_status="${readback##*$'\n'}"
+            body="${readback%$'\n'*}"
+            test "$response_status" = 200
+            test "$effective_url" = "https://tradingdatas.com${route}"
             grep -qiF '<!doctype html>' <<<"$body"
             grep -qF "$expected_asset" <<<"$body"
           done

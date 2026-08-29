@@ -55,11 +55,14 @@ named `tradingdatas`. `public-web/wrangler.jsonc` binds the committed
 `dist/client` build to the small SPA fallback Worker in `dist/server/index.js`.
 For direct navigation, that Worker serves the app shell for extensionless
 `GET`/`HEAD` routes outside `/api/` and `/assets/`, even when a generic client
-does not send `Accept: text/html`. Missing API routes, assets, extensionful
-files, and non-navigation methods remain ordinary fail-closed `404`s.
+does not send `Accept: text/html`; the Worker fetches the root app shell
+internally, so the requested deep-link URL is retained. Missing API routes,
+assets, extensionful files, and non-navigation methods remain ordinary
+fail-closed `404`s.
 
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,
 then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to return
-the exact JavaScript asset referenced by that checkout. A local build or a
-successful upload alone is not production evidence.
+HTTP `200`, retain the requested effective URL, and contain the exact JavaScript
+asset referenced by that checkout. A local build or a successful upload alone is
+not production evidence.
