@@ -104,10 +104,20 @@ execution 的中部开始，因此可见 `physical_call_index` 允许是从非�
 隔离验证如需直接运行，只能使用该隔离目录内的私有 lock path，不能借此启用 timer、改变
 正式 cadence 或新增第二套调度入口。
 
-生产 SQLite 当前使用 rollback-journal 模式。目录/查询的长只读快照可能与写事务短暂重叠；
-provider-native fact 与 terminal receipt 写连接统一等待最多 180 秒，与 authority lock 的等待
-上限一致，不能退回 SQLite 默认 5 秒后把正常读写竞争误记为 `storage_failed`。超时后仍必须
-失败并写稳定错误码，禁止跳过事务 readback 或改写已有 receipt。宽字段（超过 256 个声明
+生产 SQLite 的 journal mode 由可写采集连接请求 `PRAGMA journal_mode=WAL`；catalog/query
+的已验证快照在检测到 `-wal`/`-shm` sidecar 时只使用 `mode=ro`，不再附加 `immutable=1`
+（SQLite `immutable=1` 会跳过 WAL，可能读到未 checkpoint 的陈旧主文件）。connect timeout
+仍为 180 秒，与 authority lock 等待上限一致，不另设 synchronous 或其它耐久性 pragma。
+本仓库变更只把该行为写进代码与测试，**不**通过 SSH、deploy script 或 `current` 切换去改
+广州生产库的 journal mode。
+
+生产文件在独立的 write-pause + exact-main release 步骤完成前仍可能是 rollback-journal。
+该运维步骤不属于本代码 PR：停采集 timer、切到含 WAL 请求的 immutable release、重启
+API、再由一次有界可写 open（或该 release 下的首轮 collect）完成 journal 切换，然后用认证
+catalog/query 回读。切换窗口内不得让仍使用无条件 `immutable=1` 的旧 reader 对着已进入
+WAL 的库提供服务。回退 journal mode 不是默认动作；若必须回到 rollback-journal，同样要在
+停写下 checkpoint 并确认 sidecar 已清空。目录/查询的长只读快照仍可能与写事务短暂重叠；
+超时后仍必须失败并写稳定错误码，禁止跳过事务 readback 或改写已有 receipt。宽字段（超过 256 个声明
 字段）的 transport 敏感信息扫描使用独立 400 万节点硬上限，普通合同继续保持 200 万节点；
 两者仍受 registry 行数、16 MiB provider response、64 MiB batch 和深度上限共同约束。
 

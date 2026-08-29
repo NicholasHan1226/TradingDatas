@@ -13,11 +13,16 @@ from collectors.tushare import tushare_common
 from collectors.tushare.provider_native_ingest import collect_provider_native_dataset
 import storage.provider_dataset_rows as provider_rows_module
 from dataset_registry import FanoutPolicy, load_dataset_registry
-from storage.ingest_receipts import IngestContext, ProviderRequestIdentity
+from storage.ingest_receipts import (
+    IngestContext,
+    ProviderRequestIdentity,
+    open_writable_sqlite_authority,
+)
 from storage.provider_dataset_rows import (
     ProviderNativeAdmissionError,
     ingest_provider_native_rows,
 )
+from storage.receipt_projection import open_verified_read_model_snapshot
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
 from storage.sqlite_authority_lock import (
@@ -147,6 +152,89 @@ def test_lossless_payload_and_quality_issues_are_stored_without_coercion(
         "type_mismatch:close:float",
         "unknown_field:provider_new",
     ]
+
+
+def _journal_mode(path: Path) -> str:
+    with sqlite3.connect(path) as conn:
+        return str(conn.execute("PRAGMA journal_mode").fetchone()[0])
+
+
+def test_writable_ingest_requests_wal_and_production_reader_sees_committed_rows(
+    tmp_path: Path,
+) -> None:
+    """#327: WAL on the collect open path; catalog/query URI remains WAL-safe.
+
+    Catalog/query already omit ``immutable=1`` when WAL sidecars exist.  The
+    incompatibility is real: ``mode=ro&immutable=1`` skips uncheckpointed WAL
+    frames.  A concurrent production snapshot must still see committed rows.
+    """
+
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    _, dataset, binding = _contract(tmp_path)
+
+    result = ingest_provider_native_rows(
+        db_path,
+        dataset=dataset,
+        binding=binding,
+        rows=[_row()],
+        context=_context(dataset, binding),
+    )
+    assert result.status == "success"
+    assert _journal_mode(db_path) == "wal"
+
+    writer = open_writable_sqlite_authority(db_path)
+    try:
+        assert writer.execute("PRAGMA journal_mode").fetchone() == ("wal",)
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("BEGIN IMMEDIATE")
+        changed = writer.execute(
+            "UPDATE provider_dataset_rows SET quality_state = 'ok'"
+        ).rowcount
+        assert changed == 1
+        writer.commit()
+
+        wal_path = db_path.with_name(f"{db_path.name}-wal")
+        shm_path = db_path.with_name(f"{db_path.name}-shm")
+        assert wal_path.is_file()
+        assert shm_path.is_file()
+
+        with sqlite3.connect(
+            f"{db_path.resolve().as_uri()}?mode=ro&immutable=1",
+            uri=True,
+        ) as stale:
+            stale_state = stale.execute(
+                "SELECT quality_state FROM provider_dataset_rows"
+            ).fetchone()
+        with open_verified_read_model_snapshot(db_path) as snapshot:
+            live_state = snapshot.execute(
+                "SELECT quality_state FROM provider_dataset_rows"
+            ).fetchone()
+            live_count = snapshot.execute(
+                "SELECT COUNT(*) FROM provider_dataset_rows"
+            ).fetchone()
+            authority_tables = {
+                str(row[1])
+                for row in snapshot.execute("PRAGMA main.table_list").fetchall()
+                if str(row[0]) == "main"
+                and str(row[2]) == "table"
+                and not str(row[1]).startswith("sqlite_")
+            }
+
+        assert stale_state == ("degraded",)
+        assert live_state == ("ok",)
+        assert live_count == (1,)
+        assert authority_tables == {"market_ingest_runs", "provider_dataset_rows"}
+
+        writer.execute("BEGIN IMMEDIATE")
+        with open_verified_read_model_snapshot(db_path) as snapshot:
+            concurrent_state = snapshot.execute(
+                "SELECT quality_state FROM provider_dataset_rows"
+            ).fetchone()
+        assert concurrent_state == ("ok",)
+        writer.rollback()
+    finally:
+        writer.close()
 
 
 def test_unsafe_unknown_field_names_are_hashed_without_changing_payload(

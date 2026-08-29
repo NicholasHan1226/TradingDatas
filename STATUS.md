@@ -192,6 +192,9 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 - **已知残留：** crypto 共享存储锁冲突已在 `5ca8e3e` 改为有界等待（120s）+ 失败
   带错误详情；后续观察 journal 中 `lock_wait_seconds` 的出现频率与数值，确认
   长批次重叠不再造成整轮失败。若仍有等待超时，再评估错峰调度。
+- **#327 WAL：** 可写采集连接请求 WAL、catalog/query 在 sidecar 存在时不用
+  `immutable=1` 的代码已完成；广州生产库 journal mode 尚未在 write-pause /
+  exact-main 发布路径切换，本状态不声称已释放。
 
 ## 能力和边界
 
@@ -215,7 +218,8 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
    `validation_reasons` 缺口。
 3. #349：fina_mainbz 按探针提案落地（单码全史快照扇出 + 去 type 过滤），
    先解 dependency_seed_receipt_unresolved。
-4. #327 服务器存储劣化（11GB 无 WAL）待授权后手术。
+4. #327 WAL 代码已落地（可写 open 请求 WAL；生产 journal 切换仍待 write-pause +
+   exact-main，本仓不自动部署 GZ）。
 5. 归档候选交 Controller 收口（rt-min-daily-scan-budget 分支、rolling-simulation
    残留、ta-365/366、fix/firecrawl-bare-time-anchor 210c02e、约 60 陈旧分支）。
 6. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化

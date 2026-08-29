@@ -24,6 +24,7 @@ from storage.ingest_receipts import (
     IngestResult,
     insert_ingest_receipt_with_evidence,
     make_receipt_id,
+    open_writable_sqlite_authority,
     require_receipt_evidence_readback,
     require_unchanged_sqlite_binding,
     validated_existing_sqlite_binding,
@@ -710,11 +711,7 @@ def ingest_provider_native_rows(
         timeout=180.0,
     ) as authority_lease:
         db_binding = validated_existing_sqlite_binding(db_path)
-        conn = sqlite3.connect(
-            f"{db_binding.canonical_path.as_uri()}?mode=rw",
-            uri=True,
-            timeout=180.0,
-        )
+        conn = open_writable_sqlite_authority(db_binding.canonical_path)
         try:
             conn.execute("BEGIN IMMEDIATE")
             _require_existing_table(conn)
