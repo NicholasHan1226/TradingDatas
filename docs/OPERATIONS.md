@@ -496,6 +496,28 @@ snapshot（如 security master）及有界 calendar 可按 registry 默认排序
 修改 DNS、重启采集 timer 或清理 facts/receipts。回退后重新验证广州本地 `18084` 的
 `401`，再单独修复或恢复广州直连 Tunnel；公网主机名恢复前不能宣称控制台可用。
 
+## 公开站 Account 同站会话桥接
+
+`public-web/worker/index.js` 包含 `/api/account/*` 同站代理，但仓库默认不配置其生产
+secret/binding。仅代码合入或 Worker 静态页发布不能声称会话桥接已启用。启用前必须：
+
+1. 确认目标 Worker 是 `tradingdatas`、目标 route 是 `tradingdatas.com`，且现有静态资源
+   回退可回滚；
+2. 将高熵 `SESSION_ENCRYPTION_KEY` 作为 Cloudflare secret 写入，不能进入 shell history、
+   仓库、Actions 输出、Worker vars 或运行报告；
+3. 将 `ACCOUNT_API_BASE=https://td-admin-api.tradingagent.cc` 作为非密钥 Worker binding
+   配置，并确认该 origin 的无凭据 Portal readback 仍为 `401`；
+4. 发布 immutable main SHA，依次验证登录 exchange、`/api/account/me`、usage、key list、
+   create/disable 的后端权限语义，以及 `DELETE /api/account/session` 后再次读取为 `401`；
+5. 在浏览器确认响应 cookie 为 `HttpOnly; Secure; SameSite=Strict; Path=/api/account`，
+   Account 页面及持久化 `localStorage` 都不再持有原始 key。不得把前端显示“安全会话”当作
+   上述响应证据。
+
+任一项失败时，先移除或禁用这两个 Worker binding 使桥接回到显式 `503
+identity_gateway_unavailable`，再重新发布上一已验证公开站 SHA。前端只会回退为当前标签页
+`sessionStorage` 的兼容连接；不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
+SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke 和审计仍是独立后续发布。
+
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
 `PAYLOADS.sha256`，再用独立 sidecar 记录该清单的 SHA-256；交接前必须分别执行
 `sha256sum -c PAYLOADS.sha256` 和 sidecar 校验。若已生成自引用或不自洽清单，保留原件
