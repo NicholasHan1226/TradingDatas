@@ -251,6 +251,12 @@ tree now enforces the target commercial limit model; production remains
 unverified until the exact main release and authenticated Account readback
 confirm it.
 
+An authenticated customer may create additional same-tenant API keys for a
+device or Agent. These keys inherit the current tier, non-administrator scopes,
+category allowlist, expiry, and applicable limits; self-service cannot elevate
+access. Raw key material is returned once. Customers may disable another key,
+but the key currently authenticating Account is protected from self-lockout.
+
 ## Account and administrator surfaces
 
 There are two deliberately separate surfaces, not two competing customer
@@ -258,8 +264,8 @@ workspaces:
 
 - the existing public **Account** at `tradingdatas.com/account` is the only
   customer account UI. It reads only that token's plan, enabled data categories,
-  request-frequency limit, expiry, request history, documentation, and Agent
-  integration guidance through the customer Portal API;
+  request-frequency limit, expiry, request history, same-tenant API keys,
+  documentation, and Agent integration guidance through the customer Portal API;
 - the React application under `static/app/` is administrator-only. It manages
   customer access, runtime exceptions, platform usage, and authenticated
   catalog/query verification;
@@ -283,6 +289,9 @@ have no daily quota or concurrency ceiling; they are still bounded by their
 200/600/1000 request-per-minute contracts. The allowlist is enforced server-side
 for both catalog visibility and query authorization, projected through the
 customer portal, and editable through the admin token API.
+Customer-scoped key listing, creation, and non-current-key disable are also
+implemented; billing, passwordless identity sessions, and account-synced
+bookmarks remain target capabilities rather than production facts.
 
 The stable category keys are `a_share`, `crypto`, and `news`. Existing token
 records that omit `data_categories` retain their previous all-current-category

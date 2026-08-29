@@ -42,6 +42,7 @@ V1_CATALOG_PATH = "/v1/catalog"
 V1_QUERY_PATH = "/v1/query"
 PORTAL_ME_PATH = "/portal/api/me"
 PORTAL_ME_USAGE_PATH = "/portal/api/me/usage"
+PORTAL_ME_KEYS_PATH = "/portal/api/me/keys"
 PORTAL_API_PREFIX = "/portal/api/"
 V1_CATALOG_PARAMS = frozenset(
     {"market", "domain", "cadence", "state", "q", "cursor", "limit"}
@@ -1268,14 +1269,27 @@ class Handler(BaseHTTPRequestHandler):
         dashboard must not burn API quota).
         """
 
-        allow = "GET, OPTIONS"
+        is_keys_collection = path == PORTAL_ME_KEYS_PATH
+        is_key_item = path.startswith(f"{PORTAL_ME_KEYS_PATH}/")
+        known_path = path in {PORTAL_ME_PATH, PORTAL_ME_USAGE_PATH, PORTAL_ME_KEYS_PATH} or is_key_item
+        allow = (
+            "GET, POST, OPTIONS"
+            if is_keys_collection
+            else "PATCH, OPTIONS"
+            if is_key_item
+            else "GET, OPTIONS"
+        )
         if method == "OPTIONS":
             return self._write_v1_options(allow)
-        if path not in {PORTAL_ME_PATH, PORTAL_ME_USAGE_PATH}:
+        if not known_path:
             return self._write_v1_error(
                 request_id, status=404, code="not_found", allow=allow
             )
-        if method != "GET":
+        if (
+            (is_keys_collection and method not in {"GET", "POST"})
+            or (is_key_item and method != "PATCH")
+            or (not is_keys_collection and not is_key_item and method != "GET")
+        ):
             return self._write_v1_error(
                 request_id,
                 status=405,
@@ -1309,6 +1323,52 @@ class Handler(BaseHTTPRequestHandler):
         except auth.RateLimitError:
             return self._write_v1_error(
                 request_id, status=429, code="rate_limited"
+            )
+
+        if is_keys_collection and method == "GET":
+            try:
+                keys = auth.list_customer_tokens(account)
+            except auth.AuthError as exc:
+                return self._write_v1_json({"error": str(exc)}, status=400)
+            self._v1_log_category = "success"
+            return self._write_v1_json(
+                {"api_version": "v1", "api_keys": keys}, status=200
+            )
+
+        if is_keys_collection and method == "POST":
+            body = self._read_admin_body()
+            if body is None or set(body) != {"label"}:
+                return self._write_v1_error(
+                    request_id, status=400, code="invalid_request"
+                )
+            try:
+                result = auth.create_customer_token(account, body["label"])
+            except auth.AuthError as exc:
+                return self._write_v1_json({"error": str(exc)}, status=400)
+            self._v1_log_category = "success"
+            return self._write_v1_json(
+                {
+                    "api_version": "v1",
+                    "api_key": result["api_key"],
+                    "key": result["key"],
+                },
+                status=201,
+            )
+
+        if is_key_item:
+            body = self._read_admin_body()
+            if body != {"enabled": False}:
+                return self._write_v1_error(
+                    request_id, status=400, code="invalid_request"
+                )
+            key_id = path[len(PORTAL_ME_KEYS_PATH) + 1 :]
+            try:
+                result = auth.disable_customer_token(account, key_id)
+            except auth.AuthError as exc:
+                return self._write_v1_json({"error": str(exc)}, status=400)
+            self._v1_log_category = "success"
+            return self._write_v1_json(
+                {"api_version": "v1", **result}, status=200
             )
 
         if path == PORTAL_ME_USAGE_PATH:

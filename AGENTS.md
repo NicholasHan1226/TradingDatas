@@ -94,11 +94,13 @@ API 只读 SQLite。缺库、缺表、损坏、缺 receipt 或 metadata 不一�
 
 三个数据端点通过 `build_data_plane_runtime()` + `CatalogService.list_datasets` 聚合真实 catalog runtime（与 `/v1/catalog` 同一数据面），不引入旁路读法；功能测试见 `tests/test_v1_api.py::test_admin_data_endpoints_serve_real_catalog_runtime`。
 
-**客户门户**：`GET /portal/api/me` 与 `GET /portal/api/me/usage?days=N` 让任意有效
-token 查看自身套餐/限额/用量，仅返回本租户数据；不计日配额、不做
+**客户门户**：`GET /portal/api/me`、`GET /portal/api/me/usage?days=N` 与
+`GET/POST/PATCH /portal/api/me/keys*` 让任意有效 token 查看自身套餐/限额/用量，
+并让 token-hash credential 查看、创建和停用同租户非当前 API key；仅返回本租户数据，
+新 key 继承当前有效权限且原始值只显示一次；不计日配额、不做
 scope 检查（门户自加载不烧客户配额），但完整认证与该档位适用的分钟/小时频率限制
 照常执行；并发限制只适用于存量档位。
-路由冻结白名单已显式登记这三个 `/portal/api*` 字面量（见
+路由冻结白名单已显式登记这些 `/portal/api*` 字面量（见
 `tests/test_v1_api_clean_slate.py`）。合同详见 `docs/API.md` Customer Portal API。
 
 **前端角色合同**：公共网站的既有 `Account` 是唯一客户账户界面，客户 token 在这里

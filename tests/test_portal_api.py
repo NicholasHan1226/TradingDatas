@@ -70,6 +70,7 @@ class _Harness:
         target: str,
         *,
         token: str | None = None,
+        body: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, Any] | None, dict[str, str], bytes]:
         connection = http.client.HTTPConnection(
             self._host, port=self._port, timeout=5
@@ -77,7 +78,10 @@ class _Harness:
         headers: list[tuple[str, str]] = []
         if token is not None:
             headers.append(("Authorization", f"Bearer {token}"))
-        connection.request(method, target, body=None, headers=dict(headers))
+        raw_body = None if body is None else json.dumps(body).encode("utf-8")
+        if raw_body is not None:
+            headers.append(("Content-Type", "application/json"))
+        connection.request(method, target, body=raw_body, headers=dict(headers))
         response = connection.getresponse()
         raw = response.read()
         self.last_response_headers = response.getheaders()
@@ -389,3 +393,104 @@ def test_effective_limits_resolution() -> None:
         {"tenant_id": "t", "daily_limit": 0}
     )
     assert ignored_daily["daily_limit"] is None
+
+
+def test_portal_keys_lists_only_current_tenant_and_masks_hashes(
+    portal_server: _Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        auth,
+        "list_customer_tokens",
+        lambda account: [
+            {
+                "key_id": "key_1234567890abcdef",
+                "label": "Research laptop",
+                "enabled": True,
+                "created_at": None,
+                "last_used_at": None,
+                "is_current": True,
+                "fingerprint": "12345678...cdef",
+            }
+        ],
+    )
+    status, payload, _, raw = portal_server.request(
+        "GET", "/portal/api/me/keys", token="customer-token"
+    )
+    assert status == 200
+    assert payload is not None
+    assert payload["api_keys"][0]["is_current"] is True
+    assert b"tenant-admin" not in raw
+    assert b"token_hash" not in raw
+
+
+def test_portal_keys_create_uses_customer_scoped_contract(
+    portal_server: _Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[dict[str, Any], str]] = []
+
+    def _create(account: dict[str, Any], label: str) -> dict[str, Any]:
+        seen.append((account, label))
+        return {
+            "key": "one-time-secret",
+            "api_key": {
+                "key_id": "key_feedfacecafebeef",
+                "label": label,
+                "enabled": True,
+                "is_current": False,
+                "fingerprint": "feedface...beef",
+            },
+        }
+
+    monkeypatch.setattr(auth, "create_customer_token", _create)
+    status, payload, _, _ = portal_server.request(
+        "POST",
+        "/portal/api/me/keys",
+        token="customer-token",
+        body={"label": "Codex on MacBook"},
+    )
+    assert status == 201
+    assert payload == {
+        "api_version": "v1",
+        "api_key": {
+            "key_id": "key_feedfacecafebeef",
+            "label": "Codex on MacBook",
+            "enabled": True,
+            "is_current": False,
+            "fingerprint": "feedface...beef",
+        },
+        "key": "one-time-secret",
+    }
+    assert seen[0][0]["tenant_id"] == "tenant-customer"
+    assert seen[0][1] == "Codex on MacBook"
+
+
+def test_portal_keys_disable_cannot_target_current_credential(
+    portal_server: _Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _disable(account: dict[str, Any], key_id: str) -> dict[str, Any]:
+        raise auth.AuthError("current credential cannot be disabled")
+
+    monkeypatch.setattr(auth, "disable_customer_token", _disable)
+    status, payload, _, _ = portal_server.request(
+        "PATCH",
+        "/portal/api/me/keys/key_current000000",
+        token="customer-token",
+        body={"enabled": False},
+    )
+    assert status == 400
+    assert payload == {"error": "current credential cannot be disabled"}
+
+
+def test_portal_keys_rejects_privilege_mutation_fields(
+    portal_server: _Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(auth, "disable_customer_token", lambda *_: {})
+    status, payload, _, _ = portal_server.request(
+        "PATCH",
+        "/portal/api/me/keys/key_other00000000",
+        token="customer-token",
+        body={"tier": "internal", "enabled": False},
+    )
+    assert status == 400
+    assert payload is not None
+    _error_shape(payload, "invalid_request")

@@ -328,13 +328,13 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 
 ## Customer Portal API
 
-客户自助门户端点：任意有效 token 认证后仅返回**该 token 自身**的
-套餐、限额与用量，不泄露其他租户。供 React 门户前端（Pages `/app/`）使用。
+客户自助端点：任意有效 token 认证后仅返回**当前租户**的套餐、限额、用量与
+脱敏 API key 列表，不泄露其他租户。供 `tradingdatas.com/account` 使用；`/app/`
+是独立的管理员控制面，不是第二个客户门户。
 
-客户 token 默认进入客户工作台；带 `admin` scope 或 `internal` tier 的管理员 token
-默认进入管理工作台，并可用同一 token 切换到客户视图。平台 owner token 约定同时
-保留 `read` 与 `admin`，以便在客户视图中验证目录/查询接入；该切换不冒充其他租户，
-也不改变任何 token、权限或服务状态。
+客户 token 只进入官网 Account；带 `admin` scope 或 `internal` tier 的管理员 token
+进入独立管理工作台。管理工作台不切换或冒充客户视角；平台 owner token 可同时保留
+`read` 与 `admin`，用于管理台内的目录/查询验证，但不会因此获得跨租户客户投影。
 
 ### OPTIONS /portal/api/*
 
@@ -400,6 +400,27 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 （disabled/expired 拒绝）、适用的分钟/小时频率限制与存量档位并发限制。认证失败语义与 v1 一致
 （401/429，同一错误信封）。
 
+### GET /portal/api/me/keys
+
+返回当前租户的 API key 列表。响应只包含稳定 `key_id`、用户标签、状态、创建时间、
+是否为当前连接和脱敏 fingerprint；不返回原始 token 或完整 token hash。只有
+token-hash credential 可管理 key，JWT 会话在同站身份网关合同完成前保持只读账户投影。
+
+### POST /portal/api/me/keys
+
+请求体只允许 `{"label":"Codex on MacBook"}`。新 key 固定继承当前账户的 tenant、
+tier、非管理员 scopes、data categories、有效期与适用限额，不能通过请求字段提升权限。
+当前 credential 没有可委派的数据 scope（例如只有 `admin`）时创建请求 fail closed，
+不会回退补授 `read`。
+每个租户最多保留 10 个 key。成功时原始 `key` **仅在 201 响应中出现一次**，随后只保留
+脱敏投影。
+
+### PATCH /portal/api/me/keys/{key_id}
+
+请求体只允许 `{"enabled":false}`，且只能停用当前租户的非当前 key。正在认证本次请求的
+key 不可自行停用，防止用户把当前 Account 会话锁死。重新启用、删除与跨租户操作仍由
+管理员控制面处理。
+
 ## Token 配置扩展字段
 
 `api_tokens.json` 支持以下新增字段：
@@ -408,4 +429,6 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 |---|---|---|
 | `enabled` | bool | 是否启用（默认 true） |
 | `expires_at` | string/number | 过期时间（RFC3339 或 Unix 时间戳） |
+| `label` | string | 客户可读的 key 名称，1..64 字符 |
+| `created_at` | string | key 创建时间（RFC3339 UTC） |
 | `daily_limit` | number/null | 存量档位每日请求上限（null 或省略 = 无限；商业档不接受） |

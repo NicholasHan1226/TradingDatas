@@ -42,7 +42,6 @@ def _headers(token: str) -> Message:
 
 def test_expired_token_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     token = "test-token-for-expiry"
-    token_hash = auth._hash_token.__wrapped__(token) if hasattr(auth._hash_token, '__wrapped__') else None
     auth_mod = _reload_auth(monkeypatch, TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT)
     th = auth_mod._hash_token(token)
     past_ts = time.time() - 86400
@@ -325,6 +324,94 @@ def test_commercial_token_mutations_cannot_persist_request_quota(
     assert payload["tokens"][0]["tier"] == "standard"
     assert "daily_limit" not in payload["tokens"][0]
     assert "max_concurrent" not in payload["tokens"][0]
+
+
+def test_customer_token_management_is_tenant_scoped_and_inherits_access(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "api_tokens.json"
+    token_file.write_text('{"tokens": []}', encoding="utf-8")
+    token_file.chmod(0o600)
+    auth_mod = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT,
+        TRADINGDATAS_TOKEN_HASH_FILE=str(token_file),
+    )
+    original = auth_mod.create_token(
+        "customer-a",
+        tier="standard",
+        scopes=["read"],
+        expires_at="2099-12-31T23:59:59Z",
+        data_categories=["a_share", "news"],
+        label="Primary key",
+    )
+    auth_mod.create_token("customer-b", tier="basic", label="Other tenant")
+    account = auth_mod.authenticate(_headers(original["token"]), "127.0.0.1")
+
+    created = auth_mod.create_customer_token(account, "Codex on MacBook")
+    assert created["key"]
+    assert created["api_key"]["label"] == "Codex on MacBook"
+    visible = auth_mod.list_customer_tokens(account)
+    assert len(visible) == 2
+    assert {item["label"] for item in visible} == {"Primary key", "Codex on MacBook"}
+    assert sum(1 for item in visible if item["is_current"]) == 1
+    assert all("token_hash" not in item for item in visible)
+
+    payload = json.loads(token_file.read_text(encoding="utf-8"))
+    new_record = next(
+        item for item in payload["tokens"] if item.get("label") == "Codex on MacBook"
+    )
+    assert new_record["tenant_id"] == "customer-a"
+    assert new_record["tier"] == "standard"
+    assert new_record["scopes"] == ["read"]
+    assert new_record["data_categories"] == ["a_share", "news"]
+    assert new_record["expires_at"] == pytest.approx(account["expires_at"])
+
+    disabled = auth_mod.disable_customer_token(account, created["api_key"]["key_id"])
+    assert disabled["api_key"]["enabled"] is False
+    with pytest.raises(auth_mod.AuthError, match="current credential"):
+        current = next(item for item in visible if item["is_current"])
+        auth_mod.disable_customer_token(account, current["key_id"])
+
+
+def test_customer_token_management_requires_hash_credential(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "api_tokens.json"
+    token_file.write_text('{"tokens": []}', encoding="utf-8")
+    token_file.chmod(0o600)
+    auth_mod = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT,
+        TRADINGDATAS_TOKEN_HASH_FILE=str(token_file),
+    )
+    jwt_account = {"tenant_id": "customer-a", "tier": "research", "scopes": ["read"]}
+    with pytest.raises(auth_mod.AuthError, match="token-hash credential"):
+        auth_mod.list_customer_tokens(jwt_account)
+
+
+def test_customer_token_creation_never_adds_read_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "api_tokens.json"
+    token_file.write_text('{"tokens": []}', encoding="utf-8")
+    token_file.chmod(0o600)
+    auth_mod = _reload_auth(
+        monkeypatch,
+        TRADINGDATAS_TOKEN_SALT=TOKEN_TEST_SALT,
+        TRADINGDATAS_TOKEN_HASH_FILE=str(token_file),
+    )
+    admin_only = auth_mod.create_token(
+        "operator", tier="internal", scopes=["admin"], label="Admin only"
+    )
+    account = auth_mod.authenticate(_headers(admin_only["token"]), "127.0.0.1")
+    before = token_file.read_bytes()
+    with pytest.raises(auth_mod.AuthError, match="no delegable data scope"):
+        auth_mod.create_customer_token(account, "Must not gain read")
+    assert token_file.read_bytes() == before
 
 
 def test_rfc3339_expires_at_in_token_config(monkeypatch: pytest.MonkeyPatch) -> None:
