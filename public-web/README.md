@@ -17,7 +17,8 @@ Data/Features/Recipes/Research/Pricing/Docs navigation, a task-oriented Data cat
 the connected-interface index, collection-history ledger, reviewed candidate-source landscape and phased integration roadmap, and
 alternative-data ordering proposal, an external-paper/industry-research/case
 library with internal detail records, transparent Feature definitions, versioned
-Recipe examples, three proposed A-share workflow packages, a platform-wide
+Recipe examples, three base-data request-rate tiers with confirmed monthly/annual
+price display (checkout not yet available), a platform-wide
 searchable Docs hub with article routes, independent history-aware product pages, a grouped Account workspace
 containing `zh-CN`/`en` and system/light/dark settings, and a client-only Agent
 setup prompt flow. `src/productManifest.js` is explicitly a design contract;

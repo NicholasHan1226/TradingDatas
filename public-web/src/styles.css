@@ -683,6 +683,14 @@ button { color: inherit; }
 .base-plan-switcher { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 48px; align-items: end; margin-bottom: 34px; }
 .base-plan-switcher .mono-kicker { margin: 0 0 14px; }
 .base-plan-switcher h2 { margin: 0; font-size: clamp(30px, 3vw, 42px); line-height: 1.04; letter-spacing: -.048em; }
+.base-plan-billing { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+.base-plan-billing > div { display: flex; gap: 8px; }
+.base-plan-billing button { min-height: 44px; padding: 8px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; transition: color 140ms ease, border-color 140ms ease; }
+.base-plan-billing button[aria-pressed="true"] { border-color: var(--blue); background: var(--surface-solid); color: var(--blue); }
+.base-plan-billing button:hover { color: var(--blue); }
+.base-plan-billing button:focus-visible, .base-plan-facts > a:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.base-plan-billing small { margin-left: 8px; color: var(--ink); font-size: 11px; }
+.base-plan-billing > span { color: var(--muted); font-size: 12px; }
 .base-plan-controls { display: flex; align-items: center; gap: 9px; }
 .base-plan-controls > div { min-height: 44px; display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 4px; background: color-mix(in srgb, var(--surface-solid) 76%, transparent); }
 .base-plan-controls > div button { min-height: 34px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: var(--radius-pill); padding: 0 14px; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; white-space: nowrap; transition: background-color 140ms ease, color 140ms ease; }
@@ -707,8 +715,13 @@ button { color: inherit; }
 .base-plan-art i:nth-of-type(2) { top: 58%; transform: rotate(-4deg); }
 .base-plan-identity, .base-plan-includes, .base-plan-facts { position: relative; min-width: 0; padding: 38px 34px 32px; }
 .base-plan-identity { display: flex; flex-direction: column; }
-.base-plan-identity > span, .base-plan-includes > span, .base-plan-position small, .base-plan-facts span { color: var(--plan-accent); font: 8px "IBM Plex Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
-.base-plan-identity h3 { max-width: 360px; margin: 72px 0 20px; font-size: clamp(52px, 5.1vw, 72px); line-height: .93; letter-spacing: -.065em; }
+.base-plan-identity > span, .base-plan-includes > span, .base-plan-position small, .base-plan-facts span { color: var(--muted); font: 10px "IBM Plex Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
+.base-plan-identity h3 { max-width: 360px; margin: 40px 0 24px; font-size: clamp(40px, 4vw, 58px); line-height: 1.06; letter-spacing: -.055em; overflow-wrap: anywhere; }
+.base-plan-price { margin-bottom: 24px; font-variant-numeric: tabular-nums; }
+.base-plan-price > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.base-plan-price strong { font-size: clamp(32px, 3vw, 44px); line-height: 1.12; letter-spacing: -.04em; font-weight: 500; white-space: nowrap; }
+.base-plan-price span { color: var(--muted); font-size: 13px; }
+.base-plan-price p { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .base-plan-identity > p { max-width: 360px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
 .base-plan-position { display: grid; gap: 8px; margin-top: auto; padding-top: 28px; border-top: 1px solid var(--line-soft); }
 .base-plan-position strong { font-size: 12px; font-weight: 500; }
@@ -723,6 +736,8 @@ button { color: inherit; }
 .base-plan-facts > a { min-height: 48px; display: flex; align-items: center; justify-content: space-between; margin-top: auto; border-radius: 10px; padding: 0 15px; background: var(--ink); color: var(--surface-solid); font-size: 11px; transition: transform 140ms ease, opacity 140ms ease; }
 .base-plan-facts > a:hover { opacity: .9; transform: translateY(-1px); }
 .base-plan-facts > a svg { width: 15px; height: 15px; }
+.base-plan-unavailable { min-height: 48px; margin-top: auto; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: not-allowed; }
+.base-plan-facts > a.base-plan-access { margin-top: 8px; padding: 8px 0; background: transparent; color: var(--blue); }
 .base-plan-count { position: absolute; right: 23px; top: 20px; color: var(--faint); font: 8px "IBM Plex Mono", monospace; }
 .base-plan-shared { display: grid; grid-template-columns: 1.15fr repeat(4, 1fr); margin-top: 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .base-plan-shared > span, .base-plan-shared > div { min-height: 92px; display: grid; align-content: center; gap: 8px; padding: 15px 18px; border-right: 1px solid var(--line-soft); }
@@ -1227,10 +1242,11 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .pricing-configurator { grid-template-columns: minmax(280px, .8fr) minmax(380px, 1.2fr); gap: 24px; padding: 20px; }
   .pricing-workload-options button { grid-template-columns: 28px 94px minmax(0, 1fr); padding-inline: 12px; }
   .base-plan-product { grid-template-columns: 1fr 1fr; }
-  .base-plan-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr) 180px; padding-block: 0; border-top: 1px solid var(--line-soft); border-left: 0; }
+  .base-plan-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 16px; padding-block: 16px; border-top: 1px solid var(--line-soft); border-left: 0; }
   .base-plan-facts > div { min-height: 104px; align-content: center; padding: 17px; border-right: 1px solid var(--line-soft); border-bottom: 0; }
   .base-plan-facts > div:first-child { margin-top: 0; }
   .base-plan-facts > a { align-self: center; margin: 0 18px; }
+  .base-plan-unavailable { grid-column: 1 / 3; margin-top: 0; }
   .base-plan-shared { grid-template-columns: repeat(2, 1fr); }
   .base-plan-shared > span { grid-column: 1 / -1; min-height: 52px; border-right: 0; border-bottom: 1px solid var(--line-soft); }
   .base-plan-shared > div:nth-of-type(2) { border-right: 0; }
@@ -1445,8 +1461,10 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .base-plan-arrow { flex: 0 0 42px; width: 42px; height: 42px; }
   .base-plan-product { display: block; min-height: 0; border-radius: 20px; }
   .base-plan-identity, .base-plan-includes, .base-plan-facts { padding: 28px 22px; }
-  .base-plan-identity { min-height: 420px; }
-  .base-plan-identity h3 { margin-top: 72px; font-size: 58px; }
+  .base-plan-identity { min-height: 0; }
+  .base-plan-identity h3 { margin-top: 32px; font-size: 48px; }
+  .base-plan-price strong { font-size: 40px; }
+  .base-plan-unavailable { width: 100%; margin-top: 24px; }
   .base-plan-includes { border-top: 1px solid var(--line-soft); border-left: 0; }
   .base-plan-includes li { min-height: 58px; }
   .base-plan-facts { display: block; border-top: 1px solid var(--line-soft); }

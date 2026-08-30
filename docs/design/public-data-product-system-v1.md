@@ -82,7 +82,7 @@ Marketing, content, and client-side state are never runtime evidence.
    reorganized by TradingDatas' format/topic taxonomies with source attribution,
    a reading guide, related data materials, and progressively disclosed
    preparation methods;
-3. **Pricing** — three progressively broader base-data plans; alternative-data
+3. **Pricing** — three request-rate tiers sharing the same base data; alternative-data
    commerce is a later independent surface and is not part of the main page.
 
 The header is a compact floating rounded surface containing the three primary
@@ -402,19 +402,19 @@ Disallowed effect evidence:
 
 ### 5.5 Pricing and add-ons
 
-Pricing introduces a few complete packages organized by workload. It does not
+Pricing introduces three complete packages differentiated by request rate. It does not
 recreate a provider permission matrix or per-dataset shopping cart.
 
-Until the commerce contract is implemented, names, price, included grants,
-trial, renewal, tax, invoice, and payment copy are proposal-only. The current
+Owner-confirmed prices are display decisions, not live offers. Until the commerce
+contract is implemented, grants, trial, renewal, tax, invoice, and payment remain
+unverified. The current
 backend tiers remain `basic`, `standard`, and `flagship`; any public naming layer
 must map on the server.
 
 The customer-facing base-plan names are **Basic / 基础版**,
-**Professional / 专业版**, and **Flagship / 旗舰版**. Basic covers the core
-domestic daily, company, event, and reference foundation. Professional adds
-historical minutes, auctions, and broader domestic trading history. Flagship
-adds the proposed real-time candidates and highest request-frequency profile.
+**Professional / 专业版**, and **Flagship / 旗舰版**. All three share the same
+base-data scope and history policy; no tier adds promised minute/realtime data.
+Dataset availability and history remain separately evidenced by each product.
 The customer-facing contract uses rolling per-minute limits of 200/600/1000,
 with no commercial daily quota or concurrency limit. The target server mapping
 remains `basic`, `standard`, and `flagship`, respectively. The backend contract
@@ -424,8 +424,13 @@ authenticated Account readback.
 
 The main Pricing page currently contains only these three base plans. It shows
 one plan as a focused product at a time, with direct tier tabs and previous/next
-controls. Scope, history, target runtime, included data, and the proposal-only
-price state remain visible without comparing three equal-weight SaaS cards.
+controls. Scope, history, request rate and price remain visible without comparing
+three equal-weight SaaS cards. A monthly/annual switch defaults to monthly and
+preserves its choice when switching tiers or language. Monthly prices are
+99/299/499; annual prices are 1,069.20/3,229.20/5,389.20 (12 months × 90%).
+The domestic-first display assumes CNY, subject to settlement confirmation.
+Lead with actual period total and put monthly equivalent and savings beneath it.
+Checkout is visibly unavailable; a separate access-key login link remains usable.
 Alternative data is absent from this page; it is neither preselected nor
 summarized beside the base plan. The page has no needs quiz, workload
 configurator, granularity slider, upstream-provider matrix, per-dataset cart,
@@ -619,7 +624,7 @@ method, and emphasis; they do not encode price movement or runtime health.
   and invoice facts.
 - **BasePlanShowcase**: one focused Basic, Professional, or Flagship product at
   a time with direct tier tabs, previous/next controls, included scope, history,
-  request frequency, proposal-only price state, and a shared data-trust foundation.
+  request frequency, confirmed price display with unavailable checkout, and a shared data-trust foundation.
   Client selection is orientation only and never implies access or payment.
 - **AddonTrial**: included families, exact dates, post-trial behavior, current
   entitlement, and explicit action.

@@ -1,7 +1,8 @@
 # Customer identity and commerce — implementation contract draft
 
-Status: proposed; not runtime authority, a provider selection, approved pricing,
-or permission to collect payments. Inspected against main `97c814b` on
+Status: implementation proposal with owner-confirmed identity methods and numeric
+prices; not runtime authority, a provider selection, or permission to collect
+payments. Inspected against main `97c814b` on
 2026-08-30. Product authority: [Product](../PRODUCT.md); current account design:
 [Account convergence](account-admin-convergence-v1.md); current API:
 [API contract](../API.md).
@@ -17,6 +18,15 @@ or permission to collect payments. Inspected against main `97c814b` on
   Flagship to `flagship` (1000). No commercial daily quota or concurrency tier.
 - Website login must eventually be independent of Agent/API credentials.
   Current access-key-to-cookie exchange is only a compatibility bridge.
+- Owner confirmed both mobile-phone and email login/registration on 2026-08-30.
+  The target is one account supporting separately verified credentials, not two
+  separate customer workspaces. Linking requires an authenticated account plus
+  verification of the new credential; never merge accounts by typed contact.
+- Owner confirmed monthly prices of 99 / 299 / 499, and annual payment at 10%
+  off twelve monthly prices. Annual totals are 1,069.20 / 3,229.20 / 5,389.20;
+  monthly equivalents are 89.10 / 269.10 / 449.10. Public display assumes CNY
+  for the domestic-first product; confirm settlement currency before activation.
+  These are price-display decisions, not evidence of live checkout or renewal.
 - An unpurchased or unpaid order never grants data. Category authorization,
   upstream redistribution permission and runtime availability remain separate.
 - Alternative-data selling is not part of the initial base-plan checkout.
@@ -34,22 +44,23 @@ or permission to collect payments. Inspected against main `97c814b` on
 | Payment | No checkout, verified notification handler or ledger found | Merchant/provider choice, sandbox integration, reconciliation |
 | User onboarding | Access-key login only | Verified identity, account creation and no-subscription state |
 
-The current public Pricing cards imply increasing dataset/history scope, while
-`PRODUCT.md` specifies rate-only tier differentiation. This is a release blocker
-for commerce copy. Use the canonical rate-only rule for the proposed contract;
-do not silently turn current card copy into real grants. The sellable dataset set
-and its licence evidence still require explicit review.
+The candidate public Pricing cards now follow `PRODUCT.md`: same base-data scope
+and history policy, with rate-only tier differentiation. Monthly/annual switches
+show the actual period total, monthly equivalent and savings. This is a local
+candidate until merged/deployed, and never grants access. The sellable dataset
+set and its licence evidence still require explicit review.
 
 ## Decisions required before implementation/activation
 
-1. Initial identity method: email verification or phone verification; existing
-   sender/provider account, sender domain or SMS signature/template, and who
+1. Both identity methods are confirmed. Still select the existing
+   sender/provider accounts, sender domain and SMS signature/template, and who
    owns delivery/support. No service purchase or new identity-provider upload
    is authorized by this draft.
 2. Merchant entity and available merchant account, supported payment channels,
    settlement currency and sandbox credentials. Never request secrets in chat.
-3. Prices for all three tiers, billing periods, tax/invoice handling, renewal
-   mode, refund policy and failed-payment behavior. Do not invent defaults.
+3. Prices and monthly/annual periods are confirmed above. Still decide currency,
+   tax/invoice handling, renewal mode, refund policy and failed-payment behavior.
+   Do not invent defaults or treat annual billing as an automatic-renewal mandate.
 4. Approved dataset scope shared by the tiers, including any category exclusions,
    and evidence of permissible customer redistribution.
 5. Existing-key migration: verified ownership proof and account-binding rules;
@@ -99,7 +110,7 @@ Do not overload technical dataset entitlement with purchased subscriptions.
    Current acceptance remains in its report; this draft does not approve merging.
 2. User signs in using an intended existing key; verify only Account/read-only
    views first. Key creation/disabling needs a bounded separately approved test.
-3. Freeze the five decisions above, then choose the identity/commerce store and
+3. Resolve the remaining decisions above, then choose the identity/commerce store and
    provider integrations through an explicit architecture review.
 4. Implement a local/sandbox identity vertical slice, including expiry, replay,
    resend, abuse, session revoke and tenant-isolation tests. Keep existing keys
@@ -122,5 +133,7 @@ revoke existing API keys. Reconcile verified paid-but-not-provisioned orders
 before retrying; do not issue duplicate access or duplicate charges.
 
 Until those gates pass, keep purchase and verification-sent claims disabled.
+The current Login remains access-key based, with both future identity methods
+explicitly unavailable; it must not pretend a code was sent or register an account.
 No fake invoice, placeholder amount, guessed expiry or fabricated payment
 success may appear in the public product.
