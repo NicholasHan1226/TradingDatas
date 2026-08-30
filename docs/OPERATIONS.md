@@ -109,13 +109,18 @@ authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用�
 代码回滚继续遵循 immutable release 切换与同层 receipt/API readback，索引缺失在旧 release 中是
 允许状态。
 
-catalog 的最近收据投影先按 envelope `source` 与 payload `dataset_id` 建立数据集相关行索引，
-每个数据集只校验与自己相关的 bounded rows；跨数据集 envelope/payload 不一致必须同时进入
-两个相关数据集并继续 fail closed，不能因性能索引而被跳过。最近收据窗口可能从一个大型
-execution 的中部开始，因此可见 `physical_call_index` 允许是从非零序号开始的连续后缀；
-后缀内部的重复、缺口、混合 physical/non-physical 状态、execution context 漂移或 retry 序列
-不一致仍必须返回 `receipt_execution_inconsistent`。该规则只解释已持久化收据的有界读取，
-不会补写、删除或重排历史 receipt，也不会把 provider/storage 失败改成成功。
+catalog 先取每个 envelope `source` 最近 100 条收据作为初始窗口。达到 100 条的已注册
+source 对窗口内所有可识别的有效 execution 补齐兄弟收据，不能根据尚未完整验证的时间
+上下文猜测只有最旧一组被截断。初始窗口中的无效收据全部保留；初始读取及补读共用
+400,000 条原始读取预算，补读中重复命中的行也计入预算，超限立即 fail closed。
+
+随后按 envelope `source` 与 payload `dataset_id` 建立数据集相关行索引；跨数据集
+envelope/payload 不一致必须同时进入两个相关数据集，不能因性能索引而被跳过。经补齐
+并明确标记完整的物理 execution 必须从 `physical_call_index=0` 开始；重复、内部缺口、
+混合 physical/non-physical 状态、context 漂移或 retry 序列不一致仍报
+`receipt_execution_inconsistent`。其它读取入口原有的连续后缀校验不因此放宽。
+dataset 与 interface 投影共用扩展后的收据集合；本规则不补写、删除或重排历史 receipt，
+不把 provider/storage 失败改成成功，也不证明上游数据完整或连续健康。
 
 对于已经执行的 dataset，scheduler summary 可附带 `receipt_provenance`：它只按本轮已持久化且通过同一 receipt validator 的 receipt ID 投影 `status`、`returned`/`validated`/`rejected`/`committed` 计数、稳定的 `error_layer`、原始结构化 `error_codes` 与 `validation_reasons`。无法通过验证的 receipt 只保留其稳定 reason code，计数字段为 `null`；`validation_failed` 默认归入通用 `ingest_validation` 层，`transport_error` 归入 `transport` 层，只有持久化证据证明更具体层级时才细分，未持久化时不推断确切谓词；读取 provenance 失败不会改变采集结果。失败的 scheduler dataset 摘要还可携带经上游 outcome 边界清洗、单行且长度受限的 `error_message`，便于区分安全的 transport/provider 诊断；它不写入 receipt、不会替代 receipt authority，也不包含 provider payload、请求凭据或本机路径。
 

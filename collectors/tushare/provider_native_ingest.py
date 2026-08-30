@@ -506,11 +506,11 @@ def _load_completed_fanout_batches(
         sqlite3.Error,
     ) as exc:
         raise ValueError("fanout source authority is unavailable") from exc
-    now = datetime.now(ZoneInfo(source.timezone)).date()
+    local_today = datetime.now(ZoneInfo(source.timezone)).date()
     cutoff = (
         None
         if policy.source_date_lte_days is None
-        else now - timedelta(days=policy.source_date_lte_days)
+        else local_today - timedelta(days=policy.source_date_lte_days)
     )
     values: list[RequestScalar] = []
     for payload_json, payload_hash, receipt_id in rows:

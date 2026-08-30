@@ -718,3 +718,80 @@ def test_invalid_partition_code_records_failure_and_does_not_pin_batch(
     ]
     assert _collect(path, registry, c, clock, {"day": "20260720"}).status == "success"
     assert c.calls[-1]["ts_code"] == "B"
+
+
+def _real_source_progress_registry(tmp_path, monkeypatch, clock, name):
+    full = load_runtime_dataset_registry()
+    target = full.resolve("cn.dataset." + name)
+    binding = target.provider_bindings[0]
+    source = full.resolve(binding.fanout.source_dataset_id)
+    calendar = full.resolve("cn.market.trade_calendar")
+    registry = DatasetRegistry((target, source, calendar))
+    path = _db(tmp_path, registry, monkeypatch, clock)
+    codes = ("000001.SZ", "000002.SZ") if name == "income" else ("110001.SH", "110002.SH")
+
+    class SourceCollector(Collector):
+        def collect_outcome(self, api_name, params, fields=None, *, scan_budget=None):
+            rows = tuple({**{field.name: None for field in source.fields},
+                          "ts_code": code, "list_date": "20100101"} for code in codes)
+            if "list_status" in params:
+                rows = tuple({**row, "list_status": params["list_status"]} for row in rows)
+            return ProviderCallOutcome(state="success" if rows else "empty", rows=rows,
+                provider_code=0, error_code=None, error_message=None,
+                response_fields=tuple(field.name for field in source.fields))
+
+    result = ingest.collect_provider_native_dataset(path, registry=registry,
+        collector=SourceCollector(), dataset_id=source.dataset_id, request_window={},
+        attempt_id=str(uuid4()), started_at=(clock["now"] - timedelta(seconds=1)).isoformat())
+    assert result.status == "success", result
+    clock["now"] += timedelta(minutes=5)
+    return path, registry, target, source, codes
+
+
+@pytest.mark.parametrize("name", ["income", "cb_share"])
+def test_calendar_only_planner_hydrates_verified_fanout_dependencies(
+    tmp_path, monkeypatch, clock, name
+):
+    path, registry, target, source, codes = _real_source_progress_registry(
+        tmp_path, monkeypatch, clock, name)
+    state = helpers.scheduler.load_planner_state(path, registry, now=clock["now"],
+        calendar_dataset_ids=frozenset({"cn.market.trade_calendar"}))
+    source_facts = state.get(source, source.provider_bindings[0]).facts
+    assert {fact.payload.get("ts_code") for fact in source_facts} == set(codes)
+    plans, skips = helpers.cadence_planner.plan_runs(registry=registry,
+        schedule=helpers.scheduler.load_schedule(helpers.SCHEDULE_CONFIG), state=state,
+        now=clock["now"], selected_dataset_ids=frozenset({target.dataset_id}),
+        current_only=True)
+    assert len(plans) == 1 and dict(plans[0].request_window) == {"ann_date": "20260720"}
+
+
+@pytest.mark.parametrize("name", ["income", "cb_share"])
+def test_real_dataset_field_continuation_collect_receipt_planner_roundtrip(
+    tmp_path, monkeypatch, clock, name
+):
+    path, registry, target, source, codes = _real_source_progress_registry(
+        tmp_path, monkeypatch, clock, name)
+    date_field = target.provider_bindings[0].resumable_fanout.partition_date_field
+    collector = Collector(lambda params: [{
+        **{field.name: None for field in target.fields}, "ts_code": params["ts_code"],
+        date_field: params["ann_date"],
+    }])
+    for day, expected_codes in (("20260720", codes), ("20260721", codes)):
+        if day == "20260721":
+            clock["now"] += timedelta(days=1)
+        for code in expected_codes:
+            result = _collect(path, registry, collector, clock, {"ann_date": day})
+            assert result.status == "success"
+            assert collector.calls[-1]["ts_code"] == code
+            clock["now"] += timedelta(minutes=5)
+    histories = ingest._resumable_histories(path, registry, target)
+    assert len(histories) == 4 and all(item.status == "success" for item in histories)
+    assert [item.batch_index for item in sorted(histories, key=lambda item: item.started_at)] == [0, 1, 0, 1]
+    assert {item.data_through for item in histories} == {"20260720", "20260721"}
+    state = helpers.scheduler.load_planner_state(path, registry, now=clock["now"],
+        calendar_dataset_ids=frozenset({"cn.market.trade_calendar"}))
+    assert all(not fact.payload for fact in state.get(target, target.provider_bindings[0]).facts)
+    plans, _ = helpers.cadence_planner.plan_runs(registry=registry,
+        schedule=helpers.scheduler.load_schedule(helpers.SCHEDULE_CONFIG), state=state,
+        now=clock["now"], selected_dataset_ids=frozenset({target.dataset_id}), current_only=True)
+    assert len(plans) == 1 and dict(plans[0].request_window) == {"ann_date": "20260721"}
