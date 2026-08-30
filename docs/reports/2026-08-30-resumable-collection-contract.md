@@ -293,3 +293,47 @@ corrected test plus all 35 new SQLite regressions: 36 passed in 42.47 seconds.
 Independent review confirmed that this closes an obsolete expectation without
 weakening the separate real-SQLite progress tests. The updated exact head still
 requires fresh CI before merge.
+
+## Runtime preflight correction after PR 396
+
+The parent-owned read-only production preflight found two P1 execution-path
+gaps before release switching. The merged tree is
+`284b2f7a0d4a60aae564e097f918a86116422250`; the correction is isolated on
+`codex/collection-progress-runtime-preflight-20260830`. This section supersedes
+any implication that the earlier literal-universe regressions alone verified
+the real dataset-field source path. Production was not changed by this task.
+
+First, the real schedule runner supplies `calendar_dataset_ids` to
+`load_planner_state`. That optimized path discarded every non-calendar payload,
+including valid security-master and convertible-bond source facts. Their
+`ts_code` therefore appeared absent to the new universe checker, producing
+`dependency_unavailable` for all seven financial targets. This was not missing
+upstream source data or a missing `list_date`. The correction derives active
+resumable `dataset_field` dependencies from the registry and hydrates only those
+source payloads in the existing verified snapshot, alongside calendars. Other
+historical payloads remain unhydrated. Receipt/config/success filtering and the
+missing-source dependency gate remain unchanged.
+
+Second, `_load_completed_fanout_batches` reused its new `now: datetime` parameter
+for an older local date cutoff variable. The dataset-field path consequently
+passed a `date` to the continuation selector, raising `AttributeError` before
+collection or a failed receipt. Renaming that local value to `local_today`
+preserves the original source-age cutoff and the incoming datetime separately.
+No request, quota, schema, config hash or registry artifact changes are needed.
+
+Four new regressions use the actual immutable income/security-master and
+cb_share/cb_basic definitions with synthetic provider responses and temporary
+SQLite. They cover the production calendar-only loader, nonzero target plans,
+real source collection, target collection/validated receipts, same-day 0-to-1
+progress and next-day reset, actual date watermarks, and preservation of the
+target facts' unhydrated fast path. Before the fix, the cb_share cases reproduced
+both empty source payloads and `date.astimezone` failure. All four passed in
+5.83 seconds after correction. Six adjacent dataset-field/resumable ingest
+checks passed in 0.11 seconds; changed-file Ruff and diff checks passed.
+The combined 39 progress regressions plus full scheduler test file passed
+188 tests in 117.39 seconds with two workers. Against the unchanged registry,
+the additional hydration set is exactly `cn.equity.security_master` and
+`cn.dataset.cb_basic`, not a restoration of all historical payload loading.
+No production provider call, commit or deployment was
+performed by this task; the parent must repeat real-data preflight against the
+new exact candidate before any switch.
