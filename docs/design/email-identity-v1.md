@@ -46,10 +46,12 @@ for the exact resource, schema hash, empty-table readback and remaining gates.
 | `POST /api/account/email/verify` | `{email, challenge_id, code}`; verify once, create/reuse identity and create independent session. |
 | `GET /api/account/me` | With email cookie, verified identity and `not_subscribed`; without it preserve existing key bridge. |
 | `DELETE /api/account/session` | With email cookie revoke server-side session, then clear both email and legacy cookies. |
+| `POST /api/account/profile/deletion` | Current email identity only; `{confirmation: "DELETE"}`, same origin, verification within ten minutes. Atomically accept explicit deletion, disable identity and revoke all email sessions; 202 is acceptance, not completed purge. |
 
 An email projection contains `kind: email`, opaque `user_id`, verified `email`,
 `email_verified: true`, `tenant_id: null`, `subscription_state: not_subscribed`,
-`data_categories: []` and `session_expires_at`. It has no fake tier, quota, usage
+`data_categories: []`, `session_expires_at` and `deletion_available` (the retention
+feature flag, not scheduler health). It has no fake tier, quota, usage
 or subscription expiry. Frontend validation rejects injected tenant/grant states.
 The authenticated public data API stays `GET /v1/catalog` + `POST /v1/query`.
 
@@ -92,11 +94,14 @@ two adjacent-window bursts; these are not rolling-window promises. A global
 ceiling bounds cost but can also deny legitimate logins under abuse. Review
 edge protection and volume policy before public enablement.
 
-Expired challenge/session/rate rows are pruned in bounded batches of 100 per
-send. Email addresses are PII in user/challenge rows; expiry prevents use but
-opportunistic pruning is not a guaranteed deletion SLA. Before activation,
-approve data retention/deletion, support ownership and a maintenance plan for
-inactive periods. No timer or retention deletion job is deployed here.
+Expired challenge/session/rate rows are also pruned opportunistically per send.
+On 2026-08-30 the owner approved active-store maximum retention: expired OTP
+records within 24 hours, invalid sessions within seven days, and profiles within
+30 days after an explicit deletion request. The separately gated hourly job
+targets earlier cleanup and preserves profiles without requests. See
+[Account retention and deletion v1](identity-retention-v1.md) for the additive
+schema, bounds, failure/rollback controls and all-copies limitation. This local
+implementation is not proof of a live scheduler or a deletion SLA.
 
 ## Configuration, release and rollback gates
 
@@ -104,12 +109,13 @@ New logins require all of `EMAIL_LOGIN_ENABLED="true"`, dedicated `IDENTITY_DB`,
 server-secret `IDENTITY_PEPPER` (at least 32 characters, securely generated) and
 least-privilege `RESEND_API_KEY`. Sender is fixed to
 `TradingDatas <login@account.tradingdatas.com>`. The candidate Worker configuration
-declares only the dedicated D1 binding and an explicit false enable flag; it
+declares the dedicated D1 binding and explicit false email/retention flags; it
 contains no secrets. The UI therefore stays unavailable after configuration-only
 deployment, even if sender secrets are later added. Never put secrets in source,
 URLs or chat.
 
-Before activation: approve retention; review abuse budgets; provision approved
+Before activation: apply and verify the approved retention policy and additive
+schema/scheduler; review abuse budgets; provision approved
 secrets privately; exact-head PR/CI review and the Datas PM merge gate;
 staging sender verification to an explicitly approved recipient; check actual
 inbox delivery, expiry/replay, session isolation, both legacy and email login,
@@ -128,9 +134,12 @@ Implementation files (relative to `public-web/`):
 
 - Worker: `worker/email-identity.js`, `worker/identity-schema.sql`; routing and
   legacy redirect rejection in `worker/index.js`.
+- Account retention: `worker/identity-retention.js`, additive
+  `worker/identity-retention-schema.sql`, and the gated scheduled handler.
 - Existing UI: `src/LoginPage.jsx`, `src/App.jsx`, `src/accountSession.js`,
   `src/styles.css`; new in-place `src/EmailSignIn.jsx`, `src/EmailAccountPanel.jsx`.
 - Verification: `tests/email-identity.test.mjs`, `tests/helpers/identity-db.mjs`,
+  `tests/identity-retention.test.mjs`, `tests/account-deletion.test.mjs`,
   `tests/account-login.test.mjs`, `tests/account-session-lifecycle.test.mjs`,
   `tests/account-workspace.test.mjs`, `tests/sites-worker.test.mjs`.
 - Packaging/review: `scripts/prepare-sites-build.mjs`,

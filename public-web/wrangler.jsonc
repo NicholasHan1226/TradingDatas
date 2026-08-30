@@ -5,8 +5,10 @@
   "compatibility_date": "2026-08-29",
   "vars": {
     "ACCOUNT_API_BASE": "https://td-admin-api.tradingagent.cc",
-    "EMAIL_LOGIN_ENABLED": "false"
+    "EMAIL_LOGIN_ENABLED": "false",
+    "IDENTITY_RETENTION_ENABLED": "false"
   },
+  "triggers": { "crons": ["17 * * * *"] },
   "d1_databases": [
     {
       "binding": "IDENTITY_DB",

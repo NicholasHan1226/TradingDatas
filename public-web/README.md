@@ -107,7 +107,10 @@ purchase-flow review while another login harness is running. Binding stays loopb
 Email identity review: after building, run `node scripts/preview-email-identity.mjs`
 and open `http://127.0.0.1:5195/login`. Use an `@example.com` fixture; codes appear
 only in the local synthetic mailbox at `/__test__/mail`, never in a real inbox.
-The in-memory store resets on restart; no production secrets are used. Optional
+The in-memory store resets on restart; no production secrets are used.
+`/__test__/viewport?width=390` or `?width=768` renders a nested Account viewport
+for responsive review; it is local-only and uses the same synthetic session.
+Optional
 local workerd/D1 verification and the production approval gates are documented in
 [Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
 harness are not public assets. The dedicated remote account DB has been initialized;
@@ -115,6 +118,19 @@ the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
 `EMAIL_LOGIN_ENABLED="false"`. No sender/pepper secrets have been provisioned and
 this binding has not been deployed. See the [provisioning checkpoint](../docs/reports/2026-08-30-email-identity-provisioning.md).
 SMS and payments stay unavailable.
+
+Account deletion stays inside the existing Account → Security panel. It requires
+fresh email verification and explicit `DELETE` confirmation; success means the
+request was accepted and every email session revoked, not that profile cleanup
+has already finished. Legacy API keys, financial data and browser-local bookmarks
+are outside this account-only action. The owner-approved active-store maxima are
+24 hours for expired OTP records, seven days for invalid sessions, and 30 days
+after a profile deletion request. See [retention contract](../docs/design/identity-retention-v1.md).
+The new hourly maintenance job is gated by `IDENTITY_RETENTION_ENABLED="false"`;
+both it and email login remain off. `worker/identity-retention-schema.sql` is an
+additive migration for the dedicated account DB only, not yet applied remotely.
+Tests/harnesses apply it after `worker/identity-schema.sql` to disposable stores.
+No change here deploys a timer, deletes real users, or enables linked-account deletion.
 
 All external email uses the versioned brand templates in `worker/email-templates.js`,
 with explicit HTML and plain text. Sign-in and delivery-test variants support Chinese

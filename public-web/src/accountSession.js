@@ -18,14 +18,20 @@ export async function accountJson(endpoint, init = {}, fetchImpl = fetch, timeou
     const response = await fetchImpl(`/api/account/${endpoint}`, {
       ...init, credentials: "same-origin", signal: controller.signal,
     });
-    if (!response.ok) throw new Error(endpoint === "email/verify" && response.status === 400 ? "invalid_code" : response.status === 401 ? "signed_out" : response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "account_unavailable");
+    if (!response.ok) {
+      if (endpoint === "profile/deletion" && response.status === 403) {
+        const failure = await response.json().catch(() => null);
+        if (failure?.error === "recent_sign_in_required") throw new Error("recent_sign_in_required");
+      }
+      throw new Error(endpoint === "email/verify" && response.status === 400 ? "invalid_code" : response.status === 401 ? "signed_out" : response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "account_unavailable");
+    }
     if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("account_unavailable");
     const payload = await response.json();
     controller.signal.throwIfAborted();
     return payload;
   } catch (error) {
     if (controller.signal.aborted) throw controller.signal.reason;
-    if (["signed_out", "access_denied", "rate_limited", "account_unavailable", "invalid_code"].includes(error.message)) throw error;
+    if (["signed_out", "access_denied", "rate_limited", "account_unavailable", "invalid_code", "recent_sign_in_required"].includes(error.message)) throw error;
     throw new Error("account_unavailable");
   } finally {
     clearTimeout(timeout);
@@ -53,6 +59,16 @@ export async function startEmailSession(payload, fetchImpl = fetch) {
 
 export async function readAccountIdentity(init = {}, fetchImpl = fetch) {
   return requireAccount(await accountJson("me", init, fetchImpl));
+}
+
+export async function requestProfileDeletion(fetchImpl = fetch) {
+  const payload = await accountJson("profile/deletion", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmation: "DELETE" }),
+  }, fetchImpl);
+  const receipt = payload?.deletion;
+  if (receipt?.state !== "accepted" || !Number.isFinite(Date.parse(receipt.requested_at)) || !Number.isFinite(Date.parse(receipt.delete_by))) throw new Error("deletion_unconfirmed");
+  return receipt;
 }
 
 export async function startAccountSession(accessKey, fetchImpl = fetch) {

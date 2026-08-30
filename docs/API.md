@@ -402,6 +402,19 @@ limits, failure and release contracts: [Email identity v1](design/email-identity
 No production storage migration, secret provisioning or email activation is
 asserted by this API description.
 
+The local candidate also adds `POST /api/account/profile/deletion`: same-origin
+JSON `{confirmation: "DELETE"}`, current email session verified within ten
+minutes, and the separate retention feature flag are required. The server derives
+the user exclusively from that session. A D1 transaction queues deletion,
+disables the user and revokes all its email sessions; 202 returns
+`deletion: {state: "accepted", requested_at, delete_by}` and clears both cookies.
+This is not a completed-purge receipt. Wrong confirmation is 400, stale
+verification is 403 `recent_sign_in_required`, unauthenticated/expired email
+session is 401, and unavailable configuration/storage is 503. A legacy-only
+key session cannot use this route. `me.identity.deletion_available` indicates
+the feature flag only, not maintenance health. No admin/tenant authority exists
+in this identity slice; see the [retention contract](design/identity-retention-v1.md).
+
 ## Customer Portal API
 
 客户自助端点：任意有效 token 认证后仅返回**当前租户**的套餐、限额、用量与

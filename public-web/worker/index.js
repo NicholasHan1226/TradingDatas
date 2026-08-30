@@ -1,4 +1,5 @@
 import { handleEmailIdentity } from "./email-identity.js";
+import { runIdentityMaintenance } from "./identity-retention.js";
 
 const SESSION_COOKIE = "td_account_session";
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
@@ -195,6 +196,16 @@ async function handleAccountApi(request, env) {
 }
 
 export default {
+  async scheduled(_controller, env) {
+    try {
+      const result = await runIdentityMaintenance(env);
+      console.log(JSON.stringify({ event: "identity_retention", ...result }));
+      if (result.state === "backlog") throw new Error("identity_retention_backlog");
+    } catch {
+      // Do not log database errors that could contain PII or SQL parameters.
+      throw new Error("identity_retention_incomplete");
+    }
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {

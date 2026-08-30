@@ -48,6 +48,46 @@ function fixture(options = {}) {
   return {env, sent, call, challenge, verify, handle, advance: n => {now += n;}};
 }
 
+test('profile deletion requires fresh verified session, exact confirmation and explicit maintenance enablement', async () => {
+  const f=fixture(); const c=await f.challenge(); const verified=await f.verify(c);
+  const cookie=verified.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
+  assert.equal((await f.call('profile/deletion', {confirmation:'DELETE'},cookie)).status,503);
+  f.env.IDENTITY_RETENTION_ENABLED='true';
+  assert.equal(await f.call('profile/deletion',{confirmation:'DELETE'}),null);
+  assert.equal((await f.call('profile/deletion',{confirmation:'DELETE'},cookie,{origin:'https://evil.example'})).status,403);
+  assert.equal((await f.call('profile/deletion',{confirmation:'delete'},cookie)).status,400);
+  f.advance(601);
+  assert.equal((await f.call('profile/deletion',{confirmation:'DELETE'},cookie)).status,403);
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare('SELECT count(*) n FROM identity_deletion_requests').get().n,0);
+});
+test('deletion queues only the session owner, disables sign-in and revokes every session without touching another user',async()=>{
+  const f=fixture(); f.env.IDENTITY_RETENTION_ENABLED='true';
+  const a=await f.verify(await f.challenge('delete@example.com'));
+  const id=(await a.json()).identity.user_id;
+  const cookie=a.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
+  const b=await f.verify(await f.challenge('keep@example.com'));
+  const other=(await b.json()).identity.user_id;
+  const otherCookie=b.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
+  const response=await f.call('profile/deletion',{confirmation:'DELETE',user_id:other},cookie);
+  assert.equal(response.status,202);
+  assert.equal((await response.json()).deletion.state,'accepted');
+  assert.ok(response.headers.getSetCookie().every(value=>value.includes('Max-Age=0')));
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare('SELECT user_id FROM identity_deletion_requests').get().user_id,id);
+  assert.equal((await f.call('me',undefined,cookie)).status,401);
+  assert.equal((await f.call('me',undefined,otherCookie)).status,200);
+  f.advance(61);
+  assert.equal((await f.verify(await f.challenge('delete@example.com'))).status,400);
+});
+test('deletion batch failure does not disable the account or report success',async()=>{
+  const f=fixture(); f.env.IDENTITY_RETENTION_ENABLED='true';
+  const response=await f.verify(await f.challenge());
+  const cookie=response.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
+  f.env.IDENTITY_DB.sqlite.exec("CREATE TRIGGER fail_delete BEFORE UPDATE ON identity_users BEGIN SELECT RAISE(ABORT,'fixture'); END;");
+  assert.equal((await f.call('profile/deletion',{confirmation:'DELETE'},cookie)).status,503);
+  assert.equal((await f.call('me',undefined,cookie)).status,200);
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare('SELECT count(*) n FROM identity_deletion_requests').get().n,0);
+});
+
 test('email remains disabled without complete configuration, with no outbound call', async () => {
   const f=fixture(); delete f.env.RESEND_API_KEY;
   assert.deepEqual(await (await f.call('auth-methods')).json(), {email:false, phone:false});

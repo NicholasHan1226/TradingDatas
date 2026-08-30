@@ -1628,3 +1628,15 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
 .email-account-intro h3 { font-size: 24px; line-height: 1.35; margin: 14px 0 10px; }
 .email-account-intro p { color: var(--muted); line-height: 1.7; margin: 0; }
 .email-account-panel dd, .account-menu-identity strong { overflow-wrap: anywhere; }
+.email-account-deletion { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 24px; max-width: 660px; }
+.email-account-deletion h3 { font-size: 20px; margin: 0 0 12px; }
+.email-account-deletion p, .email-account-deletion small { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.email-account-deletion form { display: grid; gap: 12px; margin-top: 18px; }
+.email-account-deletion label { font-size: 13px; }
+.email-account-deletion input { max-width: 300px; width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; }
+.email-account-deletion input:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.email-deletion-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.email-deletion-actions button { min-height: 44px; }
+.email-deletion-actions button:not(.primary-button) { background: none; border: 0; color: var(--ink); padding: 10px 16px; font: inherit; cursor: pointer; }
+.email-deletion-actions button:disabled { cursor: not-allowed; }
+.email-deletion-actions .primary-button:disabled { background: var(--line); color: var(--muted); box-shadow: none; transform: none; }

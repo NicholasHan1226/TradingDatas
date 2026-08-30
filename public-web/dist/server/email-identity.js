@@ -58,7 +58,7 @@ async function takeRate(db,key,now,limit,window=3600) {
     .bind(`${key}:${start}`,start+window,limit).first());
 }
 async function pruneExpired(db, now) {
-  // Bounded opportunistic cleanup; no timer or external production migration.
+  // Bounded opportunistic cleanup complements the separately gated hourly job.
   await db.batch([
     db.prepare('DELETE FROM identity_challenges WHERE id IN (SELECT id FROM identity_challenges WHERE expires_at<=? LIMIT 100)').bind(now),
     db.prepare('DELETE FROM identity_sessions WHERE token_hash IN (SELECT token_hash FROM identity_sessions WHERE expires_at<=? LIMIT 100)').bind(now),
@@ -66,13 +66,14 @@ async function pruneExpired(db, now) {
     db.prepare('DELETE FROM identity_send_cooldowns WHERE email_hash IN (SELECT email_hash FROM identity_send_cooldowns WHERE next_send_at<=? LIMIT 100)').bind(now-3600),
   ]);
 }
-function identityProjection(user, expiresAt) {
+function identityProjection(user, expiresAt, env) {
   return {identity:{kind:'email',user_id:user.id,email:user.email,email_verified:true,tenant_id:null,
-    subscription_state:'not_subscribed',data_categories:[],session_expires_at:new Date(expiresAt*1000).toISOString()}};
+    subscription_state:'not_subscribed',data_categories:[],session_expires_at:new Date(expiresAt*1000).toISOString(),
+    deletion_available:env.IDENTITY_RETENTION_ENABLED==='true'}};
 }
 async function readSession(db, token, now) {
   if(!/^[a-f0-9]{64}$/.test(token)) return null;
-  return db.prepare(`SELECT u.id,u.email,s.expires_at FROM identity_sessions s JOIN identity_users u ON u.id=s.user_id
+  return db.prepare(`SELECT u.id,u.email,s.expires_at,s.created_at FROM identity_sessions s JOIN identity_users u ON u.id=s.user_id
     WHERE s.token_hash=? AND s.expires_at>? AND s.revoked_at IS NULL AND u.disabled_at IS NULL`).bind(await digest(token),now).first();
 }
 
@@ -153,13 +154,34 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
           db.prepare('SELECT u.id,u.email FROM identity_users u JOIN identity_sessions s ON s.user_id=u.id WHERE s.token_hash=?').bind(tokenHash),
         ]);
         const user=results[2]?.results?.[0]; if(!user) return json({error:'invalid_code'},400);
-        return json(identityProjection(user,expiresAt),200,[cookie(sessionToken),clearLegacy]);
+        return json(identityProjection(user,expiresAt,env),200,[cookie(sessionToken),clearLegacy]);
       }
       // A present email cookie never silently falls back to an old API-key cookie.
       if(!db) return json({error:'identity_unavailable'},503);
       const session=await readSession(db,token,now());
       if(!session) return json({error:'unauthenticated'},401,[cookie('',0),clearLegacy]);
-      if(path==='/api/account/me') return request.method==='GET' ? json(identityProjection(session,session.expires_at)) : json({error:'method_not_allowed'},405);
+      if(path==='/api/account/me') return request.method==='GET' ? json(identityProjection(session,session.expires_at,env)) : json({error:'method_not_allowed'},405);
+      if(path==='/api/account/profile/deletion') {
+        if(request.method!=='POST') return json({error:'method_not_allowed'},405);
+        if(env.IDENTITY_RETENTION_ENABLED!=='true') return json({error:'deletion_unavailable'},503);
+        let payload; try {payload=await boundedJson(request);} catch {return json({error:'invalid_request'},400);}
+        if(payload?.confirmation!=='DELETE') return json({error:'confirmation_required'},400);
+        const time=now();
+        if(session.created_at<time-600) return json({error:'recent_sign_in_required'},403);
+        const results=await db.batch([
+          // Repeat authentication inside the transaction, including freshness.
+          // No client-supplied user ID, email, tenant or role is used.
+          db.prepare(`INSERT INTO identity_deletion_requests(user_id,requested_at)
+            SELECT u.id,? FROM identity_users u JOIN identity_sessions s ON s.user_id=u.id
+            WHERE s.token_hash=? AND s.expires_at>? AND s.created_at>=? AND s.revoked_at IS NULL AND u.disabled_at IS NULL
+            ON CONFLICT(user_id) DO NOTHING RETURNING user_id`).bind(time,await digest(token),time,time-600),
+          db.prepare('UPDATE identity_users SET disabled_at=? WHERE id=? AND id IN (SELECT user_id FROM identity_deletion_requests)').bind(time,session.id),
+          db.prepare('UPDATE identity_sessions SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND user_id IN (SELECT user_id FROM identity_deletion_requests)').bind(time,session.id),
+          db.prepare('DELETE FROM identity_challenges WHERE email=(SELECT email FROM identity_users WHERE id=? AND id IN (SELECT user_id FROM identity_deletion_requests))').bind(session.id),
+        ]);
+        if(!results[0]?.results?.length) return json({error:'unauthenticated'},401,[cookie('',0),clearLegacy]);
+        return json({deletion:{state:'accepted',requested_at:new Date(time*1000).toISOString(),delete_by:new Date((time+30*86400)*1000).toISOString()}},202,[cookie('',0),clearLegacy]);
+      }
       if(path==='/api/account/session' && request.method==='POST') return json({error:'sign_out_first'},409);
       if(path==='/api/account/usage' || path==='/api/account/keys' || path.startsWith('/api/account/keys/')) return json({error:'subscription_required'},403);
       return json({error:'not_found'},404);

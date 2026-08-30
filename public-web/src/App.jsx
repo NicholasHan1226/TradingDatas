@@ -35,7 +35,7 @@ import {
   sourceCandidates,
 } from "./dataSourceLandscape";
 import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
-import { accountJson, confirmAccountSignOut, getAccountViewState, readAccountIdentity, startAccountSession, startEmailSession } from "./accountSession";
+import { accountJson, confirmAccountSignOut, getAccountViewState, readAccountIdentity, requestProfileDeletion, startAccountSession, startEmailSession } from "./accountSession";
 import { LoginPage } from "./LoginPage";
 import { EmailAccountPanel } from "./EmailAccountPanel";
 
@@ -872,6 +872,7 @@ export function App() {
   const [accountError, setAccountError] = useState("");
   const [accountSignOutPending, setAccountSignOutPending] = useState(false);
   const [accountSignOutError, setAccountSignOutError] = useState(false);
+  const [accountDeletionReceipt, setAccountDeletionReceipt] = useState(null);
   const accountSignOutInFlight = useRef(false);
   const accountLoginInFlight = useRef(false);
   const accountKeyInFlight = useRef(false);
@@ -897,6 +898,21 @@ export function App() {
     setAccountKeyLoading(false);
     setAccountLoading(false);
   }
+
+  async function deleteEmailProfile() {
+    if (accountSignOutInFlight.current || accountLoginInFlight.current) throw new Error("account_unavailable");
+    accountSignOutInFlight.current = true;
+    accountEpoch.current += 1;
+    accountReadAbort.current?.abort();
+    try {
+      const receipt = await requestProfileDeletion();
+      clearAccountView();
+      setAccountError("");
+      setAccountDeletionReceipt(receipt);
+    } finally { accountSignOutInFlight.current = false; }
+  }
+
+  useEffect(() => { if (accountData) setAccountDeletionReceipt(null); }, [accountData]);
 
   useEffect(() => {
     clearLegacyAccountToken();
@@ -1711,6 +1727,7 @@ export function App() {
                   <h2>{activeAccountItem.label}</h2>
                   <p>{activeAccountItem.description}</p>
                 </div>
+                {accountDeletionReceipt && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "注销请求已受理，账户已停用，邮箱会话已撤销。账户库资料将在以下日期前清理：" : "Deletion accepted. The account is disabled and email sessions are revoked. Profile data in the account store will be removed by: "}{new Date(accountDeletionReceipt.delete_by).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US")}</p></div>}
                 {(accountSignOutError || accountSignOutPending) && <div className="account-signout-feedback" role={accountSignOutError ? "alert" : "status"} aria-atomic="true">
                   <p>{accountSignOutPending ? (locale === "zh" ? "正在安全退出，请稍候…" : "Signing out securely. Please wait…") : (locale === "zh" ? "未能确认退出，会话可能仍然有效。请重试，确认退出前不要离开共享设备。" : "Sign-out could not be confirmed. Your session may still be active. Retry before leaving a shared device.")}</p>
                   {accountSignOutError && <button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{locale === "zh" ? "重试退出" : "Retry sign-out"}<ArrowRight size={16} /></button>}
@@ -1720,7 +1737,7 @@ export function App() {
                 {accountPrivateSection && accountChecking ? (
                   <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
                 ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountPrivateSection && isEmailAccount ? (
-                  <EmailAccountPanel account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} />
+                  <EmailAccountPanel key={`${accountData.user_id}:${accountSection}`} account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} onDelete={deleteEmailProfile} />
                 ) : accountSection === "overview" ? (
                   accountData ? (
                     <div className="account-live-overview">

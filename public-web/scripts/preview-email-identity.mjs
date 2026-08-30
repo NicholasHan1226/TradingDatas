@@ -12,7 +12,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist/cl
 const port=Number(process.env.TD_IDENTITY_PREVIEW_PORT || 5195);
 const origin=`http://127.0.0.1:${port}`;
 const outbox=[];
-const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_DB:identityDb(),IDENTITY_PEPPER:'local-preview-only-not-a-real-secret-0123456789012345',RESEND_API_KEY:'local-synthetic-only',
+const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_RETENTION_ENABLED:'true',IDENTITY_DB:identityDb(),IDENTITY_PEPPER:'local-preview-only-not-a-real-secret-0123456789012345',RESEND_API_KEY:'local-synthetic-only',
   ASSETS:{async fetch(request){
     const requested=decodeURIComponent(new URL(request.url).pathname);
     const file=path.resolve(root,`.${requested==='/'?'/index.html':requested}`);
@@ -36,6 +36,11 @@ const server=http.createServer(async (req,res)=>{
     const request=new Request(new URL(req.url,origin),{method:req.method,headers,...(['GET','HEAD'].includes(req.method)?{}:{body:Buffer.concat(chunks)})});
     let response;
     if(req.url==='/__test__/mail' && req.method==='GET') response=new Response(`<!doctype html><html><meta charset="utf-8"><body><h1>LOCAL SYNTHETIC MAIL — NOT SENT</h1><p>Only example.com fixtures. Memory-only; never deployed.</p><pre>${JSON.stringify(outbox,null,2).replaceAll('&','&amp;').replaceAll('<','&lt;')}</pre></body></html>`,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
+    else if(new URL(request.url).pathname==='/__test__/viewport' && req.method==='GET') {
+      const width=new URL(request.url).searchParams.get('width')==='768'?768:390;
+      // A real nested layout viewport for responsive review; no app-state injection.
+      response=new Response(`<!doctype html><html><meta charset="utf-8"><title>Local account viewport</title><body style="margin:0;background:#d7d9dc"><nav style="padding:12px;font:14px sans-serif">LOCAL SYNTHETIC REVIEW · <a href="?width=390">390px</a> · <a href="?width=768">768px</a></nav><iframe title="Account responsive preview" src="/account" style="display:block;width:${width}px;height:850px;max-width:100%;border:0;margin:auto"></iframe></body></html>`,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
+    }
     else response=await handler(request,env) || await worker.fetch(request,env);
     res.writeHead(response.status,{...Object.fromEntries(response.headers),'set-cookie':response.headers.getSetCookie()});
     res.end(Buffer.from(await response.arrayBuffer()));

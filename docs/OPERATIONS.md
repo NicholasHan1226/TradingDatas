@@ -659,7 +659,7 @@ The [email identity candidate](design/email-identity-v1.md) implements this flow
 inside the existing Login/Account with local D1 tests and synthetic mail. The
 dedicated account DB is now provisioned; its candidate Worker binding keeps the
 email enable flag explicitly false. Secret provisioning, exact-head release,
-retention policy, approved-recipient delivery and runtime readback remain separate
+retention enforcement, approved-recipient OTP delivery and runtime readback remain separate
 gates. No real message or Worker deployment occurred during this preparation.
 
 2026-08-30 follow-up: the earlier permission pause was respected. After the
@@ -670,9 +670,36 @@ disabled and no global trust/proxy setting changed. The new account-only DB was
 initialized and read back empty. Exact identifiers, commands, schema hash,
 rollback boundaries and checks are in the
 [provisioning checkpoint](reports/2026-08-30-email-identity-provisioning.md).
-The test recipient is still missing. Preserve all existing deployment credentials,
-customer keys and unrelated Resend resources; do not send mail or open email login
-before the remaining gates pass.
+Later on 2026-08-30 the owner supplied a private recipient and confirmed receiving
+the delivery test; the branded follow-up also has provider delivery evidence in
+the [language checkpoint](reports/2026-08-30-email-language-readiness.md). This is
+not an OTP/session test or administrator grant. Preserve all existing deployment
+credentials, customer keys and unrelated Resend resources; do not send further
+mail or open email login before the remaining gates pass.
+
+### Account-only retention candidate
+
+The approved active-store retention and rollback contract is
+[Account retention and deletion v1](design/identity-retention-v1.md). The candidate
+adds one empty request table/index via `public-web/worker/identity-retention-schema.sql`,
+after the original account schema, to the dedicated `tradingdatas-identity-v1`
+binding only. No remote migration has run in this follow-up. Never apply it to
+financial SQLite, existing API-token stores or another D1 resource.
+
+The configured UTC hourly cron is `17 * * * *`; `IDENTITY_RETENTION_ENABLED=false`
+makes each invocation a no-op and disables self-service deletion. Email activation
+is a separate false flag. Before enabling either, exact-head CI/review and Datas
+PM approval must pass; then verify the precise binding and additive schema,
+scheduled invocation, aggregate deletion/backlog outcome, failure visibility,
+current-user deletion and unaffected active sessions. A local cron test is not a
+live scheduling guarantee. Logs contain counts/booleans only, never PII or SQL errors.
+Bounded backlog produces a failed invocation, not false success; operations must
+investigate it and prove deadlines are met before claiming an operational SLA.
+
+Do not turn cleanup off when pausing new logins. If maintenance itself requires
+incident rollback, preserve its durable queue and perform approved account-only
+manual cleanup within the deadline; do not drop the additive table or restore
+deleted accounts. Backups/Time Travel and Resend logs remain separately scoped.
 
 Rollback is separate and must target only these three newly created DNS records
 and this Resend domain, after checking that no sender has begun using them.
