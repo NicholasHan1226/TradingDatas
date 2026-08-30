@@ -6,7 +6,7 @@ follow-up, not a new data provider, feature, trading tool or publishing authorit
 ## Frozen scope
 
 This records the original v7 pass. Later authorized continuations expand eight
-existing summary records into guides (32 total) and fix the shared search input
+existing summary records into guides (32 at that stage) and fix the shared search input
 label; current counts and the unchanged eight core sequences are maintained in
 `docs/product/RESEARCH_LIBRARY.md`. The original pass below remains historical.
 

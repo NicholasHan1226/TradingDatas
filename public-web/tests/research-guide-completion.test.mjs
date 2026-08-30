@@ -4,6 +4,7 @@ import { researchEditorial } from "../src/researchEditorial.js";
 import { researchDeepReads } from "../src/researchDeepReads.js";
 import { researchGuideDepthExpansion } from "../src/researchGuideDepthExpansion.js";
 import { researchReaderNotes } from "../src/researchReaderNotes.js";
+import { researchMethodsMarketsGuides } from "../src/researchMethodsMarketsGuides.js";
 import { papers } from "../src/researchCatalog.js";
 import { sourceUrls, auditContent } from "../scripts/audit-research-content.mjs";
 
@@ -11,12 +12,12 @@ const pending = [
   "The Quality of Accruals and Earnings: The Role of Accrual Estimation Errors",
 ];
 
-test("15 supported extensions coexist with 32 guides, 200 works and one honest source gap", () => {
+test("15 supported extensions coexist with 40 guides, 200 works and one honest source gap", () => {
   assert.equal(Object.keys(researchGuideDepthExpansion).length, 15);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 32);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 31);
+  assert.equal(Object.keys(researchReaderNotes).length, 40);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 39);
   assert.deepEqual(Object.entries(researchReaderNotes).filter(([, g]) => g.sections.length === 4).map(([title]) => title).sort(), [...pending].sort());
   for (const title of pending) {
     assert.equal(researchReaderNotes[title], researchEditorial[title]);
@@ -35,14 +36,16 @@ test("extensions preserve original sections and integrate bilingual, individuall
     assert.equal(guide.reviewedAt, "2026-08-30");
     assert.ok(guide.evidenceScope.length > 80);
     assert.match(guide.evidenceUrl, /^https:\/\//);
-    assert.deepEqual(papers.find(p => p.title === title).readingNotes, guide.sections);
+    const effective = researchMethodsMarketsGuides[title] || guide;
+    assert.deepEqual(papers.find(p => p.title === title).readingNotes, effective.sections);
     for (const [oldIndex, newIndex] of [[0, 0], [1, 2], [3, 5]]) {
       assert.deepEqual(guide.sections[newIndex], original.sections[oldIndex]);
       assert.notEqual(guide.sections[newIndex], original.sections[oldIndex]);
     }
     for (const index of [1, 4]) {
       const section = guide.sections[index];
-      assert.ok(knownUrls.has(section.reference.url));
+      // Superseded source URLs remain historical evidence, not active public links.
+      if (effective === guide) assert.ok(knownUrls.has(section.reference.url));
       for (const locale of ["zh", "en"]) {
         assert.ok(section.title[locale] && section.reference.label[locale]);
         assert.ok(section.body[locale].length >= (locale === "zh" ? 85 : 200));

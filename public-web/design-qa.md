@@ -1,5 +1,21 @@
 # TradingDatas data catalog design QA
 
+## Research forty-guide continuation — 2026-08-30
+
+Candidate-only continuation of PR #400: eight new bilingual guides plus a deeper
+existing China guide, yielding 40 distinct guides within 200 works. One repeated
+Fama/French 1993 passage and the BIS 1183 broken landing link were corrected.
+Source reading, all-library link/metadata observations, actual browser checks and
+residual acceptance gates are recorded in
+`../docs/design/research-forty-guides-v8.md`.
+
+Build and 91 tests pass; 24 HTTP artifacts match their generators. Nine changed
+guide pages render in Chinese and English; Chinese desktop has no horizontal
+document overflow. Crypto Chinese body and CAPM/Newey–West English/dark headers
+at 390/768px were visually inspected. Native mobile/touch, full keyboard traversal,
+screen-reader speech, browser save completion and independent PM release approval
+remain open. The older result sections below apply to their dated surfaces only.
+
 ## Result
 
 passed

@@ -58,16 +58,16 @@ const additions = {
   },
   "Common risk factors in the returns on stocks and bonds": {
     evidenceUrl: urls.factors,
-    evidenceScope: "Original introduction and Section 2.1: stock/bond factor roles, TERM/DEF definitions and size/book-to-market grouping. No factor reconstruction or numeric table audit.",
+    evidenceScope: "Original introduction and Section 2.1: stock/bond factor roles, TERM/DEF definitions and size/book-to-market grouping. PDF pp. 4–6 re-read for the sorting-breakpoint replacement; printed p. 8 visually checked. No factor reconstruction or numeric table audit.",
     sections: [
       section("债券因子是收益差，不是收益率差", "Bond factors are return differences, not yield spreads",
         "论文的TERM用长期国债月收益减去上月末已知的一月期国库券利率；DEF用长期公司债组合收益减去长期国债收益。这两个定义都依赖持有期回报，不能直接用两条到期收益率相减替代。债券价格、期限与回报口径需要先核对。",
         "TERM subtracts the previously observed one-month bill rate from the monthly long-government-bond return. DEF subtracts the long-government-bond return from the long-corporate-bond portfolio return. These are holding-period return constructions, not interchangeable with differences between quoted yields. Price, tenor and return conventions matter.",
         urls.factors, "原文第2.1.1节：债券市场因子", "Original §2.1.1: bond-market factors"),
-      section("解释共同波动与解释平均水平", "Common variation and average returns are separate tests",
-        "时间序列回归中的载荷与拟合度考察共同波动，截距则帮助检验平均超额收益是否仍未被解释。高拟合度并不自动意味着截距为零，也不证明唯一的经济机制。阅读时把这两类证据分别记录，才能理解论文为何同时讨论股票与债券。",
-        "Loadings and fit in time-series regressions describe shared variation; intercepts test whether average excess returns remain unexplained. High fit does not automatically imply zero intercepts or establish a unique economic mechanism. Keeping these tests separate clarifies the paper's joint treatment of stocks and bonds.",
-        urls.factors, "原文引言：时间序列检验的两个问题", "Original introduction: two questions for time-series tests"),
+      section("分组断点来自哪个市场？", "Which market supplies the sorting breakpoints?",
+        "规模分组以纽约证交所股票的市值中位数为断点，再应用于包含Amex与Nasdaq的样本；账面市值比分组也采用纽约证交所的30%和70%断点。因此小股票组不等于全样本数量的一半，也不代表市值的一半。更换断点市场会改变组合，不能把同名排序当成完全相同的研究设计。",
+        "The NYSE median capitalization splits size groups across the wider NYSE, Amex and Nasdaq sample; NYSE 30th and 70th percentiles also determine book-to-market groups. The small group is therefore neither half of all stocks nor half of aggregate capitalization. Changing the breakpoint universe changes the portfolios even when the sorting labels remain identical.",
+        urls.factors, "原文第2.1.2节：六个组合的分组断点", "Original §2.1.2: breakpoints for six portfolios"),
     ],
   },
   "A Simple Way to Estimate Bid-Ask Spreads from Daily High and Low Prices": {
