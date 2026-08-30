@@ -29,7 +29,7 @@ import { researchHref, researchLocation, researchSubjects } from "./researchDisc
 import { ResearchHub } from "./ResearchHub.jsx";
 import { GlobalSearchField } from "./GlobalSearchField.jsx";
 import { ResearchRecord } from "./ResearchRecord.jsx";
-import { createReadingPositions, isInPageNavigation } from "./researchHistory.js";
+import { createReadingPositions, isInPageNavigation, researchSectionTarget } from "./researchHistory.js";
 import { preparationTutorials } from "./preparationTutorials.js";
 import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
 const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
@@ -882,6 +882,13 @@ export function App() {
 
   useEffect(() => {
     currentRouteRef.current = route;
+    const sectionId = researchSectionTarget(route, window.location.hash);
+    const section = sectionId && document.getElementById(sectionId);
+    if (section) {
+      section.scrollIntoView({ block: "start", behavior: "instant" });
+      section.focus({ preventScroll: true });
+      return;
+    }
     window.scrollTo({ top: route === "research" ? researchScrollRef.current : 0, behavior: "instant" });
     if (navigationRevision > 0 && (route.startsWith("research/") || route.startsWith("recipes/"))) {
       const heading = document.querySelector("main h1");

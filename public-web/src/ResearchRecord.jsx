@@ -2,6 +2,8 @@ import { useState } from "react";
 import { ArrowRight, ArrowSquareOut, BookmarkSimple, Check, Copy, LinkSimple } from "@phosphor-icons/react";
 import { papers, researchTitle, researchData, researchYear } from "./researchCatalog.js";
 import { readingJourney } from "./researchJourneys.js";
+import { questionRoutesFor } from "./researchQuestionRoutes.js";
+import { ResearchQuestionRoutes } from "./ResearchQuestionRoutes.jsx";
 import { researchSubjects } from "./researchDiscovery.js";
 import { researchCitation } from "./researchReader.js";
 import { copyText } from "./copyText.js";
@@ -40,16 +42,18 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
       {linkState === "failed" && <input className="research-citation-fallback" aria-label={zh ? "可复制链接" : "Selectable link"} readOnly value={shareUrl} onFocus={(event) => event.target.select()} />}
     </header>
 
+    {paper.readingNotes?.length > 0 && <details className="research-article-contents"><summary>{zh ? "本篇内容" : "In this guide"}</summary><nav aria-label={zh ? "文章目录" : "Article contents"}><ol>{paper.readingNotes.map((section,index)=><li key={section.title.en}><a href={`#research-section-${index+1}`}>{section.title[locale]}</a></li>)}</ol></nav></details>}
     <div className="research-reader-layout">
       <div className="research-reader-body">
         <p className="research-reader-intro">{paper.summary[locale]}</p>
-        {paper.readingNotes?.map((section) => <section key={section.title.en}><h2>{section.title[locale]}</h2><p>{section.body[locale]}</p>{section.reference && <a className="text-link" href={section.reference.url} target="_blank" rel="noreferrer">{section.reference.label[locale]}<ArrowSquareOut /></a>}</section>)}
+        {paper.readingNotes?.map((section,index) => <section key={section.title.en} id={`research-section-${index+1}`} tabIndex={-1}><h2>{section.title[locale]}</h2><p>{section.body[locale]}</p>{section.reference && <a className="text-link" href={section.reference.url} target="_blank" rel="noreferrer">{section.reference.label[locale]}<ArrowSquareOut /></a>}</section>)}
         <section><h2>{zh ? "涉及的数据" : "Data in focus"}</h2><p>{researchData(paper, locale)}</p></section>
         {paper.readerLimits && <section><h2>{zh ? "阅读时留意" : "Keep in mind"}</h2><p>{paper.readerLimits[locale]}</p></section>}
         {paper.sourceNote && <p className="research-edition-note">{paper.sourceNote[locale]}</p>}
         <p className="research-reader-attribution">{zh ? "本站导读；中文题名为编译。完整论述与结论请见原文。" : "Editorial reading guide. Refer to the original for the full argument and conclusions."}</p>
       </div>
       <aside className="research-reader-aside" aria-label={zh ? "延伸阅读" : "Further reading"}>
+        <ResearchQuestionRoutes locale={locale} routes={questionRoutesFor(paper)} currentPaper={paper} onNavigate={onNavigate} />
         {journey ? <nav className="research-journey-continuation" aria-label={zh ? "主题阅读顺序" : "Topic reading sequence"}>
           <h2>{journeyTopic.label[locale]}</h2><p className="research-journey-position">{journey.index + 1} / 3 · {journey.stage[locale]}</p><p>{journey.reason[locale]}</p>
           {journey.links.map(({ paper: item, direction, stage, reason }) => <div className="research-journey-link" key={item.id}><a href={`/research/${item.id}`} onClick={(event) => onNavigate(event, `/research/${item.id}`)}><small>{direction === "next" ? (zh ? "下一篇" : "Next read") : (zh ? "上一篇" : "Previous read")} · {stage[locale]}</small><span>{researchTitle(item, locale)}<ArrowRight /></span></a><p>{reason[locale]}</p></div>)}

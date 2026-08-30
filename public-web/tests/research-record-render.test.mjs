@@ -29,7 +29,9 @@ test("all 200 records render in both languages with direct sources and no intern
       assert.ok(!html.includes(escapeHtml(guide.evidenceScope)), `internal reading scope leaked: ${paper.id}`);
       assert.ok(html.includes(escapeHtml(guide.limits[locale])), `missing source limitation: ${paper.id}:${locale}`);
     }
-    for (const section of paper.readingNotes || []) {
+    for (const [index, section] of (paper.readingNotes || []).entries()) {
+      assert.ok(html.includes(`href="#research-section-${index+1}"`));
+      assert.ok(html.includes(`id="research-section-${index+1}"`));
       assert.ok(html.includes(escapeHtml(section.title[locale])), `missing section title: ${paper.id}:${locale}`);
       assert.ok(html.includes(escapeHtml(section.body[locale])), `missing section body: ${paper.id}:${locale}`);
       if (section.reference) {

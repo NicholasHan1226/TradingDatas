@@ -1,6 +1,6 @@
 # External research library
 
-Last reviewed: 2026-08-30. Scope: the `public-web` PR candidate, not production.
+Last reviewed: 2026-08-31. Scope: the `public-web` PR candidate, not production.
 
 ## Purpose and acceptance
 
@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 40 guides: 39 have six bilingual sections with source locators;
+library has 43 guides: 42 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -108,7 +108,12 @@ CAPM, five factors, sentiment, EPU, bootstrap and Lasso use journal editions;
 crypto uses the August 2018 working paper and Newey–West the February 1986 revised
 working paper, distinguished from their 2021/1987 canonical citations. Source
 pages inspected and maintenance findings are in `docs/design/research-forty-guides-v8.md`.
-This does not certify 200 full-length guides or 40 full-text reviews; 160 works
+The corporate continuation in `researchCorporateGuides.js` adds three existing
+works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
+Altman's discriminant analysis. They distinguish abnormal accruals, residual
+earnings and bankruptcy scores; source pages and acceptance are documented in
+`docs/design/research-corporate-questions-v9.md`.
+This does not certify 200 full-length guides or 43 full-text reviews; 157 works
 remain summary-only.
 
 System language is the default; Account holds the System/中文/English override.
@@ -131,10 +136,20 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 40 expanded guides below the lead story.
+counts. Featured also exposes the 43 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides use the existing same-topic further-reading sidebar without inventing a
 fourth stage or changing original sequence membership.
+Three supplementary corporate question routes in `researchQuestionRoutes.js`
+connect nine existing works around earnings quality, company comparison and
+financial distress. They appear as closed disclosures on the first unfiltered
+company-topic page and as an expanded relevant route in member articles, marking
+the current reading. They use existing article URLs, add no work identities or
+new routes, and do not imply that adjacent papers validate each other. The
+original eight core sequences and three curated path pages remain unchanged.
+Expanded guides also have a collapsed contents disclosure before their body,
+including on narrow screens. Section fragment IDs are locale-neutral and native
+links target focusable sections with clearance beneath the floating header.
 Each journey has three distinct guides. Article sidebars show position and
 previous/next readings with sixteen authored connections explaining differences
 in questions, methods or evidence, not an implied author citation or ranking.

@@ -47,13 +47,13 @@ npm run test:sites
 
 ## Research library
 
-The 2026-08-30 candidate contains 200 distinct external research materials with
+The 2026-08-31 candidate contains 200 distinct external research materials with
 Chinese/English editorial titles, orientations, data requirements and limitations.
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 40 bilingual guides: 39 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 160 records are
+There are 43 bilingual guides: 42 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 157 records are
 summary-only. The eight three-stage core journeys retain their 24 original works.
 `src/researchFundamentalsMicrostructureGuides.js` adds six source-backed guides
 on accounting signals, governance, distress and market microstructure. Source
@@ -65,6 +65,12 @@ factors, sentiment, crypto, policy uncertainty, HAC covariance, bootstrap and
 Lasso; it also deepens the existing China market guide without counting it twice.
 Actual source editions/pages and full-library maintenance results are recorded
 in `../docs/design/research-forty-guides-v8.md`.
+
+`src/researchCorporateGuides.js` adds three existing works on accrual-model tests,
+residual-income valuation and financial-ratio classification. Three supplementary
+question routes connect nine works on the company-topic page and article sidebars;
+they do not replace core sequences or create duplicate records. Source reading
+scopes and acceptance: `../docs/design/research-corporate-questions-v9.md`.
 
 `src/researchSeeds.js` holds new editorial notes; `src/researchLegacy.json` preserves
 the original records and stable routes. `src/researchBibliography.json` is generated
