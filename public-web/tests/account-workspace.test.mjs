@@ -11,7 +11,7 @@ test("renders authenticated plan, usage, and security sections from portal data"
   assert.match(appSource, /accountSection === "security"/);
   assert.match(appSource, /accountUsage\?\.history/);
   assert.match(appSource, /accountData\.minute_request_limit/);
-  assert.match(appSource, /accountCurrentKey\?\.fingerprint/);
+  assert.match(appSource, /HttpOnly same-site session/);
 });
 
 test("keeps unimplemented identity and commerce capabilities explicit", () => {
@@ -31,11 +31,19 @@ test("uses a lightweight responsive account presentation", () => {
 test("all logout entry points share a guarded confirmation and visible retry state", () => {
   const handler = appSource.slice(appSource.indexOf("async function disconnectAccount()"), appSource.indexOf("async function createAccountKey("));
   assert.match(handler, /if \(accountSignOutInFlight\.current\) return/);
-  assert.ok(handler.indexOf("await confirmAccountSignOut(accountAuthMode)") < handler.indexOf("setAccountData(null)"));
+  assert.ok(handler.indexOf("await confirmAccountSignOut()") < handler.indexOf("clearAccountView()"));
   assert.match(handler, /catch \{\s+setAccountSignOutError\(true\);\s+\} finally/);
   assert.match(handler, /setAccountConnectionRevision/);
   assert.equal((appSource.match(/onClick=\{disconnectAccount\} disabled=\{accountSignOutPending\}/g) || []).length, 3);
   assert.match(appSource, /role=\{accountSignOutError \? "alert" : "status"\}/);
   assert.match(appSource, /未能确认退出，会话可能仍然有效/);
   assert.match(appSource, /Sign-out could not be confirmed/);
+});
+
+test("late reads and key mutations cannot restore a previous account", () => {
+  assert.match(appSource, /accountEpoch\.current \+= 1/);
+  assert.match(appSource, /accountReadAbort\.current\?\.abort\(\)/);
+  assert.equal((appSource.match(/if \(accountEpoch\.current !== epoch\) return/g) || []).length, 5);
+  assert.match(appSource, /if \(!current\(\)\) return/);
+  assert.match(appSource, /用量暂时无法加载，你仍然处于登录状态/);
 });

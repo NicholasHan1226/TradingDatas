@@ -462,6 +462,23 @@ guidance remains equally discoverable.
 
 ### 5.7 Account and Agent Connections
 
+`/login` is an entry to the existing Account, not a second customer console.
+Use a quiet two-column editorial composition: short orientation and existing
+theme-matched data-material artwork on the left, one focused login panel on the
+right. On mobile, drop the decorative intro and put the login panel first.
+Keep the floating shared navigation, brand, search and Account layout intact.
+Reuse existing surface/ink/muted/blue/aqua tokens, 48px inputs, visible keyboard
+focus and restrained shadows. Primary form text is 13–16px, not microcopy-sized.
+
+The panel distinguishes available access-key login from the confirmed future
+Phone/Email identity methods. The latter show explicit unavailable states,
+never a fake send-code form or unverified success. No automatic direct-bearer
+fallback; a new session is only established through the same-site gateway.
+Loading, invalid/expired key, denied access, throttling, timeout and service
+outage are distinct feedback states. Usage failure is independent of sign-in.
+After successful login, replace the route with `/account`; leaving Login clears
+the raw input. See `API.md` for the session/security contract.
+
 The account workspace is grouped by customer task:
 
 1. **Saved materials** — browser-local bookmarks until authenticated sync exists;

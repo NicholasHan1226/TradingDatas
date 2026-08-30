@@ -89,7 +89,68 @@ test("each authenticated read rechecks upstream and preserves usage and key rout
   ]);
   assert.ok(calls.every((call) => call.auth === "Bearer fixture-access-key"));
   status = 401;
-  assert.equal((await worker.fetch(request("me", { headers: { cookie } }), env)).status, 401);
+  const revoked = await worker.fetch(request("me", { headers: { cookie } }), env);
+  assert.equal(revoked.status, 401);
+  assert.match(revoked.headers.get("set-cookie"), /Max-Age=0/);
+});
+
+test("logout remains available with missing gateway configuration", async () => {
+  const response = await worker.fetch(request("session", { method: "DELETE", headers: { origin } }), {});
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("set-cookie"), /Max-Age=0/);
+  assert.equal((await worker.fetch(request("session", { method: "DELETE" }), {})).status, 403);
+});
+
+test("malformed upstream 200 responses cannot create a session", async (t) => {
+  let body;
+  t.mock.method(globalThis, "fetch", async () => new Response(body));
+  for (body of ["<html>Login</html>", "null", "{}", '{"portal":{"tenant_id":"","tier":"basic"}}', "x".repeat(512 * 1024 + 1)]) {
+    const response = await worker.fetch(request("session", { method: "POST", headers: { origin }, body: JSON.stringify({ access_key: "fixture" }) }), env);
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get("set-cookie"), null);
+  }
+});
+
+test("upstream fetch forbids redirects and provides a timeout signal", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    assert.equal(init.redirect, "error");
+    assert.ok(init.signal instanceof AbortSignal);
+    throw new TypeError("synthetic upstream failure with sensitive details");
+  });
+  const response = await worker.fetch(request("session", { method: "POST", headers: { origin }, body: JSON.stringify({ access_key: "fixture" }) }), env);
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: "account_upstream_unavailable" });
+  assert.equal(response.headers.get("set-cookie"), null);
+});
+
+test("request size is bounded without trusting Content-Length", async (t) => {
+  const upstream = t.mock.method(globalThis, "fetch", async () => Response.json(projection));
+  for (const body of ["null", "x".repeat(16 * 1024 + 1)]) {
+    const response = await worker.fetch(request("session", { method: "POST", headers: { origin }, body }), env);
+    assert.equal(response.status, 400);
+  }
+  assert.equal(upstream.mock.callCount(), 0);
+});
+
+test("chunked oversized requests cancel their stream before calling upstream", async (t) => {
+  let cancelled = false;
+  const upstream = t.mock.method(globalThis, "fetch", async () => Response.json(projection));
+  const body = new ReadableStream({
+    pull(controller) { controller.enqueue(new Uint8Array(9000)); },
+    cancel() { cancelled = true; },
+  });
+  const response = await worker.fetch(request("session", { method: "POST", headers: { origin }, body, duplex: "half" }), env);
+  assert.equal(response.status, 400);
+  assert.equal(cancelled, true);
+  assert.equal(upstream.mock.callCount(), 0);
+});
+
+test("only route-specific methods reach the account backend", async (t) => {
+  const upstream = t.mock.method(globalThis, "fetch", async () => Response.json(projection));
+  for (const [path, method] of [["me", "POST"], ["usage", "PATCH"], ["keys", "PATCH"], ["keys/key_0123456789abcdef", "GET"]]) {
+    assert.equal((await worker.fetch(request(path, { method, headers: { origin } }), env)).status, 405);
+  }
+  assert.equal(upstream.mock.callCount(), 0);
 });
 
 test("key writes require same-origin and forward the body without adding authority", async (t) => {

@@ -293,6 +293,15 @@ Customer-scoped key listing, creation, and non-current-key disable are also
 implemented; billing, passwordless identity sessions, and account-synced
 bookmarks remain target capabilities rather than production facts.
 
+The confirmed customer identity target supports phone and email within the same
+Account. The current access-key login is an explicitly temporary same-site cookie
+bridge, not proof of personal identity or a verified email/phone. Login methods
+must disclose unavailable delivery rather than collecting contacts or simulating
+codes. Legacy browser-stored credentials are retired; existing API keys remain
+unchanged. The initial payment direction is active monthly/yearly payment and
+manual renewal, not automatic debit; personal-Alipay eligibility and signing
+remain unverified. See `design/personal-alipay-checkout-v1.md` for the launch gates.
+
 The stable category keys are `a_share`, `crypto`, and `news`. Existing token
 records that omit `data_categories` retain their previous all-current-category
 access for compatibility; an explicit empty list grants no dataset access.

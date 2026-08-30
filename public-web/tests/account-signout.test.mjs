@@ -4,7 +4,7 @@ import { confirmAccountSignOut } from "../src/accountSession.js";
 
 test("confirms same-site logout only from an explicit successful response", async () => {
   const calls = [];
-  await confirmAccountSignOut("session", async (url, init) => {
+  await confirmAccountSignOut(async (url, init) => {
     calls.push({ url, method: init.method, credentials: init.credentials, signal: init.signal });
     return Response.json({ signed_out: true });
   });
@@ -24,7 +24,7 @@ test("network errors, non-success codes and malformed confirmations cannot repor
     async () => Response.json({ signed_out: false }),
     async () => Response.json({ signed_out: "true" }),
     async () => Response.json(null),
-  ]) await assert.rejects(confirmAccountSignOut("session", fetchImpl));
+  ]) await assert.rejects(confirmAccountSignOut(fetchImpl));
 });
 
 test("an interrupted logout can be retried successfully", async () => {
@@ -32,8 +32,8 @@ test("an interrupted logout can be retried successfully", async () => {
   const fetchImpl = async () => ++attempts === 1
     ? Response.json({ error: "unavailable" }, { status: 503 })
     : Response.json({ signed_out: true });
-  await assert.rejects(confirmAccountSignOut("session", fetchImpl));
-  await confirmAccountSignOut("session", fetchImpl);
+  await assert.rejects(confirmAccountSignOut(fetchImpl));
+  await confirmAccountSignOut(fetchImpl);
   assert.equal(attempts, 2);
 });
 
@@ -43,10 +43,6 @@ test("a stalled request is aborted and bounded", async () => {
     signal = init.signal;
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });
   });
-  await assert.rejects(confirmAccountSignOut("session", fetchImpl, 5));
+  await assert.rejects(confirmAccountSignOut(fetchImpl, 5));
   assert.equal(signal.aborted, true);
-});
-
-test("tab-only compatibility logout does not call the session gateway", async () => {
-  await confirmAccountSignOut("direct", async () => { assert.fail("must not fetch"); });
 });

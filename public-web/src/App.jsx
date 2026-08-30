@@ -32,19 +32,18 @@ import {
   sourceCandidates,
 } from "./dataSourceLandscape";
 import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
-import { confirmAccountSignOut } from "./accountSession";
+import { accountJson, confirmAccountSignOut, readAccountIdentity, startAccountSession } from "./accountSession";
+import { LoginPage } from "./LoginPage";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
-const ACCOUNT_API_BASE = import.meta.env.VITE_ACCOUNT_API_BASE || "https://td-admin-api.tradingagent.cc";
 const LEGACY_ACCOUNT_TOKEN_KEY = "td-account-token";
 const TAB_ACCOUNT_TOKEN_KEY = "td-account-tab-token";
 
-function restoreTabAccountToken() {
-  const legacy = localStorage.getItem(LEGACY_ACCOUNT_TOKEN_KEY) || "";
-  if (legacy) sessionStorage.setItem(TAB_ACCOUNT_TOKEN_KEY, legacy);
-  localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY);
-  return sessionStorage.getItem(TAB_ACCOUNT_TOKEN_KEY) || "";
+function clearLegacyAccountToken() {
+  // Retire the direct bearer bridge. Existing server credentials are untouched.
+  try { localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY); } catch { /* Storage may be disabled. */ }
+  try { sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY); } catch { /* Cookie login remains available. */ }
 }
 
 function getRouteFromPath() {
@@ -839,92 +838,115 @@ export function App() {
   const [dataStage, setDataStage] = useState("all");
   const [docsCategory, setDocsCategory] = useState("all");
   const [pricingPlanIndex, setPricingPlanIndex] = useState(0);
-  const [accountToken, setAccountToken] = useState(restoreTabAccountToken);
-  const [accountAuthMode, setAccountAuthMode] = useState(() => sessionStorage.getItem(TAB_ACCOUNT_TOKEN_KEY) ? "direct" : "session");
   const [accountConnectionRevision, setAccountConnectionRevision] = useState(0);
   const [accountTokenInput, setAccountTokenInput] = useState("");
   const [accountData, setAccountData] = useState(null);
   const [accountUsage, setAccountUsage] = useState(null);
   const [accountKeys, setAccountKeys] = useState([]);
+  const [accountKeysLoading, setAccountKeysLoading] = useState(false);
   const [accountKeyLabel, setAccountKeyLabel] = useState("");
   const [accountNewKey, setAccountNewKey] = useState("");
   const [accountKeyLoading, setAccountKeyLoading] = useState(false);
   const [accountKeyError, setAccountKeyError] = useState("");
-  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [accountUsageError, setAccountUsageError] = useState(false);
+  const [accountLoginPending, setAccountLoginPending] = useState(false);
   const [accountError, setAccountError] = useState("");
   const [accountSignOutPending, setAccountSignOutPending] = useState(false);
   const [accountSignOutError, setAccountSignOutError] = useState(false);
   const accountSignOutInFlight = useRef(false);
+  const accountLoginInFlight = useRef(false);
+  const accountKeyInFlight = useRef(false);
+  const accountEpoch = useRef(0);
+  const accountReadAbort = useRef(null);
   const copy = messages[locale];
 
-  function accountRequest(endpoint, init = {}) {
-    if (accountAuthMode === "session") {
-      return fetch(`/api/account/${endpoint}`, { ...init, credentials: "same-origin" });
-    }
-    if (!accountToken) return Promise.resolve(new Response(null, { status: 401 }));
-    const portalPath = endpoint === "me" ? "/portal/api/me" : endpoint.startsWith("usage") ? `/portal/api/me/${endpoint}` : `/portal/api/me/${endpoint}`;
-    const headers = new Headers(init.headers || {});
-    headers.set("Authorization", `Bearer ${accountToken}`);
-    return fetch(`${ACCOUNT_API_BASE}${portalPath}`, { ...init, headers });
+  function clearAccountView() {
+    accountEpoch.current += 1;
+    accountReadAbort.current?.abort();
+    setAccountData(null);
+    setAccountUsage(null);
+    setAccountKeys([]);
+    setAccountKeysLoading(false);
+    setAccountNewKey("");
+    setAccountKeyLabel("");
+    setAccountKeyError("");
+    setAccountUsageError(false);
+    setAccountKeyLoading(false);
+    setAccountLoading(false);
   }
 
   useEffect(() => {
-    if (accountAuthMode === "direct" && !accountToken) {
-      setAccountData(null);
-      setAccountUsage(null);
-      setAccountKeys([]);
-      return undefined;
-    }
+    clearLegacyAccountToken();
     const controller = new AbortController();
+    accountReadAbort.current = controller;
+    const epoch = accountEpoch.current;
+    const current = () => !controller.signal.aborted && accountEpoch.current === epoch;
     setAccountLoading(true);
     setAccountError("");
-    Promise.all([
-      accountRequest("me", { signal: controller.signal }),
-      accountRequest("usage?days=30", { signal: controller.signal }),
-    ]).then(async ([accountResponse, usageResponse]) => {
-      if (accountAuthMode === "session" && !String(accountResponse.headers.get("content-type") || "").includes("application/json")) throw new Error("signed_out");
-      if (!accountResponse.ok) {
-        if (accountResponse.status === 401 || (accountAuthMode === "session" && [404, 503].includes(accountResponse.status))) throw new Error("signed_out");
-        throw new Error("account_unavailable");
+    setAccountUsageError(false);
+    readAccountIdentity({ signal: controller.signal }).then(async (account) => {
+      if (!current()) return;
+      setAccountData(account);
+      setAccountLoading(false);
+      // Usage availability is not an identity check. Never log out on a 5xx here.
+      try {
+        const usage = await accountJson("usage?days=30", { signal: controller.signal });
+        if (!usage?.portal_usage || !Array.isArray(usage.portal_usage.history)) throw new Error("usage_unavailable");
+        if (current()) setAccountUsage(usage.portal_usage);
+      } catch (error) {
+        if (!current()) return;
+        if (error.message === "signed_out") { clearAccountView(); return; }
+        setAccountUsage(null);
+        setAccountUsageError(true);
       }
-      if (!usageResponse.ok) throw new Error("usage_unavailable");
-      const [accountPayload, usagePayload] = await Promise.all([accountResponse.json(), usageResponse.json()]);
-      setAccountData(accountPayload.portal);
-      setAccountUsage(usagePayload.portal_usage);
     }).catch((error) => {
-      if (error.name === "AbortError") return;
-      setAccountData(null);
-      setAccountUsage(null);
-      if (error.message === "signed_out") {
-        setAccountError("");
-        sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
-        setAccountToken("");
-      } else setAccountError(error.message);
+      if (!current()) return;
+      clearAccountView();
+      setAccountError(error.message === "signed_out" ? "" : error.message);
     }).finally(() => {
-      if (!controller.signal.aborted) setAccountLoading(false);
+      if (current()) setAccountLoading(false);
     });
     return () => controller.abort();
-  }, [accountToken, accountAuthMode, accountConnectionRevision]);
+  }, [accountConnectionRevision]);
 
   useEffect(() => {
-    if (!accountData || (accountAuthMode === "direct" && !accountToken)) return undefined;
+    if (!accountData) return undefined;
     const controller = new AbortController();
+    const epoch = accountEpoch.current;
+    const current = () => !controller.signal.aborted && accountEpoch.current === epoch;
     setAccountKeyError("");
-    accountRequest("keys", {
+    setAccountKeys([]);
+    setAccountKeysLoading(true);
+    accountJson("keys", {
       signal: controller.signal,
-    }).then(async (response) => {
-      if (!response.ok) throw new Error("keys_unavailable");
-      const payload = await response.json();
-      setAccountKeys(payload.api_keys || []);
+    }).then((payload) => {
+      if (current()) setAccountKeys(payload.api_keys || []);
     }).catch((error) => {
-      if (error.name !== "AbortError") setAccountKeyError(error.message);
-    });
+      if (!current()) return;
+      if (error.message === "signed_out") clearAccountView();
+      else setAccountKeyError(error.message);
+    }).finally(() => { if (current()) setAccountKeysLoading(false); });
     return () => controller.abort();
-  }, [accountToken, accountAuthMode, accountData]);
+  }, [accountData]);
 
   useEffect(() => {
     if (accountSection !== "keys") setAccountNewKey("");
   }, [accountSection]);
+
+  useEffect(() => {
+    if (route !== "login") setAccountTokenInput("");
+  }, [route]);
+
+  useEffect(() => {
+    // Recheck after returning to the page, without a background polling loop.
+    const refresh = () => {
+      if (document.visibilityState !== "visible" || accountLoginInFlight.current || accountSignOutInFlight.current || accountKeyInFlight.current) return;
+      setAccountConnectionRevision((value) => value + 1);
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
 
   useEffect(() => {
     if (!accountData || route !== "login") return;
@@ -936,35 +958,25 @@ export function App() {
   async function connectAccount(event) {
     event.preventDefault();
     const token = accountTokenInput.trim();
-    if (!token) return;
+    if (!token || accountLoginInFlight.current || accountSignOutInFlight.current || accountLoading) return;
+    accountLoginInFlight.current = true;
+    accountReadAbort.current?.abort();
+    const epoch = ++accountEpoch.current;
+    setAccountLoginPending(true);
     setAccountLoading(true);
     setAccountError("");
     try {
-      const sessionResponse = await fetch("/api/account/session", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_key: token }),
-      });
-      if (sessionResponse.ok) {
-        const payload = await sessionResponse.json();
-        sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
-        setAccountToken("");
-        setAccountAuthMode("session");
-        setAccountData(payload.portal);
-        setAccountConnectionRevision((value) => value + 1);
-        return;
-      }
-      if (![404, 503].includes(sessionResponse.status)) throw new Error(sessionResponse.status === 401 ? "invalid_token" : "account_unavailable");
-
-      const directResponse = await fetch(`${ACCOUNT_API_BASE}/portal/api/me`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!directResponse.ok) throw new Error(directResponse.status === 401 ? "invalid_token" : "account_unavailable");
-      sessionStorage.setItem(TAB_ACCOUNT_TOKEN_KEY, token);
-      setAccountAuthMode("direct");
-      setAccountToken(token);
+      const account = await startAccountSession(token);
+      if (accountEpoch.current !== epoch) return;
+      clearLegacyAccountToken();
+      setAccountData(account);
+      setAccountTokenInput("");
+      setAccountConnectionRevision((value) => value + 1);
     } catch (error) {
-      setAccountError(error.message);
+      if (accountEpoch.current === epoch) setAccountError(error.message);
     } finally {
+      accountLoginInFlight.current = false;
+      setAccountLoginPending(false);
       setAccountLoading(false);
     }
   }
@@ -975,15 +987,9 @@ export function App() {
     setAccountSignOutPending(true);
     setAccountSignOutError(false);
     try {
-      await confirmAccountSignOut(accountAuthMode);
-      localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY);
-      sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
-      setAccountToken("");
-      setAccountAuthMode("session");
-      setAccountData(null);
-      setAccountUsage(null);
-      setAccountKeys([]);
-      setAccountNewKey("");
+      await confirmAccountSignOut();
+      clearLegacyAccountToken();
+      clearAccountView();
       setAccountError("");
       // Abort older Account reads before they can restore a signed-out UI.
       setAccountConnectionRevision((value) => value + 1);
@@ -998,45 +1004,53 @@ export function App() {
   async function createAccountKey(event) {
     event.preventDefault();
     const label = accountKeyLabel.trim();
-    if (!label || (accountAuthMode === "direct" && !accountToken)) return;
+    if (!label || !accountData || accountSignOutInFlight.current || accountKeyInFlight.current) return;
+    accountKeyInFlight.current = true;
+    const epoch = accountEpoch.current;
     setAccountKeyLoading(true);
     setAccountKeyError("");
     setAccountNewKey("");
     try {
-      const response = await accountRequest("keys", {
+      const payload = await accountJson("keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label }),
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "key_create_failed");
+      if (accountEpoch.current !== epoch) return;
       setAccountKeys((current) => [...current, payload.api_key]);
       setAccountNewKey(payload.key);
       setAccountKeyLabel("");
     } catch (error) {
-      setAccountKeyError(error.message);
+      if (accountEpoch.current !== epoch) return;
+      if (error.message === "signed_out") clearAccountView();
+      else setAccountKeyError(error.message);
     } finally {
-      setAccountKeyLoading(false);
+      accountKeyInFlight.current = false;
+      if (accountEpoch.current === epoch) setAccountKeyLoading(false);
     }
   }
 
   async function disableAccountKey(key) {
-    if ((accountAuthMode === "direct" && !accountToken) || key.is_current || !window.confirm(locale === "zh" ? `停用“${key.label}”？已使用它的 Agent 将立即失去访问。` : `Disable “${key.label}”? Agents using it will immediately lose access.`)) return;
+    if (!accountData || accountSignOutInFlight.current || accountKeyInFlight.current || key.is_current || !window.confirm(locale === "zh" ? `停用“${key.label}”？已使用它的 Agent 将立即失去访问。` : `Disable “${key.label}”? Agents using it will immediately lose access.`)) return;
+    accountKeyInFlight.current = true;
+    const epoch = accountEpoch.current;
     setAccountKeyLoading(true);
     setAccountKeyError("");
     try {
-      const response = await accountRequest(`keys/${key.key_id}`, {
+      const payload = await accountJson(`keys/${key.key_id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: false }),
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "key_disable_failed");
+      if (accountEpoch.current !== epoch) return;
       setAccountKeys((current) => current.map((item) => item.key_id === key.key_id ? payload.api_key : item));
     } catch (error) {
-      setAccountKeyError(error.message);
+      if (accountEpoch.current !== epoch) return;
+      if (error.message === "signed_out") clearAccountView();
+      else setAccountKeyError(error.message);
     } finally {
-      setAccountKeyLoading(false);
+      accountKeyInFlight.current = false;
+      if (accountEpoch.current === epoch) setAccountKeyLoading(false);
     }
   }
 
@@ -1273,7 +1287,6 @@ export function App() {
   const accountCategories = accountData ? (accountData.data_categories || []).map((category) => accountCategoryLabels[category] || category) : [];
   const accountUsageHistory = accountUsage?.history || [];
   const accountUsagePeak = Math.max(1, ...accountUsageHistory.map((entry) => Number(entry.total) || 0));
-  const accountCurrentKey = accountKeys.find((key) => key.is_current);
 
   const globalIndex = [
     ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
@@ -1618,38 +1631,7 @@ export function App() {
         {primaryRoute === "docs" && routeSlug && <section className="object-detail-page docs-article"><a className="object-back" href="/docs" onClick={(event) => navigate(event, "/docs")}>← {locale === "zh" ? "返回文档" : "Back to Docs"}</a><div className="object-detail-hero"><div><span className="mono-kicker">{selectedDoc?.categoryLabel?.toUpperCase() || "DOCUMENTATION"}</span><h1>{selectedDoc?.title || (locale === "zh" ? "说明未找到" : "Guide not found")}</h1><p>{selectedDoc?.description}</p></div><span className="maturity-tag">{locale === "zh" ? "版本化说明" : "Versioned guide"}</span></div>{selectedDoc && <div className="docs-article-body"><aside><span>{locale === "zh" ? "本文回答" : "THIS GUIDE ANSWERS"}</span><p>{selectedDoc.description}</p><span>{locale === "zh" ? "权威来源" : "AUTHORITY"}</span><p>{selectedDoc.category === "api" ? "docs/API.md + authenticated runtime" : selectedDoc.category === "data" ? "registry + facts/receipts + docs/PRODUCT.md" : "docs/PRODUCT.md + backend contract"}</p></aside><article><h2>{locale === "zh" ? "说明结构" : "Guide structure"}</h2><p>{locale === "zh" ? "每篇文档会明确当前能力、目标能力、使用步骤、限制、错误状态、相关对象与下一步。它不会把产品提案写成生产事实。" : "Every guide identifies current capability, target capability, steps, limits, error states, related objects, and next action. It never turns a product proposal into a production fact."}</p><h2>{locale === "zh" ? "相关入口" : "Related entries"}</h2><div className="detail-actions"><a className="text-link" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "数据目录" : "Data catalog"}<ArrowRight /></a><a className="text-link" href="/recipes" onClick={(event) => navigate(event, "/recipes")}>Recipes<ArrowRight /></a></div></article></div>}</section>}
 
         {primaryRoute === "login" && (
-          <section className="login-page" aria-labelledby="login-title">
-            <div className="login-intro">
-              <a href="/" onClick={(event) => navigate(event, "/")}>← {locale === "zh" ? "返回首页" : "Back home"}</a>
-              <div>
-                <span className="mono-kicker">ACCOUNT ACCESS / VERIFIED SESSION</span>
-                <h1 id="login-title">{locale === "zh" ? "进入你的数据工作区。" : "Enter your data workspace."}</h1>
-                <p>{locale === "zh" ? "查看真实套餐、有效期、数据授权和用量；登录后继续管理 Agent 与 API 密钥。" : "See your effective plan, expiry, data grants, and usage, then manage Agent and API keys."}</p>
-              </div>
-              <dl className="login-boundaries">
-                <div><dt>01</dt><dd><strong>{locale === "zh" ? "仅当前账户" : "Current account only"}</strong><span>{locale === "zh" ? "服务端只返回当前租户的数据。" : "The service returns data for the current tenant only."}</span></dd></div>
-                <div><dt>02</dt><dd><strong>{locale === "zh" ? "仅此浏览器" : "This browser only"}</strong><span>{locale === "zh" ? "密钥不进入网址、提示词或长期浏览器存储。" : "The key never enters URLs, prompts, or persistent browser storage."}</span></dd></div>
-              </dl>
-            </div>
-            <form className="login-panel" onSubmit={connectAccount}>
-              <div className="login-panel-head">
-                <span><ShieldCheck weight="duotone" /> {locale === "zh" ? "安全连接" : "Secure connection"}</span>
-                <small>{locale === "zh" ? "真实账户验证" : "LIVE ACCOUNT VERIFICATION"}</small>
-              </div>
-              <div className="login-panel-copy">
-                <h2>{locale === "zh" ? "使用访问密钥登录" : "Sign in with an access key"}</h2>
-                <p>{locale === "zh" ? "当前版本使用 TradingDatas 访问密钥建立网页会话，并优先通过同站安全网关封装密钥。邮箱与短信登录尚未开放。" : "The current version starts a web session with a TradingDatas access key and prefers the same-site secure gateway. Email and SMS sign-in are not available yet."}</p>
-              </div>
-              <label htmlFor="login-token">{locale === "zh" ? "访问密钥" : "Access key"}</label>
-              <input id="login-token" type="password" value={accountTokenInput} onChange={(event) => { setAccountTokenInput(event.target.value); setAccountError(""); }} placeholder={locale === "zh" ? "粘贴你的访问密钥" : "Paste your access key"} autoComplete="off" />
-              {accountError && <div className="login-error" role="alert">{accountError === "invalid_token" ? (locale === "zh" ? "访问密钥无效、已停用或已过期。" : "The access key is invalid, disabled, or expired.") : (locale === "zh" ? "暂时无法读取账户，请稍后重试。" : "The account is temporarily unavailable. Try again later.")}</div>}
-              <button className="primary-button login-submit" type="submit" disabled={!accountTokenInput.trim() || accountLoading}>{accountLoading ? (locale === "zh" ? "正在验证账户…" : "Verifying account…") : (locale === "zh" ? "登录账户" : "Sign in")}<ArrowRight /></button>
-              <div className="login-help">
-                <span>{locale === "zh" ? "还没有访问密钥？" : "No access key yet?"}</span>
-                <a href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐与获取方式" : "View plans and access options"}<ArrowRight /></a>
-              </div>
-            </form>
-          </section>
+          <LoginPage locale={locale} theme={theme} token={accountTokenInput} onTokenChange={(value) => { setAccountTokenInput(value); setAccountError(""); }} onSubmit={connectAccount} loading={accountLoading} submitting={accountLoginPending} error={accountError} navigate={navigate} />
         )}
 
         {primaryRoute === "account" && (
@@ -1682,6 +1664,8 @@ export function App() {
                   <p>{accountSignOutPending ? (locale === "zh" ? "正在安全退出，请稍候…" : "Signing out securely. Please wait…") : (locale === "zh" ? "未能确认退出，会话可能仍然有效。请重试，确认退出前不要离开共享设备。" : "Sign-out could not be confirmed. Your session may still be active. Retry before leaving a shared device.")}</p>
                   {accountSignOutError && <button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{locale === "zh" ? "重试退出" : "Retry sign-out"}<ArrowRight size={16} /></button>}
                 </div>}
+                {accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
+                {accountError && !accountData && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
                 {accountSection === "overview" ? (
                   accountData ? (
                     <div className="account-live-overview">
@@ -1743,7 +1727,7 @@ export function App() {
                       {accountKeyError && <div className="account-key-error" role="alert">{locale === "zh" ? "密钥操作暂时无法完成，请稍后重试。" : "The key action could not be completed. Try again later."}</div>}
                       <div className="account-key-list">
                         {accountKeys.map((key) => <article key={key.key_id} className={!key.enabled ? "is-disabled" : ""}><div><span>{key.is_current ? (locale === "zh" ? "当前连接" : "CURRENT CONNECTION") : key.enabled ? (locale === "zh" ? "可用" : "ACTIVE") : (locale === "zh" ? "已停用" : "DISABLED")}</span><strong>{key.label}</strong><small>{key.fingerprint}{key.created_at ? ` · ${key.created_at.slice(0, 10)}` : ""}</small></div>{key.is_current ? <em>{locale === "zh" ? "不可在当前会话停用" : "Protected in this session"}</em> : key.enabled ? <button type="button" disabled={accountKeyLoading} onClick={() => disableAccountKey(key)}>{locale === "zh" ? "停用" : "Disable"}</button> : <em>{locale === "zh" ? "已停用" : "Disabled"}</em>}</article>)}
-                        {!accountKeys.length && !accountKeyError && <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在读取密钥" : "Loading keys"}</strong></div>}
+                        {!accountKeys.length && !accountKeyError && <div className="account-empty-state"><ShieldCheck size={28} /><strong>{accountKeysLoading ? (locale === "zh" ? "正在读取密钥" : "Loading keys") : (locale === "zh" ? "暂无 API 密钥" : "No API keys yet")}</strong></div>}
                       </div>
                     </div>
                   ) : (
@@ -1792,8 +1776,8 @@ export function App() {
                 ) : accountSection === "security" ? (
                   accountData ? (
                     <div className="account-security-panel">
-                      <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{accountAuthMode === "session" ? (locale === "zh" ? "安全网页会话" : "Secure web session") : accountCurrentKey?.label || (locale === "zh" ? "访问密钥会话" : "Access-key session")}</h3><p>{accountAuthMode === "session" ? (locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read.") : accountCurrentKey?.fingerprint || (locale === "zh" ? "密钥仅保留在当前标签页会话。" : "The key is kept only for this tab session.")}</p></div><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "退出此浏览器" : "Sign out here")}</button></section>
-                      <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{accountAuthMode === "session" ? (locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session") : (locale === "zh" ? "当前标签页中的 TradingDatas 访问密钥" : "TradingDatas access key in this tab")}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
+                      <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{locale === "zh" ? "安全网页会话" : "Secure web session"}</h3><p>{locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read."}</p></div><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "退出此浏览器" : "Sign out here")}</button></section>
+                      <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session"}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
                       <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "邮箱、短信和跨设备会话尚未开放" : "Email, SMS, and cross-device sessions are not available"}</strong><p>{locale === "zh" ? "在身份库、一次性验证、防重放、HttpOnly 会话和撤销审计合同上线前，不提供模拟入口。" : "No simulated entry will be offered before identity storage, one-time verification, replay protection, HttpOnly sessions, and revocation audit are live."}</p></div></div>
                     </div>
                   ) : (

@@ -332,11 +332,12 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 `tradingdatas.com` 的静态资源 Worker 包含一个同站 Account 代理合同。该合同是浏览器
 credential-containment bridge，不是邮箱身份库，也不改变 Agent 继续使用 bearer token
 调用固定数据 API 的方式。生产环境只有在 Cloudflare secret `SESSION_ENCRYPTION_KEY` 和
-非密钥 binding `ACCOUNT_API_BASE` 均存在时才启用；否则所有 `/api/account/*` 请求返回
+非密钥 binding `ACCOUNT_API_BASE` 均存在时才启用；否则认证与代理请求返回
 `503 {"error":"identity_gateway_unavailable"}`，不得推断为生产已启用。
 
 - `POST /api/account/session`：同源请求提交 `{"access_key":"..."}`，通过
-  `GET /portal/api/me` 验证后返回相同 account projection，并设置 8 小时、AES-GCM 封装的
+  `GET /portal/api/me` 验证，且响应包含非空字符串 `portal.tenant_id`/`portal.tier` 后
+  返回相同 account projection，并设置 8 小时、AES-GCM 封装的
   `HttpOnly; Secure; SameSite=Strict; Path=/api/account` cookie。原始 key 不写入响应、URL、
   analytics 或持久化浏览器存储。
 - `GET /api/account/me`、`GET /api/account/usage?days=N`、`GET /api/account/keys`：从
@@ -347,9 +348,16 @@ credential-containment bridge，不是邮箱身份库，也不改变 Agent 继�
   短期无状态会话；完整的跨设备 session list、单会话服务端 revoke 与审计仍属于后续
   identity store 合同，不能由清 Cookie 冒充。
 
-浏览器兼容路径只在桥接未配置时使用，并将访问 key 保存在当前标签页的
-`sessionStorage`；旧 `localStorage` 值会迁移后立即删除。这个兼容路径不等于
-passwordless identity，也不提供跨设备恢复。
+同源 DELETE 清 Cookie 不依赖上游或密钥配置，故网关配置故障时仍可退出。上游 401
+也会清除当前 Cookie；403、429 与服务故障不能冒充成功或静默降级。代理按路径约束
+允许的方法，请求体在流读取过程中限制为 16 KiB，登录账户响应限制为 512 KiB；
+上游请求禁止重定向并设 8 秒超时，网络异常返回无敏感详情的 502/504。
+
+浏览器不再使用 direct-bearer 兼容路径，也不保存原始 key。旧 `localStorage` 与
+`sessionStorage` credential 在启动时移除，旧直连用户需重新登录；服务端 Token 不变。
+前端请求设 12 秒超时，登录单飞，账户变化后的迟到结果不得恢复前一账户/新密钥。
+`me` 验证身份与 `usage` 可用性分离，用量服务故障仅展示可重试提示。页面重新可见时
+验证现有会话；非后台轮询。此桥接仍不等于手机/邮箱身份库或可独立撤销的持久会话。
 
 ## Customer Portal API
 

@@ -64,12 +64,26 @@ The Worker also contains the same-site Account session bridge under
 `/api/account/*`. `ACCOUNT_API_BASE` is committed as the non-secret production
 binding, while the deployment workflow writes `SESSION_ENCRYPTION_KEY` from the
 GitHub repository secret of the same name using the explicit public Worker
-configuration. If either is missing, the bridge
-returns `503 identity_gateway_unavailable`; in that state the UI uses a
-current-tab-only `sessionStorage` compatibility connection and removes the
-former persistent `localStorage` credential. See `docs/API.md` and
+configuration. If either is missing, authentication returns
+`503 identity_gateway_unavailable`; there is no direct-bearer downgrade.
+Same-origin sign-out still clears the cookie during an upstream/config outage.
+The UI removes former `localStorage` and `sessionStorage` credentials, so legacy
+direct sessions must sign in once again; server keys and grants are unchanged.
+See `docs/API.md` and
 `docs/OPERATIONS.md`; a code deploy alone is not evidence that the secure session
 path is active.
+
+`/login` shares the existing Account workspace and brand. Access-key login uses
+only the encrypted same-site bridge; Phone and Email explicitly remain unavailable
+until verified identity and message delivery are connected. They neither collect
+contact details nor simulate sending a code. Identity and usage availability are
+separate: a usage failure must not sign out an otherwise authenticated account.
+Requests have timeouts; session changes invalidate late reads/key-write UI results.
+
+Local synthetic UI verification: `npm run build`, then
+`node scripts/login-qa-server.mjs` and open `http://127.0.0.1:5193/__qa`.
+The harness binds only loopback, is single-reviewer, never calls upstream, and
+accepts only synthetic test strings for review. It is not a production login test.
 
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,

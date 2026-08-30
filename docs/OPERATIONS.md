@@ -513,12 +513,14 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 4. 发布 immutable main SHA，依次验证登录 exchange、`/api/account/me`、usage、key list、
    create/disable 的后端权限语义，以及 `DELETE /api/account/session` 后再次读取为 `401`；
 5. 在浏览器确认响应 cookie 为 `HttpOnly; Secure; SameSite=Strict; Path=/api/account`，
-   Account 页面及持久化 `localStorage` 都不再持有原始 key。不得把前端显示“安全会话”当作
+   `localStorage`/`sessionStorage` 都不再持有原始 key。输入只用于本次交换，创建 API key
+   时的原始值仍按原合同只展示一次。不得把前端显示“安全会话”当作
    上述响应证据。
 
 任一项失败时，先移除或禁用这两个 Worker binding 使桥接回到显式 `503
-identity_gateway_unavailable`，再重新发布上一已验证公开站 SHA。前端只会回退为当前标签页
-`sessionStorage` 的兼容连接；不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
+identity_gateway_unavailable`，再按获批范围重新发布上一已验证公开站 SHA。当前前端不得
+回退为 direct-bearer 或浏览器存储密钥；同源清 Cookie 仍可用。回滚到旧版时需明确其
+旧兼容路径风险，不能把降级当成功。不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
 SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke 和审计仍是独立后续发布。
 
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的

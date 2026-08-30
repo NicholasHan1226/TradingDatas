@@ -397,41 +397,47 @@ button { color: inherit; }
   .research-library-controls { grid-template-columns: 1fr; gap: 22px; }
 }
 
-.login-page { position: relative; width: min(1120px, calc(100% - 96px)); min-height: calc(100vh - 94px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 430px); gap: clamp(72px, 10vw, 146px); align-items: center; margin: 0 auto; padding: 72px 0 110px; }
-.login-page::before { content: ""; position: absolute; z-index: 0; top: 12%; left: 28%; width: 46%; height: 64%; pointer-events: none; background: radial-gradient(circle at 48% 48%, rgba(21, 184, 180, .09), transparent 24%), radial-gradient(circle at 54% 52%, rgba(7, 92, 255, .07), transparent 42%); filter: blur(10px); }
+.login-page { position: relative; width: min(1080px, calc(100% - 96px)); min-height: calc(100svh - 94px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: clamp(48px, 8vw, 100px); align-items: center; margin: 0 auto; padding: 56px 0 80px; }
 .login-intro, .login-panel { position: relative; z-index: 1; }
-.login-intro { min-height: 560px; display: flex; flex-direction: column; justify-content: space-between; }
-.login-intro > a { width: max-content; color: var(--faint); font-size: 11px; transition: color 120ms ease; }
+.login-intro { min-height: 530px; display: flex; flex-direction: column; justify-content: space-between; }
+.login-intro > a { width: max-content; color: var(--muted); font-size: 13px; padding: 12px 0; transition: color 120ms ease; }
 .login-intro > a:hover { color: var(--ink); }
 .login-intro > div { max-width: 590px; }
-.login-intro h1 { margin: 19px 0 22px; font-size: clamp(48px, 5.2vw, 72px); line-height: .99; letter-spacing: -.058em; font-weight: 600; }
+.login-intro h2 { margin: 20px 0; font-size: clamp(38px, 4.2vw, 58px); line-height: 1.08; letter-spacing: -.05em; font-weight: 500; }
 .login-intro > div > p { max-width: 520px; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.72; }
-.login-boundaries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; margin: 0; padding-top: 22px; border-top: 1px solid var(--line); }
-.login-boundaries > div { display: grid; grid-template-columns: 24px 1fr; gap: 12px; }
-.login-boundaries dt { color: var(--aqua); font: 9px "IBM Plex Mono", monospace; }
-.login-boundaries dd { display: grid; gap: 5px; margin: 0; }
-.login-boundaries strong { font-size: 11px; font-weight: 500; }
-.login-boundaries span { color: var(--faint); font-size: 9px; line-height: 1.55; }
-.login-panel { padding: 30px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface-solid) 93%, var(--blue) 1%); box-shadow: 0 28px 80px rgba(29, 43, 39, .095); }
-:root[data-theme="dark"] .login-panel { box-shadow: 0 30px 90px rgba(0, 0, 0, .34); }
-.login-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 22px; border-bottom: 1px solid var(--line-soft); }
-.login-panel-head > span { display: inline-flex; align-items: center; gap: 7px; color: var(--aqua); font-size: 10px; }
-.login-panel-head svg { width: 16px; height: 16px; }
-.login-panel-head small { color: var(--faint); font: 8px "IBM Plex Mono", monospace; letter-spacing: .04em; }
-.login-panel-copy { margin: 28px 0 26px; }
-.login-panel-copy h2 { margin: 0; font-size: 27px; line-height: 1.1; letter-spacing: -.04em; font-weight: 500; }
-.login-panel-copy p { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.72; }
-.login-panel > label { display: block; margin-bottom: 8px; color: var(--faint); font: 9px "IBM Plex Mono", monospace; letter-spacing: .05em; text-transform: uppercase; }
-.login-panel > input { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0 14px; outline: 0; background: var(--surface); color: var(--ink); font: 12px "IBM Plex Mono", monospace; transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease; }
-.login-panel > input::placeholder { color: var(--faint); font-family: Inter, "PingFang SC", sans-serif; }
-.login-panel > input:focus { border-color: rgba(7, 92, 255, .5); background: var(--surface-solid); box-shadow: 0 0 0 3px rgba(7, 92, 255, .07); }
-.login-error { margin-top: 10px; color: #b44848; font-size: 10px; line-height: 1.5; }
+.login-material { position: relative; height: 180px; overflow: hidden; }
+.login-material img { width: 100%; height: 240px; object-fit: cover; object-position: 70% 53%; mask-image: linear-gradient(transparent, #000 28%, #000 70%, transparent); }
+.login-material span { position: absolute; bottom: 4px; left: 0; color: var(--muted); font: 11px "IBM Plex Mono", monospace; }
+.login-panel { padding: 34px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface-solid); box-shadow: 0 16px 54px rgba(29, 43, 39, .055); }
+:root[data-theme="dark"] .login-panel { box-shadow: 0 18px 54px rgba(0, 0, 0, .2); }
+.login-panel-copy { margin: 0 0 28px; }
+.login-panel-copy h1 { margin: 16px 0 0; font-size: 32px; line-height: 1.15; letter-spacing: -.04em; font-weight: 500; }
+.login-panel-copy p { margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+.login-methods { display: flex; border-bottom: 1px solid var(--line); gap: 16px; }
+.login-methods button { min-height: 46px; padding: 0 0 12px; display: flex; align-items: center; gap: 6px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.login-methods button[aria-pressed="true"] { border-bottom-color: var(--blue); color: var(--blue); }
+.login-method-panel { min-height: 250px; padding-top: 22px; }
+.login-method-note { margin: 0 0 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.login-method-panel label { display: block; margin-bottom: 9px; color: var(--ink); font-size: 13px; }
+.login-method-panel input { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0 14px; outline: 0; background: var(--surface); color: var(--ink); font-size: 16px; }
+.login-method-panel input::placeholder { color: var(--muted); font-size: 14px; }
+.login-method-panel input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent); }
+.login-panel button:focus-visible, .login-panel a:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.login-panel button:disabled { opacity: .6; cursor: not-allowed; }
+.login-key-note { display: flex; gap: 8px; color: var(--muted); font-size: 11px; line-height: 1.6; margin: 16px 0 0; }
+.login-key-note svg { flex-shrink: 0; margin-top: 1px; color: var(--aqua); }
+.login-coming { padding-top: 4px; }
+.login-availability { color: var(--muted); font: 10px "IBM Plex Mono", monospace; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; }
+.login-coming h3 { margin: 18px 0 10px; font-size: 19px; font-weight: 500; letter-spacing: -.02em; }
+.login-coming p { margin: 0 0 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.login-coming .text-link { border: 0; background: none; padding: 0; min-height: 44px; font-size: 13px; cursor: pointer; }
+.login-error { margin: 12px 0 0; color: #b44848; font-size: 13px; line-height: 1.5; }
 :root[data-theme="dark"] .login-error { color: #ff9c9c; }
 .login-submit { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding: 0 16px; }
 .login-submit svg { width: 15px; height: 15px; }
 .login-help { display: grid; gap: 7px; margin-top: 24px; padding-top: 19px; border-top: 1px solid var(--line-soft); }
-.login-help > span { color: var(--faint); font-size: 9px; }
-.login-help > a { width: max-content; display: inline-flex; align-items: center; gap: 7px; color: var(--blue); font-size: 10px; }
+.login-help > span { color: var(--muted); font-size: 12px; }
+.login-help > a { width: max-content; display: inline-flex; align-items: center; gap: 7px; color: var(--blue); font-size: 13px; min-height: 32px; }
 .login-help > a svg { width: 13px; height: 13px; transition: transform 120ms ease; }
 .login-help > a:hover svg { transform: translateX(2px); }
 .account-signin-state { margin-top: 30px; }
@@ -1199,8 +1205,8 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .cookbook-section { grid-template-columns: 0.7fr 1.3fr; }
   .research-section { grid-template-columns: 1fr; gap: 72px; }
   .research-intro { position: static; }
-  .login-page { grid-template-columns: minmax(0, 1fr) minmax(340px, 410px); gap: 50px; }
-  .login-intro h1 { font-size: 52px; }
+  .login-page { grid-template-columns: minmax(0, 1fr) minmax(330px, 410px); gap: 32px; }
+  .login-intro h2 { font-size: clamp(34px, 4.5vw, 50px); }
   .account-page-heading { grid-template-columns: 1fr; gap: 28px; }
   .account-entry-actions { grid-column: 1; }
   .account-workspace { grid-template-columns: 220px minmax(0, 1fr); gap: 38px; }
@@ -1376,16 +1382,13 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .paper-row h3 { font-size: 18px; }
   .paper-data { grid-template-columns: 1fr; gap: 5px; }
   .paper-actions button, .paper-actions a { width: 32px; height: 32px; }
-  .login-page { width: calc(100% - 48px); min-height: 0; display: block; padding: 58px 0 100px; }
-  .login-page::before { top: 12%; left: 2%; width: 96%; height: 35%; }
+  .login-page { width: calc(100% - 40px); max-width: 460px; min-height: 0; display: block; padding: 24px 0 64px; }
   .login-intro { min-height: 0; display: block; }
-  .login-intro > div { margin-top: 72px; }
-  .login-intro h1 { margin-top: 16px; font-size: 43px; }
+  .login-intro .login-editorial { display: none; }
+  .login-intro .login-material { display: none; }
   .login-intro > div > p { font-size: 14px; }
-  .login-boundaries { margin-top: 42px; }
-  .login-panel { margin-top: 46px; padding: 24px 20px; }
-  .login-panel-head small { display: none; }
-  .login-panel-copy h2 { font-size: 24px; }
+  .login-panel { margin-top: 20px; padding: 28px 22px; }
+  .login-panel-copy h1 { font-size: 30px; }
   .account-page { width: calc(100% - 48px); padding: 72px 0 100px; }
   .account-page-heading { margin-bottom: 48px; }
   .account-page-heading h1 { font-size: 40px; }
