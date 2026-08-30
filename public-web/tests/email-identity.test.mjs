@@ -53,6 +53,22 @@ test('email remains disabled without complete configuration, with no outbound ca
   assert.equal((await f.call('email/challenge',{email:'reader@example.com'})).status,503);
   assert.equal(f.sent.length,0);
 });
+test('the actual sender uses the shared localized HTML and text template with the challenge expiry', async () => {
+  for (const locale of ['zh', 'en']) {
+    const f = fixture();
+    const response = await f.call('email/challenge', {email:'template@example.com', locale});
+    assert.equal(response.status, 202);
+    const policy = await response.json();
+    const mail = f.sent[0];
+    const code = mail.text.match(/\b\d{8}\b/)[0];
+    assert.match(mail.html, /data-template="sign-in-code-v1"/);
+    assert.ok(mail.html.includes(code));
+    assert.match(mail.html, locale === 'zh' ? /lang="zh-CN"/ : /lang="en"/);
+    assert.ok(mail.text.includes(String(policy.expires_in / 60)));
+    assert.ok(!mail.subject.includes(code));
+    assert.deepEqual(Object.keys(mail).sort(), ['from', 'html', 'subject', 'text', 'to']);
+  }
+});
 test('one verified email creates one identity, no tenant or data grant; opaque cookie only', async () => {
   const f=fixture(); const c=await f.challenge(); assert.equal(c.response.status,202);
   assert.equal(c.payload.delivery,'accepted'); assert.equal(JSON.stringify(c.payload).includes(c.code),false);

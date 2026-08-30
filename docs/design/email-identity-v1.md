@@ -18,6 +18,11 @@ identity and public Account; the subsequent [owner access contract](account-admi
 requires explicit server authorization after verification, not an email comparison
 inside this login handler. A test delivery alone must not activate that role.
 
+Outbound sign-in messages use the shared [transactional email template system](transactional-email-system-v1.md)
+with authored Chinese/English HTML and plain text; expiry comes from the challenge
+policy. All future external messages, including delivery tests, require a reviewed
+template. The shared rendering layer does not send mail or alter identity authority.
+
 The candidate account store is a dedicated Cloudflare D1 binding `IDENTITY_DB`.
 `public-web/worker/identity-schema.sql` is for this store only; it must never run
 against financial facts SQLite or any existing database without explicit review.

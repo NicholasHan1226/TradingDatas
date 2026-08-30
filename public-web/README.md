@@ -116,6 +116,16 @@ the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
 this binding has not been deployed. See the [provisioning checkpoint](../docs/reports/2026-08-30-email-identity-provisioning.md).
 SMS and payments stay unavailable.
 
+All external email uses the versioned brand templates in `worker/email-templates.js`,
+with explicit HTML and plain text. Sign-in and delivery-test variants support Chinese
+and English; the login sender supplies the actual challenge expiry. See
+[Transactional email system v1](../docs/design/transactional-email-system-v1.md).
+Run `npm run preview:email` for the read-only loopback gallery at
+`http://127.0.0.1:5196/` (override with `TD_EMAIL_PREVIEW_PORT`). Its code is an
+invalid fixture; the gallery cannot send mail and is not shipped as a public route.
+It supports language, simulated light/dark, narrow widths, image-blocked and text
+previews. Actual QQ/Gmail/Outlook rendering still requires separately authorized mail.
+
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,
 then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to return

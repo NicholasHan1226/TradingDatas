@@ -9,7 +9,7 @@ const { Miniflare, convertV4MiniflareOptions } = await import(pathToFileURL(proc
 const mail = [];
 const outbound = [];
 let upstreamRedirect = false;
-const moduleFiles = ['index.js', 'email-identity.js'].map(name => ({
+const moduleFiles = ['index.js', 'email-identity.js', 'email-templates.js'].map(name => ({
   type: 'ESModule', path: fileURLToPath(new URL(`../worker/${name}`, import.meta.url)),
 }));
 const options = {
@@ -50,6 +50,8 @@ try {
   assert.equal(challengeResponse.status, 202, `Challenge failed: ${await challengeResponse.clone().text()}; intercepted requests: ${JSON.stringify(outbound)}`);
   const challenge = await challengeResponse.json();
   const body = { email: 'workerd@example.com', challenge_id: challenge.challenge_id, code: mail[0].text.match(/\b\d{8}\b/)[0] };
+  assert.match(mail[0].html, /data-template="sign-in-code-v1"/);
+  assert.ok(mail[0].html.includes(body.code));
   const verified = await Promise.all([call('email/verify', body), call('email/verify', body)]);
   assert.deepEqual(verified.map(r => r.status).sort(), [200, 400]);
   const success = verified.find(r => r.status === 200);

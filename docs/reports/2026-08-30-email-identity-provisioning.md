@@ -47,6 +47,17 @@ npx --yes wrangler@4.127.1 d1 execute bb5e8d90-090f-40a5-9aa1-b91b33af7199 --rem
 
 ## Candidate configuration and remaining gates
 
+Later delivery-only checkpoint: one explicitly approved test message was accepted
+at `2026-08-30T12:40:10.063Z`, then read back as `delivered` by Resend. Nicholas
+subsequently confirmed receipt; mailbox folder placement was not specified. The
+message had no valid OTP or login link and granted no identity, data or admin role.
+The prior record is [PR #397 delivery evidence](https://github.com/NicholasHan1226/TradingDatas/pull/397#issuecomment-5468743371).
+The private recipient is intentionally omitted here. No sender key or pepper was
+provisioned into the Worker by this delivery test. The later template-only change
+sent no further mail; future sends follow
+[the versioned email template contract](../design/transactional-email-system-v1.md).
+All “no mail sent” statements below refer to the earlier DB-preparation checkpoint.
+
 `public-web/wrangler.jsonc` declares this DB as `IDENTITY_DB` and pins
 `EMAIL_LOGIN_ENABLED="false"`. The candidate contains no sender or pepper secret.
 The new regression test verifies that even a complete secret set cannot override

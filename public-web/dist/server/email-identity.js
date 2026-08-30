@@ -1,4 +1,5 @@
 // Isolated account control plane. This module cannot mint data/API entitlements.
+import { renderEmail } from './email-templates.js';
 const COOKIE = 'td_identity_session';
 const TTL = 8 * 60 * 60;
 const CHALLENGE_TTL = 10 * 60;
@@ -121,13 +122,11 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
           await db.prepare(`INSERT INTO identity_challenges(email_hash,id,email,code_hash,expires_at,attempts,accepted,consumed_at) VALUES (?,?,?,?,?,0,0,NULL)
             ON CONFLICT(email_hash) DO UPDATE SET id=excluded.id,email=excluded.email,code_hash=excluded.code_hash,expires_at=excluded.expires_at,attempts=0,accepted=0,consumed_at=NULL`)
             .bind(emailHash,id,email,codeHash,time+CHALLENGE_TTL).run();
-          const zh=payload.locale==='zh';
           let result;
           try {
             const response=await fetchImpl('https://api.resend.com/emails',{method:'POST',redirect:'manual',signal:AbortSignal.timeout(8000),
               headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json','idempotency-key':`td-login/${id}`},
-              body:JSON.stringify({from:EMAIL_FROM,to:[email],subject:zh?'TradingDatas 登录验证码':'Your TradingDatas sign-in code',
-                text:zh?`你的 TradingDatas 验证码是 ${code}，10 分钟内有效，仅可使用一次。请勿分享。若非本人操作，请忽略此邮件。`:`Your TradingDatas sign-in code is ${code}. It expires in 10 minutes and can be used once. Do not share it. If you did not request this, ignore this email.`})});
+              body:JSON.stringify({from:EMAIL_FROM,to:[email],...renderEmail({kind:'sign-in-code',locale:payload.locale,code,expiresInMinutes:CHALLENGE_TTL/60})})});
             if(!response.ok) {await response.body?.cancel(); throw new Error('delivery_unavailable');}
             result=await boundedJson(response);
             if(typeof result.id!=='string' || !result.id || result.id.length>200) throw new Error('delivery_unavailable');
