@@ -21,6 +21,23 @@ import auth
 
 FUTURE_TS = time.time() + 90 * 24 * 3600
 PAST_TS = time.time() - 3600
+PORTAL_TEST_SALT = b"tradingdatas-portal-test-salt-32-bytes"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_portal_auth_salt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep portal tests independent of auth-module reloads in other files.
+
+    ``test_auth_security`` intentionally reloads :mod:`auth` with an invalid
+    salt-file mode.  Environment restoration does not reset the module-level
+    configuration captured by that reload, so a later portal fixture could
+    inherit the rejected file path instead of its own deterministic test salt.
+    The production 0600 validation remains covered by the security test; this
+    fixture only establishes the portal suite's in-process test configuration.
+    """
+    monkeypatch.setattr(auth, "TOKEN_SALT_FILE_RAW", "")
+    monkeypatch.setattr(auth, "TOKEN_SALT_RAW", PORTAL_TEST_SALT.decode("ascii"))
+    monkeypatch.setattr(auth, "_TOKEN_SALT", None)
 
 
 @pytest.mark.parametrize(
