@@ -61,6 +61,7 @@ _CADENCE_KEYS = frozenset(
         "partition_frequency",
         "calendar",
         "minimum_interval_seconds",
+        "freshness_refresh_lead_seconds",
         "failure_retry_seconds",
         "correction_overlap_days",
         "correction_overlap_bars",
@@ -74,7 +75,10 @@ _CADENCE_KEYS = frozenset(
         "retry",
     }
 )
-_REQUIRED_CADENCE_KEYS = _CADENCE_KEYS - {"session_windows_local"}
+_REQUIRED_CADENCE_KEYS = _CADENCE_KEYS - {
+    "session_windows_local",
+    "freshness_refresh_lead_seconds",
+}
 _PRIORITY = {"current": 0, "backfill": 1, "correction": 2}
 _ACTIVATION_WAVE_ROOT_KEYS = frozenset({"version", "input_hashes", "waves"})
 _ACTIVATION_WAVE_HASH_KEYS = frozenset(
@@ -148,6 +152,7 @@ class CadencePolicy:
     max_backfill_chunks_per_run: int
     rate_budget_class: str
     retry: RetryPolicy
+    freshness_refresh_lead_seconds: int = 0
 
 
 @dataclass(frozen=True)
@@ -556,6 +561,17 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
         )
         if session_windows and (name != "session_minute" or calendar is None):
             raise ValueError("session windows require session_minute calendar cadence")
+        minimum_interval = _integer(
+            value["minimum_interval_seconds"], "minimum_interval_seconds", positive=True
+        )
+        refresh_lead = _integer(
+            value.get("freshness_refresh_lead_seconds", 0),
+            "freshness_refresh_lead_seconds",
+        )
+        if refresh_lead >= minimum_interval or (refresh_lead and name != "event"):
+            raise ValueError(
+                "freshness refresh lead requires event cadence and is below its interval"
+            )
         cadences[name] = CadencePolicy(
             automatic,
             _clock(value["availability_after_local"], "availability_after_local"),
@@ -564,11 +580,7 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
             incremental,
             frequency,
             calendar,
-            _integer(
-                value["minimum_interval_seconds"],
-                "minimum_interval_seconds",
-                positive=True,
-            ),
+            minimum_interval,
             _integer(
                 value["failure_retry_seconds"], "failure_retry_seconds", positive=True
             ),
@@ -590,6 +602,7 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
             ),
             rate_class,
             retry,
+            refresh_lead,
         )
     return Schedule(
         _integer(
@@ -1346,6 +1359,22 @@ def _continuation_plans(
     return _runs(dataset, binding, policy, chosen, "current"), "planned"
 
 
+def _repeat_interval_seconds(
+    dataset: DatasetDefinition, policy: CadencePolicy, status: str
+) -> int:
+    """Optionally reserve refresh time, without changing failure throttles."""
+    if (
+        dataset.cadence_class != "event"
+        or policy.freshness_refresh_lead_seconds == 0
+        or status not in {"success", "empty"}
+    ):
+        return policy.minimum_interval_seconds
+    return min(
+        policy.minimum_interval_seconds,
+        max(1, dataset.freshness_sla_seconds - policy.freshness_refresh_lead_seconds),
+    )
+
+
 def _dataset_plans(
     registry: DatasetRegistry,
     dataset: DatasetDefinition,
@@ -1425,7 +1454,7 @@ def _dataset_plans(
             if (latest.status == "failed" and age < policy.failure_retry_seconds) or (
                 latest.status != "failed"
                 and healthy
-                and age < policy.minimum_interval_seconds
+                and age < _repeat_interval_seconds(dataset, policy, latest.status)
             ):
                 return (), "not_due"
         return _runs(
@@ -1526,7 +1555,8 @@ def _dataset_plans(
         if prior is not None:
             age = (now_utc - prior.finished_at).total_seconds()
             if (prior.status == "failed" and age < policy.failure_retry_seconds) or (
-                correction_only and age < policy.minimum_interval_seconds
+                correction_only
+                and age < _repeat_interval_seconds(dataset, policy, prior.status)
             ):
                 suppressed = True
                 continue

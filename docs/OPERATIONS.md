@@ -82,6 +82,14 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
 
+`event` cadence 可选 `freshness_refresh_lead_seconds`（缺省为 0，当前生产配置不启用）。
+只有正常 success/empty 的重观测可以提前：非零值将间隔取为
+`min(minimum_interval_seconds, max(1, dataset.freshness_sla_seconds - lead))`；失败重试、
+窗口、receipt、SLA 与账号/provider/API 预算不变。该值必须为非 bool 整数，且
+`0 <= lead < minimum_interval_seconds`；其它 cadence 不允许非零值。提前量用于为 timer
+触发与排队留余量，不代表 provider 更新更频繁。启用前须核验实际新增调用量、当前账号
+每日额度与完整一轮运行时间；仅维持 per-run 上限不证明每日成本不增加。默认 0 保留旧行为。
+
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 

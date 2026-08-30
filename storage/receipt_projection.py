@@ -983,12 +983,38 @@ def _execution_candidate_predicate(
         yield " OR ".join("instr(notes, ?) > 0" for _ in fragments), tuple(fragments)
         return
 
-    pattern = re.compile(b"|".join(re.escape(item.encode("utf-8")) for item in fragments))
+    literals = tuple(item.encode("utf-8") for item in fragments)
+    prefix = os.path.commonprefix(literals)
+    by_length: dict[int, set[bytes]] = {}
+    for literal in literals:
+        suffix = literal[len(prefix):]
+        by_length.setdefault(len(suffix), set()).add(suffix)
+    # Execution IDs usually have only a few lengths. Search their shared literal
+    # prefix once and use exact suffix membership instead of compiling hundreds
+    # of long regex alternatives for each dataset on every catalog request.
+    # Keep the regex path for arbitrary/highly variable fragments so matching
+    # work does not grow with an unbounded number of distinct suffix lengths.
+    suffix_groups = tuple((length, frozenset(values)) for length, values in by_length.items())
+    pattern = (
+        None if prefix and len(suffix_groups) <= 16
+        else re.compile(b"|".join(re.escape(item) for item in literals))
+    )
     # A lookup owns its callback; never replace another lookup's registered UDF.
     function_name = f"td_receipt_candidate_{uuid.uuid4().hex}"
 
     def matches(notes: bytes | None) -> int:
-        return int(notes is not None and pattern.search(notes) is not None)
+        if notes is None:
+            return 0
+        if pattern is not None:
+            return int(pattern.search(notes) is not None)
+        offset = 0
+        while (found := notes.find(prefix, offset)) != -1:
+            start = found + len(prefix)
+            if any(notes[start:start + length] in values for length, values in suffix_groups):
+                return 1
+            # Advance by one to retain overlapping matches in malformed input.
+            offset = found + 1
+        return 0
 
     conn.create_function(function_name, 1, matches)
     try:
