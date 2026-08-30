@@ -819,3 +819,55 @@ Remaining: complete keyboard traversal/screen-reader speech, native download
 completion, mobile touch interactions, Dechow/Dichev full text, fresh candidate
 remote CI, predecessor/main integration and independent Datas PM go-ahead.
 No backend, provider, credential, workflow or production changes.
+
+## Six-guide fundamentals/microstructure continuation — 2026-08-30
+
+This pass continues draft PR #400 from `3c54b02`; earlier browser evidence above
+is historical, not a fresh acceptance of all interactions.
+
+- Keep 200 works, stable identities, eight three-stage core journeys, six
+  tutorials and 24 artifacts. Expand six existing summary records: Piotroski,
+  corporate governance, distress risk, Roll, Hasbrouck and order-book events.
+  There are now 32 bilingual guides: 31 with six sections and the unchanged
+  four-section Dechow/Dichev orientation. The remaining 168 are summary-only.
+- Actual source reading: Piotroski opening argument and printed pp. 5–12;
+  governance August 2001 NBER draft pp. 1–8 (visual reading); distress June 27,
+  2005 author draft pp. 1–8; Roll pp. 1128–1131 and 1134–1135; Hasbrouck
+  image-only pp. 179–183 and 190–192 (visual reading); Cont arXiv 1011.6402v3
+  introduction/sections 1–2.3, pp. 8–11 and appendix p. 26. Definition pages
+  were visually checked. Source PDFs stay outside the repository.
+- Version distinctions are public: governance 2001 draft / 2003 journal,
+  distress 2005 draft / 2008 journal, Cont March 2011 v3 / 2014 journal.
+  No numerical replication or full final-version review is claimed.
+- New regression checks cover exact six-work membership, bilingual sections,
+  locator/source projection, unchanged core journeys and specific caveats:
+  Piotroski's fifth-month timing, governance score direction, failure labels,
+  Roll covariance versus correlation, transaction time and contemporaneous OFI.
+- Fresh local verification: 88 tests passed; build passed with 211 metadata
+  entries and 24 artifacts. Catalog chunk 329.65 kB / 111.72 kB gzip. Offline
+  audit: zero structural errors, 168 summary-only and six reading-scope items.
+  All 200 records are rendered in both languages by the existing test suite.
+- Fresh live browser at 127.0.0.1:5186: the six new guides rendered in Chinese
+  and English with six located sections and source-specific limits. The five
+  non-Piotroski guides measured 1280/1280 viewport/scrollWidth in both languages;
+  Piotroski's Chinese first screen and Cont's English first screen were visually
+  inspected. Account language selection persisted through fresh navigation;
+  canonical records and sources stayed unchanged. No OS-language change was
+  simulated. Restored Chinese/light company Topics (28 works; 200 total).
+- Keyboard follow-up did not establish complete traversal: Tab did not advance
+  the observed input focus, and PageDown on an unfocused heading was rejected
+  by the browser input bridge. These are inconclusive tooling observations,
+  not confirmed application defects or a keyboard pass.
+- Clicking the Chinese minute-gap notebook did not produce visible completion
+  evidence; no matching downloaded file was found in the checked Downloads
+  directory. Native download completion remains unverified. No fresh mobile
+  touch, screen-reader speech or narrow-viewport acceptance is claimed.
+- No application interaction/layout code or protected Sites/Worker file was
+  changed. Generated hashed assets and metadata were rebuilt normally; removed
+  obsolete hashes remain recoverable from Git. No user data was removed.
+
+Release remains separate: predecessor #385 is open; #400 is still draft and
+neither had a `pm-merge` label at readback. Independent review, main integration,
+exact-main CI, publishing and public production readback remain pending. The
+candidate CI is dispatched for the new exact head; do not substitute the prior
+head's successful run. Rollback is a scoped revert of this content continuation.

@@ -52,6 +52,13 @@ Chinese/English editorial titles, orientations, data requirements and limitation
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
+There are 32 bilingual guides: 31 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 168 records are
+summary-only. The eight three-stage core journeys retain their 24 original works.
+`src/researchFundamentalsMicrostructureGuides.js` adds six source-backed guides
+on accounting signals, governance, distress and market microstructure. Source
+edition differences are visible in locators/limitations; internal review notes
+are not projected into articles.
 
 `src/researchSeeds.js` holds new editorial notes; `src/researchLegacy.json` preserves
 the original records and stable routes. `src/researchBibliography.json` is generated
@@ -159,7 +166,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 174 summary-only records, repeated/short paragraphs and
+candidates (including the 168 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only

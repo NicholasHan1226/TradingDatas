@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 26 guides: 25 have six bilingual sections with source locators;
+library has 32 guides: 31 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -91,7 +91,18 @@ results. Amihud uses the 2002 journal article hosted by Penn; Novy-Marx uses the
 June 2012 author draft hosted by Rochester, explicitly distinct from the 2013
 journal citation. Its Chinese editorial title now says 毛利能力 rather than 毛利率:
 the measure divides gross profits by assets, not sales. Source identities are unchanged.
-This does not certify 200 full-length guides or 26 full-text reviews.
+`researchFundamentalsMicrostructureGuides.js` adds six existing works: Piotroski,
+Gompers/Ishii/Metrick, Campbell/Hilscher/Szilagyi, Roll, Hasbrouck and
+Cont/Kukanov/Stoikov. Their sections cover bounded questions, definitions,
+information timing and methodological limits, not numerical replication.
+Governance uses the August 2001 NBER draft rather than the 2003 journal version;
+distress uses the June 27, 2005 author draft rather than the 2008 final article;
+order-book events uses frozen arXiv v3 (March 2011), distinct from the 2014
+journal citation. Each difference is public. Internal evidence scopes record
+only the pages actually read; image-only Hasbrouck and encoded governance scans
+were visually read. No PDFs are redistributed.
+This does not certify 200 full-length guides or 32 full-text reviews; 168 works
+remain summary-only.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -113,7 +124,7 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 26 expanded guides below the lead story.
+counts. Featured also exposes the 32 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides use the existing same-topic further-reading sidebar without inventing a
 fourth stage or changing original sequence membership.

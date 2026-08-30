@@ -7,7 +7,7 @@ import { researchJourneys, readingJourney } from "../src/researchJourneys.js";
 const additions = ["Illiquidity and Stock Returns: Cross-Section and Time-Series Effects", "The Other Side of Value: The Gross Profitability Premium"];
 test("two primary-source guides deepen existing identities without changing the eight core sequences", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 26);
+  assert.equal(Object.keys(researchReaderNotes).length, 32);
   assert.equal(new Set(Object.values(researchJourneys).flat().map(s => s.title)).size, 24);
   for (const title of additions) {
     const paper = papers.find(p => p.title === title), guide = researchReaderNotes[title];

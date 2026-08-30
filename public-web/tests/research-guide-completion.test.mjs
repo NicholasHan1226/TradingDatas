@@ -11,12 +11,12 @@ const pending = [
   "The Quality of Accruals and Earnings: The Role of Accrual Estimation Errors",
 ];
 
-test("15 supported extensions coexist with 26 guides, 200 works and one honest source gap", () => {
+test("15 supported extensions coexist with 32 guides, 200 works and one honest source gap", () => {
   assert.equal(Object.keys(researchGuideDepthExpansion).length, 15);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 26);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 25);
+  assert.equal(Object.keys(researchReaderNotes).length, 32);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 31);
   assert.deepEqual(Object.entries(researchReaderNotes).filter(([, g]) => g.sections.length === 4).map(([title]) => title).sort(), [...pending].sort());
   for (const title of pending) {
     assert.equal(researchReaderNotes[title], researchEditorial[title]);
