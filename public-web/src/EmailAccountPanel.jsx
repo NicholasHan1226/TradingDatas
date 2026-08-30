@@ -10,6 +10,11 @@ export function EmailAccountPanel({ account, section, locale, onSignOut, signing
   const [deleteError, setDeleteError] = useState("");
   const deletionInFlight = useRef(false);
   const confirmationInput = useRef(null);
+  const deletionTrigger = useRef(null);
+  function cancelDeletion() {
+    setConfirming(false); setConfirmation(""); setDeleteError("");
+    requestAnimationFrame(() => deletionTrigger.current?.focus());
+  }
   async function submitDeletion(event) {
     event.preventDefault();
     if (confirmation !== "DELETE" || deletionInFlight.current || signingOut) return;
@@ -38,12 +43,12 @@ export function EmailAccountPanel({ account, section, locale, onSignOut, signing
     {section === "security" && <section className="email-account-deletion" aria-labelledby="account-deletion-title">
       <h3 id="account-deletion-title">{zh ? "账户资料与注销" : "Profile & deletion"}</h3>
       <p>{zh ? "注销会立即停用此账户并撤销所有邮箱会话，账户库中的资料将在 30 天内清理。重新注册不会恢复旧身份或权限。浏览器中的收藏需自行清除。" : "Deletion disables this account and revokes every email session immediately. Profile data in the account store is removed within 30 days. Registering again restores no old identity or access. Browser-local bookmarks need to be cleared separately."}</p>
-      {account.deletion_available !== true ? <p>{zh ? "注销服务尚未开放，请先联系平台处理。" : "Self-service deletion is not available yet. Contact the platform for assistance."}</p> : !confirming ? <button type="button" className="account-inline-action" disabled={signingOut} onClick={() => { setConfirming(true); requestAnimationFrame(() => confirmationInput.current?.focus()); }}>{zh ? "申请注销账户" : "Request account deletion"}</button> : <form onSubmit={submitDeletion}>
+      {account.deletion_available !== true ? <p>{zh ? "注销服务尚未开放，请先联系平台处理。" : "Self-service deletion is not available yet. Contact the platform for assistance."}</p> : !confirming ? <button ref={deletionTrigger} type="button" className="account-inline-action" disabled={signingOut} onClick={() => { setConfirming(true); requestAnimationFrame(() => confirmationInput.current?.focus()); }}>{zh ? "申请注销账户" : "Request account deletion"}</button> : <form onSubmit={submitDeletion}>
         <label htmlFor="account-delete-confirm">{zh ? "输入 DELETE 确认注销（不可撤销）" : "Type DELETE to confirm (cannot be undone)"}</label>
         <input ref={confirmationInput} id="account-delete-confirm" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} disabled={deleting || signingOut} />
         <small>{zh ? "需要在最近 10 分钟内重新验证过邮箱。这里只注销网页登录账户，不会删除旧 API 密钥或金融数据。" : "Requires an email sign-in within the last 10 minutes. This deletes only your web account, not legacy API keys or financial data."}</small>
         {deleteError && <p className="account-key-error" role="alert">{deleteError === "reauth" ? (zh ? "请先退出并重新通过邮箱验证，再返回此页注销。" : "Sign out and verify your email again, then return here to delete the account.") : (zh ? "未能确认注销结果。请重新加载账户状态；不要把网络错误当成已注销。" : "Deletion could not be confirmed. Reload your account status; a network error does not mean the account was deleted.")}</p>}
-        <div className="email-deletion-actions"><button className="primary-button" type="submit" disabled={confirmation !== "DELETE" || deleting || signingOut}>{deleting ? (zh ? "正在提交…" : "Submitting…") : (zh ? "确认注销" : "Confirm deletion")}</button><button type="button" disabled={deleting} onClick={() => {setConfirming(false);setConfirmation("");setDeleteError("");}}>{zh ? "保留账户" : "Keep account"}</button></div>
+        <div className="email-deletion-actions"><button className="primary-button" type="submit" disabled={confirmation !== "DELETE" || deleting || signingOut}>{deleting ? (zh ? "正在提交…" : "Submitting…") : (zh ? "确认注销" : "Confirm deletion")}</button><button type="button" disabled={deleting} onClick={cancelDeletion}>{zh ? "保留账户" : "Keep account"}</button></div>
       </form>}
     </section>}
     {section !== "security" && <a className="account-inline-action" href="/pricing" onClick={event => navigate(event, "/pricing")}>{zh ? "了解套餐 · 支付暂未开放" : "Explore plans · payment unavailable"}<ArrowRight /></a>}

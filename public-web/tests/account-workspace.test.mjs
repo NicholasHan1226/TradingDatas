@@ -51,6 +51,15 @@ test("late reads and key mutations cannot restore a previous account", () => {
   assert.match(appSource, /用量暂时无法加载，你仍然处于登录状态/);
 });
 
+test("identity refresh clears sensitive projections before adopting a shared session", () => {
+  const refresh = appSource.slice(appSource.indexOf("    clearLegacyAccountToken();\n"), appSource.indexOf("  }, [accountConnectionRevision]);"));
+  const clear = appSource.slice(appSource.indexOf("  function clearAccountView()"), appSource.indexOf("  async function deleteEmailProfile()"));
+  assert.ok(refresh.indexOf("clearAccountView()") < refresh.indexOf("const epoch = accountEpoch.current"));
+  assert.ok(refresh.indexOf("clearAccountView()") < refresh.indexOf("readAccountIdentity("));
+  assert.match(clear, /accountEpoch\.current \+= 1/);
+  for (const setter of ["setAccountData(null)", "setAccountUsage(null)", "setAccountKeys([])", 'setAccountNewKey("")', 'setAccountKeyLabel("")']) assert.ok(clear.includes(setter), setter);
+});
+
 test("private panels wait for identity instead of flashing a sign-in prompt", () => {
   assert.match(appSource, /getAccountViewState\(\{ loading: accountLoading, account: accountData, error: accountError \}\)/);
   assert.match(appSource, /accountPrivateSection && accountChecking/);

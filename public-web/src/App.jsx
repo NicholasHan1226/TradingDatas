@@ -916,6 +916,9 @@ export function App() {
 
   useEffect(() => {
     clearLegacyAccountToken();
+    // Another tab may have changed the shared session. Invalidate all derived
+    // account state and pending results before checking the current identity.
+    clearAccountView();
     const controller = new AbortController();
     accountReadAbort.current = controller;
     const epoch = accountEpoch.current;

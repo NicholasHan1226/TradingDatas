@@ -36,3 +36,9 @@ test('deletion controls keep visible disabled treatment and pending action guard
   assert.match(panel, /onClick=\{onSignOut\} disabled=\{signingOut \|\| deleting\}/);
   assert.match(panel, /disabled=\{confirmation !== "DELETE" \|\| deleting \|\| signingOut\}/);
 });
+test('cancelling deletion clears the form and restores focus to its trigger', () => {
+  const panel = readFileSync(new URL('../src/EmailAccountPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /ref=\{deletionTrigger\}/);
+  assert.match(panel, /function cancelDeletion\(\) \{\s*setConfirming\(false\); setConfirmation\(""\); setDeleteError\(""\);\s*requestAnimationFrame\(\(\) => deletionTrigger\.current\?\.focus\(\)\);/);
+  assert.match(panel, /onClick=\{cancelDeletion\}/);
+});

@@ -80,6 +80,13 @@ The authenticated public data API stays `GET /v1/catalog` + `POST /v1/query`.
 - Identity-store outage returns 503, including sign-out; UI must not claim
   revocation. Invalid/expired/disabled sessions return 401. Legacy key-cookie
   logout retains its existing independent semantics.
+- Before each identity readback, including returning to a visible tab, clear all
+  derived account projections and any one-time raw key, advance the request epoch
+  and abort the previous read. Another tab can change the shared cookie; an old
+  key or usage view must never be adopted with the newly returned identity.
+  A one-time key display therefore does not survive foreground revalidation,
+  even when the returned identity is unchanged. This is not cross-tab revocation
+  broadcasting; in-flight-operation refresh guards remain in place.
 
 ## Abuse budget (candidate policy, not paid API limits)
 

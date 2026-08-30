@@ -4,6 +4,10 @@ Scope: owner-approved continuation of email identity PR #397. The owner approved
 the previously proposed 24h / 7d / 30d active-store maxima. Existing branding,
 public Account and language rules are retained. Payments and SMS remain off.
 
+Follow-up: [2026-08-31 mobile and identity-refresh review](2026-08-31-identity-mobile-readiness.md)
+supersedes the responsive harness limitation and records the remaining explicit
+final-deletion UI approval boundary. This report remains the earlier checkpoint.
+
 ## Candidate changes
 
 - Additive request queue in the dedicated identity DB; no remote SQL executed.
