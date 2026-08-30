@@ -16,6 +16,10 @@ Provider-neutral normalization is frozen to exactly two transformations:
 2. ``content_uid`` = sha256(canonical_url | title | published_at) is derived as
    the primary-key component and re-scan dedup identity.
 
+Only ``scrape_page_global`` may explicitly enable ``raw_item_v1`` provenance.
+It preserves the original item and publication text/precision alongside the
+unchanged legacy anchors; date/time anchors do not prove publication instants.
+
 The bearer key is read from ``FIRECRAWL_API_KEY_FILE`` (0600, outside the
 repository) and is never placed into payloads, receipts, or log fields; every
 outcome carries it as a sensitive value so the shared tushare_common scan
@@ -24,7 +28,7 @@ machinery fail-closes on any leak.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 import os
@@ -62,6 +66,7 @@ _SCRAPE_PARAM_KEYS = frozenset(
         "timeout_ms",
         "window_start",
         "window_end",
+        "publication_provenance_mode",
     }
 )
 _SEARCH_PARAM_KEYS = frozenset({"query", "limit", "timeout_ms"})
@@ -254,6 +259,39 @@ def _parse_published_at(
     return parsed.astimezone(timezone)
 
 
+def _publication_precision(value: object) -> str:
+    """Classify the source string, never its normalized midnight/date anchor."""
+    if type(value) is not str or not value.strip():
+        return "unknown"
+    text = value.strip()
+    candidates = (text, text.replace(".", "-", 2))
+    for candidate in candidates:
+        try:
+            date.fromisoformat(candidate)
+            return "date"
+        except ValueError:
+            pass
+    for fmt in ("%b. %d, %Y", "%B %d, %Y", "%b %d, %Y", "%m/%d/%Y"):
+        try:
+            datetime.strptime(text, fmt)
+            return "date"
+        except ValueError:
+            pass
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            datetime.strptime(text, fmt)
+            return "time"
+        except ValueError:
+            pass
+    for candidate in candidates:
+        try:
+            datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            return "datetime"
+        except ValueError:
+            pass
+    return "unknown"
+
+
 def _normalize_item(
     item: object,
     *,
@@ -262,9 +300,22 @@ def _normalize_item(
     summary_key: str | None,
     timezone: ZoneInfo = _LOCAL_TIMEZONE,
     observed_at: datetime | None = None,
+    preserve_publication_provenance: bool = False,
 ) -> dict[str, Any]:
     if type(item) is not dict:
         raise ValueError("firecrawl extraction item must be an object")
+    # Capture before replacing URLs, reserved fields, or publication anchors.
+    raw_item_json = (
+        json.dumps(
+            item,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if preserve_publication_provenance
+        else None
+    )
     raw_url = item.get("url")
     try:
         canonical_url = _canonical_url(raw_url)
@@ -298,6 +349,10 @@ def _normalize_item(
     row["event_date"] = local.strftime("%Y%m%d")
     row["content_uid"] = content_uid
     row["summary"] = summary
+    if preserve_publication_provenance:
+        row["provider_published_at"] = item.get(time_key)
+        row["raw_item_json"] = raw_item_json
+        row["publication_precision"] = _publication_precision(item.get(time_key))
     return row
 
 
@@ -442,6 +497,11 @@ class FirecrawlWebCollector:
     ) -> list[dict[str, Any]]:
         if set(params) - _SCRAPE_PARAM_KEYS:
             raise ValueError("firecrawl scrape params do not match the registry")
+        provenance_mode = params.get("publication_provenance_mode")
+        if "publication_provenance_mode" in params and (
+            api_name != "scrape_page_global" or provenance_mode != "raw_item_v1"
+        ):
+            raise ValueError("firecrawl publication provenance mode is unsupported")
         self._consume_budget(api_name)
         url = _canonical_url(params.get("url"))
         prompt = _non_empty_text(params.get("prompt"), "prompt", max_chars=4096)
@@ -478,7 +538,14 @@ class FirecrawlWebCollector:
         if type(items) is not list:
             raise ValueError("firecrawl extraction must produce an items array")
         return [
-            _normalize_item(item, source=url, time_key="published_at", summary_key=None, timezone=timezone)
+            _normalize_item(
+                item,
+                source=url,
+                time_key="published_at",
+                summary_key=None,
+                timezone=timezone,
+                preserve_publication_provenance=provenance_mode == "raw_item_v1",
+            )
             for item in items
         ]
 
