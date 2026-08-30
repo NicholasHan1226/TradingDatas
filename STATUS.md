@@ -1,7 +1,7 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-30 15:55 CST（邮箱身份本地候选补充；数据运行面仍沿用 2026-08-26
-第十一轮记录）。本文只保留当前可替换摘要；历史决策见
+最后更新：2026-08-30 15:55 CST（邮箱身份候选；保留主线 15:30 质量合同发布与
+消费者待验收记录）。本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
@@ -33,6 +33,22 @@
   仍需明确授权范围与测试收件邮箱；没有创建 D1、生成 Resend key、迁移、发信或部署。
   线上邮件/SMS/支付启用均不作完成声明。真实手机键盘/屏幕阅读器仍待设备验收。
 
+## 2026-08-30 采集恢复与覆盖复核
+
+本轮数据运行事实见[覆盖与质量恢复报告](docs/reports/2026-08-30-coverage-quality-recovery.md)。
+13:46 已在现有 A 股 release `385a4fa` 上补采五项 on-demand 数据，新增 1,148 行、
+5 份回执，认证 query 均 ready/valid/complete；定时器恢复 active。
+财报日窗口及分钟累计数据仍存在已量化的覆盖缺口，不能声称全量健康。
+第二批 fut_basic 新增 11,196 行、6 份回执，但查询仍因缺 trade_time_desc 降级，
+不能算质量健康。13:57 A 股目录为 87 success/43 empty/57 paused/4 unobserved/1 stale；
+Crypto 为 240 success。质量合同 PR #393 已合入 TD `4ef9565`，精确主线 CI 通过。
+三条只读消费者兼容 PR #609 已合入 TA `eb469916`，候选及精确主线 CI 通过；
+这不代表 TA 运行或交易入口启用。分钟 major 3 与七项财务日期续采修复已完成实现、正在独立审查，
+不会恢复此前缺乏 provider 日期校验的撤回方案。TD `4ef9565` 于15:27完成受控发布及
+8份回执/11,740行补采，完整认证分页与5项无关样本通过；TA真实消费者仍拒绝、尚未验收。见
+[发布检查点](docs/reports/2026-08-30-consumer-release-preflight.md) 与
+[续采合同](docs/reports/2026-08-30-resumable-collection-contract.md)。下方 08-26 数据运行表为历史
+快照，不能替代本轮当前 release/readback。公开站状态未在本轮重新验收。
 
 ## 分层交付状态
 

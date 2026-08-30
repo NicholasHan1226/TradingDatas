@@ -877,6 +877,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
+      progress_mode: partition_continuation
+      continuation_max_age_days: 31
+      partition_date_field: ann_date
     pagination:
       strategy: none
     request_window_policy:
@@ -2639,7 +2642,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: monthly
   timezone: Asia/Shanghai
   freshness_sla_seconds: 2419200
@@ -2902,6 +2905,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
+      progress_mode: partition_continuation
+      continuation_max_age_days: 31
+      partition_date_field: ann_date
     pagination:
       strategy: none
     request_window_policy:
@@ -5555,6 +5561,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
+      progress_mode: partition_continuation
+      continuation_max_age_days: 31
+      partition_date_field: publish_date
     pagination:
       strategy: none
     request_window_policy:
@@ -10211,6 +10220,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
+      progress_mode: partition_continuation
+      continuation_max_age_days: 31
+      partition_date_field: ann_date
     pagination:
       strategy: none
     request_window_policy:
@@ -10397,6 +10409,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
+      progress_mode: partition_continuation
+      continuation_max_age_days: 31
+      partition_date_field: ann_date
     pagination:
       strategy: none
     request_window_policy:
@@ -10534,6 +10549,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
+      progress_mode: partition_continuation
+      continuation_max_age_days: 31
+      partition_date_field: ann_date
     pagination:
       strategy: none
     request_window_policy:
@@ -14498,7 +14516,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -14659,12 +14677,6 @@ datasets:
     filterable: true
     sortable: true
   - name: last_ddate
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: trade_time_desc
     logical_type: text
     nullable: true
     selectable: true
@@ -17829,6 +17841,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
+      progress_mode: partition_continuation
+      continuation_max_age_days: 31
+      partition_date_field: ann_date
     pagination:
       strategy: none
     request_window_policy:
@@ -26984,7 +26999,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 3.0.0
   cadence_class: session_minute
   timezone: Asia/Shanghai
   freshness_sla_seconds: 300
@@ -27022,10 +27037,27 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 20
+      progress_mode: session_day_rotation
     pagination:
       strategy: none
-    request_window_policy: null
-    response_completeness: null
+    request_window_policy:
+      required_keys:
+      - start_time
+      - end_time
+      formats:
+        end_time: local_datetime_seconds
+        start_time: local_datetime_seconds
+      range_start_key: start_time
+      range_end_key: end_time
+      max_span_days: 1
+    response_completeness:
+      strategy: windowed_unique_primary_key
+      fixed_field_matches: {}
+      reject_at_row_limit: false
+      date_field: time
+      request_start_key: start_time
+      request_end_key: end_time
+      fanout_field: ts_code
     requested_fields: []
     max_batch_bytes: 67108864
     max_nesting_depth: 16
@@ -27040,22 +27072,16 @@ datasets:
   fields:
   - name: ts_code
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
-  - name: freq
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: false
-    sortable: false
   - name: time
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
-    filterable: false
-    sortable: false
+    filterable: true
+    sortable: true
   - name: open
     logical_type: float
     nullable: true
@@ -27092,10 +27118,11 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - time
   default_projection:
   - ts_code
-  - freq
   - time
   - open
   - close

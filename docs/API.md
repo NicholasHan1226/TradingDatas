@@ -32,6 +32,22 @@ response-contract delta 做字段子集、类型或新增字段修正，并递�
 major；详情见 [ADR-0011](adr/ADR-0011-quicksync-observed-response-contracts.md)。消费者必须
 始终从 catalog 读取 schema major，不得把旧 schema 当作兼容回退。
 
+`rt_min_daily` 的 schema 2 候选移除实际未返回的响应字段 `freq`，采集请求仍固定为
+`1MIN`；不得由客户端伪造该 provider 字段。`broker_recommend` 的 schema 2 候选
+保持原字段和严格 `YYYYMM` 月份语义，用真实重采建立新质量记录；不会改写 major 1
+的旧 facts/receipts。固定 query 只接受当前 registry major，因此这两项版本切换需
+认证 readback 与消费者合同适配，不能把源码候选称为生产生效。`fut_basic` 的
+schema 2 候选同样只移除缺失的 `trade_time_desc` 响应字段，保留 `[ts_code]` identity
+和全部六个交易所请求 variants；它也需要新回执与消费者 major 适配。详见
+[本轮质量与覆盖证据](reports/2026-08-30-coverage-quality-recovery.md)。
+
+后续 `rt_min_daily` major 3 保留 major 2 的八个原生字段，新增严格非空
+`[ts_code,time]` identity；`time` 可筛选及排序，水位只来自通过完整本地日和实际完成时钟
+校验的 provider 时间。它不回写 major 1/2 历史，也不保证全市场或收盘完整性。
+消费者必须明确支持 major 3。七项财务日期续采只改变 binding 请求验证和调度，
+不更改公共 schema major、字段可空性、主键或 as-of/range 合同；新成功回执不能
+替旧 payload 的原始 row receipt/quality 背书。
+
 每个 catalog row 的 `identity_fields` 是 registry `primary_key` 的有序投影；没有已声明业务主键时为 `[]`。消费者将它与该 row 的 dataset contract fingerprint 一起重算和绑定，不能猜测、替换或信任 producer 自报 hash。`cn.dataset.fut_basic` 的正式合同 identity 为 `[ts_code]`，因此 catalog 的确定性默认顺序为 `[ts_code:asc]`；该 identity 只支持有界分页与 replay，不证明 response completeness、业务时间水位或 PIT。日分区的 receipt completeness 可以声明稳定 identity 并验证请求分区、唯一性和行数上限；若同一 dataset 的 `as_of_field`、`range_field` 与 `partition_field` 都是 `null`，这不声明业务时间水位或 PIT 可用性，消费者仍只能将其作为 receipt-bound current-partition 事实读取。
 
 每个 catalog row 还携带 `coverage`（`row_count`、`earliest_observed_at`、`latest_observed_at`），

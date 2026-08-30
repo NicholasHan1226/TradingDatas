@@ -163,6 +163,8 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 
 当前/最新分区优先，历史回填有界并在后台运行。调度从 registry、SQLite facts 和可信 receipts 推导缺口，不以最近一次运行时间假装数据完整。账号级、provider 级、API 级预算必须跨 dataset 生效。
 
+`resumable_fanout` 默认为 `complete_window`。显式 `session_day_rotation` 必须校验完整本地日、非空业务身份及真实 provider 时间；`partition_continuation` 只能在原预算内轮换当前日期与匹配合同回执证明已开始的旧日期，并保留有限续采期限外的债务。新 config/universe 不能借用旧进度；不得将轮换、空回执或过期停止续采声明为完整覆盖。具体合同见 `docs/OPERATIONS.md`。
+
 QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不得启用自动调度；历史回填也不能绕过同一 transport budget。
 
 普通接口接入按同一批次推进：先批量探测并分类权限/参数/空响应，再按 data class 批量冻结 cadence 与 window，随后用同一个 runner 做有界入库和 API readback。不得为单个 API 单独创建任务流、测试栈、service、timer、route 或发布流程。

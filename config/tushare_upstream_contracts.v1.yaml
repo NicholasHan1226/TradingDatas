@@ -2115,6 +2115,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   pagination:
     strategy: none
   request_window_policy:
@@ -2859,7 +2862,7 @@ contracts:
   api_name: broker_recommend
   source_document_url: https://tushare.pro/wctapi/documents/267.md
   source_document_sha256: dc0c8a079894a24b36b3315a47eb109f727c93961e2f11413f1ab887572b6e93
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: month
     declared_source_type: str
@@ -3887,6 +3890,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   pagination:
     strategy: none
   request_window_policy:
@@ -6279,6 +6285,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: publish_date
   pagination:
     strategy: none
   request_window_policy:
@@ -11217,6 +11226,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   pagination:
     strategy: none
   request_window_policy:
@@ -11354,6 +11366,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   pagination:
     strategy: none
   request_window_policy:
@@ -12704,6 +12719,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   pagination:
     strategy: none
   request_window_policy:
@@ -19888,6 +19906,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   pagination:
     strategy: none
   request_window_policy:
@@ -28588,7 +28609,7 @@ contracts:
   api_name: rt_min_daily
   source_document_url: https://tushare.pro/wctapi/documents/457.md
   source_document_sha256: 00059f93afb6de825c91f891edd3ac54c7e7d9b0bf6ec21a8baf0d311a4714d6
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: freq
     declared_source_type: str
@@ -28600,7 +28621,7 @@ contracts:
   - name: ts_code
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
     filterable: true
     sortable: true
@@ -28614,10 +28635,10 @@ contracts:
   - name: time
     declared_source_type: str
     logical_type: text
-    nullable: true
+    nullable: false
     selectable: true
-    filterable: false
-    sortable: false
+    filterable: true
+    sortable: true
   - name: open
     declared_source_type: float
     logical_type: float
@@ -28660,7 +28681,9 @@ contracts:
     selectable: true
     filterable: true
     sortable: true
-  primary_key: []
+  primary_key:
+  - ts_code
+  - time
   default_projection:
   - ts_code
   - freq
@@ -28697,10 +28720,27 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 20
+    progress_mode: session_day_rotation
   pagination:
     strategy: none
-  request_window_policy: null
-  response_completeness: null
+  request_window_policy:
+    required_keys:
+    - start_time
+    - end_time
+    formats:
+      end_time: local_datetime_seconds
+      start_time: local_datetime_seconds
+    range_start_key: start_time
+    range_end_key: end_time
+    max_span_days: 1
+  response_completeness:
+    strategy: windowed_unique_primary_key
+    fixed_field_matches: {}
+    reject_at_row_limit: false
+    date_field: time
+    request_start_key: start_time
+    request_end_key: end_time
+    fanout_field: ts_code
   requested_fields: []
   budgets:
     max_batch_bytes: 67108864

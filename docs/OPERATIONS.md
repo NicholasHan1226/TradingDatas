@@ -22,8 +22,9 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 
 采集调度只允许一个 registry-driven runner；timer 每五分钟只唤醒一次 cadence
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
-Tushare API 增加 service/timer。生产 timer 只采集每个 automatic dataset 的最新
-eligible window；它不会隐式启动历史回填。历史回填必须经同一 registry 的外部、有界
+Tushare API 增加 service/timer。生产 timer 默认只采集每个 automatic dataset 的最新
+eligible window；显式声明下述 `partition_continuation` 的绑定可续采已经开始的有界旧日期。
+其它历史回填必须经同一 registry 的外部、有界
 one-shot manifest 明确选择，且继续受同一 transport budget 约束。没有正式 QuickSync
 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在 production 启用采集 timer。采集 unit 只调用一次不带 dataset 参数的通用 cadence
@@ -34,11 +35,30 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 5 分钟 bar 独立重置游标，因此一个 bar 内完整扫完 5,963 个冻结代码。只有带匹配
 dataset/provider、config hash、frozen universe、batch identity 与
 success/empty 状态的 receipt 才能推进游标；失败批次只在本数据集内优先重试，不能借用其它
-dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 24、
+dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 48、
 rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime
 已接纳。每轮仍须保留实际 bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行
 可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 5（单批最多约 5×241 根 1 分钟线，午后 payload 最大），`max_rows_per_attempt=1500`，resumable cursor v2 每轮最多 20 批；敏感扫描包络按该乘积定价且必须 ≤ 2,000,000 节点。确定性 `resource_budget`/`config_error`/`validation_failed` 失败批次不得优先钉死同一窗口的 pending 批次。该绑定经 `active_evidence` 恢复采集；回滚时切回上一 immutable registry/release 并更新 activation-wave
 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
+
+`resumable_fanout.progress_mode` 默认 `complete_window`，保持既有合同与配置哈希。
+`rt_min_daily` 的 major 3 显式选择 `session_day_rotation`：完整本地日窗口只用于验证和
+游标，不发送给上游；采集开始与结束必须仍在请求日，逐行校验非空 `[ts_code,time]`
+和真实 provider 时间，拒绝旧日、混日、未来或跨午夜响应。水位取真实最大 provider 时间。
+在精确日/config/universe/batch/variant 内先采未尝试批次，再轮换最久未尝试批次；
+成功、空响应和失败都不会永久占据前缀或终止当日刷新。预算、开市窗口和每轮 20 批不变，
+不新增收盘补采。现有容量不足以承诺全市场或收盘完整覆盖。
+
+七项单代码公告日期绑定显式选择 `partition_continuation`，以 binding-only
+`partition_date_field` 验证返回日期等于实际请求日期、代码属于请求集合。财务公共 schema、
+可空字段、主键和 as-of/range 合同不变。当前日期与最早未完成且已开始的旧日期交替，
+每轮仍只选一个窗口；旧日期最多续采 31 天，不推造缺失日期。当前日期的空响应会继续轮换，
+旧日期只有精确批次与 variant 的成功/空回执才计入已观察覆盖。新配置不能借用旧配置回执；
+超龄债务保留但不再自动消耗预算，不能标成完整。该能力不改变每日容量不足的事实。
+合同及失败测试入口见
+[`resumable collection contract`](reports/2026-08-30-resumable-collection-contract.md)；
+生产是否使用这些模式仍以 exact-release、真实 receipt 和认证 readback 为准。
+
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
 所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，
@@ -54,8 +74,10 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 
 `session_minute` 的最小成功间隔为 240 秒：五分钟 timer 在上一个窗口于临界时刻完成
 （例如完成后 265 秒触发下一次）时，仍会规划下一窗口；失败重试、开市日历、窗口和预算
-规则不变。当前 `standard` budget 每轮最多 12 个账号请求、12 个 provider 请求，
-同一 provider API 最多 6 个请求。runner 仍是串行、每五分钟最多运行一次；历史
+规则不变。当前 `standard` budget 每轮最多 64 个账号请求、64 个 provider 请求，
+同一 provider API 最多 16 个请求；`intraday` 为 48/48/6（分钟 API override 60），
+`event` 为 36/36/4（major_news override 16），`low_frequency` 为 16/16/4。
+这些是配置上限，不是上游每日额度或实际已完成调用数。runner 仍是串行、每五分钟最多运行一次；历史
 QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。发布前必须在目标 release 上证明完整
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
@@ -271,14 +293,15 @@ HTTP/consumer readback。
 
 ### 发布通道选择（强制顺序）
 
-生产发布的权威通道是：**本地已验证的 clean Git commit -> `marketgraph-root` 的
+生产发布的权威通道是：**本地已验证的 clean Git commit -> `marketgraph-main` 的
 immutable release staging -> manifest/rollback 验证 -> 原子 `current` 切换 -> service
-与消费者 readback**。目标 ECS 使用 `marketgraph-root`（严格 host-key 校验）进行 root-only
+与消费者 readback**。目标 ECS 使用 Finance `PRODUCTION_ACCESS.md` 登记的 `marketgraph-main`
+（严格 host-key 校验）进行 root-only
 release 操作；`marketgraph-server` 仅可用于最小权限诊断。服务器工作树能否从 GitHub 拉取，
 只是可选的源码同步能力，绝不能作为“是否可以发布”的前置条件或阻塞结论。
 
 当服务器 GitHub deploy key、known_hosts 或网络异常时，保留已审查本地 commit 的 Git archive
-与其 manifest，通过 `marketgraph-root` 写入一个**不存在的新 commit 目录**，再按本节验证；不得
+与其 manifest，通过同一已核验 SSH identity 写入一个**不存在的新 commit 目录**，再按本节验证；不得
 覆盖已有 release、复制未受 manifest 覆盖的文件，或把服务器 checkout 当作未经核对的发布源。
 Aliyun CLI 是 ECS 身份、实例状态和应急控制面的备选验证渠道，不替代 release manifest，也不
 改变 SSH host identity 的校验要求。每次发布记录必须分别写明：选择了哪条通道、GitHub/main
