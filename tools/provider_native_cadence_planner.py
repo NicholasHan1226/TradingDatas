@@ -688,9 +688,9 @@ def load_planner_state(
     """Load only the fact material needed to plan one schedule run.
 
     All datasets need their validated receipt history and partition values.
-    Provider payloads are only needed to derive an exchange calendar; avoiding
-    payload JSON hydration for every other historical fact keeps the common
-    automatic run bounded without changing scheduling semantics.
+    Provider payloads are needed for exchange calendars and active resumable
+    fanout source universes. Other historical facts need only partition values;
+    avoiding their payload hydration keeps the common automatic run bounded.
     ``None`` preserves the complete-fact behaviour for direct callers.
     """
 
@@ -704,6 +704,17 @@ def load_planner_state(
         for item in registry.datasets
         if item.read_model_adapter.storage_kind == "provider_native_rows"
     }
+    fanout_source_dataset_ids = frozenset(
+        binding.fanout.source_dataset_id
+        for dataset in datasets.values()
+        for binding in dataset.provider_bindings
+        if binding.entitlement_state == "active"
+        and binding.activation_state == "active"
+        and binding.resumable_fanout is not None
+        and binding.fanout is not None
+        and binding.fanout.strategy == "dataset_field"
+        and binding.fanout.source_dataset_id is not None
+    )
     receipts: dict[tuple[str, str], list[ValidatedReceiptHistoryEntry]] = defaultdict(
         list
     )
@@ -752,6 +763,7 @@ def load_planner_state(
                 hydrate_payload = (
                     calendar_dataset_ids is None
                     or dataset.dataset_id in calendar_dataset_ids
+                    or dataset.dataset_id in fanout_source_dataset_ids
                 )
                 columns = (
                     "partition_value, payload_json, receipt_id"
