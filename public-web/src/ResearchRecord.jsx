@@ -1,0 +1,53 @@
+import { useState } from "react";
+import { ArrowRight, ArrowSquareOut, BookmarkSimple, Check, Copy } from "@phosphor-icons/react";
+import { researchTitle, researchData, researchYear } from "./researchCatalog.js";
+import { researchCitation } from "./researchReader.js";
+
+export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, furtherReading, saved, onToggleBookmark, onNavigate }) {
+  const [copyState, setCopyState] = useState("idle");
+  const zh = locale === "zh";
+  const citation = researchCitation(paper);
+  async function copyCitation() {
+    try {
+      await navigator.clipboard.writeText(citation);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  }
+
+  return <article className="object-detail-page research-record">
+    <a className="object-back" href="/research" onClick={(event) => onNavigate(event, "/research")}>← {zh ? "返回研究库" : "Back to Research"}</a>
+    <header className="research-reader-header">
+      <div className="research-reader-meta"><span>{topicLabel}</span><span>{kindLabel}</span><span>{researchYear(paper, locale)}</span></div>
+      <h1>{researchTitle(paper, locale)}</h1>
+      <p className="research-reader-authors">{paper.authors}</p>
+      <p className="research-reader-venue">{paper.venue}</p>
+      {zh && <p className="research-original-title" lang="en">{paper.sourceTitle}</p>}
+      <div className="research-reader-actions">
+        <a className="primary-button" href={paper.sources[0].url} target="_blank" rel="noreferrer">{zh ? "阅读原文" : "Read original"}<ArrowSquareOut /></a>
+        <button className="secondary-button" type="button" aria-pressed={saved} onClick={onToggleBookmark}><BookmarkSimple weight={saved ? "fill" : "regular"} />{saved ? (zh ? "已收藏" : "Saved") : (zh ? "收藏" : "Bookmark")}</button>
+        <button className="secondary-button" type="button" onClick={copyCitation}>{copyState === "copied" ? <Check /> : <Copy />}{zh ? "复制引用" : "Copy citation"}</button>
+      </div>
+      <p className="research-reader-action-note">{zh ? "收藏保存在当前浏览器。原文可能需要出版方访问权限。" : "Bookmarks stay in this browser. Publisher access may be required."}</p>
+      <span className="research-copy-status" role="status">{copyState === "copied" ? (zh ? "引用已复制" : "Citation copied") : copyState === "failed" ? (zh ? "未能复制，请选中下方引用手动复制。" : "Could not copy. Select the citation below to copy manually.") : ""}</span>
+      {copyState === "failed" && <textarea className="research-citation-fallback" aria-label={zh ? "文献引用" : "Citation text"} readOnly value={citation} onFocus={(event) => event.target.select()} />}
+    </header>
+
+    <div className="research-reader-layout">
+      <div className="research-reader-body">
+        <p className="research-reader-intro">{paper.summary[locale]}</p>
+        {paper.readingNotes?.map((section) => <section key={section.title.en}><h2>{section.title[locale]}</h2><p>{section.body[locale]}</p></section>)}
+        <section><h2>{zh ? "涉及的数据" : "Data in focus"}</h2><p>{researchData(paper, locale)}</p></section>
+        {paper.readerLimits && <section><h2>{zh ? "阅读时留意" : "Keep in mind"}</h2><p>{paper.readerLimits[locale]}</p></section>}
+        {paper.sourceNote && <p className="research-edition-note">{paper.sourceNote[locale]}</p>}
+        <p className="research-reader-attribution">{zh ? "本站导读；中文题名为编译。完整论述与结论请见原文。" : "Editorial reading guide. Refer to the original for the full argument and conclusions."}</p>
+      </div>
+      <aside className="research-reader-aside" aria-label={zh ? "延伸阅读" : "Further reading"}>
+        {furtherReading.length > 0 && <section><h2>{zh ? "继续阅读" : "Read next"}</h2><div className="research-next-list">{furtherReading.map((item) => <a key={item.id} href={`/research/${item.id}`} onClick={(event) => onNavigate(event, `/research/${item.id}`)}><span>{researchTitle(item, locale)}</span><ArrowRight /></a>)}</div></section>}
+        {related.length > 0 && <details className="research-related-disclosure"><summary>{zh ? "相关数据与方法" : "Related data & methods"}</summary><p>{zh ? "用于延伸探索，不等同于论文原始样本。" : "For further exploration, not the paper’s original sample."}</p><div className="research-related-list">{related.map((item) => <a key={`${item.label}:${item.id}`} href={item.href} onClick={(event) => onNavigate(event, item.href)}><small>{item.label}</small><span>{item.title}<ArrowRight /></span></a>)}</div></details>}
+        {paper.sources.length > 1 && <section><h2>{zh ? "更多来源" : "Additional sources"}</h2>{paper.sources.slice(1).map((source) => <a className="text-link" key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.label}<ArrowSquareOut /></a>)}</section>}
+      </aside>
+    </div>
+  </article>;
+}

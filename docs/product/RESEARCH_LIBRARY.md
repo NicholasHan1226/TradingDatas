@@ -18,7 +18,7 @@ Every record needs:
 - Topic classification, applicable limitations, preparation checks and links to
   real maintained Data/Feature/Method objects. A link is methodological context,
   not evidence that TradingDatas covers the original sample or can reproduce it.
-- An explicit preparation state. New sources default to orientation only;
+- An internal preparation state. New sources default to orientation only;
   underlying provider rights, activation and runtime evidence are unchanged.
 
 Selection favors established methodological references, primary institutional
@@ -61,8 +61,19 @@ statistics. Aave protocol inputs are not Binance perpetual funding/OI inputs.
 
 ## Language and discovery
 
+The public detail page is an article, not a verification dashboard. Preparation
+state, source-check timestamps/process descriptions and generic preparation
+checklists remain internal. Readers see original authorship, direct source access,
+browser-local bookmarking, a copyable original-language citation, editorial
+orientation and specific reading limitations. Category-level limitations are not
+presented as individual-paper analysis. Additional data/method links are optional
+disclosure content, explicitly not the paper's original sample. Source-specific
+reader notes and their internal review references live in `researchReaderNotes.js`.
+This refinement deepens the Tokenomics orientation only; it does not certify all
+200 records as full-length guides or full-text reviews.
+
 System language is the default; Account holds the System/中文/English override.
-Titles, summaries, data requirements, limitations and preparation checks change
+Reader titles, summaries, data requirements and authored limitations change
 together. Original titles, author names, DOI, identifiers and source links remain
 stable. Source sites/full text may be in another language; this is disclosed.
 
@@ -71,6 +82,14 @@ lead to stable detail routes. The full library is paginated, with topic/format
 filters; global search covers both languages across all records. Counts derive
 from assembled records, never manually padded totals. Reading-time estimates
 refer only to concise orientations, not to reading the original full papers.
+Question and full-library entries reset incompatible format/page filters. Direct
+filter changes reset page; record navigation preserves the in-tab library filters,
+page and scroll position. This is not cross-device or reload-persistent reading
+history. Clipboard failure exposes a selectable citation instead of claiming success.
+
+Legacy official-source verification dates are stored per source; a library-wide
+content update cannot advance those dates. Source identity checks and editorial
+reading-note reviews are separate evidence, neither implies replication.
 
 ## Maintenance and verification
 

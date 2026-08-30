@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowSquareOut,
@@ -25,6 +25,8 @@ import {
 import { productManifest } from "./productManifest";
 import { papers, paperSlug, researchTitle, researchData, researchYear, readingPaths, researchUpdatedAt } from "./researchCatalog.js";
 import { normalizeLanguageChoice, resolveLanguage, browserLanguages } from "./language.js";
+import { initialResearchView, researchViewReducer } from "./researchReader.js";
+import { ResearchRecord } from "./ResearchRecord.jsx";
 import connectedInterfaceSnapshot from "./connectedInterfaceSnapshot.json";
 import {
   collectionHistory,
@@ -55,25 +57,6 @@ function getRouteFromPath() {
   return productRoutes.includes(primary) ? candidate : "home";
 }
 
-
-const researchReadiness = {
-  preparation_blueprint: {
-    en: { label: "Preparation blueprint", detail: "The data-preparation steps can be specified. Confirm current dataset receipts, coverage, and entitlement before reproducing any analysis." },
-    zh: { label: "可定义准备路径", detail: "可以明确数据准备步骤；复现任何分析前，仍须核对当前数据集 receipt、覆盖面与授权。" },
-  },
-  missing_required_data: {
-    en: { label: "Required material missing", detail: "The paper needs data that this product record does not currently claim, such as quotes, multi-venue observations, or licensed publisher text." },
-    zh: { label: "所需材料尚缺", detail: "论文需要当前产品记录未声称具备的数据，例如报价、多场所观测或获授权的发布方文本。" },
-  },
-  orientation_only: {
-    en: { label: "Orientation only", detail: "Useful for framing a question and its evidence, but not a claim that the paper can be replicated or transferred to a TradingDatas product." },
-    zh: { label: "仅作研究导读", detail: "适合界定问题与证据，不代表可复现论文或将其结论迁移到 TradingDatas 产品。" },
-  },
-  future_contract: {
-    en: { label: "Future product contract", detail: "The linked data product remains a contract or candidate. It requires its own provider, rights, receipt, and authenticated API evidence before activation." },
-    zh: { label: "未来产品合同", detail: "关联数据产品仍是合同或候选项；启用前必须独立获得 provider、权利、receipt 与认证 API 证据。" },
-  },
-};
 
 const researchObjectGroups = {
   datasets: { collection: "datasets", route: "datasets", label: { en: "Data product", zh: "数据产品" } },
@@ -563,13 +546,13 @@ function ResearchAtlasPage({
   methods,
   bookmarks,
   onToggleBookmark,
+  pageIndex,
+  setPageIndex,
 }) {
-  const [pageIndex, setPageIndex] = useState(0);
   const pageSize = 20;
   const pageCount = Math.max(1, Math.ceil(visiblePapers.length / pageSize));
   const page = Math.min(pageIndex, pageCount - 1);
   const pagePapers = visiblePapers.slice(page * pageSize, (page + 1) * pageSize);
-  useEffect(() => setPageIndex(0), [researchTopic, researchKind]);
   function changePage(next) {
     setPageIndex(next);
     libraryRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
@@ -613,20 +596,20 @@ function ResearchAtlasPage({
       <section className="research-methods" id="research-methods" aria-labelledby="research-methods-title">
         <header>
           <div><span className="mono-kicker">{locale === "zh" ? "方法 / 可复现的数据准备" : "METHODS / FOR REPRODUCIBLE PREPARATION"}</span><h2 id="research-methods-title">{locale === "zh" ? "从阅读进入数据准备。" : "Move from reading to data preparation."}</h2></div>
-          <p>{locale === "zh" ? "原 Cookbook 收拢为研究方法：解释如何查询、对齐、连接和验证原始数据，但不替用户完成研究结论。" : "Cookbook is now progressively disclosed as research methods: query, align, join, and validate raw data without supplying the conclusion."}</p>
+          <p>{locale === "zh" ? "从复权价格、财务披露时点到公司事件，了解如何整理研究所需的数据。" : "Explore how to prepare adjusted prices, point-in-time financials, and company-event data."}</p>
         </header>
         <div className="research-method-list">{methods.slice(0, 3).map((method, index) => <a key={method.id} href={`/recipes/${method.id}`} onClick={(event) => onNavigate(event, `/recipes/${method.id}`)}><span>{String(index + 1).padStart(2, "0")}</span><div><small>{locale === "zh" ? "可复现方法" : "REPRODUCIBLE METHOD"}</small><h3>{method.title[locale]}</h3><p>{locale === "zh" ? ({ "adjusted-price-series": "日价格 + 复权因子", "pit-fundamentals-panel": "报告 + 披露时间 + 修订", "company-event-timeline": "公司行动 + 公告 + 交易日历" }[method.id] || method.detail) : method.detail}</p></div><ArrowRight /></a>)}</div>
       </section>
 
       <div className="research-atlas-notice"><span><GraduationCap weight="duotone" />{atlas.external}</span><span>{papers.length}{locale === "zh" ? "条材料 · 中英文导读 · 更新于 " : " materials · bilingual orientations · updated "}{researchUpdatedAt}</span></div>
 
-      <section className={`research-library-drawer ${browseOpen ? "is-open" : ""}`} ref={libraryRef} aria-hidden={!browseOpen}>
+      <section className={`research-library-drawer ${browseOpen ? "is-open" : ""}`} ref={libraryRef} hidden={!browseOpen}>
         <header><div><span className="mono-kicker">{locale === "zh" ? "研究库 / 外部来源" : "RESEARCH LIBRARY / EXTERNAL SOURCES"}</span><h2>{locale === "zh" ? "完整研究库" : "Full research library"}</h2></div><button type="button" onClick={() => setBrowseOpen(false)}>{locale === "zh" ? "收起" : "Close"}<X /></button></header>
         <div className="research-library-controls">
-          <div><span className="filter-label">{locale === "zh" ? "内容形式" : "FORMAT"}</span><div className="research-topics research-kinds" aria-label={locale === "zh" ? "研究形式" : "Research formats"}>{copy.researchKinds.map(([kind, label]) => <button key={kind} type="button" className={researchKind === kind ? "is-active" : ""} onClick={() => setResearchKind(kind)}>{label}</button>)}</div></div>
-          <div><span className="filter-label">{locale === "zh" ? "研究主题" : "TOPIC"}</span><div className="research-topics" aria-label={locale === "zh" ? "研究主题" : "Research topics"}>{copy.researchTopics.map(([topic, label]) => <button key={topic} type="button" className={researchTopic === topic ? "is-active" : ""} onClick={() => setResearchTopic(topic)}>{label}</button>)}</div></div>
+          <div><span className="filter-label">{locale === "zh" ? "内容形式" : "FORMAT"}</span><div className="research-topics research-kinds" aria-label={locale === "zh" ? "研究形式" : "Research formats"}>{copy.researchKinds.map(([kind, label]) => <button key={kind} type="button" aria-pressed={researchKind === kind} className={researchKind === kind ? "is-active" : ""} onClick={() => setResearchKind(kind)}>{label}</button>)}</div></div>
+          <div><span className="filter-label">{locale === "zh" ? "研究主题" : "TOPIC"}</span><div className="research-topics" aria-label={locale === "zh" ? "研究主题" : "Research topics"}>{copy.researchTopics.map(([topic, label]) => <button key={topic} type="button" aria-pressed={researchTopic === topic} className={researchTopic === topic ? "is-active" : ""} onClick={() => setResearchTopic(topic)}>{label}</button>)}</div></div>
         </div>
-        <div className="research-count"><span>{String(visiblePapers.length).padStart(2, "0")}</span>{copy.researchResults}</div>
+        <div className="research-results-toolbar"><div className="research-count"><span>{String(visiblePapers.length).padStart(2, "0")}</span>{copy.researchResults}</div>{(researchTopic !== "all" || researchKind !== "all") && <button className="research-reset" type="button" onClick={() => onShowLibrary({ topic: "all" })}>{locale === "zh" ? "清除筛选" : "Clear filters"}</button>}</div>
         <div className="paper-list">{visiblePapers.length ? pagePapers.map((paper, index) => {
           const bookmarkKey = `research:${paperSlug(paper)}`;
           const isSaved = bookmarks.includes(bookmarkKey);
@@ -723,9 +706,14 @@ export function App() {
   const [recentSearches, setRecentSearches] = useState(() => {
     try { return JSON.parse(localStorage.getItem("td-recent-searches") || "[]"); } catch { return []; }
   });
-  const [researchTopic, setResearchTopic] = useState("all");
-  const [researchKind, setResearchKind] = useState("all");
-  const [researchBrowseOpen, setResearchBrowseOpen] = useState(false);
+  const [researchView, updateResearchView] = useReducer(researchViewReducer, initialResearchView);
+  const { topic: researchTopic, kind: researchKind, open: researchBrowseOpen, page: researchPage } = researchView;
+  const setResearchTopic = (value) => updateResearchView({ type: "topic", value });
+  const setResearchKind = (value) => updateResearchView({ type: "kind", value });
+  const setResearchBrowseOpen = (value) => updateResearchView({ type: "visibility", value });
+  const setResearchPage = (value) => updateResearchView({ type: "page", value });
+  const researchScrollRef = useRef(0);
+  const currentRouteRef = useRef(route);
   const researchLibraryRef = useRef(null);
   const desktopSearchInputRef = useRef(null);
   const mobileSearchInputRef = useRef(null);
@@ -953,13 +941,22 @@ export function App() {
   }, [globalQuery]);
 
   useEffect(() => {
-    const syncRoute = () => setRoute(getRouteFromPath());
+    const previousRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    const syncRoute = () => {
+      if (currentRouteRef.current === "research") researchScrollRef.current = window.scrollY;
+      setRoute(getRouteFromPath());
+    };
     window.addEventListener("popstate", syncRoute);
-    return () => window.removeEventListener("popstate", syncRoute);
+    return () => {
+      window.removeEventListener("popstate", syncRoute);
+      window.history.scrollRestoration = previousRestoration;
+    };
   }, []);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
+    currentRouteRef.current = route;
+    window.scrollTo({ top: route === "research" ? researchScrollRef.current : 0, behavior: "instant" });
   }, [route]);
 
   useEffect(() => {
@@ -995,6 +992,7 @@ export function App() {
   const sections = ["data", "research", "pricing"];
   const navPaths = sections.map((section) => `/${section}`);
   function goTo(path) {
+    if (route === "research") researchScrollRef.current = window.scrollY;
     window.history.pushState({}, "", path);
     const pathname = new URL(path, window.location.origin).pathname;
     setRoute(pathname === "/" ? "home" : pathname.replace(/^\/+|\/+$/g, ""));
@@ -1078,9 +1076,8 @@ export function App() {
   };
 
   function showResearchLibrary({ topic = researchTopic } = {}) {
-    setResearchTopic(topic);
-    setResearchBrowseOpen(true);
-    window.setTimeout(() => researchLibraryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
+    updateResearchView({ type: "open", topic });
+    window.setTimeout(() => researchLibraryRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }), 30);
   }
   const accountGroups = locale === "zh" ? [
     { label: "你的资料库", items: [{ key: "bookmarks", label: "已收藏", description: "集中查看保存的数据产品、研究内容、方法和文档。" }] },
@@ -1462,7 +1459,7 @@ export function App() {
         </section>}
         {primaryRoute === "recipes" && routeSlug && <ProductObjectDetail type="recipes" item={selectedRecipe} locale={locale} onNavigate={navigate} />}
 
-        {primaryRoute === "research" && !routeSlug && <ResearchAtlasPage locale={locale} theme={theme} copy={copy} atlas={researchAtlas} featuredPaper={featuredPaper} visiblePapers={visiblePapers} researchTopic={researchTopic} setResearchTopic={setResearchTopic} researchKind={researchKind} setResearchKind={setResearchKind} browseOpen={researchBrowseOpen} setBrowseOpen={setResearchBrowseOpen} libraryRef={researchLibraryRef} onShowLibrary={showResearchLibrary} onNavigate={navigate} topicLabels={topicLabels} kindLabels={kindLabels} methods={productManifest.objects.recipes} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} />}
+        {primaryRoute === "research" && !routeSlug && <ResearchAtlasPage locale={locale} theme={theme} copy={copy} atlas={researchAtlas} featuredPaper={featuredPaper} visiblePapers={visiblePapers} researchTopic={researchTopic} setResearchTopic={setResearchTopic} researchKind={researchKind} setResearchKind={setResearchKind} browseOpen={researchBrowseOpen} setBrowseOpen={setResearchBrowseOpen} libraryRef={researchLibraryRef} onShowLibrary={showResearchLibrary} onNavigate={navigate} topicLabels={topicLabels} kindLabels={kindLabels} methods={productManifest.objects.recipes} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} pageIndex={researchPage} setPageIndex={setResearchPage} />}
 
         {primaryRoute === "research" && selectedReadingPath && <section className="object-detail-page research-path-detail">
           <a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究地图" : "Back to Research"}</a>
@@ -1470,42 +1467,9 @@ export function App() {
           <ol className="research-reading-sequence">{selectedReadingPath.titles.map((title, index) => papers.find((paper) => paper.title === title)).filter(Boolean).map((paper, index) => <li key={paper.id}><span>{String(index + 1).padStart(2, "0")}</span><div><h2><a href={`/research/${paper.id}`} onClick={(event) => navigate(event, `/research/${paper.id}`)}>{researchTitle(paper, locale)}</a></h2><p>{paper.summary[locale]}</p><small>{paper.authors} · {researchYear(paper, locale)}</small></div><ArrowRight /></li>)}</ol>
         </section>}
 
-        {primaryRoute === "research" && routeSlug && !selectedReadingPath && (
-          <section className="object-detail-page research-record">
-            <a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a>
-            <div className="object-detail-hero">
-              <div>
-                <span className="mono-kicker">{locale === "zh" ? "外部研究 / 双语导读" : "EXTERNAL RESEARCH / BILINGUAL ORIENTATION"}</span>
-                <h1>{selectedPaper ? researchTitle(selectedPaper, locale) : (locale === "zh" ? "研究记录未找到" : "Research record not found")}</h1>
-                <p>{selectedPaper ? `${selectedPaper.authors} · ${selectedPaper.venue} · ${researchYear(selectedPaper, locale)}` : ""}</p>
-                {selectedPaper && <p className="research-original-title">{locale === "zh" ? `原文题名：${selectedPaper.sourceTitle}。中文题名与导读为本站整理，并非官方译文或全文翻译。` : "The orientation is editorial, not the publisher's abstract or a translation of the full source. Original authorship is retained."}</p>}
-              </div>
-              <span className="maturity-tag">{locale === "zh" ? "外部来源" : "External source"}</span>
-            </div>
-            {selectedPaper && <>
-              <div className="research-record-grid">
-                <article><span>{locale === "zh" ? "01 / 研究问题" : "01 / QUESTION"}</span><h2>{locale === "zh" ? "研究问题" : "Research question"}</h2><p>{selectedPaper.summary[locale]}</p></article>
-                <article><span>{locale === "zh" ? "02 / 数据材料" : "02 / EVIDENCE"}</span><h2>{locale === "zh" ? "所需数据材料" : "Required data"}</h2><p>{researchData(selectedPaper, locale)}</p></article>
-                <article><span>{locale === "zh" ? "03 / 适用限制" : "03 / LIMITS"}</span><h2>{locale === "zh" ? "方法与限制" : "Method & limits"}</h2><p>{selectedPaper.limits[locale]}</p></article>
-              </div>
-              {selectedPaper.readiness && <div className="research-record-grid research-record-readiness">
-                <article><span>{locale === "zh" ? "04 / 准备状态" : "04 / RESEARCH READINESS"}</span><h2>{researchReadiness[selectedPaper.readiness][locale].label}</h2><p>{researchReadiness[selectedPaper.readiness][locale].detail}</p></article>
-                <article><span>{locale === "zh" ? "05 / 来源核验" : "05 / SOURCE CHECK"}</span><h2>{selectedPaper.evidence.verification === "publisher_registered_metadata" ? (locale === "zh" ? "出版信息已核对" : "Bibliography checked") : (locale === "zh" ? "官方来源已核对" : "Official source checked")}</h2><p>{selectedPaper.verifiedAt} · {selectedPaper.evidence.verification === "publisher_registered_metadata" ? (locale === "zh" ? "通过出版登记核对题名、作者、年份及DOI；不代表已完成全文审读或复现。" : "Title, authors, year, and DOI checked against publisher-registered metadata; this is not a full-text review or replication.") : (locale === "zh" ? "核对官方页面身份及版本信息；使用前需再次确认现行版本。" : "Official page identity and version information checked; reconfirm the applicable version before use.")}</p>{selectedPaper.sourceNote && <p>{selectedPaper.sourceNote[locale]}</p>}</article>
-                <article><span>{locale === "zh" ? "06 / 关联对象" : "06 / LINKED OBJECTS"}</span><h2>{locale === "zh" ? "准备材料入口" : "Preparation materials"}</h2><div className="research-related-list">{getResearchRelatedObjects(selectedPaper, locale).map((item) => <a key={`${item.label}:${item.id}`} href={item.href} onClick={(event) => navigate(event, item.href)}><small>{item.label}</small><span>{item.title}<ArrowRight /></span></a>)}</div><p className="research-related-note">{locale === "zh" ? "关联用于方法参考，不代表覆盖原论文样本。" : "Methodological connections do not imply coverage of the original sample."}</p></article>
-              </div>}
-              <section className="research-preparation"><h2>{locale === "zh" ? "开始准备前的三项检查" : "Three checks before preparing data"}</h2><ol>{selectedPaper.checks[locale].map((check) => <li key={check}>{check}</li>)}</ol></section>
-              <section className="object-boundary">
-                <h2>{locale === "zh" ? "从阅读进入数据准备" : "Continue from reading to data preparation"}</h2>
-                <p>{locale === "zh" ? "下一步是检查对应 Dataset、透明 Feature 与 Recipe；TradingDatas 不发表或验证论文结论。" : "Next inspect the related Dataset, transparent Feature, and Recipe. TradingDatas neither publishes nor validates the paper's conclusions."}</p>
-                <div className="detail-actions">
-                  <a className="primary-button" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "查看数据" : "View data"}<ArrowRight /></a>
-                  {selectedPaper.sources.map((source) => (
-                    <a className="text-link" href={source.url} key={source.url} target="_blank" rel="noreferrer">{source.label}<ArrowSquareOut /></a>
-                  ))}
-                </div>
-              </section>
-            </>}
-          </section>
+        {primaryRoute === "research" && routeSlug && !selectedReadingPath && (selectedPaper ?
+          <ResearchRecord key={selectedPaper.id} paper={selectedPaper} locale={locale} topicLabel={topicLabels[selectedPaper.topic]} kindLabel={kindLabels[selectedPaper.kind]} related={getResearchRelatedObjects(selectedPaper, locale)} furtherReading={papers.filter((paper) => paper.topic === selectedPaper.topic && paper.id !== selectedPaper.id).slice(0, 3)} saved={bookmarks.includes(`research:${selectedPaper.id}`)} onToggleBookmark={() => toggleBookmark(`research:${selectedPaper.id}`)} onNavigate={navigate} /> :
+          <section className="object-detail-page"><a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a><h1>{locale === "zh" ? "研究记录未找到" : "Research record not found"}</h1></section>
         )}
 
         {primaryRoute === "cookbook" && <section className="cookbook-section" id="cookbook">

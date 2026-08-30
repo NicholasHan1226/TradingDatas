@@ -59,6 +59,13 @@ publisher-registered metadata, and `src/researchSourcePages.json` records manual
 checked primary-source exceptions. `src/researchCatalog.js` assembles the library,
 shared preparation checks and three curated reading paths. See
 [`RESEARCH_LIBRARY.md`](../docs/product/RESEARCH_LIBRARY.md) for acceptance rules.
+The reader page keeps internal source-verification and preparation statuses out
+of the public body. Source access, browser-local bookmarks and citation copying
+are first-screen actions; clipboard failures offer selectable citation text.
+`researchReaderNotes.js` holds source-specific editorial additions and internal
+review references, without replacing bibliographic verification. Library filters,
+page and scroll position survive in-tab article navigation (not a page reload).
+See [`research-reader-v2.md`](../docs/design/research-reader-v2.md) for the design boundary.
 
 ```bash
 node scripts/verify-research-sources.mjs

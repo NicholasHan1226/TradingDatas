@@ -2,6 +2,7 @@ import legacy from "./researchLegacy.json" with { type: "json" };
 import bibliography from "./researchBibliography.json" with { type: "json" };
 import sourcePages from "./researchSourcePages.json" with { type: "json" };
 import { researchSeeds } from "./researchSeeds.js";
+import { researchReaderNotes, sourceSpecificReaderLimits } from "./researchReaderNotes.js";
 
 export const researchUpdatedAt = "2026-08-30";
 const cleanText = (value) => value?.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -86,13 +87,24 @@ const officialOverrides = {
   "Why DeFi Lending? Evidence from Aave V2": { data: "protocol transactions; collateral; lending rates; governance tokens", year: "2024 · rev. 2025" },
 };
 
+// Historical checks are per source, never inherited from the library update date.
+export const legacySourceChecks = {
+  "CSI 300 Index Methodology": "2026-08-30",
+  "SSE Statistical Yearbook": "2026-08-30",
+  "Findings Regarding the Market Events of May 6, 2010": "2026-08-30",
+  "Staff Report on Equity and Options Market Structure Conditions in Early 2021": "2026-08-30",
+  "Why DeFi Lending? Evidence from Aave V2": "2026-08-30",
+  "Form 13F: Official Filing Guidance and EDGAR Data Access": "2026-08-30",
+  "Binance USDⓈ-M Futures Market Data: Funding Rate and Open Interest": "2026-08-30",
+};
+
 function assemble(seed, legacyIndex) {
   const metadata = sourcePages[seed.title] || bibliography[seed.title];
   const original = legacyIndex !== undefined;
   const translation = original ? legacyTranslations[legacyIndex] : null;
   const profile = researchProfiles[seed.topic];
   const official = officialOverrides[seed.title] || {};
-  if (!metadata && (!original || seed.kind === "paper" || !(official.sources || seed.sources)?.length)) {
+  if (!metadata && (!original || seed.kind === "paper" || !legacySourceChecks[seed.title] || !(official.sources || seed.sources)?.length)) {
     throw new Error(`Research source verification required: ${seed.title}`);
   }
   const kind = ["book", "monograph", "book-chapter"].includes(metadata?.type) ? "book" : metadata?.type === "institutional-report" ? "industry-research" : metadata?.type === "posted-content" || metadata?.type === "report" || /SSRN Electronic Journal/.test(metadata?.venue || "") ? "working-paper" : seed.kind || "paper";
@@ -107,12 +119,14 @@ function assemble(seed, legacyIndex) {
     year: metadata?.year ? String(metadata.year) : official.year || seed.year,
     kind,
     sources: metadata ? [{ label: metadata.doi ? "DOI" : metadata.venue, url: metadata.sourceUrl }] : official.sources || seed.sources,
-    evidence: metadata || { verification: original && seed.kind !== "paper" ? "official_source_page" : "pending", checkedAt: researchUpdatedAt },
-    verifiedAt: metadata?.checkedAt || researchUpdatedAt,
+    evidence: metadata || { verification: "official_source_page", checkedAt: legacySourceChecks[seed.title] },
+    verifiedAt: metadata?.checkedAt || legacySourceChecks[seed.title],
     readiness: original ? seed.readiness || "orientation_only" : "orientation_only",
     related: seed.related || profile.related,
     limits: seed.limits || profile.limits,
     checks: profile.checks,
+    readingNotes: researchReaderNotes[seed.title]?.sections,
+    readerLimits: researchReaderNotes[seed.title]?.limits || sourceSpecificReaderLimits[seed.title],
     // An orientation estimate for this concise record, never the full source.
     orientationMinutes: 3,
   };
