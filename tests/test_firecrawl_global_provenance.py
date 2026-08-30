@@ -424,3 +424,65 @@ def test_minor_append_only_versions_and_old_registry_rollback_are_explicitly_deg
         else:
             assert response["data"] == []
             assert "active_config_receipt_mismatch" in response["metadata"]["reasons"]
+
+
+@pytest.mark.parametrize(
+    "reserved", ["source", "content_uid", "publication_precision", "raw_item_json"]
+)
+@pytest.mark.parametrize("credential_key", ["api_key", "token"])
+def test_raw_reserved_structured_credentials_are_rejected_before_serialization(
+    reserved, credential_key, monkeypatch, tmp_path
+):
+    item = _item()
+    item[reserved] = {"nested": {credential_key: "synthetic-foreign-value"}}
+    result, _ = _collect(item, monkeypatch, tmp_path)
+    assert result.state == "failed" and not result.rows
+    assert "synthetic-foreign-value" not in (result.error_message or "")
+
+
+def test_raw_reserved_structure_respects_original_scan_budget(monkeypatch, tmp_path):
+    _key_file(tmp_path, monkeypatch)
+    collector = fc.FirecrawlWebCollector()
+    item = _item()
+    item["source"] = {"nested": {"more": {"non_sensitive": "value"}}}
+    monkeypatch.setattr(
+        collector,
+        "_post",
+        lambda *args, **kwargs: {"success": True, "data": {"json": {"items": [item]}}},
+    )
+    result = collector.collect_outcome(
+        "scrape_page_global",
+        {**_SCRAPE_PARAMS, **MODE},
+        scan_budget=fc.SensitiveScanBudget(max_depth=4),
+    )
+    assert result.state == "failed" and not result.rows
+
+
+def test_raw_reserved_node_count_respects_original_scan_budget(monkeypatch, tmp_path):
+    _key_file(tmp_path, monkeypatch)
+    collector = fc.FirecrawlWebCollector()
+    item = _item()
+    item["source"] = {"values": list(range(200))}
+    monkeypatch.setattr(
+        collector,
+        "_post",
+        lambda *args, **kwargs: {"success": True, "data": {"json": {"items": [item]}}},
+    )
+    result = collector.collect_outcome(
+        "scrape_page_global",
+        {**_SCRAPE_PARAMS, **MODE},
+        scan_budget=fc.SensitiveScanBudget(max_nodes=100),
+    )
+    assert result.state == "failed" and not result.rows
+
+
+def test_raw_business_prose_about_credentials_is_not_a_credential(
+    monkeypatch, tmp_path
+):
+    item = _item()
+    item["source"] = {
+        "description": "A public report about token and api_key terminology"
+    }
+    result, _ = _collect(item, monkeypatch, tmp_path)
+    assert result.state == "success"
+    assert json.loads(result.rows[0]["raw_item_json"]) == item

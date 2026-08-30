@@ -402,6 +402,7 @@ class FirecrawlWebCollector:
                     api_key=api_key,
                     timezone=_GLOBAL_TIMEZONE,
                     api_name="scrape_page_global",
+                    scan_budget=scan_budget,
                 )
             elif api_name == "search_news":
                 api_key = _read_private_key_file(
@@ -494,6 +495,7 @@ class FirecrawlWebCollector:
         api_key: str,
         timezone: ZoneInfo = _LOCAL_TIMEZONE,
         api_name: str = "scrape_page",
+        scan_budget: SensitiveScanBudget | None = None,
     ) -> list[dict[str, Any]]:
         if set(params) - _SCRAPE_PARAM_KEYS:
             raise ValueError("firecrawl scrape params do not match the registry")
@@ -537,6 +539,19 @@ class FirecrawlWebCollector:
         items = data["json"].get("items")
         if type(items) is not list:
             raise ValueError("firecrawl extraction must produce an items array")
+        if provenance_mode == "raw_item_v1":
+            # Validate the original tree before reserved keys are overwritten
+            # or nested objects become JSON text. Reuse the caller's existing
+            # credential/known-secret/depth/node guard without a larger budget.
+            ProviderCallOutcome(
+                state="success" if items else "empty",
+                rows=tuple(items),
+                provider_code=0,
+                error_code=None,
+                error_message=None,
+                sensitive_values=(api_key,),
+                scan_budget=scan_budget,
+            )
         return [
             _normalize_item(
                 item,
