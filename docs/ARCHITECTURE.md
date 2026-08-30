@@ -164,6 +164,12 @@ runtime 投影把“最新可信 scheduler run 的当前状态”和“全部完
 
 `postclose_daily` 的纯日期（或本地午夜）分区在 freshness 比较中代表该本地交易日结束，而不是零点开始。这样周五已经完整写入的日线在周末不会被提前标为 stale；带实际时分秒的数据时间保持原样。该规则只影响读取时的 freshness 投影，不改变 facts、receipt、provider 返回或调度。
 
+`market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`/`postclose_daily` 成功水位，读取时钟复用本物理
+release 的固定 schedule policy：配置开窗前或非配置工作日，以前一配置工作日的原收盘
+锚点比较现有 SLA；开窗后回到普通时钟。纯 schedule parser 被延迟复用，不执行 planner、
+读取上游或在 API 中增加调度旁路。配置验证失败保持 fail closed；本规则不推断节假日，
+不改变 empty/failed/config mismatch 或其它 cadence/market 的语义。
+
 ## 数据服务
 
 catalog 和 query 只读 SQLite。缺数据库、缺表、缺 receipt、损坏或 metadata 不一致时 fail closed；不得同步调用 provider 或回退旧文件/旧数据库。

@@ -64,6 +64,16 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，
 不为某个 dataset、provider 或消费者增加专用分支。
 
+`market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`、`postclose_daily` 成功水位读取，在下一配置
+开窗前或配置工作日之外，以前一配置工作日的既有收盘锚点计算 freshness。开窗时间和
+工作日来自本物理 release 的 `config/provider_native_schedule.yaml`，复用既有纯解析器，
+不接受环境路径覆盖；当前值为分钟 09:30、日频 16:30。到达开窗即恢复普通比较，不加
+额外宽限、放宽 SLA 或修改 `data_through`。不完整的前一交易时段仍应过期；empty、
+failed、event、Crypto 和 config mismatch 不获得该保护。固定配置缺失、畸形或符号链接
+会 fail closed；已加载 policy 仅按 immutable release 缓存，变更需新 release/重启。
+这不实现节假日日历，也不把上个交易日的最后一根 bar 称为实时新数据。问题与测试见
+[开窗前读取时钟修正](reports/2026-08-31-cn-prewindow-clock.md)。
+
 读取已结束的精确分钟槽位时，receipt cohort 的 `request_window` 可以保留该 dataset
 合同要求的窗口（例如 `bar_time`）；同一 execution 内必须保持窗口、provider、config
 和 `data_through` 一致，不能用空窗口或跨窗口 receipt 冒充当前槽位证据。

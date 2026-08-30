@@ -1887,14 +1887,15 @@ def test_unassignable_malformed_receipt_like_row_reported_globally(
     )
     conn.commit()
 
+    # Exercise stale isolation after the configured 16:30 CN daily window.
     projection = project_dataset_runtime(
         conn,
         _dataset(),
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
     )
     health = projection_module.project_unattributed_receipts(
         conn,
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
         registry=load_dataset_registry(),
     )
 
@@ -1950,14 +1951,15 @@ def test_jointly_tampered_unknown_dataset_reported_globally_not_per_dataset(
     )
     conn.commit()
 
+    # Exercise stale isolation after the configured 16:30 CN daily window.
     projection = project_dataset_runtime(
         conn,
         _dataset(),
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
     )
     health = projection_module.project_unattributed_receipts(
         conn,
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
         registry=load_dataset_registry(),
     )
 
@@ -2158,14 +2160,15 @@ def test_run_id_and_source_tampering_cannot_escape_receipt_scan(
     )
     conn.commit()
 
+    # Exercise stale isolation after the configured 16:30 CN daily window.
     projection = project_dataset_runtime(
         conn,
         _dataset(),
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
     )
     health = projection_module.project_unattributed_receipts(
         conn,
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
         registry=load_dataset_registry(),
     )
 
@@ -3942,12 +3945,13 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
         conn,
         status="success",
         attempt_id="attempt-success",
-        started_at="2026-07-15T03:00:00+00:00",
-        finished_at="2026-07-15T03:01:00+00:00",
-        data_through="2026-07-15T12:00:00",
+        started_at="2026-07-15T07:00:00+00:00",
+        finished_at="2026-07-15T07:01:00+00:00",
+        data_through="2026-07-15T16:00:00",
     )
     dataset = _dataset(freshness_sla_seconds=3_600)
-    boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
+    # Evaluate the ordinary strict SLA after the 16:30 daily availability.
+    boundary = datetime(2026, 7, 15, 9, tzinfo=timezone.utc)
 
     exact = project_dataset_runtime(conn, dataset, now=boundary)
     stale = project_dataset_runtime(
@@ -5062,3 +5066,263 @@ def test_weekend_clock_never_hides_crypto_or_monday_session_gap(monkeypatch, mar
     _insert_receipt(monkeypatch, conn, dataset=dataset, status='success', attempt_id='session-gap',
                     started_at='2026-08-28T07:00:00Z', finished_at='2026-08-28T07:01:00Z', data_through='2026-08-28T15:00:00+08:00')
     assert project_dataset_runtime(conn, dataset, now=now).state == 'stale'
+
+
+@pytest.fixture
+def cn_prewindow_schedule(monkeypatch):
+    """Override only the immutable release's schedule bytes, never an env path."""
+    path = (
+        Path(projection_module.__file__).resolve().parents[1]
+        / "config/provider_native_schedule.yaml"
+    )
+    read_bytes = Path.read_bytes
+    payload = {"bytes": read_bytes(path), "reads": 0}
+    loader = getattr(projection_module, "_cn_freshness_policies", None)
+    if loader is not None:
+        loader.cache_clear()
+
+    def read(candidate):
+        if candidate == path:
+            payload["reads"] += 1
+            value = payload["bytes"]
+            if isinstance(value, Exception):
+                raise value
+            return value
+        return read_bytes(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", read)
+    yield payload
+    loader = getattr(projection_module, "_cn_freshness_policies", None)
+    if loader is not None:
+        loader.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "cadence,watermark,local_now,expected",
+    [
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-30T23:59:59+08:00",
+            "success",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T00:00:00+08:00",
+            "success",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T09:29:59.999999+08:00",
+            "success",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T09:30:00+08:00",
+            "stale",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T10:00:00+08:00",
+            "stale",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T14:30:00+08:00",
+            "2026-08-31T00:00:00+08:00",
+            "stale",
+        ),
+        (
+            "session_minute",
+            "2026-08-27T15:00:00+08:00",
+            "2026-08-31T00:00:00+08:00",
+            "stale",
+        ),
+        ("postclose_daily", "20260828", "2026-08-30T23:59:59+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-08-31T00:00:00+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-08-31T16:29:59.999999+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-08-31T16:30:00+08:00", "stale"),
+        ("postclose_daily", "20260827", "2026-08-31T00:00:00+08:00", "stale"),
+        ("postclose_daily", "20260831", "2026-09-01T00:00:00+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-09-01T00:00:00+08:00", "stale"),
+    ],
+)
+def test_cn_prewindow_receipt_boundaries(
+    monkeypatch, cadence, watermark, local_now, expected
+):
+    conn = _memory_db()
+    dataset = _dataset(
+        cadence_class=cadence,
+        freshness_sla_seconds=600 if cadence == "session_minute" else 86400,
+    )
+    # Keep the receipt before the read clock and the declared partition end.
+    finished = (
+        "2026-08-31T09:00:00Z" if watermark == "20260831" else "2026-08-28T07:10:00Z"
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset=dataset,
+        status="success",
+        attempt_id="prewindow",
+        started_at=finished,
+        finished_at=finished,
+        data_through=watermark,
+    )
+    result = project_dataset_runtime(
+        conn, dataset, now=datetime.fromisoformat(local_now)
+    )
+    assert result.state == expected
+    assert result.data_through == watermark
+    assert result.reasons == (
+        () if expected == "success" else ("freshness_sla_exceeded",)
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "missing",
+        "yaml",
+        "null_availability",
+        "weekend",
+        "empty_weekdays",
+        "invalid_clock",
+    ],
+)
+def test_cn_prewindow_invalid_schedule_fails_closed(
+    monkeypatch, cn_prewindow_schedule, bad
+):
+    import yaml
+
+    raw = yaml.safe_load(cn_prewindow_schedule["bytes"])
+    if bad == "missing":
+        value = FileNotFoundError("schedule absent")
+    elif bad == "yaml":
+        value = b"cadences: ["
+    else:
+        policy = raw["cadences"]["session_minute"]
+        if bad == "null_availability":
+            policy["availability_after_local"] = None
+        elif bad == "weekend":
+            policy["weekdays"] = [1, 2, 3, 4, 5, 6]
+        elif bad == "empty_weekdays":
+            policy["weekdays"] = []
+        else:
+            policy["availability_after_local"] = "25:00"
+        value = yaml.safe_dump(raw).encode()
+    cn_prewindow_schedule["bytes"] = value
+    conn = _memory_db()
+    dataset = _dataset(cadence_class="session_minute", freshness_sla_seconds=600)
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset=dataset,
+        status="success",
+        attempt_id="bad-policy",
+        started_at="2026-08-28T07:00:00Z",
+        finished_at="2026-08-28T07:10:00Z",
+        data_through="2026-08-28T15:00:00+08:00",
+    )
+    with pytest.raises(RuntimeProjectionError, match="freshness schedule"):
+        project_dataset_runtime(
+            conn, dataset, now=datetime.fromisoformat("2026-08-31T00:00:00+08:00")
+        )
+
+
+def test_cn_prewindow_uses_configured_window_weekdays_and_cache(cn_prewindow_schedule):
+    import yaml
+
+    raw = yaml.safe_load(cn_prewindow_schedule["bytes"])
+    raw["cadences"]["postclose_daily"]["availability_after_local"] = "17:15"
+    raw["cadences"]["postclose_daily"]["weekdays"] = [2, 3, 4, 5]
+    cn_prewindow_schedule["bytes"] = yaml.safe_dump(raw).encode()
+    dataset = _dataset(cadence_class="postclose_daily")
+    for now, expected in [
+        ("2026-08-31T18:00:00+08:00", "2026-08-29T00:00:00+08:00"),
+        ("2026-09-01T17:14:59+08:00", "2026-08-29T00:00:00+08:00"),
+        ("2026-09-01T17:15:00+08:00", "2026-09-01T17:15:00+08:00"),
+    ]:
+        assert projection_module._freshness_clock_in_utc(
+            dataset, datetime.fromisoformat(now)
+        ) == datetime.fromisoformat(expected)
+    assert cn_prewindow_schedule["reads"] == 1
+
+
+@pytest.mark.parametrize(
+    "market,tz,cadence",
+    [
+        ("CRYPTO", "Asia/Shanghai", "session_minute"),
+        ("CN", "UTC", "postclose_daily"),
+        ("CN", "Asia/Shanghai", "event"),
+        ("CN", "Asia/Shanghai", "daily_reference"),
+        ("CN", "Asia/Shanghai", "on_demand"),
+    ],
+)
+def test_cn_prewindow_unrelated_clock_does_not_read_policy(
+    cn_prewindow_schedule, market, tz, cadence
+):
+    cn_prewindow_schedule["bytes"] = FileNotFoundError(
+        "unrelated policy must not be read"
+    )
+    dataset = replace(_dataset(cadence_class=cadence, timezone_name=tz), market=market)
+    now = datetime.fromisoformat("2026-08-31T00:00:00+08:00")
+    assert projection_module._freshness_clock_in_utc(dataset, now) == now
+    assert cn_prewindow_schedule["reads"] == 0
+
+
+@pytest.mark.parametrize(
+    "status,config_mismatch,expected",
+    [
+        ("empty", False, "stale"),
+        ("failed", False, "failed"),
+        ("success", True, "unobserved"),
+    ],
+)
+def test_cn_prewindow_preserves_non_success_paths(
+    monkeypatch, cn_prewindow_schedule, status, config_mismatch, expected
+):
+    cn_prewindow_schedule["bytes"] = FileNotFoundError("must not load for this receipt")
+    conn = _memory_db()
+    dataset = _dataset(cadence_class="session_minute", freshness_sla_seconds=600)
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset=dataset,
+        status=status,
+        attempt_id="unchanged-path",
+        config_hash="f" * 64 if config_mismatch else None,
+        started_at="2026-08-28T07:00:00Z",
+        finished_at="2026-08-28T07:10:00Z",
+        data_through="2026-08-28T15:00:00+08:00" if status == "success" else None,
+    )
+    result = project_dataset_runtime(
+        conn, dataset, now=datetime.fromisoformat("2026-08-31T00:00:00+08:00")
+    )
+    assert result.state == expected
+    if status == "empty":
+        assert result.reasons == ("freshness_sla_exceeded", "latest_receipt_empty")
+    assert cn_prewindow_schedule["reads"] == 0
+
+
+def test_cn_prewindow_rejects_symlink_schedule(
+    monkeypatch, tmp_path, cn_prewindow_schedule
+):
+    root = tmp_path / "release"
+    (root / "storage").mkdir(parents=True)
+    (root / "config").mkdir()
+    external = tmp_path / "outside.yaml"
+    external.write_bytes(cn_prewindow_schedule["bytes"])
+    (root / "config/provider_native_schedule.yaml").symlink_to(external)
+    monkeypatch.setattr(
+        projection_module, "__file__", str(root / "storage/receipt_projection.py")
+    )
+    with pytest.raises(RuntimeProjectionError, match="freshness schedule"):
+        projection_module._freshness_clock_in_utc(
+            _dataset(cadence_class="session_minute"),
+            datetime.fromisoformat("2026-08-31T00:00:00+08:00"),
+        )
