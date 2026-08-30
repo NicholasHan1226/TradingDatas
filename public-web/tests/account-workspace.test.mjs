@@ -54,4 +54,5 @@ test("private panels wait for identity instead of flashing a sign-in prompt", ()
   assert.match(appSource, /accountPrivateSection && accountViewState === "unavailable" \? null/);
   assert.match(appSource, /disabled=\{accountChecking\} aria-busy=\{accountChecking\}/);
   assert.match(appSource, /No need to sign in again/);
+  assert.match(appSource, /accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"/);
 });
