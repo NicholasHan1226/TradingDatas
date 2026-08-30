@@ -245,6 +245,16 @@ bar 时间不一致都只写该 batch 的失败 receipt，并保留已成功批�
 结果伪装成完整覆盖。旧 500/30 分片仍可作为独立回滚与诊断证据，但不改变当前 5,963
 代码的 registry authority。
 
+## 目录执行容量
+
+目录进程隔离为默认关闭的运行配置，不新增 route 或请求字段。启用后，认证、endpoint
+scope、分类授权、频率/日额度、租户并发仍先于目录任务执行。目录执行容量满、子进程
+身份不匹配、worker 或 IPC 失败返回既有 503 `service_unavailable`，不会返回旧快照、
+自动重放、调用上游或转到 query。正常任务仍完整使用一次新的 verified SQLite snapshot，
+分页、cursor、字段、响应字节预算及错误分类保持原合同。客户端断开不等于任务已经结束，
+其占用的租户/执行容量要等真实计算结束后释放。运维配置及关闭方式见
+[目录进程隔离](OPERATIONS.md#目录请求的可选进程隔离)。
+
 ## 禁止接口
 
 TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交易控制接口。新增 dataset 不得新增 route。
