@@ -51,7 +51,7 @@ from storage.receipt_projection import (
     ValidatedReceiptHistoryEntry,
     open_verified_read_model_snapshot,
     validated_success_receipt_ids,
-    validated_receipt_histories_by_dataset,
+    validated_receipt_history_for_dataset,
 )
 from storage.sqlite_authority_lock import (
     SqliteAuthorityLockError,
@@ -411,9 +411,10 @@ def _resumable_histories(
 
     try:
         with open_verified_read_model_snapshot(db_path) as conn:
-            histories = validated_receipt_histories_by_dataset(
+            histories = validated_receipt_history_for_dataset(
                 conn,
                 registry,
+                dataset,
                 now=datetime.now(timezone.utc),
             )
     except (RuntimeProjectionError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
