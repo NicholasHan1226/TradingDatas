@@ -204,6 +204,28 @@ bounded backfill 逐段补齐。固定未来天数不能被当成 provider 能�
 registry 明确声明、transport 实际观测且独立回归覆盖的日历窗口才能受控请求下一日。
 future-empty 响应必须按既有完整性合同诚实处理，不能把其它日参考数据推进到未来。
 
+## 国际新闻原始发布时间与精度
+
+`global.news.flash` 的 `1.1.0` minor合同增加三个可空文本字段：
+`provider_published_at` 保留上游原发布时间字符串，`raw_item_json` 可还原规范化前
+完整item，`publication_precision` 表示原值的 `date` / `datetime` / `time` / `unknown`
+精度。仅全球新闻显式启用本地provenance处理模式，模式参数不得发送上游；国内新闻
+及其它Firecrawl调用保持原合同。
+
+旧 `published_at`、`published_local`、主键和默认投影保持兼容。源值只有日期或时间时，
+旧字段只能视为归一化锚点，不能当作已证明的发布时间instant；使用者必须结合精度
+和原值解释。旧行没有新增字段时仍保留 `missing_field` 质量证据，不做通用校验豁免。
+不离线回写历史事实/回执；全球新闻沿用 `append_only`，真实重采按payload hash保留
+新版本及事务receipt，同一业务主键可同时存在旧、新payload，不能按content_uid只取
+第一行就断言已读到新字段。回退旧release依赖保留旧合同成功回执；只有新合同回执时，
+旧registry仍会以 `active_config_receipt_mismatch` 降级，不得删除新事实来伪造恢复。
+
+此合同不证明网站列表完整性。`response_completeness=null`、query的
+`freshness_watermark_unverified` / `response_completeness_unverified` 以及
+`data_through=null` 均保留；缺失或不可解析发布时间仍按既有规则失败，不借用采集
+时钟补值，也不放宽敏感内容或资源预算。源码合同、候选测试不等于生产启用；仍需
+精确release、真实provider新回执及认证读取这三个新增字段分别验收。
+
 ## 有界 one-shot batch
 
 `tools/collect_provider_dataset.py --batch-file <external-json>` 是唯一的按需批量
