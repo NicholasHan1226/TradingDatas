@@ -3107,6 +3107,171 @@ def test_execution_candidate_callback_is_removed_after_scan(monkeypatch, outcome
     conn.close()
 
 
+def test_execution_candidate_callbacks_do_not_overlap_between_connections():
+    first_callback = threading.Event()
+    second_attempt = threading.Event()
+    second_callback = threading.Event()
+    release_first = threading.Event()
+    outcomes = []
+    removed = []
+
+    def worker(index):
+        class ObservedConnection(sqlite3.Connection):
+            def create_function(self, name, narg, func, **kwargs):
+                if func is None:
+                    result = super().create_function(name, narg, func, **kwargs)
+                    removed.append(index)
+                    return result
+
+                def observed(value):
+                    if index == 0:
+                        first_callback.set()
+                        if not release_first.wait(5):
+                            raise RuntimeError("test callback release timed out")
+                    else:
+                        second_callback.set()
+                    return func(value)
+
+                return super().create_function(name, narg, observed, **kwargs)
+
+        conn = sqlite3.connect(":memory:", factory=ObservedConnection)
+        try:
+            if index == 1:
+                second_attempt.set()
+            with projection_module._execution_candidate_predicate(conn, ["needle"]) as (predicate, params):
+                cursor = conn.execute(
+                    f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
+                )
+                try:
+                    outcomes.append(cursor.fetchall())
+                finally:
+                    cursor.close()
+        except (sqlite3.Error, RuntimeError, AssertionError) as error:
+            outcomes.append(error)
+        finally:
+            conn.close()
+
+    first = threading.Thread(target=worker, args=(0,), daemon=True)
+    second = threading.Thread(target=worker, args=(1,), daemon=True)
+    first.start()
+    try:
+        assert first_callback.wait(5)
+        second.start()
+        assert second_attempt.wait(5)
+        assert not second_callback.wait(0.2)
+    finally:
+        release_first.set()
+        first.join(5)
+        if second.ident is not None:
+            second.join(5)
+    assert not first.is_alive() and not second.is_alive()
+    assert outcomes == [[(1,)], [(1,)]]
+    assert sorted(removed) == [0, 1]
+
+
+@pytest.mark.parametrize("failure", ["registration", "query_body", "query_interrupted", "cleanup"])
+def test_execution_candidate_releases_scan_lock_after_exception(failure):
+    class FailingConnection(sqlite3.Connection):
+        def create_function(self, name, narg, func, **kwargs):
+            if failure == "registration" and func is not None:
+                raise RuntimeError("synthetic registration failure")
+            result = super().create_function(name, narg, func, **kwargs)
+            if failure == "cleanup" and func is None:
+                raise RuntimeError("synthetic cleanup failure")
+            return result
+
+    conn = sqlite3.connect(":memory:", factory=FailingConnection)
+    try:
+        error = sqlite3.OperationalError if failure == "query_interrupted" else RuntimeError
+        with (
+            pytest.raises(error, match="synthetic|interrupted"),
+            projection_module._execution_candidate_predicate(conn, ["needle"]) as (predicate, params),
+        ):
+            if failure == "query_interrupted":
+                conn.set_progress_handler(lambda: 1, 1)
+            cursor = conn.execute(
+                f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
+            )
+            try:
+                assert cursor.fetchall() == [(1,)]
+            finally:
+                cursor.close()
+            if failure == "query_body":
+                raise RuntimeError("synthetic query body failure")
+    finally:
+        conn.set_progress_handler(None, 0)
+        conn.close()
+
+    outcomes = []
+
+    def another_connection():
+        other = sqlite3.connect(":memory:")
+        try:
+            with projection_module._execution_candidate_predicate(other, ["needle"]) as (predicate, params):
+                cursor = other.execute(
+                    f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
+                )
+                try:
+                    outcomes.append(cursor.fetchall())
+                finally:
+                    cursor.close()
+        except (sqlite3.Error, RuntimeError, AssertionError) as error:
+            outcomes.append(error)
+        finally:
+            other.close()
+
+    thread = threading.Thread(target=another_connection, daemon=True)
+    thread.start()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert outcomes == [[(1,)]]
+
+
+@pytest.mark.parametrize("encoding", ["UTF-8", "UTF-16le", "UTF-16be"])
+def test_execution_candidate_nested_connection_or_non_utf8_does_not_deadlock(encoding):
+    outcomes = []
+
+    def query_other():
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute(f"PRAGMA encoding='{encoding}'")
+            conn.execute("CREATE TABLE notes(value)")
+            with projection_module._execution_candidate_predicate(conn, ["needle"]) as (predicate, params):
+                cursor = conn.execute(
+                    f"SELECT {predicate} FROM (SELECT 'needle' AS notes)", params
+                )
+                try:
+                    outcomes.append(cursor.fetchall())
+                finally:
+                    cursor.close()
+        except (sqlite3.Error, RuntimeError, AssertionError) as error:
+            outcomes.append(error)
+        finally:
+            conn.close()
+
+    def outer_query():
+        outer = sqlite3.connect(":memory:")
+        try:
+            with projection_module._execution_candidate_predicate(outer, ["outer"]):
+                if encoding == "UTF-8":
+                    # The same thread may nest another connection's UDF lifetime.
+                    query_other()
+                else:
+                    # Native SQLite fallback must not wait on the Python UDF gate.
+                    thread = threading.Thread(target=query_other, daemon=True)
+                    thread.start()
+                    thread.join(2)
+                    outcomes.append(not thread.is_alive())
+        finally:
+            outer.close()
+
+    outer_thread = threading.Thread(target=outer_query, daemon=True)
+    outer_thread.start()
+    outer_thread.join(5)
+    assert not outer_thread.is_alive()
+    assert outcomes == ([[(1,)]] if encoding == "UTF-8" else [[(1,)], True])
+
+
 def test_file_projection_rejects_ingest_schema_without_primary_key(
     tmp_path: Path,
 ) -> None:

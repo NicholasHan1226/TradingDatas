@@ -966,6 +966,12 @@ def _scan_ingest_run_rows_by_ids(
     return tuple(_classify_ingest_run_row(row) for row in rows)
 
 
+# SQLite releases the GIL while stepping a query, then reacquires it for each
+# Python UDF call. Keep these scans from interleaving across connections; the
+# gate covers registration through cleanup, not receipt validation or HTTP.
+_EXECUTION_CANDIDATE_SCAN_LOCK = threading.RLock()
+
+
 @contextmanager
 def _execution_candidate_predicate(
     conn: sqlite3.Connection, fragments: list[str]
@@ -1016,13 +1022,14 @@ def _execution_candidate_predicate(
             offset = found + 1
         return 0
 
-    conn.create_function(function_name, 1, matches)
-    try:
-        # BLOB avoids Python's automatic UTF-8 decoding of invalid SQLite TEXT
-        # and preserves literal matches after NUL and in malformed BLOB values.
-        yield f"{function_name}(CAST(notes AS BLOB)) > 0", ()
-    finally:
-        conn.create_function(function_name, 1, None)
+    with _EXECUTION_CANDIDATE_SCAN_LOCK:
+        conn.create_function(function_name, 1, matches)
+        try:
+            # BLOB avoids Python's automatic UTF-8 decoding of invalid SQLite TEXT
+            # and preserves literal matches after NUL and in malformed BLOB values.
+            yield f"{function_name}(CAST(notes AS BLOB)) > 0", ()
+        finally:
+            conn.create_function(function_name, 1, None)
 
 
 def _scan_ingest_run_rows_by_execution_ids(
