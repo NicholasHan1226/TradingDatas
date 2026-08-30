@@ -198,7 +198,10 @@ _RESPONSE_COMPLETENESS_KEYS = frozenset(
         "reject_at_row_limit",
     }
 )
-_RESUMABLE_FANOUT_KEYS = frozenset({"cursor_contract_version", "max_batches_per_run"})
+_RESUMABLE_FANOUT_REQUIRED_KEYS = frozenset({"cursor_contract_version", "max_batches_per_run"})
+_RESUMABLE_FANOUT_KEYS = _RESUMABLE_FANOUT_REQUIRED_KEYS | frozenset(
+    {"progress_mode", "continuation_max_age_days", "partition_date_field"}
+)
 _BINDING_REQUIRED_KEYS = frozenset(
     {
         "provider",
@@ -428,6 +431,25 @@ class ResumableFanoutPolicy:
 
     cursor_contract_version: int = 2
     max_batches_per_run: int = 1
+    progress_mode: str = "complete_window"
+    continuation_max_age_days: int = 0
+    partition_date_field: str | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.progress_mode) is not str or self.progress_mode not in {
+            "complete_window", "session_day_rotation", "partition_continuation"
+        }:
+            raise ValueError("resumable progress_mode is unsupported")
+        age = self.continuation_max_age_days
+        if type(age) is not int or not 0 <= age <= 31:
+            raise ValueError("continuation_max_age_days must be an integer from 0 to 31")
+        if self.progress_mode == "partition_continuation":
+            if age == 0 or not isinstance(self.partition_date_field, str) or not re.fullmatch(
+                r"[A-Za-z_][A-Za-z0-9_]{0,63}", self.partition_date_field
+            ):
+                raise ValueError("partition continuation requires a bounded age and date field")
+        elif age or self.partition_date_field is not None:
+            raise ValueError("continuation fields require partition_continuation")
 
 
 @dataclass(frozen=True)
@@ -1220,7 +1242,7 @@ def _resumable_fanout_policy(raw: Any, *, path: str) -> ResumableFanoutPolicy | 
     if raw is None:
         return None
     value = _mapping(raw, path)
-    _reject_unknown_keys(value, _RESUMABLE_FANOUT_KEYS, path, required=_RESUMABLE_FANOUT_KEYS)
+    _reject_unknown_keys(value, _RESUMABLE_FANOUT_KEYS, path, required=_RESUMABLE_FANOUT_REQUIRED_KEYS)
     if value["cursor_contract_version"] != 2:
         raise ValueError(f"{path}.cursor_contract_version must be 2")
     return ResumableFanoutPolicy(
@@ -1228,6 +1250,9 @@ def _resumable_fanout_policy(raw: Any, *, path: str) -> ResumableFanoutPolicy | 
         max_batches_per_run=_positive_int(
             value["max_batches_per_run"], f"{path}.max_batches_per_run"
         ),
+        progress_mode=value.get("progress_mode", "complete_window"),
+        continuation_max_age_days=value.get("continuation_max_age_days", 0),
+        partition_date_field=value.get("partition_date_field"),
     )
 
 
@@ -2174,6 +2199,35 @@ def _load_dataset(
                     f"{binding_path}.target_tables must be exactly "
                     f"{_PROVIDER_NATIVE_TABLE}"
                 )
+            progress = binding.resumable_fanout
+            if progress is not None and progress.progress_mode != "complete_window":
+                window = binding.request_window_policy
+                if window is None:
+                    raise ValueError(f"{binding_path} progress requires a window")
+                if progress.progress_mode == "session_day_rotation":
+                    completeness = binding.response_completeness
+                    if (value["cadence_class"] != "session_minute"
+                            or window.max_span_days != 1
+                            or set(window.required_keys) != {window.range_start_key, window.range_end_key}
+                            or window.range_start_key == window.range_end_key
+                            or set(window.formats.values()) != {"local_datetime_seconds"}
+                            or completeness is None
+                            or completeness.strategy != "windowed_unique_primary_key"
+                            or any("${window." in v for v in binding.request_template.values())):
+                        raise ValueError(f"{binding_path} invalid session rotation contract")
+                else:
+                    field = fields_by_name.get(progress.partition_date_field)
+                    if (value["cadence_class"] != "event"
+                            or len(window.required_keys) != 1
+                            or window.range_start_key != window.range_end_key
+                            or set(window.formats.values()) != {"yyyymmdd"}
+                            or window.max_span_days != 1
+                            or field is None or field.logical_type != "text"
+                            or not any(v == "${window." + window.range_start_key + "}" for v in binding.request_template.values())
+                            or binding.fanout is None
+                            or binding.fanout.parameter not in fields_by_name
+                            or fields_by_name[binding.fanout.parameter].logical_type != "text"):
+                        raise ValueError(f"{binding_path} invalid partition continuation contract")
             undeclared_requested_fields = sorted(
                 set(binding.requested_fields) - set(fields_by_name)
             )

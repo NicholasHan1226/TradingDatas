@@ -142,6 +142,11 @@ receipt 和窗口而变化，必须以 [STATUS.md](STATUS.md) 的最新快照和
 `current`/catalog/query readback 为准。catalog active、HTTP 200、历史 probe 或单次 success
 都不能替代 dataset 级的 receipt、freshness、quality、lineage 与 completeness 验收。
 
+通用续采支持显式选择的日内轮换和已开始日期续采；未选择的绑定保持原有最新窗口语义。
+这改善有限预算内的推进，不承诺全量收敛。模式、真实时间验证、31 天续采边界及回滚见
+[运行说明](docs/OPERATIONS.md) 和
+[续采合同](docs/reports/2026-08-30-resumable-collection-contract.md)。
+
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式
 `--activation-evidence /outside/repository/path`，并且只把候选 registry 写到仓外路径。仓外

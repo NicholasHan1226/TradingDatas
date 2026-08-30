@@ -2200,14 +2200,26 @@ def _resumable_fanout(raw: object, label: str) -> dict[str, Any] | None:
     if raw is None:
         return None
     value = _mapping(raw, label)
-    _reject_keys(value, frozenset({"cursor_contract_version", "max_batches_per_run"}), label)
+    _reject_keys(value, frozenset({"cursor_contract_version", "max_batches_per_run", "progress_mode", "continuation_max_age_days", "partition_date_field"}), label, required=frozenset({"cursor_contract_version", "max_batches_per_run"}))
     if value.get("cursor_contract_version") != 2:
         raise ValueError(f"{label}.cursor_contract_version must be 2")
+    mode = value.get("progress_mode", "complete_window")
+    if type(mode) is not str or mode not in {"complete_window", "session_day_rotation", "partition_continuation"}:
+        raise ValueError(f"{label}.progress_mode is unsupported")
+    age = value.get("continuation_max_age_days", 0)
+    date_field = value.get("partition_date_field")
+    if type(age) is not int or not 0 <= age <= 31:
+        raise ValueError(f"{label}.continuation_max_age_days must be an integer from 0 to 31")
+    if mode == "partition_continuation":
+        if not age or type(date_field) is not str or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", date_field):
+            raise ValueError(f"{label} requires bounded age and partition date field")
+    elif age or date_field is not None:
+        raise ValueError(f"{label} continuation fields require partition_continuation")
     return {
         "cursor_contract_version": 2,
-        "max_batches_per_run": _required_positive_int(
-            value.get("max_batches_per_run"), f"{label}.max_batches_per_run"
-        ),
+        "max_batches_per_run": _required_positive_int(value.get("max_batches_per_run"), f"{label}.max_batches_per_run"),
+        **({"progress_mode": mode} if mode != "complete_window" else {}),
+        **({"continuation_max_age_days": age, "partition_date_field": date_field} if mode == "partition_continuation" else {}),
     }
 
 
@@ -2619,6 +2631,29 @@ def _normalized_contract(
                 f"{label}.requested_fields must include completeness field(s): "
                 f"{', '.join(missing_completeness)}"
             )
+    if resumable_fanout is not None and resumable_fanout.get("progress_mode", "complete_window") != "complete_window":
+        mode = resumable_fanout["progress_mode"]
+        if window is None:
+            raise ValueError(f"{label} progress requires a window")
+        if mode == "session_day_rotation":
+            if (value["cadence_class"] != "session_minute" or window["max_span_days"] != 1
+                    or set(window["required_keys"]) != {window["range_start_key"], window["range_end_key"]}
+                    or window["range_start_key"] == window["range_end_key"]
+                    or set(window["formats"].values()) != {"local_datetime_seconds"}
+                    or completeness is None or completeness["strategy"] != "windowed_unique_primary_key"
+                    or any("${window." in v for v in template.values())):
+                raise ValueError(f"{label} invalid session rotation contract")
+        else:
+            date_field = fields_by_name.get(resumable_fanout["partition_date_field"])
+            if (value["cadence_class"] != "event" or len(window["required_keys"]) != 1
+                    or window["range_start_key"] != window["range_end_key"]
+                    or set(window["formats"].values()) != {"yyyymmdd"}
+                    or window["max_span_days"] != 1
+                    or date_field is None or date_field["logical_type"] != "text"
+                    or not any(v == "${window." + window["range_start_key"] + "}" for v in template.values())
+                    or fanout["parameter"] not in fields_by_name
+                    or fields_by_name[fanout["parameter"]]["logical_type"] != "text"):
+                raise ValueError(f"{label} invalid partition continuation contract")
     budgets_value = _mapping(value["budgets"], f"{label}.budgets")
     _reject_keys(budgets_value, _BUDGET_KEYS, f"{label}.budgets")
     budgets = {
