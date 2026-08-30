@@ -17,27 +17,28 @@ permissions:
 
 env:
   TRUSTED_PR_AUTHOR: NicholasHan1226
-  # Datas PM go-ahead. Create this repository label if missing:
-  #   name: pm-merge
-  #   description: Datas PM go-ahead for trusted auto-merge
-  PM_MERGE_LABEL: pm-merge
+  CONTROLLER_ACCEPT_LABEL: controller-accepted
+  M0_AUTOMERGE_LABEL: automerge-m0
 
 jobs:
   merge:
     # CI path: TradingDatas CI just completed successfully on a PR head.
-    # Label path: pm-merge was just applied or removed; CI for that exact head
-    # is re-verified below. Either order results in a merge; concurrent
-    # attempts are tolerated. A green CI run is evidence only, never merge
-    # authority, so both triggers additionally require the Datas PM label.
+    # Label path: the controller-accepted label was just applied and the CI
+    # state for that exact head is re-verified below. Either order results in
+    # a merge; concurrent attempts are tolerated. Issue #228: a green CI run
+    # is evidence only, never merge authority, so both triggers additionally
+    # require the Controller-applied acceptance label.
     if: >-
       (github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success')
       || (github.event_name == 'pull_request_target'
-        && github.event.label.name == 'pm-merge')
+        && (github.event.action == 'unlabeled'
+          || github.event.label.name == 'controller-accepted'
+          || github.event.label.name == 'automerge-m0'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Merge pm-merge trusted PR
+      - name: Merge controller-accepted trusted PR
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
@@ -60,6 +61,7 @@ jobs:
           PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           STATE="$(jq -r '.state' <<<"$PR_JSON")"
           BASE_REF="$(jq -r '.base.ref' <<<"$PR_JSON")"
+          BASE_SHA="$(jq -r '.base.sha' <<<"$PR_JSON")"
           HEAD_REPO="$(jq -r '.head.repo.full_name // empty' <<<"$PR_JSON")"
           HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
           AUTHOR="$(jq -r '.user.login' <<<"$PR_JSON")"
@@ -91,8 +93,40 @@ jobs:
             [[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]] || reject_unaccepted "Tested SHA ${RUN_HEAD_SHA:0:8} no longer matches PR head ${HEAD_SHA:0:8}."
           fi
 
+          # A label selects exactly one merge class. M0 is limited to a
+          # machine-readable declaration and a narrow reversible path allowlist;
+          # every other class remains SHA-bound Controller M1 acceptance.
           LABEL_NAMES="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --jq '.[].name')"
-          grep -qx "$PM_MERGE_LABEL" <<<"$LABEL_NAMES" || reject_unaccepted "CI green but pm-merge is not present."
+          HAS_M0=false
+          HAS_CONTROLLER=false
+          grep -qx "$M0_AUTOMERGE_LABEL" <<<"$LABEL_NAMES" && HAS_M0=true || true
+          grep -qx "$CONTROLLER_ACCEPT_LABEL" <<<"$LABEL_NAMES" && HAS_CONTROLLER=true || true
+          if [[ "$HAS_M0" == true && "$HAS_CONTROLLER" == true ]]; then
+            reject_unaccepted "PR #${PR_NUMBER} has conflicting M0 and Controller labels."
+          fi
+          if [[ "$HAS_M0" == true ]]; then
+            M0_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
+              --jq '[.[] | select(.event == "labeled" and .label.name == "automerge-m0")] | sort_by(.created_at) | last | .actor.login // empty')"
+            [[ "$M0_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || reject_unaccepted "Untrusted M0 label actor."
+            PR_BODY="$(jq -r '.body // ""' <<<"$PR_JSON")"
+            grep -qx 'change_class=M0' <<<"$PR_BODY" || reject_unaccepted "M0 body declaration missing."
+            grep -qx "candidate=$HEAD_SHA" <<<"$PR_BODY" || reject_unaccepted "M0 candidate is not the current head."
+            CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
+            grep -Eqv '^(README\.md|CONTRIBUTING\.md|docs/|tests/|static/)' <<<"$CHANGED_FILES" && reject_unaccepted "M0 changed a non-allowlisted path."
+          elif [[ "$HAS_CONTROLLER" == true ]]; then
+            LABEL_ACTOR="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events?per_page=100" \
+              --jq '[.[] | select(.event == "labeled" and .label.name == "controller-accepted")] | sort_by(.created_at) | last | .actor.login // empty')"
+            [[ "$LABEL_ACTOR" == "$TRUSTED_PR_AUTHOR" ]] || reject_unaccepted "Controller label actor is untrusted."
+            ACCEPTANCE_RETURN="$(
+              gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
+                --jq '[.[] | select(.user.login == "NicholasHan1226") | select(.body | contains("AUTODEV_RETURN_V1"))] | sort_by(.created_at) | last | .body // ""'
+            )"
+            grep -qx 'decision=accepted' <<<"$ACCEPTANCE_RETURN" || reject_unaccepted "Latest Controller return is not accepted."
+            ACCEPTANCE_CANDIDATE="$(sed -nE 's/^candidate=([0-9a-f]{40})$/\1/p' <<<"$ACCEPTANCE_RETURN")"
+            [[ "$ACCEPTANCE_CANDIDATE" == "$HEAD_SHA" ]] || reject_unaccepted "Controller return does not accept current head."
+          else
+            reject_unaccepted "CI green but no accepted M0 or Controller M1 label is present."
+          fi
 
           CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
           if grep -Eq '^\.github/workflows/' <<<"$CHANGED_FILES"; then
@@ -113,9 +147,17 @@ jobs:
             fi
           fi
 
+          CURRENT_MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$HAS_M0" != true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
+            reject_unaccepted "M1 base advanced; the owner or Controller must refresh, rerun CI, and record a new exact-head acceptance."
+          fi
+          if [[ "$HAS_M0" == true && "$BASE_SHA" != "$CURRENT_MAIN_SHA" ]]; then
+            echo "M0 base advanced. The exact tested head and narrow path allowlist remain sufficient only when GitHub still reports the PR mergeable; continue without rewriting the candidate branch."
+          fi
+
           # Branch protection requires GitHub's merge queue/auto-merge path.
-          # Keep this SHA-bound; --auto waits for the same required checks
-          # instead of bypassing them.
+          # Keep this SHA- and Controller-bound; --auto waits for the same
+          # required checks instead of bypassing them.
           if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge --auto; then
             # --auto can return before GitHub actually merges.  Do not use the
             # prospective test-merge SHA from an open PR: wait for the actual
@@ -136,12 +178,12 @@ jobs:
                   -f ref=main \
                   -f 'inputs[suite]=pr' \
                   -f "inputs[expected_sha]=$MERGE_SHA"
-                if grep -Eq '^(static/|public-web/)' <<<"$CHANGED_FILES"; then
+                if grep -q '^static/' <<<"$CHANGED_FILES"; then
                   gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/dispatches" \
                     -f ref=main \
                     -f "inputs[expected_sha]=$MERGE_SHA"
                 fi
-                echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}, plus Cloudflare deploy when static or public-web changed. GZ/immutable runtime is not auto-deployed."
+                echo "Merged PR #${PR_NUMBER} (head ${HEAD_SHA:0:8}); dispatched exact-main CI for ${MERGE_SHA:0:8}, plus static deploy when applicable. Controller must separately verify server source, immutable release, and runtime."
                 exit 0
               fi
               sleep 3
