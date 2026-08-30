@@ -3028,6 +3028,38 @@ def test_execution_candidate_predicate_matches_original_sql_for_raw_material(enc
     conn.close()
 
 
+@pytest.mark.parametrize("fragments", [
+    ["aba", "abab"],
+    ["ababaX", "ababaY"],
+    ["shared", "shared-tail"],
+    ['"attempt_id":"exec-' + str(i).zfill(4) + '"' for i in range(200)],
+    ['"attempt_id":"' + "x" * i + '"' for i in range(1, 25)],
+    ["prefix-" + "x" * i for i in range(1, 17)],
+    ["prefix-" + "x" * i for i in range(1, 18)],
+    ["", "other"],
+    ["unrelated", "different"],
+])
+def test_execution_candidate_literal_membership_preserves_all_raw_matches(fragments):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    material = [None, b"", b"no-match", b"ababab", b"abababaX", b"shared"]
+    for fragment in fragments:
+        literal = fragment.encode("utf-8")
+        material.extend([
+            literal, b"\xff\x00" + literal, literal + b"\x00\xff",
+            literal[:-1], literal + literal,
+            b'"attempt_id":"not-selected",' + literal,
+        ])
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in material])
+    old = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
+    expected = conn.execute(f"SELECT id FROM candidates WHERE {old}", fragments).fetchall()
+    with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+        cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+        assert cursor.fetchall() == expected
+        cursor.close()
+    conn.close()
+
+
 @pytest.mark.parametrize("outcome", ["success", "budget", "interrupted"])
 def test_execution_candidate_callback_is_removed_after_scan(monkeypatch, outcome):
     class TrackingConnection(sqlite3.Connection):

@@ -1,10 +1,23 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-30 20:40 CST（发布后三小时已复查；财务正控完成，国际新闻原值保留修复进行中）。
+最后更新：2026-08-30 21:55 CST（新闻发布已回读；Crypto目录性能修复候选通过同快照预检，短SLA提前刷新保持未启用）。
 本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
+
+## 2026-08-30 晚间运行可靠性
+
+PR #401 的 exact-main `c714dc9` CI 已通过，21:12 A股/新闻核心运行面完成切换；
+三源真实回执和新增原始新闻字段已通过认证query验证，公开query仍保留partial语义。
+21:33 A股目录192项为88 success、41 empty、57 paused、5 unobserved、1 stale
+（stk_holdernumber）；该短SLA过期重复出现，不能算已恢复连续健康。
+
+Crypto仍运行`15f463e`，实际目录有超过15秒超时。通用literal匹配候选在同快照的
+完整240项目录保持逐字段与20,000条原始候选相同，冷读取由13.319降至9.661秒。
+这不是HTTP或稳定生产证明；Crypto仍须独立发布、日志模式回退和认证回读。
+event提前刷新默认为0，实际调用频率不变；非零候选的每日额度证据尚缺。
+合同、证据限制及下一步见[运行可靠性报告](docs/reports/2026-08-30-runtime-reliability.md)。
 
 ## 2026-08-30 采集恢复与覆盖复核
 
