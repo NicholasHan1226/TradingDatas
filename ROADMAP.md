@@ -104,6 +104,10 @@ mutable data -> /opt/investment-data/tradingdatas/
 
 公共产品继续销售同一份 receipt-backed 原始数据，不建立研究、策略或交易旁路。
 
+账户独立身份与购买开通的实施前合同、待确认商业选择及验收顺序见
+[Customer identity and commerce draft](docs/design/customer-identity-commerce-v1.md)。
+该草案不代表已选定验证码/支付服务，不构成定价或真实收费授权。
+
 - 冻结 Data / Features / Recipes / Research / Pricing / Docs / Account 的对象、索引页、详情页和状态词；
 - 完成 `zh-CN`/`en` 系统语言检测、显式切换、偏好持久化、English fallback 和技术标识不翻译合同；
 - 建立 Claude、Codex、OpenClaw、Hermes 和其它 HTTP Agent 的单一 canonical prompt 编译合同、密钥隔离和连接测试状态；
