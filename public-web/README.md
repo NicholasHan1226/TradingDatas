@@ -64,8 +64,11 @@ of the public body. Source access, browser-local bookmarks and citation copying
 are first-screen actions; clipboard failures offer selectable citation text.
 `researchReaderNotes.js` holds source-specific editorial additions and internal
 review references, without replacing bibliographic verification. Library filters,
-page and scroll position survive in-tab article navigation (not a page reload).
-See [`research-reader-v2.md`](../docs/design/research-reader-v2.md) for the design boundary.
+page and scroll position survive in-tab article navigation. Filters and page also
+survive reload through URL parameters; scroll position does not.
+The confirmed Featured/Topics views share these records and article pages. See
+[`research-dual-view-v3.md`](../docs/design/research-dual-view-v3.md) for behavior
+and [`research-reader-v2.md`](../docs/design/research-reader-v2.md) for reader boundaries.
 
 ```bash
 node scripts/verify-research-sources.mjs
@@ -82,7 +85,7 @@ otherwise English). Account preferences offer System / 中文 / English; explici
 choices persist in this browser. System mode responds to `languagechange` and
 does not overwrite an explicit preference. Search indexes both editorial
 languages and original titles regardless of the selected display language.
-The complete library is progressively revealed in pages of 20; global search
+The complete library is available in Topics in pages of 12; global search
 still searches all 200 records. Bookmarks and source routes remain language-neutral.
 
 Keep the generated raster assets in `public/assets/`. Do not rebuild the brand

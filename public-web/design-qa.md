@@ -277,3 +277,117 @@ passed
 The navigation now reads as one calm object floating above the warm editorial canvas. The Hovvi-informed single-layer primary navigation removes the previous capsule-inside-capsule hierarchy while retaining the TradingDatas blue current-location cue. Pricing begins near the task header, Account headings keep readable line breaks, section navigation inherits the same pill grammar, and Data rows add only localized hover feedback rather than card-heavy chrome.
 
 final result: passed
+
+---
+
+# Research dual-view implementation QA
+
+Date: 2026-08-30. Scope: PR #385, Featured/Topics discovery and its existing
+reader navigation. This is local candidate verification, not a production audit.
+
+## Findings and iteration
+
+- Fixed P2 — the first desktop render added excessive space below the existing
+  floating header. Reduced hub top padding and bounded the architectural hero
+  height; the final spread restores the editorial hierarchy and visible paths.
+- Fixed P2 — the Chinese hero title was undersized and broke at an unintended
+  point. Increased the desktop display scale and authored the two editorial
+  lines; the mobile rule preserves readable wrapping rather than clipping.
+- Fixed P2 — the selected subject could be offscreen in the mobile horizontal
+  index after returning or switching language. Reveal the selected link on
+  subject/language/viewport changes without scrolling the whole document.
+- Fixed P2 — the inherited primary-button treatment was not the selected solid
+  blue/white action. Applied the local button token and retained visible focus.
+- Accepted P3 — the new original architectural image is more neutral than the
+  blue source mock. Its curved colonnade, stairs, crop, sharpness and quiet role
+  match the composition; it is decorative, not evidence or a real venue claim.
+- Accepted product constraints — retain the established global floating header,
+  original bibliographic order and maintained source metadata. The mock's sample
+  rows are illustrative: the implementation does not rewrite source titles or
+  reorder authoritative records to mimic them. All Chinese rows show original
+  titles, so density varies with actual title/author length.
+
+No unresolved P0/P1/P2 was found in the implemented dual-view scope.
+
+## Source and combined comparison evidence
+
+Selected source: `exec-2aec2b00-09b7-4fc7-a312-9735bb302624.png`, a 1054 × 1492
+combined mock. Split its two 1054 × 746 panels and normalize each to 1440 × 1024;
+this introduces approximately 0.5% aspect normalization. Browser captures are
+1440 × 1024 CSS/pixel viewports at DPR 1, Chinese/light, signed out, Featured and
+Topics / Company & financials. Source and candidate were placed together, then
+opened and inspected, not judged from filenames or separate screenshots.
+
+Local evidence folder: `/tmp/tradingdatas-dual-view-5ccY8R` (temporary QA artifacts,
+not published site assets or durable release evidence).
+
+- Initial comparison: `featured-comparison-v1.png`.
+- Final full-frame comparisons: `featured-comparison-final.png`,
+  `topics-comparison-final.png` (source left, candidate right).
+- Focused typography comparison: `featured-type-comparison.png`.
+- Responsive captures: `featured-zh-light-390-final.png`,
+  `topics-zh-light-390-final.png`, `topics-zh-light-768.png`,
+  `featured-en-dark.png`, `featured-en-dark-390.png`,
+  `topics-en-dark-390-final.png`.
+
+## Required fidelity surfaces
+
+- Fonts/typography: Songti/Georgia editorial display, existing sans body, italic
+  original titles; checked Chinese two-line hero, English long title, authors
+  and wrapped publication metadata. Local font fallback can differ by OS.
+- Spacing/layout: unboxed local views, split editorial spread, two path links,
+  subject index and ruled bibliography; no status-card grid. Desktop, 768px
+  tablet and 390px mobile have no document horizontal overflow. Only the mobile
+  subject index intentionally scrolls horizontally.
+- Colors/tokens: warm light and existing dark surfaces, quiet separators,
+  blue active/action states, sufficient solid-button contrast, visible focus.
+  This is a visual/basic contrast check, not a full WCAG certification.
+- Image quality: original 1024 × 1024 WebP, 118708 bytes, responsive crop; no
+  fabricated data, logos, charts, CSS illustration or distorted stretching.
+  Empty alt correctly marks decorative art; existing Phosphor icons retained.
+- Copy/content: two explicit reading views; 200 external materials, eight
+  derived subjects, no translated duplicates; reader retains authors, original
+  source and concise limitations. The reported Tokenomics status grid is absent.
+
+## Interaction and validation evidence
+
+- Both views switch and preserve discovery filters/page; selecting another
+  subject resets incompatible publication type and page.
+- Company & financials contains 28 records; book-only produces an actionable
+  zero-result state. Clearing the type restores all 28.
+- Page 2 → Law and Finance → reader return preserves page/scroll. Refresh
+  preserves the query/page. Native Back/Forward was exercised across that visit.
+- Bookmark and copy-citation success verified in the reader; bookmark state
+  reflected in the list. Test bookmark removed after verification.
+- All three reading paths opened, the method disclosure expanded, and an
+  existing preparation-method deep link resolved.
+- Global search for Tokenomics returned the stable paper route and opened its
+  content-led Chinese reader. No research-local duplicate search was added.
+- Signed-out Account Chinese/English and light/dark switching exercised;
+  system-language resolution remains covered by the existing automated tests.
+- Native links/selects/buttons, selected states, disabled pagination and visible
+  keyboard focus checked. Pagination explicitly focuses the result region.
+- Browser error/warning log returned an empty list during the final path/search
+  checks. The earlier stopped local preview server was restarted and rechecked.
+- `npm run test:sites`: 47 passed, including all 200 readers in both languages,
+  all subject/type combinations and URL normalization. Build and diff whitespace
+  check passed; generated distribution is committed with its source.
+
+## Boundaries and follow-up
+
+- The retained `/recipes/:id` pages still show their pre-existing planned
+  product-contract content; this pass verifies reachability, not completed
+  tutorials. They need a separate content pass before being promoted as guides.
+- Physical-device touch, screen-reader audit, text-only zoom, clipboard-denied
+  runtime and divergent multi-visit scroll history are not verified here.
+- Existing main-chunk warning remains (about 647 kB, 192 kB gzip). No dependency,
+  backend, authentication, registry, provider or production changes were made.
+- Project design-rule text was inspected; discovery in a new agent session was
+  not tested. CI, merge, deployment and source/full-text review are separate.
+
+Implementation checklist: dual views, shared identities, URL state, empty state,
+responsive index, source access, bilingual rendering, scoped documentation and
+local verification completed. Revert the scoped commit through a PR to roll back;
+no data migration or server operation is involved.
+
+final result: passed

@@ -77,15 +77,19 @@ Reader titles, summaries, data requirements and authored limitations change
 together. Original titles, author names, DOI, identifiers and source links remain
 stable. Source sites/full text may be in another language; this is disclosed.
 
-The first screen remains question-led. Three actual four-record reading paths
-lead to stable detail routes. The full library is paginated, with topic/format
-filters; global search covers both languages across all records. Counts derive
-from assembled records, never manually padded totals. Reading-time estimates
-refer only to concise orientations, not to reading the original full papers.
-Question and full-library entries reset incompatible format/page filters. Direct
-filter changes reset page; record navigation preserves the in-tab library filters,
-page and scroll position. This is not cross-device or reload-persistent reading
-history. Clipboard failure exposes a selectable citation instead of claiming success.
+The confirmed reading views are Featured and Topics. Featured presents an editorial
+recommendation and question-led paths; Topics exposes the complete library through
+eight display subjects and publication-type filtering, in pages of 12. The existing
+quant-methods and research-methods records share one display subject without
+changing their stored identity. All three four-record reading paths stay reachable.
+Global search covers both languages across all records; counts derive from records.
+No reading-time estimate implies a full-paper reading or review.
+
+View changes preserve filters/page. Selecting a subject or all literature resets
+format/page; format changes reset page. URL parameters reproduce view, topic, format
+and page across reload/share; in-tab article return also restores scroll position.
+This is not synchronized reading history. Clipboard failure exposes selectable
+citation text instead of claiming success. See `docs/design/research-dual-view-v3.md`.
 
 Legacy official-source verification dates are stored per source; a library-wide
 content update cannot advance those dates. Source identity checks and editorial

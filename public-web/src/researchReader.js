@@ -2,6 +2,7 @@ export const initialResearchView = { topic: "all", kind: "all", page: 0, open: f
 
 export function researchViewReducer(state, action) {
   switch (action.type) {
+    case "restore": return action.value;
     case "open": return { ...initialResearchView, open: true, topic: action.topic || "all" };
     case "topic": return { ...state, topic: action.value, page: 0 };
     case "kind": return { ...state, kind: action.value, page: 0 };

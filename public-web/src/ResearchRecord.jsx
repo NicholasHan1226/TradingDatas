@@ -3,7 +3,7 @@ import { ArrowRight, ArrowSquareOut, BookmarkSimple, Check, Copy } from "@phosph
 import { researchTitle, researchData, researchYear } from "./researchCatalog.js";
 import { researchCitation } from "./researchReader.js";
 
-export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, furtherReading, saved, onToggleBookmark, onNavigate }) {
+export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, furtherReading, saved, onToggleBookmark, onNavigate, backHref = "/research" }) {
   const [copyState, setCopyState] = useState("idle");
   const zh = locale === "zh";
   const citation = researchCitation(paper);
@@ -17,7 +17,7 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
   }
 
   return <article className="object-detail-page research-record">
-    <a className="object-back" href="/research" onClick={(event) => onNavigate(event, "/research")}>← {zh ? "返回研究库" : "Back to Research"}</a>
+    <a className="object-back" href={backHref} onClick={(event) => onNavigate(event, backHref)}>← {zh ? "返回研究库" : "Back to Research"}</a>
     <header className="research-reader-header">
       <div className="research-reader-meta"><span>{topicLabel}</span><span>{kindLabel}</span><span>{researchYear(paper, locale)}</span></div>
       <h1>{researchTitle(paper, locale)}</h1>
