@@ -7,6 +7,9 @@ API subdomain is live.
 
 ## Local development
 
+Use Node 22.13 or newer for the local checks (email-identity tests use built-in
+`node:sqlite`). No SQLite test dependency is shipped to the browser or Worker.
+
 ```bash
 npm install
 npm run dev
@@ -82,9 +85,11 @@ See `docs/API.md` and
 path is active.
 
 `/login` shares the existing Account workspace and brand. Access-key login uses
-only the encrypted same-site bridge; Phone and Email explicitly remain unavailable
-until verified identity and message delivery are connected. They neither collect
-contact details nor simulate sending a code. Identity and usage availability are
+only the encrypted same-site bridge. Phone stays unavailable. Email enables only
+when the Worker reports complete configuration; otherwise it collects no contact
+details and does not simulate sending. The new, locally tested email identity is
+independent of API keys and displays `not_subscribed` in the existing Account.
+It cannot mint data grants or attach a legacy tenant. Identity and usage availability are
 separate: a usage failure must not sign out an otherwise authenticated account.
 Requests have timeouts; session changes invalidate late reads/key-write UI results.
 While identity is being checked, private Account panels show a neutral verification
@@ -98,6 +103,14 @@ The harness binds only loopback, is single-reviewer, never calls upstream, and
 accepts only synthetic test strings for review. It is not a production login test.
 Use `TRADINGDATAS_QA_PORT=5194 node scripts/login-qa-server.mjs` for an isolated
 purchase-flow review while another login harness is running. Binding stays loopback.
+
+Email identity review: after building, run `node scripts/preview-email-identity.mjs`
+and open `http://127.0.0.1:5195/login`. Use an `@example.com` fixture; codes appear
+only in the local synthetic mailbox at `/__test__/mail`, never in a real inbox.
+The in-memory store resets on restart; no production secrets are used. Optional
+local workerd/D1 verification and the production approval gates are documented in
+[Email identity v1](../docs/design/email-identity-v1.md). Neither the schema file
+nor the review harness is deployed. SMS and payments stay unavailable.
 
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,

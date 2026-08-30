@@ -142,5 +142,6 @@ test("account session gateway rejects cross-origin mutation and clears invalid s
 test("emits the files required by Sites packaging", async () => {
   await access(new URL("../dist/client/index.html", import.meta.url));
   await access(new URL("../dist/server/index.js", import.meta.url));
+  await access(new URL("../dist/server/email-identity.js", import.meta.url));
   await access(new URL("../dist/.openai/hosting.json", import.meta.url));
 });

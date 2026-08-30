@@ -35,8 +35,9 @@ import {
   sourceCandidates,
 } from "./dataSourceLandscape";
 import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
-import { accountJson, confirmAccountSignOut, getAccountViewState, readAccountIdentity, startAccountSession } from "./accountSession";
+import { accountJson, confirmAccountSignOut, getAccountViewState, readAccountIdentity, startAccountSession, startEmailSession } from "./accountSession";
 import { LoginPage } from "./LoginPage";
+import { EmailAccountPanel } from "./EmailAccountPanel";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
@@ -910,6 +911,7 @@ export function App() {
       if (!current()) return;
       setAccountData(account);
       setAccountLoading(false);
+      if (account.identity_kind === "email") { setAccountUsage(null); return; }
       // Usage availability is not an identity check. Never log out on a 5xx here.
       try {
         const usage = await accountJson("usage?days=30", { signal: controller.signal });
@@ -932,7 +934,7 @@ export function App() {
   }, [accountConnectionRevision]);
 
   useEffect(() => {
-    if (!accountData) return undefined;
+    if (!accountData || accountData.identity_kind === "email") return undefined;
     const controller = new AbortController();
     const epoch = accountEpoch.current;
     const current = () => !controller.signal.aborted && accountEpoch.current === epoch;
@@ -1021,6 +1023,24 @@ export function App() {
     } finally {
       accountSignOutInFlight.current = false;
       setAccountSignOutPending(false);
+    }
+  }
+
+  async function connectEmailAccount(payload) {
+    if (accountLoginInFlight.current || accountSignOutInFlight.current) throw new Error("account_unavailable");
+    accountLoginInFlight.current = true;
+    accountReadAbort.current?.abort();
+    const epoch = ++accountEpoch.current;
+    setAccountLoginPending(true); setAccountLoading(true); setAccountError("");
+    try {
+      const account = await startEmailSession(payload);
+      if (accountEpoch.current !== epoch) return;
+      clearLegacyAccountToken(); setAccountTokenInput(""); setAccountData(account);
+      setAccountUsage(null); setAccountKeys([]); setAccountNewKey("");
+      setAccountConnectionRevision(value => value + 1);
+    } finally {
+      accountLoginInFlight.current = false;
+      setAccountLoginPending(false); setAccountLoading(false);
     }
   }
 
@@ -1307,7 +1327,8 @@ export function App() {
   const activeAccountDoc = allDocs.find((entry) => entry.slug === accountDocSlug) || allDocs[0];
   const accountPlanLabels = locale === "zh" ? { basic: "基础版", standard: "专业版", flagship: "旗舰版", free: "免费版", starter: "入门版", research: "研究版", pro: "专业版", enterprise: "企业版", internal: "内部账户" } : { basic: "Basic", standard: "Professional", flagship: "Flagship", free: "Free", starter: "Starter", research: "Research", pro: "Pro", enterprise: "Enterprise", internal: "Internal" };
   const accountCategoryLabels = locale === "zh" ? { a_share: "A 股基础数据", crypto: "加密资产", news: "新闻与事件" } : { a_share: "A-share base data", crypto: "Crypto", news: "News & events" };
-  const accountPlanLabel = accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
+  const isEmailAccount = accountData?.identity_kind === "email";
+  const accountPlanLabel = isEmailAccount ? (locale === "zh" ? "未订阅" : "Not subscribed") : accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
   const accountCategories = accountData ? (accountData.data_categories || []).map((category) => accountCategoryLabels[category] || category) : [];
   const accountUsageHistory = accountUsage?.history || [];
   const accountUsagePeak = Math.max(1, ...accountUsageHistory.map((entry) => Number(entry.total) || 0));
@@ -1471,7 +1492,7 @@ export function App() {
           <div className="popover-wrap account-wrap">
             <button className="icon-button account-button" type="button" disabled={accountChecking} aria-busy={accountChecking} aria-label={accountChecking ? accountEntryLabel : accountData ? copy.account : accountViewState === "unavailable" ? copy.account : (locale === "zh" ? "登录账户" : "Sign in")} aria-expanded={accountData && !accountChecking ? accountMenuOpen : false} onClick={() => accountData ? setAccountMenuOpen((value) => !value) : goTo(accountViewState === "unavailable" ? "/account" : "/login")}><UserCircle size={30} weight="thin" /></button>
             {accountMenuOpen && accountData && !accountChecking && <div className="account-menu-popover">
-              <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? accountData.tenant_id : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountData.tier} 套餐 · 已连接` : `${accountData.tier} plan · connected`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
+              <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? (accountData.email || accountData.tenant_id) : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountPlanLabel} · 已登录` : `${accountPlanLabel} · signed in`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
               {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
             </div>}
           </div>
@@ -1661,7 +1682,7 @@ export function App() {
         {primaryRoute === "pricing" && routeSlug === "preview" && <PurchasePreview locale={locale} selection={readPreviewSelection(routeSearch)} accountState={accountViewState} navigate={navigate} onRetry={() => setAccountConnectionRevision((value) => value + 1)} onAccount={() => openAccountSection("subscription")} />}
 
         {primaryRoute === "login" && (
-          <LoginPage locale={locale} theme={theme} returnPath={safeLoginDestination(routeSearch)} token={accountTokenInput} onTokenChange={(value) => { setAccountTokenInput(value); setAccountError(""); }} onSubmit={connectAccount} loading={accountLoading} submitting={accountLoginPending} error={accountError} navigate={navigate} />
+          <LoginPage locale={locale} theme={theme} returnPath={safeLoginDestination(routeSearch)} token={accountTokenInput} onTokenChange={(value) => { setAccountTokenInput(value); setAccountError(""); }} onSubmit={connectAccount} onEmailVerify={connectEmailAccount} loading={accountLoading} submitting={accountLoginPending} error={accountError} navigate={navigate} />
         )}
 
         {primaryRoute === "account" && (
@@ -1698,7 +1719,9 @@ export function App() {
                 {accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
                 {accountPrivateSection && accountChecking ? (
                   <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
-                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountSection === "overview" ? (
+                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountPrivateSection && isEmailAccount ? (
+                  <EmailAccountPanel account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} />
+                ) : accountSection === "overview" ? (
                   accountData ? (
                     <div className="account-live-overview">
                       <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "断开连接" : "Disconnect")}</button></div>
@@ -1810,10 +1833,10 @@ export function App() {
                     <div className="account-security-panel">
                       <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{locale === "zh" ? "安全网页会话" : "Secure web session"}</h3><p>{locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read."}</p></div><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "退出此浏览器" : "Sign out here")}</button></section>
                       <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session"}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
-                      <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "邮箱、短信和跨设备会话尚未开放" : "Email, SMS, and cross-device sessions are not available"}</strong><p>{locale === "zh" ? "在身份库、一次性验证、防重放、HttpOnly 会话和撤销审计合同上线前，不提供模拟入口。" : "No simulated entry will be offered before identity storage, one-time verification, replay protection, HttpOnly sessions, and revocation audit are live."}</p></div></div>
+                      <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "凭证绑定与跨设备会话列表尚未开放" : "Credential linking and cross-device session lists are not available"}</strong><p>{locale === "zh" ? "访问密钥与邮箱账户不会自动绑定；短信服务暂未接入。可用登录方式以登录页的服务状态为准。" : "Access keys are not automatically linked to email accounts. SMS is not connected. Available sign-in methods are shown on the login page."}</p></div></div>
                     </div>
                   ) : (
-                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后管理当前连接" : "Sign in to manage this connection"}</strong><p>{locale === "zh" ? "当前版本通过访问密钥建立浏览器连接。" : "The current version connects this browser with an access key."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
+                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后管理当前连接" : "Sign in to manage this connection"}</strong><p>{locale === "zh" ? "前往登录页查看可用的登录方式。网页登录不会自动开通数据权限。" : "Visit sign-in to see available methods. A web login does not automatically grant data access."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
                   )
                 ) : (
                   <dl className="account-facts">

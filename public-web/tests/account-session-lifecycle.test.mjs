@@ -113,7 +113,7 @@ test("malformed upstream 200 responses cannot create a session", async (t) => {
 
 test("upstream fetch forbids redirects and provides a timeout signal", async (t) => {
   t.mock.method(globalThis, "fetch", async (_url, init) => {
-    assert.equal(init.redirect, "error");
+    assert.equal(init.redirect, "manual");
     assert.ok(init.signal instanceof AbortSignal);
     throw new TypeError("synthetic upstream failure with sensitive details");
   });
@@ -121,6 +121,16 @@ test("upstream fetch forbids redirects and provides a timeout signal", async (t)
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), { error: "account_upstream_unavailable" });
   assert.equal(response.headers.get("set-cookie"), null);
+});
+
+test("upstream redirects are rejected without forwarding credentials or Location", async (t) => {
+  const upstream=t.mock.method(globalThis,"fetch",async(_url,init)=>{
+    assert.equal(init.redirect,"manual");
+    return new Response(null,{status:302,headers:{location:"https://untrusted.example.test/"}});
+  });
+  const response=await worker.fetch(request("session",{method:"POST",headers:{origin},body:JSON.stringify({access_key:"fixture"})}),env);
+  assert.equal(response.status,502);assert.equal(response.headers.get("location"),null);
+  assert.equal(response.headers.get("set-cookie"),null);assert.equal(upstream.mock.callCount(),1);
 });
 
 test("request size is bounded without trusting Content-Length", async (t) => {

@@ -541,6 +541,83 @@ SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke
 payload 目录执行 `sha256sum -c /absolute/fix/PAYLOADS.sha256`，再进入修复目录校验
 sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
 
+## Resend account email preparation
+
+Owner selected Resend for account email; SMS has no provider and remains
+unavailable. Keep the existing `/login` and `/account`; do not add a second
+customer workspace. Identity implementation gates remain in
+[customer identity](design/customer-identity-commerce-v1.md).
+
+### Sending-domain configuration
+
+- Domain: `account.tradingdatas.com`; intended From:
+  `TradingDatas <login@account.tradingdatas.com>`.
+- Resend domain ID: `06e2de82-4db8-4ab2-9d9f-219cd647990c`.
+- Region: `ap-northeast-1`; sending enabled, receiving disabled.
+- Open and click tracking disabled for authentication mail.
+- Cloudflare zone: `tradingdatas.com`; only the following new records, DNS-only,
+  TTL Auto. The root Worker record and unrelated project domains are unchanged.
+
+| Type | Zone-relative name | Value |
+| --- | --- | --- |
+| TXT | `resend._domainkey.account` | Current public DKIM key returned by Resend Get Domain for the ID above |
+| TXT | `send.account` | `v=spf1 include:amazonses.com ~all` |
+| MX | `send.account` | Priority `10`, `feedback-smtp.ap-northeast-1.amazonses.com` |
+
+Use Resend's returned DKIM value, never a guessed key or one from another domain.
+Read existing exact-name records before adding; a conflicting value requires
+review rather than replacement. The return-path MX does not create an inbox for
+`login@account.tradingdatas.com`, and no root-domain MX/SPF change is required.
+
+### Verification and activation boundary
+
+Observed 2026-08-30 14:31 CST: Cloudflare showed all three records with the exact
+values returned by Resend, and public DNS queries returned the correct DKIM,
+SPF and priority-10 MX. A subsequent Cloudflare page reload retained exactly
+the three added mail records plus the original root Worker record. Queries to
+`1.1.1.1` returned all three values, and `8.8.8.8` also returned the correct MX.
+Fresh Resend Get Domain readback at 14:36 CST confirmed the domain and all three
+DKIM/MX/SPF record statuses `verified`. Sending remains enabled, receiving and
+tracking disabled. This verifies the sending domain, not a delivered message.
+
+Read-only verification commands:
+
+```bash
+dig +short TXT resend._domainkey.account.tradingdatas.com
+dig +short TXT send.account.tradingdatas.com
+dig +short MX send.account.tradingdatas.com
+```
+
+No email was sent, API key created/changed, Worker secret provisioned, website
+release deployed, identity database migrated, SMS enabled, or payment activated
+during domain preparation. A verified domain alone does not enable email login.
+Before activation, review identity storage and tenant ownership, implement
+one-use challenges and abuse controls, provision an approved least-privilege
+server-side sender secret, and verify delivery to an explicitly approved test
+recipient plus session/expiry/replay/isolation behavior. Never put the sender
+secret, user address, verification code or login link into logs or the bundle.
+
+The [email identity candidate](design/email-identity-v1.md) implements this flow
+inside the existing Login/Account with local-only D1-schema tests and synthetic
+mail. No production D1 binding, secret or enable flag is configured by that
+candidate. Its dedicated-store approval, exact-head release, retention policy,
+approved-recipient delivery check and runtime readback remain separate gates.
+
+2026-08-30 follow-up: the owner approved proceeding with the dedicated account
+store direction. GitHub HTTPS authorization and the Resend verified domain were
+rechecked. Local Wrangler authorization had expired; renewing D1/Worker write
+permissions was blocked pending explicit approval and the OAuth process was
+terminated. No dashboard-write or CI-credential workaround was attempted. Obtain
+the exact write scope and test recipient before provisioning or sending; preserve
+existing deployment credentials and unrelated Resend keys. Local verification
+and a reviewable PR may proceed without production access.
+
+Rollback is separate and must target only these three newly created DNS records
+and this Resend domain, after checking that no sender has begun using them.
+Do not delete unrelated DNS records, the root Worker binding, existing Resend
+domains, website sessions, customer keys or data-plane services. DNS rollback
+does not authorize credential rotation or deletion of any account data.
+
 ## 发布门禁
 
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。

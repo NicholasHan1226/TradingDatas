@@ -18,7 +18,8 @@ test("keeps unimplemented identity and commerce capabilities explicit", () => {
   assert.match(appSource, /另类数据加购尚未单独投影/);
   assert.match(appSource, /支付与账单暂未开放/);
   assert.match(appSource, /购买预览不会生成订单或账单/);
-  assert.match(appSource, /邮箱、短信和跨设备会话尚未开放/);
+  assert.match(appSource, /凭证绑定与跨设备会话列表尚未开放/);
+  assert.match(appSource, /短信服务暂未接入/);
   assert.doesNotMatch(appSource, /模拟订单号|mock invoice|verification code sent/i);
 });
 
@@ -44,7 +45,8 @@ test("all logout entry points share a guarded confirmation and visible retry sta
 test("late reads and key mutations cannot restore a previous account", () => {
   assert.match(appSource, /accountEpoch\.current \+= 1/);
   assert.match(appSource, /accountReadAbort\.current\?\.abort\(\)/);
-  assert.equal((appSource.match(/if \(accountEpoch\.current !== epoch\) return/g) || []).length, 5);
+  // Includes the independent email login path in addition to the five legacy guards.
+  assert.equal((appSource.match(/if \(accountEpoch\.current !== epoch\) return/g) || []).length, 6);
   assert.match(appSource, /if \(!current\(\)\) return/);
   assert.match(appSource, /用量暂时无法加载，你仍然处于登录状态/);
 });

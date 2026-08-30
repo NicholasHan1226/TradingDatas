@@ -1,3 +1,5 @@
+import { handleEmailIdentity } from "./email-identity.js";
+
 const SESSION_COOKIE = "td_account_session";
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
 const SESSION_AAD = new TextEncoder().encode("tradingdatas-account-session-v1");
@@ -116,7 +118,11 @@ async function upstreamRequest(env, path, accessKey, init = {}) {
   headers.set("authorization", `Bearer ${accessKey}`);
   headers.set("accept", "application/json");
   // Never forward a bearer credential through an upstream redirect.
-  const response = await fetch(target, { ...init, headers, redirect: "error", signal: AbortSignal.timeout(8_000) });
+  const response = await fetch(target, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(8_000) });
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new Error("account_upstream_redirect_rejected");
+  }
   const responseHeaders = { "content-type": response.headers.get("content-type") || "application/json; charset=utf-8" };
   return new Response(response.body, { status: response.status, headers: { ...responseHeaders, "cache-control": "no-store" } });
 }
@@ -131,6 +137,8 @@ function accountUpstreamPath(url) {
 
 async function handleAccountApi(request, env) {
   const url = new URL(request.url);
+  const identityResponse = await handleEmailIdentity(request, env);
+  if (identityResponse) return identityResponse;
   // Clearing a browser cookie must work even during an upstream/config outage.
   if (url.pathname === "/api/account/session" && request.method === "DELETE") {
     if (!sameOriginMutation(request)) return jsonResponse({ error: "origin_not_allowed" }, 403);

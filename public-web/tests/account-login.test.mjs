@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { accountJson, startAccountSession, readAccountIdentity } from "../src/accountSession.js";
+import { accountJson, startAccountSession, startEmailSession, readAccountIdentity } from "../src/accountSession.js";
 
 const portal = { tenant_id: "synthetic-tenant", tier: "basic" };
 
@@ -32,6 +32,18 @@ test("successful HTTP status alone is not an authenticated account", async () =>
   for (const payload of [null, {}, { portal: {} }, { portal: { tenant_id: "", tier: "basic" } }]) {
     await assert.rejects(readAccountIdentity({}, async () => Response.json(payload)), /account_unavailable/);
   }
+});
+
+test("email account accepts only verified unsubscribed identity, not injected grants", async () => {
+  const identity = {kind:"email",user_id:"test-user",email:"reader@example.com",email_verified:true,tenant_id:null,subscription_state:"not_subscribed",data_categories:[],session_expires_at:"2030-01-01T00:00:00Z"};
+  const valid=await startEmailSession({email:identity.email,challenge_id:"test",code:"12345678"},async(url,init)=>{
+    assert.equal(url,"/api/account/email/verify");assert.equal(init.credentials,"same-origin");return Response.json({identity});
+  });
+  assert.equal(valid.identity_kind,"email");
+  for(const patch of [{email_verified:false},{tenant_id:"other-tenant"},{data_categories:["a_share"]},{subscription_state:"active"},{session_expires_at:"invalid"}]) {
+    await assert.rejects(readAccountIdentity({},async()=>Response.json({identity:{...identity,...patch}})),/account_unavailable/);
+  }
+  await assert.rejects(startEmailSession({},async()=>Response.json({},{status:400})),/invalid_code/);
 });
 
 test("auth, throttling and outage failures remain distinct", async () => {

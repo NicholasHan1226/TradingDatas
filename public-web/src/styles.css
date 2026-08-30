@@ -1614,3 +1614,17 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Email identity extends the existing Login / Account components. */
+.login-email-status { margin: 18px 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.email-signin-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-top: 8px; }
+.email-signin-actions button { min-height: 44px; border: 0; border-radius: var(--radius-sm); padding: 8px 0; background: transparent; color: var(--blue); font-size: 13px; line-height: 1.5; cursor: pointer; }
+.email-signin-actions button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+.email-signin-actions button:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.email-signin-actions button:disabled { color: var(--muted); cursor: not-allowed; }
+.email-signin-form #login-email-code { letter-spacing: .24em; font-variant-numeric: tabular-nums; }
+.email-account-intro { padding: 26px 0; max-width: 620px; }
+.email-account-intro > svg { color: var(--aqua); }
+.email-account-intro h3 { font-size: 24px; line-height: 1.35; margin: 14px 0 10px; }
+.email-account-intro p { color: var(--muted); line-height: 1.7; margin: 0; }
+.email-account-panel dd, .account-menu-identity strong { overflow-wrap: anywhere; }

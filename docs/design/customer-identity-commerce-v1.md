@@ -1,7 +1,7 @@
 # Customer identity and commerce — implementation contract draft
 
-Status: implementation proposal with owner-confirmed identity methods and numeric
-prices; not runtime authority, a provider selection, or permission to collect
+Status: implementation proposal with owner-confirmed identity methods, Resend
+email provider and numeric prices; not runtime authority or permission to collect
 payments. Inspected against main `97c814b` on
 2026-08-30. Product authority: [Product](../PRODUCT.md); current account design:
 [Account convergence](account-admin-convergence-v1.md); current API:
@@ -26,6 +26,11 @@ is confirmed. See [implementation and resumption gates](payment-flow-preparation
   The target is one account supporting separately verified credentials, not two
   separate customer workspaces. Linking requires an authenticated account plus
   verification of the new credential; never merge accounts by typed contact.
+- Owner selected the existing Resend account for email on 2026-08-30; SMS has no
+  provider yet. Deliver email first without requiring SMS configuration. The
+  dedicated sending domain is `account.tradingdatas.com`, with intended sender
+  `TradingDatas <login@account.tradingdatas.com>`. Domain setup is not an enabled
+  login flow or proof of delivery. See [email preparation](../OPERATIONS.md#resend-account-email-preparation).
 - Owner confirmed monthly prices of 99 / 299 / 499, and annual payment at 10%
   off twelve monthly prices. Annual totals are 1,069.20 / 3,229.20 / 5,389.20;
   monthly equivalents are 89.10 / 269.10 / 449.10. Public display assumes CNY
@@ -46,7 +51,7 @@ is confirmed. See [implementation and resumption gates](payment-flow-preparation
 | Account access | Tenant-scoped Portal projection and API key management | Verified user-to-tenant binding; no email-string tenant matching |
 | Commercial limits | Server-enforced basic/standard/flagship minute limits | Approved sellable offers and subscription entitlement provisioning |
 | Payment | No checkout, verified notification handler or ledger found | Merchant/provider choice, sandbox integration, reconciliation |
-| User onboarding | Access-key login only | Verified identity, account creation and no-subscription state |
+| User onboarding | Access-key bridge; local email identity candidate in existing Login/Account | Approve dedicated store/secrets and verify real delivery before activation |
 
 The candidate public Pricing cards now follow `PRODUCT.md`: same base-data scope
 and history policy, with rate-only tier differentiation. Monthly/annual switches
@@ -56,10 +61,12 @@ set and its licence evidence still require explicit review.
 
 ## Decisions required before implementation/activation
 
-1. Both identity methods are confirmed. Still select the existing
-   sender/provider accounts, sender domain and SMS signature/template, and who
-   owns delivery/support. No service purchase or new identity-provider upload
-   is authorized by this draft.
+1. Both identity methods are confirmed; Resend and the dedicated email domain
+   are selected. Still approve the identity store, least-privilege sending
+   secret provisioning, and delivery/support ownership before email activation.
+   SMS provider/signature/template remain deferred; do not expose an enabled SMS
+   challenge or make SMS a prerequisite for email. No service purchase or contact
+   upload is authorized by this draft.
 2. Merchant entity and available merchant account, supported payment channels,
    settlement currency and sandbox credentials. Never request secrets in chat.
 3. Prices, periods and manual renewal are confirmed. Still decide currency,
@@ -111,11 +118,14 @@ Do not overload technical dataset entitlement with purchased subscriptions.
 
 ## Delivery sequence and gates
 
-### Next independent-account slice (not implemented)
+### Independent-account slice (local candidate, not activated)
 
-Implement within the existing Login/Account, independently of payment activation.
-First freeze the identity store, email sender and SMS sender choices and the
-verified legacy-tenant linking contract. This document does not authorize a
+Implemented locally within the existing Login/Account, independently of payment
+activation: one-use email codes, independent revocable sessions and unsubscribed
+account projection. See [email identity implementation contract](email-identity-v1.md).
+The dedicated D1 store and Resend secrets still need production approval; legacy
+tenant linking is deliberately absent, not inferred by matching email. SMS is a
+later independent slice, not an email-launch requirement. This document does not authorize a
 provider purchase, contact upload, production migration or secret change.
 
 | Website identity | Data entitlement | Account experience |

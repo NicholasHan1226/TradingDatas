@@ -37,3 +37,9 @@ test("provides responsive and dark-compatible login presentation", () => {
   assert.match(styleSource, /:root\[data-theme="dark"\] \.login-panel/);
   assert.match(styleSource, /@media \(max-width: 720px\)[\s\S]*\.login-page/);
 });
+
+test("email recovery actions retain touch targets, theme tokens and keyboard focus", () => {
+  assert.match(styleSource, /\.email-signin-actions button \{[^}]*min-height: 44px;[^}]*background: transparent;[^}]*color: var\(--blue\)/);
+  assert.match(styleSource, /\.email-signin-actions button:focus-visible \{[^}]*outline: 2px solid var\(--blue\)/);
+  assert.match(styleSource, /\.email-signin-actions button:disabled \{[^}]*color: var\(--muted\)/);
+});

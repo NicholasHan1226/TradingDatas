@@ -359,13 +359,32 @@ credential-containment bridge，不是邮箱身份库，也不改变 Agent 继�
 同源 DELETE 清 Cookie 不依赖上游或密钥配置，故网关配置故障时仍可退出。上游 401
 也会清除当前 Cookie；403、429 与服务故障不能冒充成功或静默降级。代理按路径约束
 允许的方法，请求体在流读取过程中限制为 16 KiB，登录账户响应限制为 512 KiB；
-上游请求禁止重定向并设 8 秒超时，网络异常返回无敏感详情的 502/504。
+上游请求使用 Worker 支持的 `redirect: manual` 并拒绝 3xx（不跟随、不转发
+Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 
 浏览器不再使用 direct-bearer 兼容路径，也不保存原始 key。旧 `localStorage` 与
 `sessionStorage` credential 在启动时移除，旧直连用户需重新登录；服务端 Token 不变。
 前端请求设 12 秒超时，登录单飞，账户变化后的迟到结果不得恢复前一账户/新密钥。
 `me` 验证身份与 `usage` 可用性分离，用量服务故障仅展示可重试提示。页面重新可见时
 验证现有会话；非后台轮询。此桥接仍不等于手机/邮箱身份库或可独立撤销的持久会话。
+
+### Independent email identity candidate
+
+The existing Login/Account also has a local-only, separately gated email-identity
+implementation. Its control-plane routes are `GET /api/account/auth-methods`,
+`POST /api/account/email/challenge`, and `POST /api/account/email/verify`.
+Email sessions reuse `/api/account/me` and `DELETE /api/account/session`, but use
+a distinct opaque cookie with server-side revocation in a dedicated identity
+store. Unlike legacy key-cookie clearing, email sign-out requires confirmation
+from that store; a store outage cannot be reported as successful revocation.
+
+The only email-account state implemented is verified and `not_subscribed`, with
+no tenant, data grant, usage or API key access. This does not change catalog/query
+or existing Portal authentication. Configured readiness is not delivery evidence;
+missing configuration keeps email login unavailable. Detailed request/response,
+limits, failure and release contracts: [Email identity v1](design/email-identity-v1.md).
+No production storage migration, secret provisioning or email activation is
+asserted by this API description.
 
 ## Customer Portal API
 
