@@ -42,6 +42,10 @@ is confirmed. See [implementation and resumption gates](payment-flow-preparation
   Do not create a hidden add-on or a silent trial-to-paid conversion.
 - Identity, orders and payment records do not belong in financial facts SQLite.
   Do not migrate the data plane or repurpose its service credentials.
+- The owner-designated email identity must access both public Account and Admin,
+  using explicit server-side role authorization after verification, not separate
+  accounts or client email matching. This is a confirmed target, not an existing
+  admin session bridge; see the [owner workspace contract](account-admin-convergence-v1.md#owner-identity-and-two-workspaces).
 
 ## Existing implementation and gaps
 

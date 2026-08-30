@@ -61,6 +61,39 @@ The React application under `static/app/` is administrator-only. Customer-scoped
 
 The administrator console links out to the public Account instead of rendering an embedded customer preview. This keeps customer session state, customer navigation, and administrator authority visibly separate.
 
+## Owner identity and two workspaces
+
+Owner-confirmed on 2026-08-30: the supplied account email is the intended platform
+administrator identity and must also enter the existing public Account. Its literal
+address belongs only to private provisioning context, not this public repository.
+This is a role requirement, not evidence that the email was verified or that a role
+was already assigned.
+
+- One verified user identity, with the existing Account as the personal/customer
+  workspace and an explicitly labelled administrator-console entry when authorized.
+- No duplicate owner account, no separate customer portal, and no embedded customer
+  impersonation view. Returning to Account shows only that identity's own data.
+- Persist an explicit server-controlled administrator grant against the verified
+  stable user ID. It is not a registration field, query parameter, client setting,
+  email-prefix convention, or automatic grant to the first registrant.
+- Every privileged request must validate the live session, enabled user and current
+  role. Role removal must stop subsequent admin access without waiting for cookie
+  expiry. Public Account access may continue if the identity itself remains enabled.
+- Administrator role and commercial subscription/data grants are separate. Do not
+  infer paid entitlement or attach an existing tenant from an email or token label.
+- Do not expose a shared administrator bearer key to the browser or replace existing
+  keys to implement shared sign-in. The backend trust boundary, admin-origin/session
+  handoff, audit attribution and role-provisioning path require a reviewed contract.
+
+Current gap: the email candidate returns only verified, unsubscribed identities;
+the existing admin frontend still requires its own admin/internal credential.
+Neither a verified sending domain nor a delivered test email closes this gap.
+Keep these facts explicit until real shared-login and privileged-request readback.
+
+Acceptance must cover owner and ordinary-user login, forged role/email rejection,
+unauthorized direct admin requests, immediate role removal, expiry/replay/sign-out,
+and a return to the same Account without a second identity or leaked credentials.
+
 ## Acceptance
 
 Account sign-out has one shared pending/error state across Overview and Security.

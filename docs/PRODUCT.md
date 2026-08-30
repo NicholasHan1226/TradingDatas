@@ -127,6 +127,14 @@ verified identity binding, recovery, and production activation are not yet
 implemented. Both credentials must be verified before they can be linked to
 the same account; never merge accounts from matching unverified input.
 
+Owner-confirmed account role (2026-08-30): the owner's designated email identity
+is intended to access both the existing public Account and the administrator
+console. Keep one identity with separately authorized workspaces, not two user
+accounts or another customer dashboard. Verification and an explicit server-owned
+administrator role are required; an email string or UI switch cannot grant it.
+Shared administrator sign-in is not implemented by the email identity candidate.
+See [owner access contract](design/account-admin-convergence-v1.md#owner-identity-and-two-workspaces).
+
 The approved numeric prices are 99 / 299 / 499 per month. The domestic-first
 display uses CNY (currency assumption to confirm before merchant activation).
 Annual payment is twelve monthly prices at 10% off, billed as one annual total:

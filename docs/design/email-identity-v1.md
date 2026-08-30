@@ -12,6 +12,12 @@ API credential. Verification creates an unsubscribed account; it cannot provisio
 data, create keys, associate existing tenants, create orders or collect payment.
 SMS remains unavailable. Bookmarks remain browser-local, not account-synced.
 
+The owner-designated email is also intended to be the administrator identity.
+This candidate does not grant roles or bridge admin sessions. Keep the same user
+identity and public Account; the subsequent [owner access contract](account-admin-convergence-v1.md#owner-identity-and-two-workspaces)
+requires explicit server authorization after verification, not an email comparison
+inside this login handler. A test delivery alone must not activate that role.
+
 The candidate account store is a dedicated Cloudflare D1 binding `IDENTITY_DB`.
 `public-web/worker/identity-schema.sql` is for this store only; it must never run
 against financial facts SQLite or any existing database without explicit review.
