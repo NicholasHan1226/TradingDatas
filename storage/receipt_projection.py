@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import stat
 import struct
@@ -965,6 +966,39 @@ def _scan_ingest_run_rows_by_ids(
     return tuple(_classify_ingest_run_row(row) for row in rows)
 
 
+@contextmanager
+def _execution_candidate_predicate(
+    conn: sqlite3.Connection, fragments: list[str]
+):
+    """Accelerate the literal prefilter without parsing or trusting receipt JSON."""
+
+    cursor = conn.execute("PRAGMA encoding")
+    try:
+        encoding = cursor.fetchone()[0]
+    finally:
+        cursor.close()
+    if encoding != "UTF-8":
+        # CAST(text AS BLOB) uses the database encoding. Preserve the original
+        # SQLite semantics for non-UTF-8 databases, including malformed text.
+        yield " OR ".join("instr(notes, ?) > 0" for _ in fragments), tuple(fragments)
+        return
+
+    pattern = re.compile(b"|".join(re.escape(item.encode("utf-8")) for item in fragments))
+    # A lookup owns its callback; never replace another lookup's registered UDF.
+    function_name = f"td_receipt_candidate_{uuid.uuid4().hex}"
+
+    def matches(notes: bytes | None) -> int:
+        return int(notes is not None and pattern.search(notes) is not None)
+
+    conn.create_function(function_name, 1, matches)
+    try:
+        # BLOB avoids Python's automatic UTF-8 decoding of invalid SQLite TEXT
+        # and preserves literal matches after NUL and in malformed BLOB values.
+        yield f"{function_name}(CAST(notes AS BLOB)) > 0", ()
+    finally:
+        conn.create_function(function_name, 1, None)
+
+
 def _scan_ingest_run_rows_by_execution_ids(
     conn: sqlite3.Connection,
     dataset_id: str,
@@ -1005,23 +1039,22 @@ def _scan_ingest_run_rows_by_execution_ids(
         fragments.extend(
             (f'"attempt_id":{ordinary}', f'"attempt_id":{physical_prefix}')
         )
-    predicates = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
     scan_limit = (
         _MAX_INGEST_RUN_SCAN_ROWS
         if read_budget is None
         else min(_MAX_INGEST_RUN_SCAN_ROWS, read_budget.remaining)
     ) + 1
-    query = _RECEIPT_QUERY.replace(
-        "FROM market_ingest_runs\nLIMIT ?",
-        f"FROM market_ingest_runs\nWHERE source = ? AND ({predicates})\nLIMIT ?",
-    )
-    raw_rows = tuple(
-        tuple(row)
-        for row in conn.execute(
-            query,
-            (dataset_id, *fragments, scan_limit),
-        ).fetchall()
-    )
+    with _execution_candidate_predicate(conn, fragments) as (predicate, params):
+        query = _RECEIPT_QUERY.replace(
+            "FROM market_ingest_runs\nLIMIT ?",
+            f"FROM market_ingest_runs\nWHERE source = ? AND ({predicate})\nLIMIT ?",
+        )
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (dataset_id, *params, scan_limit))
+            raw_rows = tuple(tuple(row) for row in cursor.fetchall())
+        finally:
+            cursor.close()
     if read_budget is not None:
         read_budget.consume(len(raw_rows))
     if len(raw_rows) == scan_limit:

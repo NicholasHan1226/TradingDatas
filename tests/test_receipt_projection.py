@@ -2989,6 +2989,92 @@ def test_interface_projection_is_scoped_to_its_provider_binding(
     assert report["interfaces"]["alternate:daily_alt"]["receipt_id"] is None
 
 
+@pytest.mark.parametrize("encoding", ["UTF-8", "UTF-16le", "UTF-16be"])
+def test_execution_candidate_predicate_matches_original_sql_for_raw_material(encoding):
+    conn = sqlite3.connect(":memory:")
+    conn.execute(f"PRAGMA encoding='{encoding}'")
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    roots = ['exec-alpha', '执行记录', 'exec-"quote', 'exec-\\slash']
+    fragments = []
+    material = [None, 1, 1.5, "", b"", '{"unrelated":true}']
+    for root in roots:
+        ordinary = '"attempt_id":' + json.dumps(root, ensure_ascii=False)
+        physical = '"attempt_id":' + json.dumps(root + ':provider-call:', ensure_ascii=False)[:-1]
+        fragments.extend((ordinary, physical))
+        material.extend([
+            '{' + ordinary + '}',
+            '{"attempt_id":"other",' + ordinary + '}',
+            '{"nested":{' + ordinary + '}}',
+            '{' + ordinary,
+            '\x00' + ordinary,
+            ordinary.encode('utf-8'),
+            b'\x80\x00' + ordinary.encode('utf-8'),
+            '{' + physical + '000000000000:retry:000000000000"}',
+            '{"attempt_id":' + json.dumps(root + '-near-prefix') + '}',
+            json.dumps(ordinary),
+        ])
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in material])
+    # Invalid TEXT must be filtered without Python decoding before the predicate.
+    for value in [b'\x80unrelated', b'\x80' + fragments[0].encode('utf-8')]:
+        conn.execute("INSERT INTO candidates(notes) VALUES (CAST(? AS TEXT))", (value,))
+    old = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
+    expected = conn.execute(f"SELECT id FROM candidates WHERE {old}", fragments).fetchall()
+    with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+        cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+        try:
+            assert cursor.fetchall() == expected
+        finally:
+            cursor.close()
+    conn.close()
+
+
+@pytest.mark.parametrize("outcome", ["success", "budget", "interrupted"])
+def test_execution_candidate_callback_is_removed_after_scan(monkeypatch, outcome):
+    class TrackingConnection(sqlite3.Connection):
+        registrations = []
+
+        def create_function(self, name, narg, func, **kwargs):
+            self.registrations.append((name, func is not None))
+            return super().create_function(name, narg, func, **kwargs)
+
+    conn = sqlite3.connect(":memory:", factory=TrackingConnection)
+    conn.executescript(SCHEMA_SQL)
+    _insert_receipt(
+        monkeypatch, conn, status="success", attempt_id="lookup-cleanup",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    if outcome == "interrupted":
+        def authorizer(action, name, *_):
+            if action == sqlite3.SQLITE_READ and name == "market_ingest_runs":
+                conn.set_progress_handler(lambda: 1, 1)
+            return sqlite3.SQLITE_OK
+        conn.set_authorizer(authorizer)
+    budget = projection_module._ReceiptReadBudget(0 if outcome == "budget" else 10)
+    try:
+        if outcome == "success":
+            assert projection_module._scan_ingest_run_rows_by_execution_ids(
+                conn, "cn.equity.daily", ("lookup-cleanup",), read_budget=budget
+            )
+        else:
+            error = RuntimeProjectionError if outcome == "budget" else sqlite3.OperationalError
+            with pytest.raises(error, match="budget|interrupted"):
+                projection_module._scan_ingest_run_rows_by_execution_ids(
+                    conn, "cn.equity.daily", ("lookup-cleanup",), read_budget=budget
+                )
+    finally:
+        conn.set_progress_handler(None, 0)
+        conn.set_authorizer(None)
+    installed = [name for name, active in conn.registrations if active]
+    removed = [name for name, active in conn.registrations if not active]
+    assert len(installed) == 1
+    assert installed == removed
+    with pytest.raises(sqlite3.OperationalError):
+        conn.execute(f"SELECT {installed[0]}(?)", (b'"attempt_id":"lookup-cleanup"',)).fetchall()
+    conn.close()
+
+
 def test_file_projection_rejects_ingest_schema_without_primary_key(
     tmp_path: Path,
 ) -> None:

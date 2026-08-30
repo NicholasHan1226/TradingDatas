@@ -100,19 +100,59 @@ Reproduce the focused checks with:
 uv run --python 3.12 --with-requirements requirements.txt pytest -q tests/test_receipt_projection.py -k catalog_complet
 ```
 
-The adjacent provider-native query suite passed 64 tests in 53.20 seconds with
-two workers. The complete receipt-projection suite is running under independent
-review at this document freeze; its final result remains separate until reported.
+Before the performance follow-up below, the adjacent provider-native query suite
+passed 64 tests in 53.20 seconds with two workers. The complete receipt-projection
+suite passed 149 tests in 150.58 seconds; independent review passed the same 149
+in 149.98 seconds. Those results apply to the earlier correctness candidate,
+not automatically to the performance follow-up.
 Changed storage-file Ruff and `git diff --check` passed. Checking the complete
 test file also reports the pre-existing unused `first_receipt` local at baseline
 line 904 (F841), confirmed in HEAD; this unrelated code was not changed.
 
-Frozen SHA256:
+## Performance follow-up before release
+
+The candidate's real-database correctness preflight agreed with complete news
+history in the same snapshot. However, the actual API-style validation cache
+still measured 18.629 seconds cold and 15.648 seconds warm against the consumer's
+15-second timeout. The 55 sibling lookups consumed approximately 14.8–15.1
+seconds: the original predicate repeated up to 200 `instr(notes, fragment)`
+searches for each source row. This is a release-blocking performance defect;
+the earlier candidate CI does not cover the follow-up head.
+
+For UTF-8 databases, replace only that literal prefilter with a connection-local
+SQLite function using a compiled union of escaped literal byte strings. SQL
+passes `CAST(notes AS BLOB)` so malformed UTF-8 TEXT, invalid BLOB bytes and NUL
+characters do not trigger Python text decoding before selection. Every pattern
+is escaped; no caller-supplied regex syntax is evaluated. Non-UTF-8 databases
+retain the original SQL predicate because casting TEXT uses the database's
+encoding. No JSON extraction or JSON-valid filter is used: duplicate keys,
+nested keys and malformed siblings must continue to reach the exact validator.
+
+Each lookup registers a private UUID-named callback on its existing connection,
+closes its cursor and unregisters the callback in `finally`, including SQLite
+interrupts. No callback or pattern is cached across connections. Original source
+constraints, fragments, LIMIT+1, raw-row budget accounting and all downstream
+classifiers and exact parsers remain unchanged. The source history still needs
+to be scanned; this change reduces repeated string searches without claiming
+an execution index or an unbounded scan exemption.
+
+The follow-up focused run passed 20 tests in 12.14 seconds: the 14 existing
+boundary regressions plus six new cases. Three cases compare raw candidate IDs
+against the original SQL for 48 synthetic values under UTF-8, UTF-16le and
+UTF-16be. They include duplicate/nested/malformed material, Unicode,
+quotes/backslashes, near prefixes, BLOB/NUL/invalid UTF-8 TEXT, null and numbers.
+Three cases prove callback removal after success, budget failure and SQLite
+interruption. These are synthetic database checks, not provider observations.
+The full 155-test projection suite plus 64 adjacent query tests are running at
+this follow-up freeze. Real snapshot raw-candidate equivalence, cold/warm latency,
+fresh independent review and new exact-head CI remain required release checks.
+
+Follow-up frozen SHA256:
 
 - `storage/receipt_projection.py`:
-  `e36e8b0753f51c1a21c0b1d7fdcdd0bb0004c32d9271d6b76520eb0ae301ff83`
+  `e78637530fb7189534a60b5ad24d3b10396fccfbef1a71166e7a63238f5b9374`
 - `tests/test_receipt_projection.py`:
-  `ed46361f00c2112d28d57c600adca75507032f1c191b762a4c5310e5f9fd78a6`
+  `819ad4e88590d9795bbbd072012db27df4e6e7bb2126132255ef4846d8f3a185`
 
 No commit, push, provider request or production write was performed by this
 task. Exact-head CI, independent final review, bounded real-database candidate
