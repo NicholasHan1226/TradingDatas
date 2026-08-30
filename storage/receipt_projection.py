@@ -970,6 +970,48 @@ def _scan_ingest_run_rows_by_ids(
 # Python UDF call. Keep these scans from interleaving across connections; the
 # gate covers registration through cleanup, not receipt validation or HTTP.
 _EXECUTION_CANDIDATE_SCAN_LOCK = threading.RLock()
+_EXECUTION_CANDIDATE_MAX_PARAMETERS = 800
+_EXECUTION_CANDIDATE_MAX_SQL_BYTES = 32 * 1024
+
+
+def _native_execution_candidate_predicate(
+    conn: sqlite3.Connection,
+    function_name: str,
+    prefix: bytes,
+    suffix_groups: tuple[tuple[int, frozenset[bytes]], ...],
+) -> tuple[str, tuple[object, ...]] | None:
+    """Avoid Python for zero/one-prefix rows; later occurrences use the exact UDF."""
+    # The enclosing scanner binds source and LIMIT in addition to this predicate.
+    parameter_limit = min(
+        _EXECUTION_CANDIDATE_MAX_PARAMETERS,
+        conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) - 2,
+    )
+    parameter_count = 2 + sum(2 + len(values) for _, values in suffix_groups)
+    if parameter_count > parameter_limit:
+        return None
+    clauses = []
+    params = []
+    for length, values in suffix_groups:
+        ordered = tuple(sorted(values))
+        placeholders = ",".join("?" for _ in ordered)
+        clauses.append(
+            "substr(td_candidate_bytes, td_candidate_position + ?, ?) "
+            f"IN ({placeholders})"
+        )
+        params.extend((len(prefix), length, *ordered))
+    predicate = (
+        "(SELECT CASE WHEN td_candidate_position = 0 THEN 0 "
+        f"WHEN ({' OR '.join(clauses)}) THEN 1 "
+        "WHEN instr(substr(td_candidate_bytes, td_candidate_position + 1), ?) > 0 "
+        f"THEN {function_name}(td_candidate_bytes) ELSE 0 END "
+        "FROM (SELECT CAST(notes AS BLOB) AS td_candidate_bytes, "
+        "instr(CAST(notes AS BLOB), ?) AS td_candidate_position)) > 0"
+    )
+    if len(predicate.encode("utf-8")) > _EXECUTION_CANDIDATE_MAX_SQL_BYTES:
+        return None
+    # Search from first-position + 1, not the end of the prefix: overlaps matter.
+    params.extend((prefix, prefix))
+    return predicate, tuple(params)
 
 
 @contextmanager
@@ -1007,6 +1049,10 @@ def _execution_candidate_predicate(
     )
     # A lookup owns its callback; never replace another lookup's registered UDF.
     function_name = f"td_receipt_candidate_{uuid.uuid4().hex}"
+    native = (
+        _native_execution_candidate_predicate(conn, function_name, prefix, suffix_groups)
+        if pattern is None else None
+    )
 
     def matches(notes: bytes | None) -> int:
         if notes is None:
@@ -1027,7 +1073,9 @@ def _execution_candidate_predicate(
         try:
             # BLOB avoids Python's automatic UTF-8 decoding of invalid SQLite TEXT
             # and preserves literal matches after NUL and in malformed BLOB values.
-            yield f"{function_name}(CAST(notes AS BLOB)) > 0", ()
+            yield native if native is not None else (
+                f"{function_name}(CAST(notes AS BLOB)) > 0", ()
+            )
         finally:
             conn.create_function(function_name, 1, None)
 
@@ -1038,6 +1086,9 @@ def _scan_ingest_run_rows_by_execution_ids(
     execution_ids: tuple[str, ...],
     *,
     read_budget: _ReceiptReadBudget | None = None,
+    validated_seed_rows: Mapping[
+        tuple[object, ...], tuple[_ScannedIngestRunRow, str]
+    ] | None = None,
 ) -> tuple[_ScannedIngestRunRow, ...]:
     """Read only receipt rows belonging to selected validated executions.
 
@@ -1096,6 +1147,16 @@ def _scan_ingest_run_rows_by_execution_ids(
     selected: list[_ScannedIngestRunRow] = []
     expected = frozenset(execution_ids)
     for row in raw_rows:
+        # Catalog may reuse only a seed validated in this same request with an
+        # identical full raw tuple (including SQLite typeof columns). Reads and
+        # duplicate rows have already been charged above; run_id alone is never
+        # sufficient. Other callers and changed/new rows keep the original path.
+        seed = None if validated_seed_rows is None else validated_seed_rows.get(row)
+        if seed is not None:
+            scanned, execution_id = seed
+            if execution_id in expected:
+                selected.append(scanned)
+            continue
         scanned = _classify_ingest_run_row(row)
         if scanned.invalid is not None or scanned.payload is None:
             # The SQL fragment matched receipt-shaped material in this bounded
@@ -3512,17 +3573,19 @@ def _project_registry_datasets(
         if len(source_rows) < _MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET:
             continue
         dataset = registry.resolve(dataset_id)
-        execution_ids = frozenset(
-            validated.execution_id
-            for row in source_rows
-            if isinstance((validated := _validate_receipt_row_memoized(
+        validated_seed_rows = {}
+        for row in source_rows:
+            validated = _validate_receipt_row_memoized(
                 row, dataset, known_dataset_ids, now, None, validation_cache
-            )), _Receipt)
-        )
+            )
+            if isinstance(validated, _Receipt):
+                validated_seed_rows[row.raw] = (row, validated.execution_id)
+        execution_ids = frozenset(value[1] for value in validated_seed_rows.values())
         if not execution_ids:
             continue
         siblings = _scan_ingest_run_rows_by_execution_ids(
-            conn, dataset_id, tuple(sorted(execution_ids)), read_budget=read_budget
+            conn, dataset_id, tuple(sorted(execution_ids)), read_budget=read_budget,
+            validated_seed_rows=validated_seed_rows,
         )
         complete_execution_ids[dataset_id] = execution_ids
         for row in siblings:

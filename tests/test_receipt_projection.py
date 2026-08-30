@@ -2502,6 +2502,129 @@ def _catalog_retry_boundary(monkeypatch, *, calls=(0, 1, 2), newer_count=98, con
     return conn, registry, ids
 
 
+def test_catalog_reuses_validated_seed_identity_without_reparsing(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=100)
+    original = projection_module.parse_provider_call_attempt_id
+    parsed = []
+
+    def count_parse(value):
+        parsed.append(value)
+        return original(value)
+
+    monkeypatch.setattr(projection_module, "parse_provider_call_attempt_id", count_parse)
+    try:
+        report = project_catalog_runtime(
+            conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+            validation_cache={},
+        )
+        assert report["datasets"][registry.datasets[0].dataset_id]["state"] == "success"
+        assert len(parsed) == 100
+    finally:
+        conn.close()
+
+
+def _validated_single_catalog_seed(monkeypatch):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=1)
+    dataset = registry.datasets[0]
+    seed = projection_module._scan_ingest_run_rows_by_ids(conn, (ids[0],))[0]
+    validated = projection_module._validate_receipt_row(
+        seed, dataset, frozenset({dataset.dataset_id}),
+        datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+    assert isinstance(validated, projection_module._Receipt)
+    return conn, dataset.dataset_id, seed, validated.execution_id
+
+
+@pytest.mark.parametrize("mutation", ["notes", "status", "source", "notes_type", "count_type"])
+def test_catalog_seed_reuse_requires_full_raw_tuple_not_run_id(monkeypatch, mutation):
+    conn, dataset_id, seed, execution_id = _validated_single_catalog_seed(monkeypatch)
+    mapping = {seed.raw: (seed, execution_id)}
+    updates = {
+        "notes": "notes = notes || ' '",
+        "status": "status = 'failed'",
+        "source": "source = 'cn.equity.alternate'",
+        "notes_type": "notes = CAST(notes AS BLOB)",
+        "count_type": "rows_read = CAST(rows_read AS BLOB)",
+    }
+    conn.execute(f"UPDATE market_ingest_runs SET {updates[mutation]} WHERE run_id=?", (seed.raw[1],))
+    source = "cn.equity.alternate" if mutation == "source" else dataset_id
+    baseline = projection_module._scan_ingest_run_rows_by_execution_ids(conn, source, (execution_id,))
+    classified = []
+    original = projection_module._classify_ingest_run_row
+
+    def counted(row):
+        classified.append(row)
+        return original(row)
+
+    monkeypatch.setattr(projection_module, "_classify_ingest_run_row", counted)
+    try:
+        reused = projection_module._scan_ingest_run_rows_by_execution_ids(
+            conn, source, (execution_id,), validated_seed_rows=mapping,
+        )
+        assert len(reused) == 1 and reused[0].raw == baseline[0].raw
+        assert reused[0] is not seed
+        assert classified == [baseline[0].raw]
+        assert reused[0].raw[1] == seed.raw[1]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("budget", [0, 1])
+def test_catalog_seed_reuse_still_charges_all_raw_reads(monkeypatch, budget):
+    conn, dataset_id, seed, execution_id = _validated_single_catalog_seed(monkeypatch)
+    read_budget = projection_module._ReceiptReadBudget(budget)
+    try:
+        if budget == 0:
+            with pytest.raises(RuntimeProjectionError, match="budget"):
+                projection_module._scan_ingest_run_rows_by_execution_ids(
+                    conn, dataset_id, (execution_id,), read_budget=read_budget,
+                    validated_seed_rows={seed.raw: (seed, execution_id)},
+                )
+        else:
+            result = projection_module._scan_ingest_run_rows_by_execution_ids(
+                conn, dataset_id, (execution_id,), read_budget=read_budget,
+                validated_seed_rows={seed.raw: (seed, execution_id)},
+            )
+            assert result[0] is seed and read_budget.remaining == 0
+    finally:
+        conn.close()
+
+
+def test_catalog_seed_reuse_does_not_admit_an_unselected_execution(monkeypatch):
+    conn, dataset_id, seed, execution_id = _validated_single_catalog_seed(monkeypatch)
+    try:
+        assert projection_module._scan_ingest_run_rows_by_execution_ids(
+            conn, dataset_id, (execution_id,),
+            validated_seed_rows={seed.raw: (seed, "another-execution")},
+        ) == ()
+    finally:
+        conn.close()
+
+
+def test_catalog_seed_mapping_is_request_local_and_excludes_invalid_receipts(monkeypatch):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=100)
+    mappings = []
+    original = projection_module._scan_ingest_run_rows_by_execution_ids
+
+    def inspect_mapping(*args, **kwargs):
+        mappings.append(kwargs["validated_seed_rows"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(projection_module, "_scan_ingest_run_rows_by_execution_ids", inspect_mapping)
+    try:
+        now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+        first = project_catalog_runtime(conn, registry, now=now, validation_cache={})
+        assert first["datasets"][registry.datasets[0].dataset_id]["state"] == "success"
+        conn.execute("UPDATE market_ingest_runs SET notes='not-json' WHERE run_id=?", (ids[0],))
+        second = project_catalog_runtime(conn, registry, now=now, validation_cache={})
+        assert second["datasets"][registry.datasets[0].dataset_id]["state"] == "failed"
+        assert len(mappings) == 2 and mappings[0] is not mappings[1]
+        assert len(mappings[0]) == 100 and len(mappings[1]) == 99
+        assert ids[0] not in {raw[1] for raw in mappings[1]}
+    finally:
+        conn.close()
+
+
 def test_catalog_completes_retry_prefix_cut_by_recent_100(monkeypatch):
     conn, registry, ids = _catalog_retry_boundary(monkeypatch)
     dataset = registry.datasets[0]
@@ -3107,6 +3230,103 @@ def test_execution_candidate_callback_is_removed_after_scan(monkeypatch, outcome
     conn.close()
 
 
+def test_execution_candidate_native_first_match_avoids_python_except_later_prefix():
+    calls = []
+
+    class CountingConnection(sqlite3.Connection):
+        def create_function(self, name, narg, func, **kwargs):
+            if func is None:
+                return super().create_function(name, narg, func, **kwargs)
+
+            def counted(value):
+                calls.append(value)
+                return func(value)
+
+            return super().create_function(name, narg, counted, **kwargs)
+
+    conn = sqlite3.connect(":memory:", factory=CountingConnection)
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    values = [None, b"nothing", b"ababaX", b"ababaZ", b"abababaX", b"ababaZababaY", b"ababaZababaQ"]
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in values])
+    fragments = ["ababaX", "ababaY"]
+    try:
+        expected = conn.execute(
+            "SELECT id FROM candidates WHERE instr(notes,?)>0 OR instr(notes,?)>0", fragments
+        ).fetchall()
+        with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+            cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+            try:
+                assert cursor.fetchall() == expected
+            finally:
+                cursor.close()
+        assert calls == values[4:]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("bound", ["parameters", "connection_limit", "sql_bytes"])
+def test_execution_candidate_native_bound_falls_back_without_losing_rows(monkeypatch, bound):
+    calls = []
+
+    class CountingConnection(sqlite3.Connection):
+        def create_function(self, name, narg, func, **kwargs):
+            if func is None:
+                return super().create_function(name, narg, func, **kwargs)
+
+            def counted(value):
+                calls.append(value)
+                return func(value)
+
+            return super().create_function(name, narg, counted, **kwargs)
+
+    fragments = (
+        [f"prefix-{index:04d}" for index in range(800)]
+        if bound == "parameters" else ["prefix-A", "prefix-B"]
+    )
+    conn = sqlite3.connect(":memory:", factory=CountingConnection)
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    values = [None, b"nothing", fragments[0].encode(), b"\x80\x00" + fragments[-1].encode()]
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in values])
+    old = " OR ".join("instr(notes,?)>0" for _ in fragments)
+    expected = conn.execute(f"SELECT id FROM candidates WHERE {old}", fragments).fetchall()
+    if bound == "connection_limit":
+        conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 5)
+    elif bound == "sql_bytes":
+        monkeypatch.setattr(projection_module, "_EXECUTION_CANDIDATE_MAX_SQL_BYTES", 10)
+    try:
+        with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+            assert params == ()
+            cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+            try:
+                assert cursor.fetchall() == expected
+            finally:
+                cursor.close()
+        assert calls == values
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("variable_limit,native", [(7, False), (8, True)])
+def test_execution_candidate_native_reserves_source_and_limit_parameters(variable_limit, native):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE candidates(source, notes)")
+    conn.execute("INSERT INTO candidates VALUES ('chosen', 'prefix-A')")
+    conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, variable_limit)
+    try:
+        with projection_module._execution_candidate_predicate(conn, ["prefix-A", "prefix-B"]) as (predicate, params):
+            assert bool(params) is native
+            cursor = conn.execute(
+                f"SELECT source FROM candidates WHERE source=? AND ({predicate}) LIMIT ?",
+                ("chosen", *params, 10),
+            )
+            try:
+                assert cursor.fetchall() == [("chosen",)]
+            finally:
+                cursor.close()
+    finally:
+        conn.close()
+
+
 def test_execution_candidate_callbacks_do_not_overlap_between_connections():
     first_callback = threading.Event()
     second_attempt = threading.Event()
@@ -3138,7 +3358,7 @@ def test_execution_candidate_callbacks_do_not_overlap_between_connections():
         try:
             if index == 1:
                 second_attempt.set()
-            with projection_module._execution_candidate_predicate(conn, ["needle"]) as (predicate, params):
+            with projection_module._execution_candidate_predicate(conn, ["needle", "other"]) as (predicate, params):
                 cursor = conn.execute(
                     f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
                 )
@@ -3185,7 +3405,7 @@ def test_execution_candidate_releases_scan_lock_after_exception(failure):
         error = sqlite3.OperationalError if failure == "query_interrupted" else RuntimeError
         with (
             pytest.raises(error, match="synthetic|interrupted"),
-            projection_module._execution_candidate_predicate(conn, ["needle"]) as (predicate, params),
+            projection_module._execution_candidate_predicate(conn, ["needle", "other"]) as (predicate, params),
         ):
             if failure == "query_interrupted":
                 conn.set_progress_handler(lambda: 1, 1)
@@ -3207,7 +3427,7 @@ def test_execution_candidate_releases_scan_lock_after_exception(failure):
     def another_connection():
         other = sqlite3.connect(":memory:")
         try:
-            with projection_module._execution_candidate_predicate(other, ["needle"]) as (predicate, params):
+            with projection_module._execution_candidate_predicate(other, ["needle", "other"]) as (predicate, params):
                 cursor = other.execute(
                     f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
                 )
@@ -3236,7 +3456,7 @@ def test_execution_candidate_nested_connection_or_non_utf8_does_not_deadlock(enc
         try:
             conn.execute(f"PRAGMA encoding='{encoding}'")
             conn.execute("CREATE TABLE notes(value)")
-            with projection_module._execution_candidate_predicate(conn, ["needle"]) as (predicate, params):
+            with projection_module._execution_candidate_predicate(conn, ["needle", "other"]) as (predicate, params):
                 cursor = conn.execute(
                     f"SELECT {predicate} FROM (SELECT 'needle' AS notes)", params
                 )
