@@ -10,13 +10,13 @@ provenance:
     sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 6c8ba94d3d09e5e071c7b5d373a74162180de66945e056054c18b1225b6e769b
+    sha256: a9d4afc482729ecdae9da8f95f35ac5ef35797e6d28cd61cfe996f2000d087f3
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: 043fce8da531c96e3d5b06d44c650eb19d6463cb95aee71250b2aa11bf1e76e5
+    sha256: 2db26b276aa41fcca96f3669aeed03952eee55de5709fe6147c2a1a42c8c6a08
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 241f1653dde757c80e7db462fcb81dc1c1cf23100f8b57d67b50f3bf08c8f0b7
+    sha256: 4362eb5088c2612b238a9e36688df0dfcf5f54d46bc7b8aac4ef44950f296ff8
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -172,6 +172,9 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   row_limit_observation: null
 - api_name: bc_bestotcqt
   scope_labels:
@@ -321,6 +324,9 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   row_limit_observation: null
 - api_name: cb_basic
   scope_labels:
@@ -489,6 +495,9 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: publish_date
   row_limit_observation: null
 - api_name: cctv_news
   scope_labels:
@@ -1031,6 +1040,9 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   row_limit_observation: null
 - api_name: fina_audit
   scope_labels:
@@ -1059,6 +1071,9 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   row_limit_observation: null
 - api_name: fina_indicator
   scope_labels:
@@ -1087,6 +1102,9 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   row_limit_observation: null
 - api_name: fina_mainbz
   scope_labels:
@@ -1739,6 +1757,9 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
+    progress_mode: partition_continuation
+    continuation_max_age_days: 31
+    partition_date_field: ann_date
   row_limit_observation: null
 - api_name: index_basic
   scope_labels:

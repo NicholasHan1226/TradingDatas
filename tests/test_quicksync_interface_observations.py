@@ -362,9 +362,9 @@ def test_observed_response_contract_deltas_are_small_and_schema_versioned() -> N
         assert isinstance(override, dict)
         source = source_by_api[api_name]
         target = registry_by_api[api_name]
-        assert source["schema_version"] == "1.0.0"
+        assert source["schema_version"] == ("2.0.0" if api_name == "rt_min_daily" else "1.0.0")
         assert target["schema_version"] == (
-            "3.0.0" if api_name == "dc_daily" else "2.0.0"
+            "3.0.0" if api_name in {"dc_daily", "rt_min_daily"} else "2.0.0"
         )
         source_fields = {field["name"] for field in source["fields"]}
         target_fields = {field["name"] for field in target["fields"]}

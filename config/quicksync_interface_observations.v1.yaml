@@ -21,7 +21,7 @@ response_contract_overrides:
     additional_fields: []
   rt_min_daily:
     evidence_ref: docs/reports/2026-08-30-coverage-quality-recovery.md
-    schema_version: 2.0.0
+    schema_version: 3.0.0
     missing_fields: [freq]
     type_overrides: []
     additional_fields: []
