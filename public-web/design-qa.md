@@ -478,3 +478,70 @@ the revised Tokenomics page matched its canonical and OG URL, with no overflow.
 Local Wrangler used a default Request.cf placeholder after a certificate failure
 fetching that optional object; no TLS verification was disabled. This is local
 route evidence only, not a Cloudflare edge deployment or production readback.
+
+# Research continuity and offline tutorials — 2026-08-30
+
+Follow-up scope: `docs/design/research-reading-continuity-v5.md`, PR #385.
+This extends the preceding 12-guide baseline; 200 external source identities
+remain unchanged. It is local acceptance evidence, not a publication claim.
+
+## Delivered and verified
+
+- 24 bilingual four-section guides now cover all 24 stations in eight topic
+  journeys. Each of 16 adjacent relationships has an authored bilingual reason;
+  first/middle/last articles show the appropriate next/both/previous links.
+  These are editorial connections, not inferred citations or rankings.
+- Twelve new guides record the primary source and exact reading scope internally.
+  Abstract/introduction/draft access is not described as full-text review.
+  Draft numerical results are not transplanted into final-publication claims.
+- Three tutorials now generate 12 same-origin files: three synthetic JSON inputs,
+  three standalone JavaScript examples, and six localized Python notebooks.
+  Inputs, expected outputs and copyable browser code share maintained sources.
+- `npm run build` passed: 208 static metadata entries plus all 12 download files.
+  `npm run test:sites`: 69 passed, including all 200 records in both languages,
+  journey relationships, history isolation, native hash-navigation detection,
+  notebook execution, JS/Python sample parity and bounded failure cases.
+- `python3 scripts/verify-tutorial-notebooks.py` executed every code cell of all
+  six notebooks in order (four code cells each), with expected-output assertions.
+  This uses standard-library execution, not a Jupyter kernel/UI integration run.
+- Local HTTP readback compared all 12 served downloads byte-for-byte with their
+  generated files: all returned 200 and matched. This does not certify the
+  operating-system download dialog or the production edge's response headers.
+- Browser inspection opened all 24 guides in Chinese at 390px and English/dark
+  at 1280px. Each had six body sections (four editorial plus data and limits),
+  a topic sequence and no horizontal page overflow. Article-to-article navigation
+  focused the destination heading without moving the page below its opening.
+- All three Chinese examples executed at 320px with the expected results;
+  English event alignment also ran at 768px. Localized download targets and
+  48px link heights were checked. Desktop dark and mobile light screenshots were
+  visually inspected; English guide/body and Chinese download copy stayed legible.
+- Browser testing found and fixed route-level scrolling overriding native
+  tutorial anchors. Example/download jumps now position the section about 110px
+  below the viewport top; back navigation to Downloads restored the same margin.
+- Separate in-app list visits retained independent history: page 2 at 3425.5px
+  and page 3 at 791px; returning through the intervening article restored the
+  older page 2 position exactly. Explicit article return also restored the list.
+  Forward traversal restored the later page 3 position at 791px as well.
+  Entry IDs remain distinct after reload; positions themselves are memory-only.
+- Main JS is approximately 283.94 kB / 80.74 kB gzip, research catalog
+  231.33 / 75.12, React 193.01 / 60.26, lazy tutorial 22.58 / 7.78.
+  Catalog chunk separation improves cache isolation, not total initial bytes;
+  these are build sizes, not measured loading latency or Core Web Vitals.
+
+Screenshots: `/tmp/tradingdatas-continuity-qa-1t0Wtr/01-guide-en-dark.png`,
+`02-offline-en-desktop.png`, `03-downloads-320-zh.png`.
+
+## Remaining acceptance / release boundary
+
+- Native keyboard activation is still unverified: the browser-control surface
+  focused controls without observable Enter activation. Real screen-reader
+  speech, physical touch, text-only zoom, actual clipboard-denied runtime and
+  Jupyter UI/kernel integration remain manual acceptance items.
+- Source identity, unit/render tests and synthetic outputs do not demonstrate
+  provider availability, historical completeness, paper replication or returns.
+- No protected Worker/Sites files, lockfile/dependencies, workflows, registry,
+  account authority, credentials or provider runtimes changed. Generated public
+  build and maintained documents accompany the source.
+- Exact-head CI, independent Datas PM review / `pm-merge`, exact-main CI,
+  Cloudflare deployment and public deep-route/download readback are separate
+  gates. No merge or production write is claimed by this record.

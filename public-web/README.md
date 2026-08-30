@@ -88,15 +88,43 @@ languages and original titles regardless of the selected display language.
 The complete library is available in Topics in pages of 12; global search
 still searches all 200 records. Bookmarks and source routes remain language-neutral.
 
-Twelve selected records now include four-part bilingual reading guides in
-`src/researchEditorial.js`; eight subject sequences live in `src/researchJourneys.js`.
+Twenty-four selected records now include four-part bilingual reading guides in
+`src/researchEditorial.js` and `src/researchEditorialExpansion.js`; eight subject
+sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
+Each sequence has three guides, including intentional cross-subject readings.
+Articles show their position and previous/next reading with authored reasons.
 Three preparation tutorials (`preparationTutorials.js`, `tutorialExamples.js`) use
 local synthetic examples, never real requests. Their publication does not change
 the product manifest's underlying data/Feature/Recipe maturity or account grants.
 See [`research-reading-depth-v4.md`](../docs/design/research-reading-depth-v4.md).
+The follow-up contract is
+[`research-reading-continuity-v5.md`](../docs/design/research-reading-continuity-v5.md).
+Library scroll positions are isolated per in-tab history entry; explicit article
+return restores the latest library view. They are neither persisted nor synced.
+
+The normal build also generates twelve offline download artifacts under
+`dist/client/downloads/research/`: three synthetic input/expected-output JSON files,
+three standalone JavaScript examples and six localized Python notebooks. The
+notebooks embed the same fixtures, require Python 3.10+ standard library only for
+computation, and open in an existing Jupyter environment. Source generation lives
+in `scripts/build-tutorial-downloads.mjs` and `scripts/tutorial-python/`. Do not
+edit generated notebooks. They do not fetch real data or embed credentials.
+
+```bash
+npm run build
+python3 scripts/verify-tutorial-notebooks.py
+npm run test:sites
+```
+
+The standard-library validator executes all code cells top-to-bottom and compares
+results with the browser examples. It is not a Jupyter UI/kernel integration test.
+The test suite requires `python3`, or `TD_NOTEBOOK_PYTHON` pointing at Python 3.10+.
+Download URLs are build output: review them with `npm run preview` after building,
+not the source-only Vite dev server. Changing language selects the matching
+notebook without changing any dataset identifier.
 
 The normal build now projects only reader fields into the browser catalogue,
-separates the React cache chunk, lazy-loads tutorial execution UI, and generates
+separates React and research-catalog cache chunks, lazy-loads tutorial execution UI, and generates
 208 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
 these generated `dist/client` entries together with the current hashed assets;
 do not hand-edit them. Static metadata supports link previews, not article-body

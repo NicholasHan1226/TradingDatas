@@ -5,7 +5,7 @@ import { researchPublicProjection } from "./scripts/research-public-projection.m
 export default defineConfig({
   build: {
     outDir: "dist/client",
-    rollupOptions: { output: { manualChunks: { "react-vendor": ["react", "react-dom", "react-dom/client"] } } },
+    rollupOptions: { output: { manualChunks: { "react-vendor": ["react", "react-dom", "react-dom/client"], "research-catalog": ["./src/researchCatalog.js"] } } },
   },
   optimizeDeps: {
     include: ["react", "react-dom/client"],

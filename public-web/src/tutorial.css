@@ -8,6 +8,9 @@
 .tutorial-page .research-reader-aside nav { display: grid; gap: 4px; margin-bottom: 30px; }
 .tutorial-page .research-reader-aside nav a { min-height: 44px; display: flex; align-items: center; color: var(--muted); }
 .tutorial-output { margin: 24px 0; }
+.tutorial-downloads { display: grid; gap: 6px; }
+.tutorial-downloads a { min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.tutorial-downloads svg { flex: 0 0 20px; }
 .tutorial-page :is(a,button,summary,pre,textarea):focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
 .tutorial-page .research-reader-actions { flex-wrap: wrap; }
 @media(max-width:600px) { .tutorial-page pre { font-size: 12px; padding: 14px; } }

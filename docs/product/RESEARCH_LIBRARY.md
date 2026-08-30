@@ -69,13 +69,15 @@ orientation and specific reading limitations. Category-level limitations are not
 presented as individual-paper analysis. Additional data/method links are optional
 disclosure content, explicitly not the paper's original sample. Source-specific
 reader notes and their internal review references live in `researchReaderNotes.js`.
-`researchEditorial.js` now deepens 12 selected guides across all eight display
-subjects, with four bilingual sections and source-specific limitations each.
-Each guide retains an internal evidence URL and the exact reading scope: ten
-use original/author-copy abstracts and introductory sections; Kyle uses the
-publisher abstract, and Dechow/Dichev uses the dated working-paper abstract while
-retaining the final publication identity. This does not certify all 200 records
-as full-length guides or any of the 12 as complete full-text reviews.
+`researchEditorial.js` and `researchEditorialExpansion.js` deepen 24 selected
+guides across all eight reading journeys, with four bilingual sections and
+source-specific limitations each. Every guide retains an internal evidence URL
+and actual reading scope. Some use original/author-copy introductory sections;
+others are deliberately abstract-based (including Kyle, Corwin/Schultz,
+Nelson/Siegel and the Bitcoin overview). Dechow/Dichev and Replicating Anomalies
+retain their final publication identities while explicitly explaining the use
+of working-paper material. No draft numerical results are silently presented as
+final results. This does not certify 200 full-length guides or 24 full-text reviews.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -93,15 +95,24 @@ No reading-time estimate implies a full-paper reading or review.
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the twelve expanded guides below the lead story.
+counts. Featured also exposes the 24 expanded guides below the lead story.
+Each journey has three distinct guides. Article sidebars show position and
+previous/next readings with sixteen authored connections explaining differences
+in questions, methods or evidence, not an implied author citation or ranking.
 Three bilingual `/recipes/:id` tutorials teach adjusted prices, as-of filing
 versions and event-calendar alignment using explicitly synthetic, local-only
 examples. Publishing tutorials does not activate the underlying Recipe/Feature
-product contract. See `docs/design/research-reading-depth-v4.md`.
+product contract. Each tutorial offers synthetic inputs/expected results, a
+standalone JavaScript file and a notebook in the selected language. All are
+generated from maintained examples; Python code cells execute offline and are
+tested against the JS output. No source paper PDFs, provider data or credentials
+are redistributed. See `docs/design/research-reading-depth-v4.md` and
+`docs/design/research-reading-continuity-v5.md`.
 
 View changes preserve filters/page. Selecting a subject or all literature resets
 format/page; format changes reset page. URL parameters reproduce view, topic, format
-and page across reload/share; in-tab article return also restores scroll position.
+and page across reload/share; each in-tab library history entry retains its own
+scroll position, and explicit article return restores the latest library view.
 This is not synchronized reading history. Clipboard failure exposes selectable
 citation text instead of claiming success. See `docs/design/research-dual-view-v3.md`.
 

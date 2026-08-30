@@ -1,8 +1,10 @@
 // Authored reading guides. Evidence scope is internal, not a full-text-review claim.
+import { researchEditorialExpansion } from "./researchEditorialExpansion.js";
 const section = (zh, en, bodyZh, bodyEn) => ({ title: { zh, en }, body: { zh: bodyZh, en: bodyEn } });
 const guide = (evidenceUrl, evidenceScope, sections, zh, en) => ({ reviewedAt: "2026-08-30", evidenceUrl, evidenceScope, sections, limits: { zh, en } });
 
 export const researchEditorial = {
+  ...researchEditorialExpansion,
   "Common risk factors in the returns on stocks and bonds": guide(
     "https://www.bauer.uh.edu/rsusmel/phd/Fama-French_JFE93.pdf", "Published paper, abstract and opening introduction (pp. 3–5); not a full-paper review.", [
       section("为什么把股票与债券放在一起？", "Why bring stocks and bonds together?", "这篇论文问的不是哪只股票会涨，而是不同资产的收益能否由少数共同变化解释。作者把股票、政府债券和公司债券放进同一框架：如果市场相互联系，解释股票的变量与解释债券的变量可能有交集。", "The question is whether a small set of shared movements helps explain returns across assets, not which security will rise. Fama and French study stocks alongside government and corporate bonds, asking whether connected markets also share sources of return variation."),

@@ -1184,6 +1184,13 @@ button { color: inherit; }
 .research-next-list a { display: flex; gap: 12px; justify-content: space-between; min-height: 44px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .research-next-list a:hover { color: var(--blue); }
 .research-next-list svg { flex: 0 0 16px; margin-top: 4px; }
+.research-journey-position { color: var(--blue); font-size: 12px; }
+.research-journey-link { border-top: 1px solid var(--line-soft); padding: 18px 0; }
+.research-journey-link a { display: grid; gap: 8px; min-height: 44px; }
+.research-journey-link a small { font-size: 11px; color: var(--muted); }
+.research-journey-link a span { display: flex; gap: 12px; justify-content: space-between; font-size: 14px; line-height: 1.6; }
+.research-journey-link svg { flex: 0 0 16px; margin-top: 4px; }
+.research-journey-link p { font-size: 12px; line-height: 1.8; margin: 10px 0 0; }
 .research-related-disclosure { margin-top: 24px; }
 .research-related-disclosure summary { cursor: pointer; min-height: 44px; padding: 10px 0; }
 .research-related-disclosure p { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 8px 0 16px; }

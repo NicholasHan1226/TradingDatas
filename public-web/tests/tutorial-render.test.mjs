@@ -20,6 +20,10 @@ test("three tutorials render in both languages with safe examples, anchors, sour
     assert.ok(html.includes(locale === "zh" ? "运行虚构示例" : "Run synthetic example"));
     assert.ok(html.includes('id="tutorial-example"') && html.includes('id="tutorial-inputs"'));
     assert.ok(html.includes('role="status"'));
+    for (const file of ["inputs.json", "example.mjs", `tutorial-${locale}.ipynb`]) {
+      assert.ok(html.includes(`/downloads/research/${id}/${file}`));
+      assert.ok(html.includes(`download="${id}-${file}"`));
+    }
     for (const source of tutorial.sources) assert.ok(html.includes(source.url));
     assert.ok(!html.includes('class="maturity-tag"'));
     assert.ok(!html.includes("/v1/query\\n"), "query shape must use actual line breaks");

@@ -29,6 +29,7 @@ import { researchViewReducer } from "./researchReader.js";
 import { researchHref, researchLocation, researchSubjects } from "./researchDiscovery.js";
 import { ResearchHub } from "./ResearchHub.jsx";
 import { ResearchRecord } from "./ResearchRecord.jsx";
+import { createReadingPositions, isInPageNavigation } from "./researchHistory.js";
 import { preparationTutorials } from "./preparationTutorials.js";
 import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
 const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
@@ -608,11 +609,17 @@ export function App() {
   });
   const [researchView, updateResearchView] = useReducer(researchViewReducer, null, () => researchLocation(window.location.search, papers));
   const researchScrollRef = useRef(0);
+  const readingPositions = useRef(createReadingPositions());
+  const [initialReadingEntry] = useState(() => window.history.state?.tdReadingEntry ?? crypto.randomUUID());
+  const readingEntry = useRef(initialReadingEntry);
+  const readingLocation = useRef(window.location.href);
+  const [navigationRevision, setNavigationRevision] = useState(0);
   const currentRouteRef = useRef(route);
   function changeResearchView(action) {
     const next = researchViewReducer(researchView, action);
     updateResearchView(action);
     window.history.replaceState(window.history.state, "", researchHref(next));
+    readingLocation.current = window.location.href;
   }
   const desktopSearchInputRef = useRef(null);
   const mobileSearchInputRef = useRef(null);
@@ -844,11 +851,27 @@ export function App() {
   useEffect(() => {
     const previousRestoration = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
-    const syncRoute = () => {
-      if (currentRouteRef.current === "research") researchScrollRef.current = window.scrollY;
+    window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
+    const syncRoute = (event) => {
+      const inPage = isInPageNavigation(readingLocation.current, window.location.href);
+      readingLocation.current = window.location.href;
+      if (inPage) {
+        window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
+        const target = document.getElementById(window.location.hash.slice(1));
+        if (target) target.scrollIntoView({ behavior: "instant" });
+        else if (!window.location.hash) window.scrollTo({ top: 0, behavior: "instant" });
+        return;
+      }
+      if (currentRouteRef.current === "research") readingPositions.current.save(readingEntry.current, window.scrollY);
+      readingEntry.current = event.state?.tdReadingEntry ?? crypto.randomUUID();
+      if (event.state?.tdReadingEntry == null) window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
       const nextRoute = getRouteFromPath();
-      if (nextRoute === "research") updateResearchView({ type: "restore", value: researchLocation(window.location.search, papers) });
+      if (nextRoute === "research") {
+        researchScrollRef.current = readingPositions.current.restore(readingEntry.current);
+        updateResearchView({ type: "restore", value: researchLocation(window.location.search, papers) });
+      }
       setRoute(nextRoute);
+      setNavigationRevision((value) => value + 1);
     };
     window.addEventListener("popstate", syncRoute);
     return () => {
@@ -860,7 +883,12 @@ export function App() {
   useEffect(() => {
     currentRouteRef.current = route;
     window.scrollTo({ top: route === "research" ? researchScrollRef.current : 0, behavior: "instant" });
-  }, [route]);
+    if (navigationRevision > 0 && (route.startsWith("research/") || route.startsWith("recipes/"))) {
+      const heading = document.querySelector("main h1");
+      heading?.setAttribute("tabindex", "-1");
+      heading?.focus({ preventScroll: true });
+    }
+  }, [route, navigationRevision]);
 
   useEffect(() => {
     const focusGlobalSearch = (event) => {
@@ -895,15 +923,22 @@ export function App() {
   const sections = ["data", "research", "pricing"];
   const navPaths = sections.map((section) => `/${section}`);
   function goTo(path) {
-    if (route === "research") researchScrollRef.current = window.scrollY;
-    window.history.pushState({}, "", path);
+    if (route === "research") {
+      researchScrollRef.current = window.scrollY;
+      readingPositions.current.save(readingEntry.current, window.scrollY);
+    }
+    readingEntry.current = crypto.randomUUID();
+    window.history.pushState({ tdReadingEntry: readingEntry.current }, "", path);
     const destination = new URL(path, window.location.origin);
     const pathname = destination.pathname;
     if (pathname.replace(/\/$/, "") === "/research") {
+      if (destination.search && destination.search !== new URL(researchHref(researchView), window.location.origin).search) researchScrollRef.current = 0;
       updateResearchView({ type: "restore", value: destination.search ? researchLocation(destination.search, papers) : researchView });
-      if (!destination.search) window.history.replaceState({}, "", researchHref(researchView));
+      if (!destination.search) window.history.replaceState(window.history.state, "", researchHref(researchView));
     }
     setRoute(pathname === "/" ? "home" : pathname.replace(/^\/+|\/+$/g, ""));
+    readingLocation.current = window.location.href;
+    setNavigationRevision((value) => value + 1);
     setMobileOpen(false);
     setAccountMenuOpen(false);
   }
