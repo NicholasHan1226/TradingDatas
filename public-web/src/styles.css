@@ -1131,6 +1131,14 @@ button { color: inherit; }
 .object-fact-grid article > span, .research-record-grid article > span { color: var(--aqua); font: 9px "IBM Plex Mono", monospace; }
 .object-fact-grid h2, .research-record-grid h2 { margin: 62px 0 13px; font-size: 21px; letter-spacing: -.03em; }
 .object-fact-grid p, .research-record-grid p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.research-record-readiness article { min-height: 228px; }
+.research-record-readiness h2 { margin-top: 36px; }
+.research-related-list { display: grid; gap: 8px; }
+.research-related-list a { display: grid; gap: 4px; color: var(--ink); text-decoration: none; }
+.research-related-list a:hover { color: var(--blue); }
+.research-related-list small { color: var(--faint); font: 9px/1.35 "IBM Plex Mono", monospace; letter-spacing: .04em; text-transform: uppercase; }
+.research-related-list span { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 1.35; }
+.research-related-list svg { width: 13px; height: 13px; }
 .object-boundary { margin-top: 90px; padding: 64px 0 0; border-top: 1px solid var(--line); }
 .object-boundary h2 { max-width: 850px; margin: 0; font-size: clamp(36px, 4vw, 56px); line-height: 1.05; letter-spacing: -.05em; }
 .object-boundary p { max-width: 720px; margin: 24px 0 30px; color: var(--muted); font-size: 15px; line-height: 1.75; }

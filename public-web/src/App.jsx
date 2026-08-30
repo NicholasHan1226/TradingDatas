@@ -166,6 +166,10 @@ const papers = [
     kind: "industry-research",
     topic: "a-share-market",
     data: "constituents · free-float market cap · corporate actions",
+    sources: [{ label: "CSI 300 Index Methodology (official PDF)", url: "https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/indices/detail/files/en/000300_Index_Methodology_en.pdf" }],
+    verifiedAt: "2026-08-30",
+    readiness: "orientation_only",
+    related: { datasets: ["cn-index-constituents"] },
     summary: {
       en: "Explains the index universe, selection, weighting, review, and adjustment methodology.",
       zh: "说明指数样本空间、选样、加权、定期审核与调整方法。",
@@ -219,6 +223,9 @@ const papers = [
     topic: "market-microstructure",
     data: "minute returns · sampling interval · session boundaries · missingness",
     sources: [{ label: "NBER Working Paper 8160", url: "https://www.nber.org/papers/w8160" }],
+    verifiedAt: "2026-08-30",
+    readiness: "preparation_blueprint",
+    related: { datasets: ["cn-equity-minute"], features: ["realized-volatility"], recipes: ["adjusted-price-series"] },
     summary: {
       en: "Shows how high-frequency returns can be aggregated into realized-volatility measures for lower-frequency analysis.",
       zh: "说明如何将高频收益聚合为已实现波动率，用于更低频的分析。",
@@ -237,6 +244,9 @@ const papers = [
     topic: "a-share-market",
     data: "tick trades · quotes · bid-ask spread · volume",
     sources: [{ label: "Journal source record", url: "https://doi.org/10.1016/j.chieco.2009.03.007" }],
+    verifiedAt: "2026-08-30",
+    readiness: "missing_required_data",
+    related: { datasets: ["cn-equity-minute"], features: ["liquidity-measures"] },
     summary: {
       en: "Uses tick-by-tick Shanghai evidence to examine intraday spreads and price discovery across more and less liquid stocks.",
       zh: "使用上交所逐笔数据，研究不同流动性股票的日内价差与价格发现。",
@@ -255,6 +265,9 @@ const papers = [
     topic: "alternative-data",
     data: "news text · publisher time · entity mapping · returns · volume",
     sources: [{ label: "Publisher DOI record", url: "https://doi.org/10.1111/j.1540-6261.2007.01232.x" }],
+    verifiedAt: "2026-08-30",
+    readiness: "missing_required_data",
+    related: { datasets: ["cn-news-flashes", "cn-announcements"], recipes: ["company-event-timeline"] },
     summary: {
       en: "Studies how the tone of financial media relates to market prices and trading volume.",
       zh: "研究财经媒体语气如何与市场价格和交易量相关。",
@@ -273,6 +286,9 @@ const papers = [
     topic: "crypto-markets",
     data: "multi-exchange prices · signed volume · fiat markets · exchange identity",
     sources: [{ label: "Publisher DOI record", url: "https://doi.org/10.1016/j.jfineco.2019.07.001" }],
+    verifiedAt: "2026-08-30",
+    readiness: "missing_required_data",
+    related: { datasets: ["crypto-binance-spot-5m"] },
     summary: {
       en: "Documents persistent cross-exchange price deviations and connects them to market segmentation and arbitrage constraints.",
       zh: "记录持续的跨交易所价格偏离，并将其与市场分割和套利约束联系起来。",
@@ -291,6 +307,9 @@ const papers = [
     topic: "crypto-markets",
     data: "funding rate · open interest · leverage context · protocol transactions",
     sources: [{ label: "BIS Working Paper 1183", url: "https://www.bis.org/publ/work1183.htm" }],
+    verifiedAt: "2026-08-30",
+    readiness: "orientation_only",
+    related: { datasets: ["crypto-binance-derivatives"] },
     summary: {
       en: "Examines motivations for DeFi lending and borrowing, framing leverage and funding conditions as market context rather than a standalone signal.",
       zh: "研究 DeFi 借贷动机，将杠杆与资金条件视为市场背景，而非独立信号。",
@@ -312,6 +331,9 @@ const papers = [
       { label: "SEC Form 13F FAQ", url: "https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f" },
       { label: "SEC EDGAR data APIs", url: "https://www.sec.gov/search-filings/edgar-application-programming-interfaces" },
     ],
+    verifiedAt: "2026-08-30",
+    readiness: "future_contract",
+    related: { datasets: ["us-notable-investor-13f"] },
     summary: {
       en: "Defines the filing context and public access path for institutional Form 13F holdings disclosures.",
       zh: "界定机构 Form 13F 持仓披露的申报背景与公开访问路径。",
@@ -321,9 +343,66 @@ const papers = [
       zh: "Form 13F 为季度、滞后披露，且存在修订与范围限制；它不是实时组合、全面美股覆盖或投资建议。",
     },
   },
+  {
+    title: "Binance USDⓈ-M Futures Market Data: Funding Rate and Open Interest",
+    authors: "Binance",
+    venue: "Binance Developer Documentation",
+    year: "2026",
+    kind: "primary-source",
+    topic: "crypto-markets",
+    data: "frozen symbol universe · funding rate history · open interest · request limits",
+    sources: [{ label: "Binance USDⓈ-M market-data reference", url: "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data" }],
+    verifiedAt: "2026-08-30",
+    readiness: "future_contract",
+    related: { datasets: ["crypto-binance-derivatives"] },
+    summary: {
+      en: "Documents public REST market-data endpoints that define funding-rate and open-interest request shapes for USDⓈ-M futures.",
+      zh: "说明 USDⓈ-M 永续合约的公开 REST 市场数据端点，以及资金费率和持仓量的请求形态。",
+    },
+    limits: {
+      en: "Documentation defines an upstream interface, not TradingDatas coverage. The frozen universe, collection receipts, network access, freshness, and authenticated catalog/query readback remain separate gates.",
+      zh: "文档只定义上游接口，不证明 TradingDatas 覆盖。固定标的范围、采集 receipt、网络可达性、新鲜度及认证 catalog/query 回读仍是独立门槛。",
+    },
+  },
 ];
 
 const paperSlug = (paper) => paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+const researchReadiness = {
+  preparation_blueprint: {
+    en: { label: "Preparation blueprint", detail: "The data-preparation steps can be specified. Confirm current dataset receipts, coverage, and entitlement before reproducing any analysis." },
+    zh: { label: "可定义准备路径", detail: "可以明确数据准备步骤；复现任何分析前，仍须核对当前数据集 receipt、覆盖面与授权。" },
+  },
+  missing_required_data: {
+    en: { label: "Required material missing", detail: "The paper needs data that this product record does not currently claim, such as quotes, multi-venue observations, or licensed publisher text." },
+    zh: { label: "所需材料尚缺", detail: "论文需要当前产品记录未声称具备的数据，例如报价、多场所观测或获授权的发布方文本。" },
+  },
+  orientation_only: {
+    en: { label: "Orientation only", detail: "Useful for framing a question and its evidence, but not a claim that the paper can be replicated or transferred to a TradingDatas product." },
+    zh: { label: "仅作研究导读", detail: "适合界定问题与证据，不代表可复现论文或将其结论迁移到 TradingDatas 产品。" },
+  },
+  future_contract: {
+    en: { label: "Future product contract", detail: "The linked data product remains a contract or candidate. It requires its own provider, rights, receipt, and authenticated API evidence before activation." },
+    zh: { label: "未来产品合同", detail: "关联数据产品仍是合同或候选项；启用前必须独立获得 provider、权利、receipt 与认证 API 证据。" },
+  },
+};
+
+const researchObjectGroups = {
+  datasets: { collection: "datasets", route: "datasets", label: { en: "Data product", zh: "数据产品" } },
+  features: { collection: "features", route: "features", label: { en: "Feature", zh: "Feature" } },
+  recipes: { collection: "recipes", route: "recipes", label: { en: "Preparation method", zh: "准备方法" } },
+};
+
+function getResearchRelatedObjects(paper, locale) {
+  return Object.entries(paper.related || {}).flatMap(([group, ids]) => {
+    const definition = researchObjectGroups[group];
+    if (!definition) return [];
+    return ids.flatMap((id) => {
+      const item = productManifest.objects[definition.collection].find((candidate) => candidate.id === id);
+      return item ? [{ id, href: `/${definition.route}/${id}`, label: definition.label[locale], title: item.title[locale] }] : [];
+    });
+  });
+}
 
 const messages = {
   en: {
@@ -845,7 +924,7 @@ function ResearchAtlasPage({
         <div className="research-method-list">{methods.slice(0, 3).map((method, index) => <a key={method.id} href={`/recipes/${method.id}`} onClick={(event) => onNavigate(event, `/recipes/${method.id}`)}><span>{String(index + 1).padStart(2, "0")}</span><div><small>{locale === "zh" ? "可复现方法" : "REPRODUCIBLE METHOD"}</small><h3>{method.title[locale]}</h3><p>{method.detail}</p></div><ArrowRight /></a>)}</div>
       </section>
 
-      <div className="research-atlas-notice"><span><GraduationCap weight="duotone" />{atlas.external}</span><span>{locale === "zh" ? "更新于 2026-08-27" : "Updated Aug 27, 2026"}</span></div>
+      <div className="research-atlas-notice"><span><GraduationCap weight="duotone" />{atlas.external}</span><span>{locale === "zh" ? "更新于 2026-08-30" : "Updated Aug 30, 2026"}</span></div>
 
       <section className={`research-library-drawer ${browseOpen ? "is-open" : ""}`} ref={libraryRef} aria-hidden={!browseOpen}>
         <header><div><span className="mono-kicker">RESEARCH LIBRARY / EXTERNAL SOURCES</span><h2>{locale === "zh" ? "完整研究库" : "Full research library"}</h2></div><button type="button" onClick={() => setBrowseOpen(false)}>{locale === "zh" ? "收起" : "Close"}<X /></button></header>
@@ -1686,6 +1765,11 @@ export function App() {
                 <article><span>02 / EVIDENCE</span><h2>{locale === "zh" ? "所需数据材料" : "Required data"}</h2><p>{selectedPaper.data}</p></article>
                 <article><span>03 / LIMITS</span><h2>{locale === "zh" ? "方法与限制" : "Method & limits"}</h2><p>{selectedPaper.limits?.[locale] || (locale === "zh" ? "先核对样本、时间范围、可得时点、修订、幸存者偏差与市场适用性，再决定能否复现或迁移。" : "Check sample, time range, point-in-time availability, revisions, survivorship, and market applicability before replication or transfer.")}</p></article>
               </div>
+              {selectedPaper.readiness && <div className="research-record-grid research-record-readiness">
+                <article><span>04 / RESEARCH READINESS</span><h2>{researchReadiness[selectedPaper.readiness][locale].label}</h2><p>{researchReadiness[selectedPaper.readiness][locale].detail}</p></article>
+                <article><span>05 / SOURCE CHECK</span><h2>{selectedPaper.verifiedAt ? (locale === "zh" ? "来源已核对" : "Source checked") : (locale === "zh" ? "待直接核对" : "Direct check pending")}</h2><p>{selectedPaper.verifiedAt ? (locale === "zh" ? `本条外部来源于 ${selectedPaper.verifiedAt} 核对。内容可能更新，使用前请以原始链接为准。` : `This external record was checked on ${selectedPaper.verifiedAt}. It may change; use the original source before relying on it.`) : (locale === "zh" ? "该记录仍提供发现入口；在依赖任何结论前，请核对原始文献或官方材料。" : "This record remains a discovery entry; verify the original paper or official material before relying on any conclusion.")}</p></article>
+                <article><span>06 / LINKED OBJECTS</span><h2>{locale === "zh" ? "关联对象" : "Related objects"}</h2><div className="research-related-list">{getResearchRelatedObjects(selectedPaper, locale).length ? getResearchRelatedObjects(selectedPaper, locale).map((item) => <a key={`${item.label}:${item.id}`} href={item.href} onClick={(event) => navigate(event, item.href)}><small>{item.label}</small><span>{item.title}<ArrowRight /></span></a>) : <p>{locale === "zh" ? "尚未映射到产品对象。" : "No product object mapped yet."}</p>}</div></article>
+              </div>}
               <section className="object-boundary">
                 <h2>{locale === "zh" ? "从阅读进入数据准备" : "Continue from reading to data preparation"}</h2>
                 <p>{locale === "zh" ? "下一步是检查对应 Dataset、透明 Feature 与 Recipe；TradingDatas 不发表或验证论文结论。" : "Next inspect the related Dataset, transparent Feature, and Recipe. TradingDatas neither publishes nor validates the paper's conclusions."}</p>
