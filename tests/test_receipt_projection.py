@@ -2480,6 +2480,203 @@ def test_catalog_projection_recent_scan_preserves_dataset_states(
     assert full["interfaces"]["daily_failed"]["state"] == "failed"
 
 
+def _catalog_retry_boundary(monkeypatch, *, calls=(0, 1, 2), newer_count=98, conn=None, dataset=None):
+    conn = _memory_db() if conn is None else conn
+    dataset = _dataset() if dataset is None else dataset
+    registry = DatasetRegistry((dataset,))
+    ids = []
+    for call in calls:
+        ids.append(_insert_receipt(monkeypatch, conn, dataset=dataset,
+            dataset_id=dataset.dataset_id, provider_api=dataset.provider_bindings[0].api_name,
+            status="failed", errors=("provider_error",),
+            attempt_id=make_provider_call_attempt_id("catalog-boundary-retry-" + dataset.dataset_id, call_index=call, retry_index=call),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=f"2026-07-15T00:01:0{call}+00:00", data_through=None))
+    for index in range(newer_count):
+        ids.append(_insert_receipt(monkeypatch, conn, dataset=dataset,
+            dataset_id=dataset.dataset_id, provider_api=dataset.provider_bindings[0].api_name,
+            status="success", attempt_id=f"catalog-newer-{dataset.dataset_id}-{index}",
+            started_at="2026-07-15T00:02:00+00:00",
+            finished_at=(datetime(2026, 7, 15, 0, 3, tzinfo=timezone.utc) + timedelta(seconds=index)).isoformat(),
+            data_through="20260715"))
+    return conn, registry, ids
+
+
+def test_catalog_completes_retry_prefix_cut_by_recent_100(monkeypatch):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch)
+    dataset = registry.datasets[0]
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    seeds = projection_module._scan_recent_ingest_run_rows(conn, per_dataset_limit=100)
+    assert len(seeds) == 100 and ids[0] not in {row.raw[1] for row in seeds}
+    assert project_dataset_runtime(conn, dataset, now=now, registry=registry).state == "success"
+    catalog = project_catalog_runtime(conn, registry, now=now)
+    assert catalog["datasets"][dataset.dataset_id]["state"] == "success"
+    full = project_registry_runtime(conn, registry, now=now)
+    assert full["interfaces"]["daily"]["state"] == "success"
+    _, _, expanded, _ = projection_module._project_registry_datasets(conn, registry, now=now)
+    assert {row.raw[1] for row in expanded} == set(ids)
+
+
+@pytest.mark.parametrize("calls", [(1, 2), (0, 2)])
+def test_catalog_completion_does_not_hide_missing_retry_receipt(monkeypatch, calls):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=calls, newer_count=99)
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][registry.datasets[0].dataset_id]
+    assert entry["state"] == "failed"
+    assert entry["reasons"] == ["receipt_execution_inconsistent"]
+
+
+@pytest.mark.parametrize("victim", [0, -1])
+def test_catalog_completion_preserves_invalid_seed_and_fetched_sibling(monkeypatch, victim):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch)
+    raw, = conn.execute("SELECT notes FROM market_ingest_runs WHERE run_id=?", (ids[victim],)).fetchone()
+    payload = json.loads(raw)
+    payload["schema_version"] = "invalid-synthetic-schema"
+    conn.execute("UPDATE market_ingest_runs SET notes=? WHERE run_id=?",
+                 (json.dumps(payload, sort_keys=True, separators=(",", ":")), ids[victim]))
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][registry.datasets[0].dataset_id]
+    assert entry["state"] == "failed"
+    # A missing validated retry zero can add an execution error, but neither
+    # the corrupt fetched sibling nor corrupt original seed may disappear.
+    _, _, rows, _ = projection_module._project_registry_datasets(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert any(row.raw[1] == ids[victim] for row in rows)
+
+
+def test_catalog_completion_raw_budget_counts_duplicate_reads_across_sources(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch)
+    base = registry.datasets[0]
+    other = replace(base, dataset_id="cn.equity.boundary_other", aliases=(),
+        provider_bindings=(replace(base.provider_bindings[0], api_name="boundary_other",
+                                  read_discriminator_value="boundary_other"),))
+    _catalog_retry_boundary(monkeypatch, conn=conn, dataset=other)
+    registry = DatasetRegistry((base, other))
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    # 200 seed rows + two 101-row sibling lookups = 402 raw reads. The union
+    # has only 202 rows, so enforcing the cap after deduplication would be wrong.
+    monkeypatch.setattr(projection_module, "_MAX_INGEST_RUN_SCAN_ROWS", 401)
+    with pytest.raises(RuntimeProjectionError, match="execution scan row budget"):
+        project_catalog_runtime(conn, registry, now=now)
+    monkeypatch.setattr(projection_module, "_MAX_INGEST_RUN_SCAN_ROWS", 402)
+    assert all(item["state"] == "success" for item in
+               project_catalog_runtime(conn, registry, now=now)["datasets"].values())
+
+
+@pytest.mark.parametrize("offset_text", [False, True])
+def test_catalog_completion_checks_older_sibling_without_trusting_chronology(monkeypatch, offset_text):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=99)
+    dataset = registry.datasets[0]
+    # Call 0 is selected; call 1 sorts outside the seed window. Each receipt
+    # is individually valid, but their execution start contexts disagree.
+    for call, start, finish in (
+        (0, "2026-07-15T00:02:00+00:00", "2026-07-15T00:03:00+00:00"),
+        (1, "2026-07-15T00:00:00+00:00", "2026-07-15T00:01:00+00:00"),
+    ):
+        if offset_text and call == 0:
+            start, finish = "2026-07-15T09:02:00+09:00", "2026-07-15T09:03:00+09:00"
+        _insert_receipt(monkeypatch, conn, dataset=dataset, status="success",
+            attempt_id=make_provider_call_attempt_id("catalog-context-mismatch", call_index=call, retry_index=0),
+            started_at=start, finished_at=finish, data_through="20260715",
+            request_identity=ProviderRequestIdentity(request_variant={"page": call},
+                fanout_parameter=None, fanout_values=(), page_offset=call, page_index=call))
+    result = project_registry_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert result["datasets"][dataset.dataset_id]["reasons"] == ["receipt_execution_inconsistent"]
+    assert result["interfaces"]["daily"]["reasons"] == ["receipt_execution_inconsistent"]
+
+
+def test_catalog_completion_handles_multiple_interleaved_executions(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=96)
+    dataset = registry.datasets[0]
+    ids = set()
+    for root in ("catalog-overlap-first", "catalog-overlap-second"):
+        for call in range(3):
+            ids.add(_insert_receipt(monkeypatch, conn, dataset=dataset,
+                status="failed", errors=("provider_error",),
+                attempt_id=make_provider_call_attempt_id(root, call_index=call, retry_index=call),
+                started_at="2026-07-15T00:00:00+00:00",
+                finished_at=f"2026-07-15T00:01:0{call}+00:00", data_through=None))
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    seeds = projection_module._scan_recent_ingest_run_rows(conn, per_dataset_limit=100)
+    assert len(ids & {row.raw[1] for row in seeds}) == 4
+    projections, _, expanded, _ = projection_module._project_registry_datasets(conn, registry, now=now)
+    assert projections[0].state == "success"
+    assert ids <= {row.raw[1] for row in expanded}
+
+
+def test_catalog_completion_requires_zero_prefix_for_fully_read_execution(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=99)
+    _insert_receipt(monkeypatch, conn, dataset=registry.datasets[0], status="success",
+        attempt_id=make_provider_call_attempt_id("missing-earlier-logical-request", call_index=7, retry_index=0),
+        started_at="2026-07-15T00:00:00+00:00", finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715")
+    result = project_catalog_runtime(conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert result["datasets"][registry.datasets[0].dataset_id]["reasons"] == ["receipt_execution_inconsistent"]
+
+
+def test_catalog_completion_validates_future_sibling_after_execution_integrity(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=())
+    ids = []
+    for call in range(3):
+        ids.append(_insert_receipt(monkeypatch, conn, dataset=registry.datasets[0],
+            status="failed", errors=("provider_error",),
+            attempt_id=make_provider_call_attempt_id("catalog-future-retry", call_index=call, retry_index=call),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=("2026-07-15T00:01:00-10:00" if call == 0
+                         else f"2026-07-15T00:01:0{call}+00:00"), data_through=None))
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][registry.datasets[0].dataset_id]
+    assert entry["state"] == "failed"
+    assert entry["receipt_id"] == ids[0]
+    assert entry["reasons"] == ["receipt_timestamp_in_future"]
+
+
+@pytest.mark.parametrize("include_second_variant", [False, True])
+def test_catalog_completion_preserves_registered_variant_requirements(monkeypatch, include_second_variant):
+    conn = _memory_db()
+    base = _dataset()
+    dataset = replace(base, provider_bindings=(replace(base.provider_bindings[0],
+        request_variants=({"venue": "a"}, {"venue": "b"})),))
+    registry = DatasetRegistry((dataset,))
+    calls = [(0, 0, "a", "failed"), (1, 1, "a", "empty")]
+    if include_second_variant:
+        calls.append((2, 0, "b", "success"))
+    for call, retry, venue, status in calls:
+        _insert_receipt(monkeypatch, conn, dataset=dataset, status=status,
+            attempt_id=make_provider_call_attempt_id("catalog-variant-retry", call_index=call, retry_index=retry),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=f"2026-07-15T00:01:0{call}+00:00",
+            data_through="20260715" if status == "success" else None,
+            request_identity=ProviderRequestIdentity(request_variant={"venue": venue},
+                fanout_parameter=None, fanout_values=(), page_offset=None, page_index=0))
+    monkeypatch.setattr(projection_module, "_MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET", 1)
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][dataset.dataset_id]
+    assert entry["state"] == ("success" if include_second_variant else "failed")
+    if not include_second_variant:
+        assert entry["reasons"] == ["variant_cohort_incomplete"]
+
+
+def test_catalog_completion_accepts_large_complete_physical_execution(monkeypatch):
+    conn = _memory_db()
+    dataset = _dataset()
+    registry = DatasetRegistry((dataset,))
+    ids = set()
+    for call in range(128):
+        ids.add(_insert_receipt(monkeypatch, conn, dataset=dataset, status="success",
+            attempt_id=make_provider_call_attempt_id("catalog-large-execution", call_index=call, retry_index=0),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=(datetime(2026, 7, 15, 0, 1, tzinfo=timezone.utc) + timedelta(seconds=call)).isoformat(),
+            data_through="20260715", request_identity=ProviderRequestIdentity(
+                request_variant={}, fanout_parameter=None, fanout_values=(),
+                page_offset=call, page_index=call)))
+    projections, _, rows, _ = projection_module._project_registry_datasets(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert projections[0].state == "success"
+    assert {row.raw[1] for row in rows} == ids
+
+
 def test_catalog_projection_matches_dataset_rows_without_binding_reprojection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2790,6 +2987,92 @@ def test_interface_projection_is_scoped_to_its_provider_binding(
     assert report["interfaces"]["daily"]["state"] == "success"
     assert report["interfaces"]["alternate:daily_alt"]["state"] == "unobserved"
     assert report["interfaces"]["alternate:daily_alt"]["receipt_id"] is None
+
+
+@pytest.mark.parametrize("encoding", ["UTF-8", "UTF-16le", "UTF-16be"])
+def test_execution_candidate_predicate_matches_original_sql_for_raw_material(encoding):
+    conn = sqlite3.connect(":memory:")
+    conn.execute(f"PRAGMA encoding='{encoding}'")
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    roots = ['exec-alpha', '执行记录', 'exec-"quote', 'exec-\\slash']
+    fragments = []
+    material = [None, 1, 1.5, "", b"", '{"unrelated":true}']
+    for root in roots:
+        ordinary = '"attempt_id":' + json.dumps(root, ensure_ascii=False)
+        physical = '"attempt_id":' + json.dumps(root + ':provider-call:', ensure_ascii=False)[:-1]
+        fragments.extend((ordinary, physical))
+        material.extend([
+            '{' + ordinary + '}',
+            '{"attempt_id":"other",' + ordinary + '}',
+            '{"nested":{' + ordinary + '}}',
+            '{' + ordinary,
+            '\x00' + ordinary,
+            ordinary.encode('utf-8'),
+            b'\x80\x00' + ordinary.encode('utf-8'),
+            '{' + physical + '000000000000:retry:000000000000"}',
+            '{"attempt_id":' + json.dumps(root + '-near-prefix') + '}',
+            json.dumps(ordinary),
+        ])
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in material])
+    # Invalid TEXT must be filtered without Python decoding before the predicate.
+    for value in [b'\x80unrelated', b'\x80' + fragments[0].encode('utf-8')]:
+        conn.execute("INSERT INTO candidates(notes) VALUES (CAST(? AS TEXT))", (value,))
+    old = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
+    expected = conn.execute(f"SELECT id FROM candidates WHERE {old}", fragments).fetchall()
+    with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+        cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+        try:
+            assert cursor.fetchall() == expected
+        finally:
+            cursor.close()
+    conn.close()
+
+
+@pytest.mark.parametrize("outcome", ["success", "budget", "interrupted"])
+def test_execution_candidate_callback_is_removed_after_scan(monkeypatch, outcome):
+    class TrackingConnection(sqlite3.Connection):
+        registrations = []
+
+        def create_function(self, name, narg, func, **kwargs):
+            self.registrations.append((name, func is not None))
+            return super().create_function(name, narg, func, **kwargs)
+
+    conn = sqlite3.connect(":memory:", factory=TrackingConnection)
+    conn.executescript(SCHEMA_SQL)
+    _insert_receipt(
+        monkeypatch, conn, status="success", attempt_id="lookup-cleanup",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    if outcome == "interrupted":
+        def authorizer(action, name, *_):
+            if action == sqlite3.SQLITE_READ and name == "market_ingest_runs":
+                conn.set_progress_handler(lambda: 1, 1)
+            return sqlite3.SQLITE_OK
+        conn.set_authorizer(authorizer)
+    budget = projection_module._ReceiptReadBudget(0 if outcome == "budget" else 10)
+    try:
+        if outcome == "success":
+            assert projection_module._scan_ingest_run_rows_by_execution_ids(
+                conn, "cn.equity.daily", ("lookup-cleanup",), read_budget=budget
+            )
+        else:
+            error = RuntimeProjectionError if outcome == "budget" else sqlite3.OperationalError
+            with pytest.raises(error, match="budget|interrupted"):
+                projection_module._scan_ingest_run_rows_by_execution_ids(
+                    conn, "cn.equity.daily", ("lookup-cleanup",), read_budget=budget
+                )
+    finally:
+        conn.set_progress_handler(None, 0)
+        conn.set_authorizer(None)
+    installed = [name for name, active in conn.registrations if active]
+    removed = [name for name, active in conn.registrations if not active]
+    assert len(installed) == 1
+    assert installed == removed
+    with pytest.raises(sqlite3.OperationalError):
+        conn.execute(f"SELECT {installed[0]}(?)", (b'"attempt_id":"lookup-cleanup"',)).fetchall()
+    conn.close()
 
 
 def test_file_projection_rejects_ingest_schema_without_primary_key(
