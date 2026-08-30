@@ -777,3 +777,45 @@ Remaining: mobile/tablet rendering, full keyboard traversal and screen-reader
 speech, clipboard-denial UI, native download completion, Dechow/Dichev full text,
 exact candidate CI, predecessor/main integration and independent Datas PM review.
 No code or build changes were needed for these inspected desktop flows.
+
+## Source-depth and search-name follow-up — 2026-08-30
+
+- The old localhost:5176 preview had no listener. The existing 127.0.0.1:5186
+  preview serves this worktree's freshly built client; it was left running.
+- Counts are now 200 works, 26 bilingual guides (25 six-section guides and the
+  four-section Dechow/Dichev guide), eight unchanged three-stage core journeys,
+  six tutorials and 24 offline artifacts. The two additions use same-topic
+  further reading rather than changing the core journey contract.
+- Amihud uses the Penn-hosted 2002 journal PDF, printed pp. 31–37; definition and
+  sample pages 34, 36–37 were visually checked. Novy-Marx uses the Rochester-hosted
+  June 2012 author draft, printed pp. 1–7; definition, lag and comparison pages
+  5–7 were visually checked. The 2013 journal identity remains unchanged and the
+  edition difference is public. No PDF redistribution or numerical replication.
+- Corrected the Chinese Novy-Marx title to distinguish gross profits/assets from
+  gross margin. Both additions include paragraph-level page references and
+  bilingual source-specific limitations. Internal evidence notes remain private.
+- A confirmed search defect made the input name include the clear-button text
+  once a query was entered. An explicit input label now excludes that button in
+  desktop/mobile layouts. Browser checks on the fresh build retained the Chinese
+  input name after typing, used ArrowDown/Enter to open Novy-Marx and focus its H1,
+  and cleared a query while returning focus to the input. This is not a claim of
+  complete keyboard traversal or screen-reader speech acceptance.
+- A disposable loopback harness served the identical build with a real HTTP
+  `Permissions-Policy: clipboard-write=()` header. Citation, link and tutorial
+  code copy each displayed failure feedback and a selectable text field; no
+  JavaScript clipboard stub or application-state injection was used.
+- Real same-origin iframe layouts measured viewport/scrollWidth 390/390 and
+  768/768 for both new English guides. Screenshots checked the mobile heading,
+  action wrapping and body, plus tablet heading/sidebar. Chinese/light Novy-Marx
+  body measured 390/390 and rendered its paragraph references without clipping.
+  These are CSS viewport checks, not mobile hardware/touch or iframe-control
+  interaction acceptance. The harness is temporary and not part of the product.
+- Fresh validation: 86 public-web tests passed, production build passed with 211
+  metadata entries and 24 downloads, and the offline content audit returned no
+  errors (174 summary-only records, six reading-scope follow-ups). Catalogue:
+  292.13 kB / 98.50 kB gzip. Generated assets were rebuilt normally.
+
+Remaining: complete keyboard traversal/screen-reader speech, native download
+completion, mobile touch interactions, Dechow/Dichev full text, fresh candidate
+remote CI, predecessor/main integration and independent Datas PM go-ahead.
+No backend, provider, credential, workflow or production changes.

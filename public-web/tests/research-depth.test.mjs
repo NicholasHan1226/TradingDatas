@@ -6,9 +6,9 @@ import { papers } from "../src/researchCatalog.js";
 import { researchSubjects, researchMatches } from "../src/researchDiscovery.js";
 import { auditBarGrid, preserveDocumentVersions, alignSpotAndOpenInterest, tutorialExamples } from "../src/tutorialExamples.js";
 
-test("eight six-section deep reads cover every subject without expanding work or guide counts", () => {
+test("eight original deep reads retain every subject within the expanded guide library", () => {
   assert.equal(Object.keys(researchDeepReads).length, 8);
-  assert.equal(Object.keys(researchReaderNotes).length, 24);
+  assert.equal(Object.keys(researchReaderNotes).length, 26);
   assert.equal(papers.length, 200);
   const deep = Object.entries(researchDeepReads).map(([title, guide]) => {
     const paper = papers.find(item => item.title === title);

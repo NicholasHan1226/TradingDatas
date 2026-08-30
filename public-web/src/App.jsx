@@ -14,7 +14,6 @@ import {
   GraduationCap,
   GlobeSimple,
   List,
-  MagnifyingGlass,
   Moon,
   ShieldCheck,
   Sun,
@@ -28,6 +27,7 @@ import { normalizeLanguageChoice, resolveLanguage, browserLanguages } from "./la
 import { researchViewReducer } from "./researchReader.js";
 import { researchHref, researchLocation, researchSubjects } from "./researchDiscovery.js";
 import { ResearchHub } from "./ResearchHub.jsx";
+import { GlobalSearchField } from "./GlobalSearchField.jsx";
 import { ResearchRecord } from "./ResearchRecord.jsx";
 import { createReadingPositions, isInPageNavigation } from "./researchHistory.js";
 import { preparationTutorials } from "./preparationTutorials.js";
@@ -1181,12 +1181,7 @@ export function App() {
     return <div className={`global-search-wrap ${className}`} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setGlobalSearchOpen(false);
     }}>
-      <label className="global-search-field">
-        <MagnifyingGlass aria-hidden="true" />
-        <span className="sr-only">{placeholder}</span>
-        <input ref={searchInputRef} type="search" role="combobox" aria-autocomplete="list" aria-expanded={globalSearchOpen && Boolean(normalizedGlobalQuery || recentSearches.length)} aria-controls={resultsId} aria-activedescendant={activeResultId} value={globalQuery} placeholder={placeholder} onFocus={() => setGlobalSearchOpen(true)} onChange={(event) => { setGlobalQuery(event.target.value); setGlobalSearchOpen(true); setActiveSearchIndex(-1); }} onKeyDown={handleSearchKeyDown} />
-        {globalQuery ? <button type="button" onClick={() => setGlobalQuery("")} aria-label={locale === "zh" ? "清除搜索" : "Clear search"}><X /></button> : <kbd aria-hidden="true">{searchShortcut}</kbd>}
-      </label>
+      <GlobalSearchField id={`${resultsId}-input`} inputRef={searchInputRef} label={placeholder} value={globalQuery} clearLabel={locale === "zh" ? "清除搜索" : "Clear search"} shortcut={searchShortcut} expanded={globalSearchOpen && Boolean(normalizedGlobalQuery || recentSearches.length)} resultsId={resultsId} activeResultId={activeResultId} onFocus={() => setGlobalSearchOpen(true)} onChange={(event) => { setGlobalQuery(event.target.value); setGlobalSearchOpen(true); setActiveSearchIndex(-1); }} onKeyDown={handleSearchKeyDown} onClear={() => { setGlobalQuery(""); setActiveSearchIndex(-1); searchInputRef.current?.focus(); }} />
       {globalSearchOpen && normalizedGlobalQuery && <div className="global-search-results" id={resultsId} role={globalSearchGroups.length ? "listbox" : "status"} aria-label={locale === "zh" ? "全站搜索结果" : "Site search results"}>
         <div className="global-search-result-heading"><span>{locale === "zh" ? "搜索结果" : "SEARCH RESULTS"}</span><small aria-live="polite" aria-atomic="true">{globalResultCount}</small></div>
         {globalSearchGroups.length ? globalSearchGroups.map((group) => <section className="global-search-group" key={group.key} aria-label={group.label}>

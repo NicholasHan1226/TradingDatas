@@ -72,8 +72,10 @@ reader notes and their internal review references live in `researchReaderNotes.j
 `researchEditorial.js` and `researchEditorialExpansion.js` provide 24 selected
 guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
-more without mutating their original four-section records. Twenty-three guides have
-six bilingual sections with source locators; Dechow/Dichev remains a four-section,
+more without mutating their original four-section records. `researchAdditionalGuides.js`
+adds two six-section guides for existing Amihud and Novy-Marx records. The current
+library has 26 guides: 25 have six bilingual sections with source locators;
+Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
 that distinguish it from the retained 1987 final publication identity. All retain
@@ -85,7 +87,11 @@ draft; Lazy Prices uses the March 2019 revision; Petersen uses the June 2006 NBE
 revision. Their public limitations identify these editions. Dechow/Dichev and
 Replicating Anomalies also preserve final publication identity separately from
 working-paper material. No draft numerical results are silently presented as final
-results. This does not certify 200 full-length guides or 24 full-text reviews.
+results. Amihud uses the 2002 journal article hosted by Penn; Novy-Marx uses the
+June 2012 author draft hosted by Rochester, explicitly distinct from the 2013
+journal citation. Its Chinese editorial title now says 毛利能力 rather than 毛利率:
+the measure divides gross profits by assets, not sales. Source identities are unchanged.
+This does not certify 200 full-length guides or 26 full-text reviews.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -100,10 +106,17 @@ changing their stored identity. All three four-record reading paths stay reachab
 Global search covers both languages across all records; counts derive from records.
 No reading-time estimate implies a full-paper reading or review.
 
+The shared `GlobalSearchField` gives desktop/mobile inputs distinct IDs and an
+explicit label independent of the clear button. Typing does not change the input's
+accessible name; clearing resets active selection and returns focus to that input.
+
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 24 expanded guides below the lead story.
+counts. Featured also exposes the 26 expanded guides below the lead story.
+The eight core sequences retain their original 24 distinct guides; additional
+guides use the existing same-topic further-reading sidebar without inventing a
+fourth stage or changing original sequence membership.
 Each journey has three distinct guides. Article sidebars show position and
 previous/next readings with sixteen authored connections explaining differences
 in questions, methods or evidence, not an implied author citation or ranking.

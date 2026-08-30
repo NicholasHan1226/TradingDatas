@@ -88,18 +88,24 @@ languages and original titles regardless of the selected display language.
 The complete library is available in Topics in pages of 12; global search
 still searches all 200 records. Bookmarks and source routes remain language-neutral.
 
-Twenty-four selected records include bilingual reading guides in
-`src/researchEditorial.js` and `src/researchEditorialExpansion.js`.
+Twenty-six selected records include bilingual reading guides. The original 24
+are in `src/researchEditorial.js` and `src/researchEditorialExpansion.js`;
+`src/researchAdditionalGuides.js` adds Amihud and Novy-Marx using located primary
+passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
-passages or author-issued supporting instructions. Twenty-three guides now have
+passages or author-issued supporting instructions. Twenty-five guides now have
 six sections with source locators. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
 certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
-Articles show their position and previous/next reading with authored reasons.
+Core articles show their position and previous/next reading with authored reasons;
+additional guides use the existing same-topic reading links. Amihud uses the 2002
+journal article; Novy-Marx uses the June 2012 author draft, identified separately
+from its retained 2013 journal citation. The Chinese title now distinguishes gross
+profitability (gross profits/assets) from gross margin (gross profits/sales).
 Six preparation tutorials (`preparationTutorials.js`, `preparationTutorialExpansion.js`, `tutorialExamples.js`) use
 local synthetic examples, never real requests. Their publication does not change
 the product manifest's underlying data/Feature/Recipe maturity or account grants.
@@ -153,7 +159,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 176 summary-only records, repeated/short paragraphs and
+candidates (including the 174 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only

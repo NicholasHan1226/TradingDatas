@@ -20,11 +20,11 @@ test("eight subjects each have three distinct bilingual stages resolving to stab
   }
 });
 
-test("all guide continuations have specific bilingual connections and reciprocal neighbors", () => {
+test("all core journey continuations have specific bilingual connections and reciprocal neighbors", () => {
   const guides = papers.filter((paper) => paper.readingNotes?.length >= 4);
   const titles = Object.values(researchJourneys).flat().map((step) => step.title);
   assert.equal(new Set(titles).size, 24);
-  for (const paper of guides) {
+  for (const paper of guides.filter(paper => titles.includes(paper.title))) {
     const journey = readingJourney(paper, papers);
     assert.ok(journey, paper.title);
     assert.equal(journey.links.length, journey.index === 1 ? 2 : 1);
@@ -37,9 +37,9 @@ test("all guide continuations have specific bilingual connections and reciprocal
   assert.equal(readingJourney({ title: "unknown" }, papers), null);
 });
 
-test("featured shelf has twenty-four guides and covers every journey stage", () => {
+test("featured shelf has twenty-six guides and covers every core journey stage", () => {
   const guides = papers.filter((paper) => paper.readingNotes?.length >= 4);
-  assert.equal(guides.length, 24);
+  assert.equal(guides.length, 26);
   for (const steps of Object.values(researchJourneys)) for (const step of steps) {
     assert.ok(guides.some((paper) => paper.title === step.title), step.title);
   }

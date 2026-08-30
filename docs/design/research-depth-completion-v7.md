@@ -5,6 +5,11 @@ follow-up, not a new data provider, feature, trading tool or publishing authorit
 
 ## Frozen scope
 
+This records the original v7 pass. The later authorized continuation expands two
+existing summary records into guides (26 total) and fixes the shared search input
+label; current counts and the unchanged eight core sequences are maintained in
+`docs/product/RESEARCH_LIBRARY.md`. The original pass below remains historical.
+
 - Keep 200 external works, 24 guides, Featured/Topics, stable IDs, bookmarks,
   six tutorials and their 24 downloads unchanged.
 - Target the remaining 16 short guides. Expand only where primary text or an
