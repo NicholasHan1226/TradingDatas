@@ -757,6 +757,13 @@ Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，�
 
 ## 采集巡检脚本
 
+Crypto目录的UTF-8回执候选扫描使用进程内锁，覆盖Python UDF注册、SQL读取和注销，
+用于避免多个SQLite连接同时回调Python时的争用；不串行化整个HTTP服务，也不放宽
+原始候选、损坏回执与扫描预算检查。发布须验证两个同时发起的认证目录请求均在15秒内
+完成，单请求速度不能替代并发验收。当前4bb/WAL之后的运行时升级必须保持WAL，
+回退到4bb/WAL时不得沿用早期恢复DELETE的脚本。详见
+[并发目录验收记录](reports/2026-08-30-runtime-concurrency.md)。
+
 已安装的 `/usr/local/sbin/tradingdatas-collector-watch.sh` 对应仓库
 `deploy/tradingdatas-collector-watch.sh`；本文件是既有巡检的可审计源，不创建新 timer，
 也不发送通知。退出码 `1` 表示发现告警，不能单凭 systemd `failed` 断言巡检程序损坏。
