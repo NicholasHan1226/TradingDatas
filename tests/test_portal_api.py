@@ -11,6 +11,7 @@ import http.client
 import json
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -24,6 +25,12 @@ PAST_TS = time.time() - 3600
 PORTAL_TEST_SALT = b"tradingdatas-portal-test-salt-32-bytes"
 
 
+def _pin_portal_auth_salt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth, "TOKEN_SALT_FILE_RAW", "")
+    monkeypatch.setattr(auth, "TOKEN_SALT_RAW", PORTAL_TEST_SALT.decode("ascii"))
+    monkeypatch.setattr(auth, "_TOKEN_SALT", None)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_portal_auth_salt(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep portal tests independent of auth-module reloads in other files.
@@ -35,9 +42,7 @@ def _isolate_portal_auth_salt(monkeypatch: pytest.MonkeyPatch) -> None:
     The production 0600 validation remains covered by the security test; this
     fixture only establishes the portal suite's in-process test configuration.
     """
-    monkeypatch.setattr(auth, "TOKEN_SALT_FILE_RAW", "")
-    monkeypatch.setattr(auth, "TOKEN_SALT_RAW", PORTAL_TEST_SALT.decode("ascii"))
-    monkeypatch.setattr(auth, "_TOKEN_SALT", None)
+    _pin_portal_auth_salt(monkeypatch)
 
 
 @pytest.mark.parametrize(
@@ -118,6 +123,7 @@ class _Harness:
 
 @pytest.fixture
 def portal_server(monkeypatch: pytest.MonkeyPatch) -> _Harness:
+    _pin_portal_auth_salt(monkeypatch)
     tokens = dict(
         [
             _token_record(
@@ -177,6 +183,22 @@ def _error_shape(payload: dict[str, Any], expected_code: str) -> None:
     assert payload["request_id"]
     assert payload["error"]["code"] == expected_code
     assert payload["error"]["retryable"] is (expected_code == "rate_limited")
+
+
+def test_portal_hash_survives_invalid_salt_file_left_by_auth_reload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exact-main shard 0/4 failed when this leftover 0644 path survived a reload."""
+    salt_file = tmp_path / "token_salt"
+    salt_file.write_text("tradingdatas-test-token-salt-32-bytes", encoding="utf-8")
+    salt_file.chmod(0o644)
+    monkeypatch.setattr(auth, "TOKEN_SALT_FILE_RAW", str(salt_file))
+    monkeypatch.setattr(auth, "TOKEN_SALT_RAW", "")
+    monkeypatch.setattr(auth, "_TOKEN_SALT", None)
+    with pytest.raises(auth.AuthError, match="token salt mode must be 0600"):
+        auth._hash_token("customer-token")
+    _pin_portal_auth_salt(monkeypatch)
+    assert _token_hash("customer-token")
 
 
 def test_portal_me_requires_token(portal_server: _Harness) -> None:
