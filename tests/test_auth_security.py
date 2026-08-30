@@ -84,10 +84,19 @@ def _reload_auth(monkeypatch: pytest.MonkeyPatch, **env: str) -> Any:
 def _realign_query_cursor_auth_references() -> None:
     """importlib.reload(auth) rebinds auth.AuthError and auth._private_file_bytes
     in place; query_cursor holds from-import references that must be realigned
-    so its AuthError translation keeps working for the rest of the session."""
+    so its AuthError translation keeps working for the rest of the session.
+
+    The same reload also freezes TOKEN_SALT_FILE_RAW / TOKEN_SALT_RAW from the
+    test environment.  pytest undoes the env vars, but the module-level copies
+    remain, so a later file on this xdist worker can inherit a 0644 salt path
+    and fail with ``token salt mode must be 0600``.
+    """
     yield
     query_cursor.AuthError = auth.AuthError
     query_cursor._private_file_bytes = auth._private_file_bytes
+    auth.TOKEN_SALT_FILE_RAW = ""
+    auth.TOKEN_SALT_RAW = ""
+    auth._TOKEN_SALT = None
 
 
 def test_forged_jwt_is_rejected_when_jwt_key_is_unset(
