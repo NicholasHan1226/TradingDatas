@@ -682,7 +682,38 @@ QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界�
 Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，仅作为 on_demand
 补充手段设计，不在自动调度内；激活前需先验证其真实响应契约。
 
-## 采集巡检脚本
+## 目录请求的可选进程隔离
+
+进程间任务 JSON 上限为 1 MiB；返回体继续服从 registry 的既有响应字节预算。
+
+`TRADINGDATAS_CATALOG_WORKERS` 缺省或精确值 `0` 保留原进程内执行；精确值 `1`、`2`
+启用同一 API unit/OS 账号内的相应数量持久 `spawn` 子进程。其它值不接受，不做静默
+回退。仅 `GET /v1/catalog` 的完整 `CatalogService.list_datasets` 移入子进程，查询、
+认证、endpoint scope、分类授权、频率/日额度和租户并发仍由原 HTTP 进程处理。
+没有新服务、端口、凭据、provider 调用、数据库写入或跨请求投影缓存。
+
+每个目录任务重新打开原 verified SQLite snapshot；runtime、coverage、queryability 和
+cursor 由该完整请求的同一快照产生。子进程启动时核对物理代码目录/文件 hash、完整
+registry hash、SQLite 路径、账号及既有 cursor signer 指纹；不经任务队列传原 token、
+账号字典或 signer 密钥。监听启动前必须完成全部子进程身份检查，此步骤不读取 catalog
+事实，也不构成数据健康证明。初始化失败关闭该候选服务；不能回退到未隔离的计算。
+
+目录运行任务总数最多等于 worker 数，没有隐式等待队列。容量满或 worker/IPC 失败返回
+既有 503 `service_unavailable`，不自动重放或改走 query。父请求一直等待已接收的任务
+真正结束；客户端断开不释放仍在计算的任务/租户名额。Python 的正常 shutdown 停止接收
+新任务并等待自有任务结束。systemd 停止整个 control group 时会同时发送 SIGTERM，
+在途只读请求可能中断或返回 503；这不是无中断排空承诺，不自动重试。仅在预监听
+初始化失败时，允许有界终止并回收该次初始化创建的子进程；
+不终止 collector、正常客户任务或其它服务进程。systemd 仍须 `KillMode=control-group`，
+并预留启动/退出时间；不得为该功能放宽 SQLite、凭据和 filesystem 保护。
+
+启用先完成默认路径、真实 spawn、异常/容量/退出和 HTTP 授权顺序测试；随后在原运行面
+验证冷/热目录、两个同时目录与既有 query 混合负载、完整 240 项/适用目录及查询摘要。
+15 秒请求门禁不含预监听初始化，但初始化自身必须有界。现有服务、timer、锁、数据库
+模式、清单和认证材料分别读回；不以独立进程性能实验代替真实 HTTP 验收。
+配置切换必须与精确 release 一起保留回退：恢复原 worker 配置和原 release，停止/启动
+同一 API unit 并完成认证读取，保留全部事实与回执。当前事故与实验见
+[进程隔离候选记录](reports/2026-08-31-catalog-process-isolation.md)。
 
 Crypto目录的UTF-8回执候选扫描先尝试有界的数据库原生字节匹配：首个共同前缀后的
 精确后缀命中即可返回；首个未命中而有后续/重叠前缀时，仍调用原完整Python matcher。
@@ -699,6 +730,8 @@ UTF-8回执候选扫描仍使用进程内锁，覆盖Python UDF注册、SQL读�
 完成，单请求速度不能替代并发验收。当前4bb/WAL之后的运行时升级必须保持WAL，
 回退到4bb/WAL时不得沿用早期恢复DELETE的脚本。详见
 [原生匹配与验收记录](reports/2026-08-30-runtime-native-candidate.md)。
+
+## 采集巡检脚本
 
 已安装的 `/usr/local/sbin/tradingdatas-collector-watch.sh` 对应仓库
 `deploy/tradingdatas-collector-watch.sh`；本文件是既有巡检的可审计源，不创建新 timer，

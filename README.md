@@ -77,6 +77,11 @@ QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制�
 
 API 只读 SQLite，不同步调用上游，不回退文件、旧数据库或 provider 专用接口。每次响应保留 dataset 级的 `state`、`degraded`、`freshness`、`quality`、`lineage`、`receipt_id`、`data_through`、`observed_at` 和 `reasons`。
 
+目录可使用默认关闭的 `TRADINGDATAS_CATALOG_WORKERS=1|2`，在同一 API 服务内隔离
+目录计算与查询线程；认证、授权与限额仍由原 HTTP 进程执行。启用需独立的混合负载及
+认证回读验收，配置存在不代表生产已启用。设置、容量和回退要求见
+[运行说明](docs/OPERATIONS.md#目录请求的可选进程隔离)。
+
 详见：
 
 - [产品与开发规则](AGENTS.md)
