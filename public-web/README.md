@@ -45,6 +45,39 @@ npm run build
 npm run test:sites
 ```
 
+## Research library
+
+The 2026-08-30 candidate contains 200 distinct external research materials with
+Chinese/English editorial titles, orientations, data requirements and limitations.
+These are attributed reading records, not 200 internally authored papers or
+full-text translations. Bibliographic verification is not a full-text review,
+replication, redistribution licence or production data-availability claim.
+
+`src/researchSeeds.js` holds new editorial notes; `src/researchLegacy.json` preserves
+the original records and stable routes. `src/researchBibliography.json` is generated
+publisher-registered metadata, and `src/researchSourcePages.json` records manually
+checked primary-source exceptions. `src/researchCatalog.js` assembles the library,
+shared preparation checks and three curated reading paths. See
+[`RESEARCH_LIBRARY.md`](../docs/product/RESEARCH_LIBRARY.md) for acceptance rules.
+
+```bash
+node scripts/verify-research-sources.mjs
+node --test tests/research-catalog.test.mjs
+```
+
+The verifier reuses checked records and queries Crossref serially for missing or
+invalid metadata. It exits nonzero and writes `research-source-review.json` when
+editorial review is required; never auto-accept a fuzzy title or another author's
+same-title digest. It does not download or republish full papers.
+
+Language defaults to the primary system/browser language (`zh-*` -> Chinese,
+otherwise English). Account preferences offer System / 中文 / English; explicit
+choices persist in this browser. System mode responds to `languagechange` and
+does not overwrite an explicit preference. Search indexes both editorial
+languages and original titles regardless of the selected display language.
+The complete library is progressively revealed in pages of 20; global search
+still searches all 200 records. Bookmarks and source routes remain language-neutral.
+
 Keep the generated raster assets in `public/assets/`. Do not rebuild the brand
 mark or data-material artwork with CSS, inline SVG, or placeholder elements.
 

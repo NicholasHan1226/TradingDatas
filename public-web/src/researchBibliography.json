@@ -1,0 +1,3096 @@
+{
+  "Continuous Auctions and Insider Trading": {
+    "title": "Continuous Auctions and Insider Trading",
+    "doi": "10.2307/1913210",
+    "venue": "Econometrica",
+    "year": 1985,
+    "authors": [
+      "Albert S. Kyle"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F1913210",
+    "sourceUrl": "https://doi.org/10.2307/1913210",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "8ef2286e90b0923c676cc6f487af12d223ef842bf8dffe55d3077421786a270a"
+  },
+  "Returns to Buying Winners and Selling Losers: Implications for Stock Market Efficiency": {
+    "title": "Returns to Buying Winners and Selling Losers: Implications for Stock Market Efficiency",
+    "doi": "10.1111/j.1540-6261.1993.tb04702.x",
+    "venue": "The Journal of Finance",
+    "year": 1993,
+    "authors": [
+      "NARASIMHAN JEGADEESH",
+      "SHERIDAN TITMAN"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1993.tb04702.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1993.tb04702.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "99665091efbab08d73d848cb87eec49f279298ef938ed64aea8b97c5e4d70e8f"
+  },
+  "Common risk factors in the returns on stocks and bonds": {
+    "title": "Common risk factors in the returns on stocks and bonds",
+    "doi": "10.1016/0304-405x(93)90023-5",
+    "venue": "Journal of Financial Economics",
+    "year": 1993,
+    "authors": [
+      "Eugene F. Fama",
+      "Kenneth R. French"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-405x(93)90023-5",
+    "sourceUrl": "https://doi.org/10.1016/0304-405x(93)90023-5",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "adfe1c788db2a352d00a19412935a736e1dd73463597cbbf8195a1d4fd4145d5"
+  },
+  "Price Momentum and Trading Volume": {
+    "title": "Price Momentum and Trading Volume",
+    "doi": "10.1111/0022-1082.00280",
+    "venue": "The Journal of Finance",
+    "year": 2000,
+    "authors": [
+      "Charles M.C. Lee",
+      "Bhaskaran Swaminathan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F0022-1082.00280",
+    "sourceUrl": "https://doi.org/10.1111/0022-1082.00280",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "dcd648fe7e7affff222fb2be4fa5703463e19bc9e8d41ea4c56bceae17a9decd"
+  },
+  "Media Coverage and the Cross-section of Stock Returns": {
+    "title": "Media Coverage and the Cross‐section of Stock Returns",
+    "doi": "10.1111/j.1540-6261.2009.01493.x",
+    "venue": "The Journal of Finance",
+    "year": 2009,
+    "authors": [
+      "LILY FANG",
+      "JOEL PERESS"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2009.01493.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2009.01493.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "6a87b7f0876e24c518f8e151011ec4fc8226e0bd860c450761ee4ff73ec69b3b"
+  },
+  "Modeling and Forecasting Realized Volatility": {
+    "title": "Modeling and Forecasting Realized Volatility",
+    "doi": "10.1111/1468-0262.00418",
+    "venue": "Econometrica",
+    "year": 2003,
+    "authors": [
+      "Torben G. Andersen",
+      "Tim Bollerslev",
+      "Francis X. Diebold",
+      "Paul Labys"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F1468-0262.00418",
+    "sourceUrl": "https://doi.org/10.1111/1468-0262.00418",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "4cae61f91a931df61379ddabcf6f7566f386a6d462840306cafa9057a71d1b8d"
+  },
+  "Trading and Arbitrage in Cryptocurrency Markets": {
+    "title": "Trading and arbitrage in cryptocurrency markets",
+    "doi": "10.1016/j.jfineco.2019.07.001",
+    "venue": "Journal of Financial Economics",
+    "year": 2020,
+    "authors": [
+      "Igor Makarov",
+      "Antoinette Schoar"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2019.07.001",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2019.07.001",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "ad2ad1cab31f8051c773e8ecdaf989b5a5032c32400ceb9c1df61d8f41fcc861"
+  },
+  "A Comprehensive Look at The Empirical Performance of Equity Premium Prediction": {
+    "title": "A Comprehensive Look at The Empirical Performance of Equity Premium Prediction",
+    "doi": "10.1093/rfs/hhm014",
+    "venue": "Review of Financial Studies",
+    "year": 2008,
+    "authors": [
+      "Ivo Welch",
+      "Amit Goyal"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhm014",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhm014",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "29d0dbf4aa35b01259790d46412ece5a43540948b160c4b3cfae3f8ad880355b"
+  },
+  "Capital Asset Prices: A Theory of Market Equilibrium under Conditions of Risk": {
+    "title": "CAPITAL ASSET PRICES: A THEORY OF MARKET EQUILIBRIUM UNDER CONDITIONS OF RISK*",
+    "doi": "10.1111/j.1540-6261.1964.tb02865.x",
+    "venue": "The Journal of Finance",
+    "year": 1964,
+    "authors": [
+      "William F. Sharpe"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1964.tb02865.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1964.tb02865.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "eb0cd38fe02831c17879aab91f67da168b862e57ef0109f2cd2c088e946a6d83"
+  },
+  "The Valuation of Risk Assets and the Selection of Risky Investments in Stock Portfolios and Capital Budgets": {
+    "title": "The Valuation of Risk Assets and the Selection of Risky Investments in Stock Portfolios and Capital Budgets",
+    "doi": "10.2307/1924119",
+    "venue": "The Review of Economics and Statistics",
+    "year": 1965,
+    "authors": [
+      "John Lintner"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F1924119",
+    "sourceUrl": "https://doi.org/10.2307/1924119",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "b959106c68ee6d8410dd53d8f8850280eaa8bf0034cd88d41171222500c86e41"
+  },
+  "Portfolio Selection": {
+    "title": "PORTFOLIO SELECTION*",
+    "doi": "10.1111/j.1540-6261.1952.tb01525.x",
+    "venue": "The Journal of Finance",
+    "year": 1952,
+    "authors": [
+      "Harry Markowitz"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1952.tb01525.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1952.tb01525.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "b4449dfde7e9b87639ecdd30e3424940fe8f7fff34408299a6b7e7574cd3d18e"
+  },
+  "The Arbitrage Theory of Capital Asset Pricing": {
+    "title": "The arbitrage theory of capital asset pricing",
+    "doi": "10.1016/0022-0531(76)90046-6",
+    "venue": "Journal of Economic Theory",
+    "year": 1976,
+    "authors": [
+      "Stephen A Ross"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0022-0531(76)90046-6",
+    "sourceUrl": "https://doi.org/10.1016/0022-0531(76)90046-6",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "572e95773baff9682604c94f40b0b67a79da5e95b3297be7c597192ded89d721"
+  },
+  "An Intertemporal Capital Asset Pricing Model": {
+    "title": "An Intertemporal Capital Asset Pricing Model",
+    "doi": "10.2307/1913811",
+    "venue": "Econometrica",
+    "year": 1973,
+    "authors": [
+      "Robert C. Merton"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F1913811",
+    "sourceUrl": "https://doi.org/10.2307/1913811",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "232ec8f2349650aee8275497b4c149020ffa4724df32f2cddd36f3ad4d1142e2"
+  },
+  "The Equity Premium: A Puzzle": {
+    "title": "The equity premium: A puzzle",
+    "doi": "10.1016/0304-3932(85)90061-3",
+    "venue": "Journal of Monetary Economics",
+    "year": 1985,
+    "authors": [
+      "Rajnish Mehra",
+      "Edward C. Prescott"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-3932(85)90061-3",
+    "sourceUrl": "https://doi.org/10.1016/0304-3932(85)90061-3",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "1216f83e08f6be3639815e22114058259204d4e2974000e4ae10525c413b285f"
+  },
+  "Asset Prices in an Exchange Economy": {
+    "title": "Asset Prices in an Exchange Economy",
+    "doi": "10.2307/1913837",
+    "venue": "Econometrica",
+    "year": 1978,
+    "authors": [
+      "Robert E. Lucas"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F1913837",
+    "sourceUrl": "https://doi.org/10.2307/1913837",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "32b84c851fcd4951bc897b4b8120d84e26352d58f78e719b2f3537780fc2f56a"
+  },
+  "By Force of Habit: A Consumption-Based Explanation of Aggregate Stock Market Behavior": {
+    "title": "By Force of Habit: A Consumption‐Based Explanation of Aggregate Stock Market Behavior",
+    "doi": "10.1086/250059",
+    "venue": "Journal of Political Economy",
+    "year": 1999,
+    "authors": [
+      "John Y. Campbell",
+      "John H. Cochrane"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F250059",
+    "sourceUrl": "https://doi.org/10.1086/250059",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "7b445c0e80eaf8b33eb6a10b4cf2e6107322d0fc589880f8a647f9f1a61583a5"
+  },
+  "A Five-Factor Asset Pricing Model": {
+    "title": "A five-factor asset pricing model",
+    "doi": "10.1016/j.jfineco.2014.10.010",
+    "venue": "Journal of Financial Economics",
+    "year": 2015,
+    "authors": [
+      "Eugene F. Fama",
+      "Kenneth R. French"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2014.10.010",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2014.10.010",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "2c6b358eaf4be3bf78bf69390bda92db5f38c69fa50a6a2585d3cec4247d072a"
+  },
+  "Dissecting Anomalies with a Five-Factor Model": {
+    "title": "Dissecting Anomalies with a Five-Factor Model",
+    "doi": "10.1093/rfs/hhv043",
+    "venue": "Review of Financial Studies",
+    "year": 2016,
+    "authors": [
+      "Eugene F. Fama",
+      "Kenneth R. French"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhv043",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhv043",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "dad193c1249e0f72b3c6e54cee1119c58aee438c00d959e38c85c341e5980212"
+  },
+  "Value and Momentum Everywhere": {
+    "title": "Value and Momentum Everywhere",
+    "doi": "10.1111/jofi.12021",
+    "venue": "The Journal of Finance",
+    "year": 2013,
+    "authors": [
+      "CLIFFORD S. ASNESS",
+      "TOBIAS J. MOSKOWITZ",
+      "LASSE HEJE PEDERSEN"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fjofi.12021",
+    "sourceUrl": "https://doi.org/10.1111/jofi.12021",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "3db77a65afb2ff6a95b373e4536a33810aad043b322f94e171cf54e26d847550"
+  },
+  "Expected Stock Returns and Volatility": {
+    "title": "Expected stock returns and volatility",
+    "doi": "10.1016/0304-405x(87)90026-2",
+    "venue": "Journal of Financial Economics",
+    "year": 1987,
+    "authors": [
+      "Kenneth R. French",
+      "G.William Schwert",
+      "Robert F. Stambaugh"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-405x(87)90026-2",
+    "sourceUrl": "https://doi.org/10.1016/0304-405x(87)90026-2",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "14e22845142fdf97c5f8cdb044ce7fbe1a826c3fc31edc47380b69b654d46e68"
+  },
+  "The Cross-Section of Volatility and Expected Returns": {
+    "title": "The Cross‐Section of Volatility and Expected Returns",
+    "doi": "10.1111/j.1540-6261.2006.00836.x",
+    "venue": "The Journal of Finance",
+    "year": 2006,
+    "authors": [
+      "ANDREW ANG",
+      "ROBERT J. HODRICK",
+      "YUHANG XING",
+      "XIAOYAN ZHANG"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2006.00836.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2006.00836.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "5dceaa80e246cc4c632603bfbcf40bf17ec68de18dc5e76e67d62e9e7b4a4b26"
+  },
+  "Betting Against Beta": {
+    "title": "Betting against beta",
+    "doi": "10.1016/j.jfineco.2013.10.005",
+    "venue": "Journal of Financial Economics",
+    "year": 2014,
+    "authors": [
+      "Andrea Frazzini",
+      "Lasse Heje Pedersen"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2013.10.005",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2013.10.005",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "aecf30db9fb38f8844a315f017c0f27ed6b2ab833fd8822d60a23c3ecf3ddc59"
+  },
+  "Do Stock Prices Move Too Much to be Justified by Subsequent Changes in Dividends?": {
+    "title": "Do Stock Prices Move Too Much to be Justified by Subsequent Changes in Dividends?",
+    "doi": "10.3386/w0456",
+    "venue": "National Bureau of Economic Research",
+    "year": 1980,
+    "authors": [
+      "Robert Shiller"
+    ],
+    "type": "report",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.3386%2Fw0456",
+    "sourceUrl": "https://doi.org/10.3386/w0456",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "9dc6819a64748fbdb07065ad4a2e24b92f3817f1ae12088ff1853b9eb7a4ac05"
+  },
+  "The Dividend-Price Ratio and Expectations of Future Dividends and Discount Factors": {
+    "title": "The Dividend-Price Ratio and Expectations of Future Dividends and Discount Factors",
+    "doi": "10.1093/rfs/1.3.195",
+    "venue": "Review of Financial Studies",
+    "year": 1988,
+    "authors": [
+      "John Y. Campbell",
+      "Robert J. Shiller"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2F1.3.195",
+    "sourceUrl": "https://doi.org/10.1093/rfs/1.3.195",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "5caeb8bd887d18f1d98b1dab06712d92c880741e6aa20accf10996bf02383665"
+  },
+  "Presidential Address: Discount Rates": {
+    "title": "Presidential Address: Discount Rates",
+    "doi": "10.1111/j.1540-6261.2011.01671.x",
+    "venue": "The Journal of Finance",
+    "year": 2011,
+    "authors": [
+      "JOHN H. COCHRANE"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2011.01671.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2011.01671.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d58b826186a51a9c9924fa74e33654c69f4b638f7c02956c76d6454445761dce"
+  },
+  "Size and Value in China": {
+    "title": "Size and value in China",
+    "doi": "10.1016/j.jfineco.2019.03.008",
+    "venue": "Journal of Financial Economics",
+    "year": 2019,
+    "authors": [
+      "Jianan Liu",
+      "Robert F. Stambaugh",
+      "Yu Yuan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2019.03.008",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2019.03.008",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "880b62d8dff3db132ac59a00356f892fa60a600089cdbf2db429b9e538361331"
+  },
+  "Bid, Ask and Transaction Prices in a Specialist Market with Heterogeneously Informed Traders": {
+    "title": "Bid, ask and transaction prices in a specialist market with heterogeneously informed traders",
+    "doi": "10.1016/0304-405x(85)90044-3",
+    "venue": "Journal of Financial Economics",
+    "year": 1985,
+    "authors": [
+      "Lawrence R. Glosten",
+      "Paul R. Milgrom"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-405x(85)90044-3",
+    "sourceUrl": "https://doi.org/10.1016/0304-405x(85)90044-3",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "9d383bc3b61cc39830b792372400b8399422f656177adcb7f6429d22f4f9d1fc"
+  },
+  "A Simple Implicit Measure of the Effective Bid-Ask Spread in an Efficient Market": {
+    "title": "A Simple Implicit Measure of the Effective Bid-Ask Spread in an Efficient Market",
+    "doi": "10.2307/2327617",
+    "venue": "The Journal of Finance",
+    "year": 1984,
+    "authors": [
+      "Richard Roll"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F2327617",
+    "sourceUrl": "https://doi.org/10.2307/2327617",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f26edd06cd53a2280e8e6ffd1da1702122ad84623feeedf34690fd5e83b2fa32"
+  },
+  "Asset Pricing and the Bid-Ask Spread": {
+    "title": "Asset pricing and the bid-ask spread",
+    "doi": "10.1016/0304-405x(86)90065-6",
+    "venue": "Journal of Financial Economics",
+    "year": 1986,
+    "authors": [
+      "Yakov Amihud",
+      "Haim Mendelson"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-405x(86)90065-6",
+    "sourceUrl": "https://doi.org/10.1016/0304-405x(86)90065-6",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "b3015f8e513cf87f3d6da6abf1f8455df43ee85a7d6f717c310e6da239cb6cfd"
+  },
+  "Illiquidity and Stock Returns: Cross-Section and Time-Series Effects": {
+    "title": "Illiquidity and stock returns: cross-section and time-series effects",
+    "doi": "10.1016/s1386-4181(01)00024-6",
+    "venue": "Journal of Financial Markets",
+    "year": 2002,
+    "authors": [
+      "Yakov Amihud"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs1386-4181(01)00024-6",
+    "sourceUrl": "https://doi.org/10.1016/s1386-4181(01)00024-6",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "204e1d6b229f03d310b002a512d93ffa73dd7380de1771647a5ecc0ad466bf4c"
+  },
+  "Why Do Security Prices Change? A Transaction-Level Analysis of NYSE Stocks": {
+    "title": "Why Do Security Prices Change? A Transaction-Level Analysis of NYSE Stocks",
+    "doi": "10.1093/rfs/10.4.1035",
+    "venue": "Review of Financial Studies",
+    "year": 1997,
+    "authors": [
+      "Ananth Madhavan",
+      "Matthew Richardson",
+      "Mark Roomans"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2F10.4.1035",
+    "sourceUrl": "https://doi.org/10.1093/rfs/10.4.1035",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c988d40cc13ea3edeb3ac10c8afbfc70aaa1916d230bfb29b5ad0b71137dfed2"
+  },
+  "Does Algorithmic Trading Improve Liquidity?": {
+    "title": "Does Algorithmic Trading Improve Liquidity?",
+    "doi": "10.1111/j.1540-6261.2010.01624.x",
+    "venue": "The Journal of Finance",
+    "year": 2011,
+    "authors": [
+      "TERRENCE HENDERSHOTT",
+      "CHARLES M. JONES",
+      "ALBERT J. MENKVELD"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2010.01624.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2010.01624.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "85bb1cc6dbda4eb85c2d0b1242c4d9bec50dc1048eab1813e4090cd8b5f1894e"
+  },
+  "The Flash Crash: High-Frequency Trading in an Electronic Market": {
+    "title": "The Flash Crash: High‐Frequency Trading in an Electronic Market",
+    "doi": "10.1111/jofi.12498",
+    "venue": "The Journal of Finance",
+    "year": 2017,
+    "authors": [
+      "ANDREI KIRILENKO",
+      "ALBERT S. KYLE",
+      "MEHRDAD SAMADI",
+      "TUGKAN TUZUN"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fjofi.12498",
+    "sourceUrl": "https://doi.org/10.1111/jofi.12498",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "9e28bbf7d43fa55ddb119a89e85db062c08713ef660e8ad18699fae62f0fee42"
+  },
+  "The High-Frequency Trading Arms Race: Frequent Batch Auctions as a Market Design Response": {
+    "title": "The High-Frequency Trading Arms Race: Frequent Batch Auctions as a Market Design Response *",
+    "doi": "10.1093/qje/qjv027",
+    "venue": "The Quarterly Journal of Economics",
+    "year": 2015,
+    "authors": [
+      "Eric Budish",
+      "Peter Cramton",
+      "John Shim"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Fqje%2Fqjv027",
+    "sourceUrl": "https://doi.org/10.1093/qje/qjv027",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f24f7cd50253a7d2953acd5ba6380c64b22ced6af04a5298f4658b38a370b814"
+  },
+  "Commonality in Liquidity": {
+    "title": "Commonality in liquidity",
+    "doi": "10.1016/s0304-405x(99)00057-4",
+    "venue": "Journal of Financial Economics",
+    "year": 2000,
+    "authors": [
+      "Tarun Chordia",
+      "Richard Roll",
+      "Avanidhar Subrahmanyam"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs0304-405x(99)00057-4",
+    "sourceUrl": "https://doi.org/10.1016/s0304-405x(99)00057-4",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "60c8c3c4595f3b7a3b1d0f76ad44a7e1f1fd156f1daa4de03b255c6f90cb8dee"
+  },
+  "Market Microstructure: A Survey": {
+    "title": "Market microstructure: A survey",
+    "doi": "10.1016/s1386-4181(00)00007-0",
+    "venue": "Journal of Financial Markets",
+    "year": 2000,
+    "authors": [
+      "Ananth Madhavan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs1386-4181(00)00007-0",
+    "sourceUrl": "https://doi.org/10.1016/s1386-4181(00)00007-0",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f9dbb4166ada13d9cf1baec21d991ac15ccd53990591d97f08c284ceccf3a837"
+  },
+  "Order Imbalance and Individual Stock Returns: Theory and Evidence": {
+    "title": "Order imbalance and individual stock returns: Theory and evidence",
+    "doi": "10.1016/s0304-405x(03)00175-2",
+    "venue": "Journal of Financial Economics",
+    "year": 2004,
+    "authors": [
+      "Tarun Chordia",
+      "Avanidhar Subrahmanyam"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs0304-405x(03)00175-2",
+    "sourceUrl": "https://doi.org/10.1016/s0304-405x(03)00175-2",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d630356615e701b548480c83e47b46b2d2fbe7fe6422a967c45565cad7fe1114"
+  },
+  "A Simple Way to Estimate Bid-Ask Spreads from Daily High and Low Prices": {
+    "title": "A Simple Way to Estimate Bid‐Ask Spreads from Daily High and Low Prices",
+    "doi": "10.1111/j.1540-6261.2012.01729.x",
+    "venue": "The Journal of Finance",
+    "year": 2012,
+    "authors": [
+      "SHANE A. CORWIN",
+      "PAUL SCHULTZ"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2012.01729.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2012.01729.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e25751fd1a7f7dabdd272113159d01bdb5d3206195ac4b120f4ac7f45b03b1dd"
+  },
+  "A New Estimate of Transaction Costs": {
+    "title": "A New Estimate of Transaction Costs",
+    "doi": "10.1093/rfs/12.5.1113",
+    "venue": "Review of Financial Studies",
+    "year": 1999,
+    "authors": [
+      "David A. Lesmond",
+      "Joseph P. Ogden",
+      "Charles A. Trzcinka"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2F12.5.1113",
+    "sourceUrl": "https://doi.org/10.1093/rfs/12.5.1113",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "b0594fc36e85f150ff435f7fcc1b476f8cc140c87ba901cf96bc89bc81c28938"
+  },
+  "Autoregressive Conditional Heteroscedasticity with Estimates of the Variance of United Kingdom Inflation": {
+    "title": "Autoregressive Conditional Heteroscedasticity with Estimates of the Variance of United Kingdom Inflation",
+    "doi": "10.2307/1912773",
+    "venue": "Econometrica",
+    "year": 1982,
+    "authors": [
+      "Robert F. Engle"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F1912773",
+    "sourceUrl": "https://doi.org/10.2307/1912773",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "39fa36742a3b28b8b7bfe19998e72296b4794aef42d2fb7a1e3770b422c24cd3"
+  },
+  "A Simple, Positive Semi-Definite, Heteroskedasticity and Autocorrelation Consistent Covariance Matrix": {
+    "title": "A Simple, Positive Semi-Definite, Heteroskedasticity and Autocorrelation Consistent Covariance Matrix",
+    "doi": "10.2307/1913610",
+    "venue": "Econometrica",
+    "year": 1987,
+    "authors": [
+      "Whitney K. Newey",
+      "Kenneth D. West"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F1913610",
+    "sourceUrl": "https://doi.org/10.2307/1913610",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "29fb3d41d58306a8a7cca51476f205c968d56d238d49f29b429e69a73e664e62"
+  },
+  "Generalized Autoregressive Conditional Heteroskedasticity": {
+    "title": "Generalized autoregressive conditional heteroskedasticity",
+    "doi": "10.1016/0304-4076(86)90063-1",
+    "venue": "Journal of Econometrics",
+    "year": 1986,
+    "authors": [
+      "Tim Bollerslev"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-4076(86)90063-1",
+    "sourceUrl": "https://doi.org/10.1016/0304-4076(86)90063-1",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "ba50006829bbc17024d5267967b4a2cca8e62726c043d80c8b8a1abfaafa20e2"
+  },
+  "Robust Inference With Multiway Clustering": {
+    "title": "Robust Inference With Multiway Clustering",
+    "doi": "10.1198/jbes.2010.07136",
+    "venue": "Journal of Business &amp; Economic Statistics",
+    "year": 2011,
+    "authors": [
+      "A. Colin Cameron",
+      "Jonah B. Gelbach",
+      "Douglas L. Miller"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1198%2Fjbes.2010.07136",
+    "sourceUrl": "https://doi.org/10.1198/jbes.2010.07136",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "31c4982e257a479bc367a5c582c3daf34ff899b7965a5e4ff15e38e489ec4581"
+  },
+  "Estimating Standard Errors in Finance Panel Data Sets: Comparing Approaches": {
+    "title": "Estimating Standard Errors in Finance Panel Data Sets: Comparing Approaches",
+    "doi": "10.1093/rfs/hhn053",
+    "venue": "Review of Financial Studies",
+    "year": 2009,
+    "authors": [
+      "Mitchell A. Petersen"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhn053",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhn053",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "80ac1077eb3dd33a775f712440ba569c0d6f2d2145e42f0af166dd7b089d66e6"
+  },
+  "The Adjustment of Stock Prices to New Information": {
+    "title": "The Adjustment of Stock Prices to New Information",
+    "doi": "10.2307/2525569",
+    "venue": "International Economic Review",
+    "year": 1969,
+    "authors": [
+      "Eugene F. Fama",
+      "Lawrence Fisher",
+      "Michael C. Jensen",
+      "Richard Roll"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F2525569",
+    "sourceUrl": "https://doi.org/10.2307/2525569",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "cb3e9bb0b6997454b1a7ee1102475800b47a6fa43940ced9ab94fa49674f1300"
+  },
+  "A Reality Check for Data Snooping": {
+    "title": "A Reality Check for Data Snooping",
+    "doi": "10.1111/1468-0262.00152",
+    "venue": "Econometrica",
+    "year": 2000,
+    "authors": [
+      "Halbert White"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F1468-0262.00152",
+    "sourceUrl": "https://doi.org/10.1111/1468-0262.00152",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d02b24003c77de7e065aeba0d9dc0182383b3448ef2b80c466c4e492a2d5cc88"
+  },
+  "A Test for Superior Predictive Ability": {
+    "title": "A Test for Superior Predictive Ability",
+    "doi": "10.1198/073500105000000063",
+    "venue": "Journal of Business &amp; Economic Statistics",
+    "year": 2005,
+    "authors": [
+      "Peter Reinhard Hansen"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1198%2F073500105000000063",
+    "sourceUrl": "https://doi.org/10.1198/073500105000000063",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d52f0dfa35af8c9295e81ebd72adbec22c1e43af458561a0c5383a0b36882c06"
+  },
+  "Comparing Predictive Accuracy": {
+    "title": "Comparing Predictive Accuracy",
+    "doi": "10.1080/07350015.1995.10524599",
+    "venue": "Journal of Business &amp; Economic Statistics",
+    "year": 1995,
+    "authors": [
+      "Francis X. Diebold",
+      "Roberto S. Mariano"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1080%2F07350015.1995.10524599",
+    "sourceUrl": "https://doi.org/10.1080/07350015.1995.10524599",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c7c5823810bd8ea80ef4524496c6e7eb5188f95cafd0f185201d44ef5c718402"
+  },
+  "The Probability of Backtest Overfitting": {
+    "title": "The probability of backtest overfitting",
+    "doi": "10.21314/jcf.2016.322",
+    "venue": "The Journal of Computational Finance",
+    "year": 2016,
+    "authors": [
+      "David Bailey",
+      "Jonathan Borwein",
+      "Marcos López de Prado",
+      "Qiji Jim Zhu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.21314%2Fjcf.2016.322",
+    "sourceUrl": "https://doi.org/10.21314/jcf.2016.322",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "b42715b5f25083fa7d9753538bc970f9c286d05d14ffb2972aa55024a2e7155c"
+  },
+  "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting, and Non-Normality": {
+    "title": "The Deflated Sharpe Ratio:\n                    <i>Correcting for Selection Bias, Backtest</i>\n                    <i>Overfitting, and Non-Normality</i>",
+    "doi": "10.3905/jpm.2014.40.5.094",
+    "venue": "The Journal of Portfolio Management",
+    "year": 2014,
+    "authors": [
+      "David H. Bailey",
+      "Marcos López de Prado"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.3905%2Fjpm.2014.40.5.094",
+    "sourceUrl": "https://doi.org/10.3905/jpm.2014.40.5.094",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c556111aa35c324f8ffbb8589ce1a0933a1626403948dd1ea3e77bdbdae680da"
+  },
+  "Bootstrap Methods: Another Look at the Jackknife": {
+    "title": "Bootstrap Methods: Another Look at the Jackknife",
+    "doi": "10.1214/aos/1176344552",
+    "venue": "The Annals of Statistics",
+    "year": 1979,
+    "authors": [
+      "B. Efron"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1214%2Faos%2F1176344552",
+    "sourceUrl": "https://doi.org/10.1214/aos/1176344552",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "8e5e65eb428b31108daf1d6c94674c1fd45ccbfb830c371f36ec73813e15b07a"
+  },
+  "An Introduction to the Bootstrap": {
+    "title": "An Introduction to the Bootstrap",
+    "doi": "10.1201/9780429246593",
+    "venue": "Chapman and Hall/CRC",
+    "year": 1994,
+    "authors": [
+      "Bradley Efron",
+      "R.J. Tibshirani"
+    ],
+    "type": "book",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1201%2F9780429246593",
+    "sourceUrl": "https://doi.org/10.1201/9780429246593",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "5c652ca215f80c9122fb9312bb546ec999e83643a071a6a56dc00a31b991c611"
+  },
+  "Regression Shrinkage and Selection via the Lasso": {
+    "title": "Regression Shrinkage and Selection Via the Lasso",
+    "doi": "10.1111/j.2517-6161.1996.tb02080.x",
+    "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+    "year": 1996,
+    "authors": [
+      "Robert Tibshirani"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.2517-6161.1996.tb02080.x",
+    "sourceUrl": "https://doi.org/10.1111/j.2517-6161.1996.tb02080.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "050dd9cd4e708837ef930bcadf4e5899b58af57d83778e76e33a6b980cabf471"
+  },
+  "Random Forests": {
+    "title": "Random Forests",
+    "doi": "10.1023/a:1010933404324",
+    "venue": "Machine Learning",
+    "year": 2001,
+    "authors": [
+      "Leo Breiman"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1023%2Fa%3A1010933404324",
+    "sourceUrl": "https://doi.org/10.1023/a:1010933404324",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "520afb11db88861da642d896c2f1c7897446c19b9439bc4011bc49f7a8f54351"
+  },
+  "Deep Learning in Asset Pricing": {
+    "title": "Deep Learning in Asset Pricing",
+    "doi": "10.1287/mnsc.2023.4695",
+    "venue": "Management Science",
+    "year": 2024,
+    "authors": [
+      "Luyang Chen",
+      "Markus Pelger",
+      "Jason Zhu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1287%2Fmnsc.2023.4695",
+    "sourceUrl": "https://doi.org/10.1287/mnsc.2023.4695",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "3d21b4d827d427bfd33816f7cecc05f2ba9e090f9ff7b4b871b190421a43ba29"
+  },
+  "Autoencoder Asset Pricing Models": {
+    "title": "Autoencoder asset pricing models",
+    "doi": "10.1016/j.jeconom.2020.07.009",
+    "venue": "Journal of Econometrics",
+    "year": 2021,
+    "authors": [
+      "Shihao Gu",
+      "Bryan Kelly",
+      "Dacheng Xiu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jeconom.2020.07.009",
+    "sourceUrl": "https://doi.org/10.1016/j.jeconom.2020.07.009",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "042266d50152e847b28b4c859ae02fdd1d818baee2df87e8cd2fbb9376aadba1"
+  },
+  "Realized Kernels in Practice: Trades and Quotes": {
+    "title": "Realized kernels in practice: trades and quotes",
+    "doi": "10.1111/j.1368-423x.2008.00275.x",
+    "venue": "The Econometrics Journal",
+    "year": 2009,
+    "authors": [
+      "O. E. Barndorff‐Nielsen",
+      "P. Reinhard Hansen",
+      "A. Lunde",
+      "N. Shephard"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1368-423x.2008.00275.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1368-423x.2008.00275.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "2aa021ff2b8d59aa3028029175535cd930522d2c2c2493278b82565ac9de9724"
+  },
+  "Do Stock Prices Fully Reflect Information in Accruals and Cash Flows about Future Earnings?": {
+    "title": "Do Stock Prices Fully Reflect Information in Accruals and Cash Flows About Future Earnings?",
+    "doi": "10.2308/tar-9608042309",
+    "venue": "The Accounting Review",
+    "year": 1996,
+    "authors": [
+      "Richard G. Sloan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2308%2Ftar-9608042309",
+    "sourceUrl": "https://doi.org/10.2308/tar-9608042309",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "234bd7f982bb879c82fdc33757af5e2c0c1e42824e0cc5d385b420328f41f248"
+  },
+  "Microstructure Noise in the Continuous Case: The Pre-Averaging Approach": {
+    "title": "Microstructure noise in the continuous case: The pre-averaging approach",
+    "doi": "10.1016/j.spa.2008.11.004",
+    "venue": "Stochastic Processes and their Applications",
+    "year": 2009,
+    "authors": [
+      "Jean Jacod",
+      "Yingying Li",
+      "Per A. Mykland",
+      "Mark Podolskij",
+      "Mathias Vetter"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.spa.2008.11.004",
+    "sourceUrl": "https://doi.org/10.1016/j.spa.2008.11.004",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c4ad444aae81734551919c196dbdec55f433b3524fd5951897cb629e8fb4867f"
+  },
+  "Value Investing: The Use of Historical Financial Statement Information to Separate Winners from Losers": {
+    "title": "Value Investing: The Use of Historical Financial Statement Information to Separate Winners from Losers",
+    "doi": "10.2307/2672906",
+    "venue": "Journal of Accounting Research",
+    "year": 2000,
+    "authors": [
+      "Joseph D. Piotroski"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F2672906",
+    "sourceUrl": "https://doi.org/10.2307/2672906",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "7025e6de0528dac9e653388f71c223bed75bc66917e025a5ee70f1a3eb6acdf1"
+  },
+  "Earnings, Book Values, and Dividends in Equity Valuation": {
+    "title": "Earnings, Book Values, and Dividends in Equity Valuation*",
+    "doi": "10.1111/j.1911-3846.1995.tb00461.x",
+    "venue": "Contemporary Accounting Research",
+    "year": 1995,
+    "authors": [
+      "JAMES A. OHLSON"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1911-3846.1995.tb00461.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1911-3846.1995.tb00461.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "3f7437434b7b4e156137f56bbb3624ede40f5a8f9608beb8de3a3d10837d504d"
+  },
+  "Financial Ratios, Discriminant Analysis and the Prediction of Corporate Bankruptcy": {
+    "title": "FINANCIAL RATIOS, DISCRIMINANT ANALYSIS AND THE PREDICTION OF CORPORATE BANKRUPTCY",
+    "doi": "10.1111/j.1540-6261.1968.tb00843.x",
+    "venue": "The Journal of Finance",
+    "year": 1968,
+    "authors": [
+      "Edward I. Altman"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1968.tb00843.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1968.tb00843.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "ee32e14cf3ceb9e1969e04420aa77b91913ac943cc160bcd5b00c4cf8de7e634"
+  },
+  "Detecting Earnings Management": {
+    "title": "Detecting Earnings Management.",
+    "doi": "10.2308/tar-9505096112",
+    "venue": "The Accounting Review",
+    "year": 1995,
+    "authors": [
+      "Patricia M. Dechow",
+      "Richard G. Sloan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2308%2Ftar-9505096112",
+    "sourceUrl": "https://doi.org/10.2308/tar-9505096112",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "1afce0de8e312a67a0e4a9e753739128b0728cd08c8be3668b8eac242f5cca03"
+  },
+  "Financial Ratios and the Probabilistic Prediction of Bankruptcy": {
+    "title": "Financial Ratios and the Probabilistic Prediction of Bankruptcy",
+    "doi": "10.2307/2490395",
+    "venue": "Journal of Accounting Research",
+    "year": 1980,
+    "authors": [
+      "James A. Ohlson"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F2490395",
+    "sourceUrl": "https://doi.org/10.2307/2490395",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e400d1e5e85c1f23597258511d6bde41aac7433e1e9d750156d619e9657f489c"
+  },
+  "In Search of Distress Risk": {
+    "title": "In Search of Distress Risk",
+    "doi": "10.1111/j.1540-6261.2008.01416.x",
+    "venue": "The Journal of Finance",
+    "year": 2008,
+    "authors": [
+      "JOHN Y. CAMPBELL",
+      "JENS HILSCHER",
+      "JAN SZILAGYI"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2008.01416.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2008.01416.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f046909e4514d48972083e1b9778a02c292ec60fe00906ef0dce74f63bd7ca9d"
+  },
+  "The Dark Side of Outside Directors: Do They Quit When They Are Most Needed?": {
+    "title": "The dark side of outside directors: Do they quit when they are most needed?",
+    "doi": "10.3386/w15917",
+    "venue": "National Bureau of Economic Research",
+    "year": 2010,
+    "authors": [
+      "Rüdiger Fahlenbrach",
+      "Angie Low",
+      "René Stulz"
+    ],
+    "type": "report",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.3386%2Fw15917",
+    "sourceUrl": "https://doi.org/10.3386/w15917",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "51dccb03f48d8cb4c239253bb21573bb6ae2fd6e3ed9d9ef7c97d395d7946e3b"
+  },
+  "Investor Protection and Corporate Governance": {
+    "title": "Investor protection and corporate governance",
+    "doi": "10.1016/s0304-405x(00)00065-9",
+    "venue": "Journal of Financial Economics",
+    "year": 2000,
+    "authors": [
+      "Rafael La Porta",
+      "Florencio Lopez-de-Silanes",
+      "Andrei Shleifer",
+      "Robert Vishny"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs0304-405x(00)00065-9",
+    "sourceUrl": "https://doi.org/10.1016/s0304-405x(00)00065-9",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "0d6492f6ec63a7cc76ded4312a21698641d52ef9e64a461e94f21717510e38e8"
+  },
+  "The Capital Structure Puzzle": {
+    "title": "The Capital Structure Puzzle",
+    "doi": "10.2307/2327916",
+    "venue": "The Journal of Finance",
+    "year": 1984,
+    "authors": [
+      "Stewart C. Myers"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F2327916",
+    "sourceUrl": "https://doi.org/10.2307/2327916",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "3cac50ff6946e8b1336774594babef358f2ca1515527de4f9a876936aeabae02"
+  },
+  "Corporate Financing and Investment Decisions When Firms Have Information That Investors Do Not Have": {
+    "title": "Corporate financing and investment decisions when firms have information that investors do not have",
+    "doi": "10.1016/0304-405x(84)90023-0",
+    "venue": "Journal of Financial Economics",
+    "year": 1984,
+    "authors": [
+      "Stewart C. Myers",
+      "Nicholas S. Majluf"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-405x(84)90023-0",
+    "sourceUrl": "https://doi.org/10.1016/0304-405x(84)90023-0",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "2ea1f815175f1419892666d48d5785aeb611708d0f5336079305feb0c4677316"
+  },
+  "International Differences in the Cost of Equity Capital: Do Legal Institutions and Securities Regulation Matter?": {
+    "title": "International Differences in the Cost of Equity Capital: Do Legal Institutions and Securities Regulation Matter?",
+    "doi": "10.1111/j.1475-679x.2006.00209.x",
+    "venue": "Journal of Accounting Research",
+    "year": 2006,
+    "authors": [
+      "LUZI HAIL",
+      "CHRISTIAN LEUZ"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1475-679x.2006.00209.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1475-679x.2006.00209.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "0a86d57e4f580b139c0e21f1ec57d22f77091c378b9d033f53fabbfbdf81ae8e"
+  },
+  "More Than Words: Quantifying Language to Measure Firms' Fundamentals": {
+    "title": "More Than Words: Quantifying Language to Measure Firms' Fundamentals",
+    "doi": "10.1111/j.1540-6261.2008.01362.x",
+    "venue": "The Journal of Finance",
+    "year": 2008,
+    "authors": [
+      "PAUL C. TETLOCK",
+      "MAYTAL SAAR‐TSECHANSKY",
+      "SOFUS MACSKASSY"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2008.01362.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2008.01362.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "290085715042e68db08c3c91fa831c4d6e3d2faf0d22459a653f0cce8c473d62"
+  },
+  "Textual Analysis in Accounting and Finance: A Survey": {
+    "title": "Textual Analysis in Accounting and Finance: A Survey",
+    "doi": "10.1111/1475-679x.12123",
+    "venue": "Journal of Accounting Research",
+    "year": 2016,
+    "authors": [
+      "TIM LOUGHRAN",
+      "BILL MCDONALD"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F1475-679x.12123",
+    "sourceUrl": "https://doi.org/10.1111/1475-679x.12123",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "af0652cc0ff0d972b4e46514302bdc7c0fe3da4b20a0d72356b336a86aebf972"
+  },
+  "Text as Data": {
+    "title": "Text as Data",
+    "doi": "10.1257/jel.20181020",
+    "venue": "Journal of Economic Literature",
+    "year": 2019,
+    "authors": [
+      "Matthew Gentzkow",
+      "Bryan Kelly",
+      "Matt Taddy"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1257%2Fjel.20181020",
+    "sourceUrl": "https://doi.org/10.1257/jel.20181020",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "caf957e56747cfacc645463bfee24cff32b02fc6497d926039fc824760c01b0e"
+  },
+  "Measuring Geopolitical Risk": {
+    "title": "Measuring Geopolitical Risk",
+    "doi": "10.17016/ifdp.2018.1222r1",
+    "venue": "International Finance Discussion Papers",
+    "year": 2022,
+    "authors": [
+      "Dario Caldara",
+      "Matteo Iacoviello"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.17016%2Fifdp.2018.1222r1",
+    "sourceUrl": "https://doi.org/10.17016/ifdp.2018.1222r1",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "6bf0c4179a149e374a236cf5022961d429b9304ae63529bc17965c377de85417"
+  },
+  "The Price of Political Uncertainty: Theory and Evidence from the Option Market": {
+    "title": "The Price of Political Uncertainty: Theory and Evidence from the Option Market",
+    "doi": "10.1111/jofi.12406",
+    "venue": "The Journal of Finance",
+    "year": 2016,
+    "authors": [
+      "BRYAN KELLY",
+      "ĽUBOŠ PÁSTOR",
+      "PIETRO VERONESI"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fjofi.12406",
+    "sourceUrl": "https://doi.org/10.1111/jofi.12406",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "cf9823628e9c76408edc4f4b182a33cea7108ec87bb05fb5ff73761e7eca9df3"
+  },
+  "All That Glitters: The Effect of Attention and News on the Buying Behavior of Individual and Institutional Investors": {
+    "title": "All That Glitters: The Effect of Attention and News on the Buying Behavior of Individual and Institutional Investors",
+    "doi": "10.1093/rfs/hhm079",
+    "venue": "Review of Financial Studies",
+    "year": 2008,
+    "authors": [
+      "Brad M. Barber",
+      "Terrance Odean"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhm079",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhm079",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e1dbfee860af526ea1e8bacf06feca6ac39eec17d3310fb7a1827493bb1c33b7"
+  },
+  "Investor Sentiment and the Cross-Section of Stock Returns": {
+    "title": "Investor Sentiment and the Cross‐Section of Stock Returns",
+    "doi": "10.1111/j.1540-6261.2006.00885.x",
+    "venue": "The Journal of Finance",
+    "year": 2006,
+    "authors": [
+      "MALCOLM BAKER",
+      "JEFFREY WURGLER"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2006.00885.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2006.00885.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "54a2c7e723e474bb4dd80b4747dc6266bf68012e45772feb293252ab9d76830a"
+  },
+  "What Moves Stock Prices?": {
+    "title": "What moves stock prices?",
+    "doi": "10.3905/jpm.1989.409212",
+    "venue": "The Journal of Portfolio Management",
+    "year": 1989,
+    "authors": [
+      "David M. Cutler",
+      "James M. Poterba",
+      "Lawrence H. Summers"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.3905%2Fjpm.1989.409212",
+    "sourceUrl": "https://doi.org/10.3905/jpm.1989.409212",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "82d4f2989acd906ba6da0da32d6545b5eb65155e5767c82cedd87cda69b5f668"
+  },
+  "The Information Content of Forward-Looking Statements in Corporate Filings—A Naïve Bayesian Machine Learning Approach": {
+    "title": "The Information Content of Forward‐Looking Statements in Corporate Filings—A Naïve Bayesian Machine Learning Approach",
+    "doi": "10.1111/j.1475-679x.2010.00382.x",
+    "venue": "Journal of Accounting Research",
+    "year": 2010,
+    "authors": [
+      "FENG LI"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1475-679x.2010.00382.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1475-679x.2010.00382.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c584c2f717b8d2bdc37524f49f6b6f81856a05cad08d189120379df0c4c1be78"
+  },
+  "Annual Report Readability, Current Earnings, and Earnings Persistence": {
+    "title": "Annual report readability, current earnings, and earnings persistence",
+    "doi": "10.1016/j.jacceco.2008.02.003",
+    "venue": "Journal of Accounting and Economics",
+    "year": 2008,
+    "authors": [
+      "Feng Li"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jacceco.2008.02.003",
+    "sourceUrl": "https://doi.org/10.1016/j.jacceco.2008.02.003",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "208454b7595ba3851981dbd622f2adf833877c7d07279bde09396e502241fd2c"
+  },
+  "Bond Risk Premia": {
+    "title": "Bond Risk Premia",
+    "doi": "10.1257/0002828053828581",
+    "venue": "American Economic Review",
+    "year": 2005,
+    "authors": [
+      "John H Cochrane",
+      "Monika Piazzesi"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1257%2F0002828053828581",
+    "sourceUrl": "https://doi.org/10.1257/0002828053828581",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f6e566549bb30248ab76584d2c8755d52108aa5033b2ecb2fcc7f56bd2ea5f08"
+  },
+  "Forecasting the Term Structure of Government Bond Yields": {
+    "title": "Forecasting the term structure of government bond yields",
+    "doi": "10.1016/j.jeconom.2005.03.005",
+    "venue": "Journal of Econometrics",
+    "year": 2006,
+    "authors": [
+      "Francis X. Diebold",
+      "Canlin Li"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jeconom.2005.03.005",
+    "sourceUrl": "https://doi.org/10.1016/j.jeconom.2005.03.005",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c445274d6b0fb138ceabc393d80d2ef6a07e49ba2208eb81fd213fa725fb07f9"
+  },
+  "The Forward Premium Puzzle: Different Tales from Developed and Emerging Economies": {
+    "title": "The forward premium puzzle: different tales from developed and emerging economies",
+    "doi": "10.1016/s0022-1996(99)00039-2",
+    "venue": "Journal of International Economics",
+    "year": 2000,
+    "authors": [
+      "Ravi Bansal",
+      "Magnus Dahlquist"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs0022-1996(99)00039-2",
+    "sourceUrl": "https://doi.org/10.1016/s0022-1996(99)00039-2",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "fb059d46ff751e4c85b5c5f8058934e461cb0c6358f4c0fcaba7f52b671b472c"
+  },
+  "Carry": {
+    "title": "Carry",
+    "doi": "10.1016/j.jfineco.2017.11.002",
+    "venue": "Journal of Financial Economics",
+    "year": 2018,
+    "authors": [
+      "Ralph S.J. Koijen",
+      "Tobias J. Moskowitz",
+      "Lasse Heje Pedersen",
+      "Evert B. Vrugt"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2017.11.002",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2017.11.002",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "3190bc2e1a78243cf63d80522e38a6f526223c12b0f38001ce6ccc134e395c24"
+  },
+  "Discretion versus Policy Rules in Practice": {
+    "title": "Discretion versus policy rules in practice",
+    "doi": "10.1016/0167-2231(93)90009-l",
+    "venue": "Carnegie-Rochester Conference Series on Public Policy",
+    "year": 1993,
+    "authors": [
+      "John B. Taylor"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0167-2231(93)90009-l",
+    "sourceUrl": "https://doi.org/10.1016/0167-2231(93)90009-l",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "594bd0514a3de351d5a5560ecff170da1a63c90aa2ed2260fcb60befaeea55e1"
+  },
+  "Financial Intermediation and Credit Policy in Business Cycle Analysis": {
+    "title": "Financial Intermediation and Credit Policy in Business Cycle Analysis",
+    "doi": "10.1016/b978-0-444-53238-1.00011-9",
+    "venue": "Handbook of Monetary Economics",
+    "year": 2010,
+    "authors": [
+      "Mark Gertler",
+      "Nobuhiro Kiyotaki"
+    ],
+    "type": "book-chapter",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fb978-0-444-53238-1.00011-9",
+    "sourceUrl": "https://doi.org/10.1016/b978-0-444-53238-1.00011-9",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "22cae0c0606941103657240028ad241bb76f16e554b0151961732456f0e0991c"
+  },
+  "CoVaR": {
+    "title": "CoVaR",
+    "doi": "10.1257/aer.20120555",
+    "venue": "American Economic Review",
+    "year": 2016,
+    "authors": [
+      "Tobias Adrian",
+      "Markus K. Brunnermeier"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1257%2Faer.20120555",
+    "sourceUrl": "https://doi.org/10.1257/aer.20120555",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "5686dfb9b2509752b7cb998b9cf3df002e1a5e57ded369587e770d56722a97cf"
+  },
+  "SRISK: A Conditional Capital Shortfall Measure of Systemic Risk": {
+    "title": "SRISK: A Conditional Capital Shortfall Measure of Systemic Risk",
+    "doi": "10.1093/rfs/hhw060",
+    "venue": "Review of Financial Studies",
+    "year": 2017,
+    "authors": [
+      "Christian Brownlees",
+      "Robert F. Engle"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhw060",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhw060",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "476e1ce9c654050aa1c505df5c498fda009a96d1cec20b2c1d0b18faf73be192"
+  },
+  "Differences of Opinion, Short-Sales Constraints, and Market Crashes": {
+    "title": "Differences of Opinion, Short-Sales Constraints, and Market Crashes",
+    "doi": "10.1093/rfs/hhg006",
+    "venue": "Review of Financial Studies",
+    "year": 2003,
+    "authors": [
+      "Harrison Hong",
+      "Jeremy C. Stein"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhg006",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhg006",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "9883f5dc4ca55481e4b2fca2196d02f5ebb50afa3620e9e50cc344579e1bb313"
+  },
+  "Speculative Trading and Stock Prices: Evidence from Chinese A-B Share Premia": {
+    "title": "Speculative Trading and Stock Prices: Evidence from Chinese A-B Share Premia",
+    "doi": "10.3386/w11362",
+    "venue": "National Bureau of Economic Research",
+    "year": 2005,
+    "authors": [
+      "Jianping Mei",
+      "Jose Scheinkman",
+      "Wei Xiong"
+    ],
+    "type": "report",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.3386%2Fw11362",
+    "sourceUrl": "https://doi.org/10.3386/w11362",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f3fa536d8152e1fee30fbfd805dc0ca6b1f9787cb3fae25ee130ea3304a71a90"
+  },
+  "Politically Connected CEOs, Corporate Governance, and Post-IPO Performance of China's Newly Partially Privatized Firms": {
+    "title": "Politically connected CEOs, corporate governance, and Post-IPO performance of China's newly partially privatized firms☆",
+    "doi": "10.1016/j.jfineco.2006.03.008",
+    "venue": "Journal of Financial Economics",
+    "year": 2007,
+    "authors": [
+      "J FAN",
+      "T WONG",
+      "T ZHANG"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2006.03.008",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2006.03.008",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "6993c2cc41a98bd71bd02e9ed1834dbff6b56e89a73a7ab11a783637c988f3d5"
+  },
+  "Stock Market Liberalization, Economic Reform, and Emerging Market Equity Prices": {
+    "title": "Stock Market Liberalization, Economic Reform, and Emerging Market Equity Prices",
+    "doi": "10.1111/0022-1082.00219",
+    "venue": "The Journal of Finance",
+    "year": 2000,
+    "authors": [
+      "Peter Blair Henry"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F0022-1082.00219",
+    "sourceUrl": "https://doi.org/10.1111/0022-1082.00219",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "44fcf7ea52a61054160822e426ab063268061521089e33df9f32a3880e3c3cb2"
+  },
+  "Does Financial Liberalization Spur Growth?": {
+    "title": "Does financial liberalization spur growth?",
+    "doi": "10.1016/j.jfineco.2004.05.007",
+    "venue": "Journal of Financial Economics",
+    "year": 2005,
+    "authors": [
+      "G BEKAERT",
+      "C HARVEY",
+      "C LUNDBLAD"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2004.05.007",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2004.05.007",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e93b77e3b61c6cc78bdeecd81cad5e3009114a750a261a7d09f9e1d1c21fa245"
+  },
+  "The Investment CAPM": {
+    "title": "The Investment CAPM",
+    "doi": "10.1111/eufm.12129",
+    "venue": "European Financial Management",
+    "year": 2017,
+    "authors": [
+      "Lu Zhang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Feufm.12129",
+    "sourceUrl": "https://doi.org/10.1111/eufm.12129",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "97fce9502ed7dadadf072c7208d2236916b76f91dc42447110f2ac088bafcb51"
+  },
+  "Retail and Institutional Investor Trading Behaviors: Evidence from China": {
+    "title": "Retail and Institutional Investor Trading Behaviors: Evidence from China",
+    "doi": "10.1146/annurev-financial-082123-110132",
+    "venue": "Annual Review of Financial Economics",
+    "year": 2024,
+    "authors": [
+      "Lin Tan",
+      "Xiaoyan Zhang",
+      "Xinran Zhang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1146%2Fannurev-financial-082123-110132",
+    "sourceUrl": "https://doi.org/10.1146/annurev-financial-082123-110132",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "082419ce0e42c3f615e41967f0d7fafa03e9225dd733e1391a035932693186cb"
+  },
+  "Common Risk Factors in Cryptocurrency": {
+    "title": "Common Risk Factors in Cryptocurrency",
+    "doi": "10.1111/jofi.13119",
+    "venue": "The Journal of Finance",
+    "year": 2022,
+    "authors": [
+      "YUKUN LIU",
+      "ALEH TSYVINSKI",
+      "XI WU"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fjofi.13119",
+    "sourceUrl": "https://doi.org/10.1111/jofi.13119",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "9a59626093ae11327f5fd04c8632f70f5669d0a3a28134d8a75392244052a848"
+  },
+  "Some Simple Economics of the Blockchain": {
+    "title": "Some simple economics of the blockchain",
+    "doi": "10.1145/3359552",
+    "venue": "Communications of the ACM",
+    "year": 2020,
+    "authors": [
+      "Christian Catalini",
+      "Joshua S. Gans"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1145%2F3359552",
+    "sourceUrl": "https://doi.org/10.1145/3359552",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "05763ed90dd7c3195cbfcd8993ba9a33f334a56e0d382a4f5af5fe3247205847"
+  },
+  "Taming Wildcat Stablecoins": {
+    "title": "Taming Wildcat Stablecoins",
+    "doi": "10.2139/ssrn.3888752",
+    "venue": "Elsevier BV",
+    "year": 2021,
+    "authors": [
+      "Gary B. Gorton",
+      "Jeffery Y. Zhang"
+    ],
+    "type": "posted-content",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2139%2Fssrn.3888752",
+    "sourceUrl": "https://doi.org/10.2139/ssrn.3888752",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e2a965111ff11708348ce55f5db2d3e5f100e0e5561d04abbd158fd302046dcf"
+  },
+  "Flash Boys 2.0: Frontrunning in Decentralized Exchanges, Miner Extractable Value, and Consensus Instability": {
+    "title": "Flash Boys 2.0: Frontrunning in Decentralized Exchanges, Miner Extractable Value, and Consensus Instability",
+    "doi": "10.1109/sp40000.2020.00040",
+    "venue": "2020 IEEE Symposium on Security and Privacy (SP)",
+    "year": 2020,
+    "authors": [
+      "Philip Daian",
+      "Steven Goldfeder",
+      "Tyler Kell",
+      "Yunqi Li",
+      "Xueyuan Zhao",
+      "Iddo Bentov",
+      "Lorenz Breidenbach",
+      "Ari Juels"
+    ],
+    "type": "proceedings-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1109%2Fsp40000.2020.00040",
+    "sourceUrl": "https://doi.org/10.1109/sp40000.2020.00040",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "62bdb890b06d3c35e584cd1900ecec0f3113da97ec357a86d1355996181764b7"
+  },
+  "Tokenomics: Dynamic Adoption and Valuation": {
+    "title": "Tokenomics: Dynamic Adoption and Valuation",
+    "doi": "10.1093/rfs/hhaa089",
+    "venue": "The Review of Financial Studies",
+    "year": 2021,
+    "authors": [
+      "Lin William Cong",
+      "Ye Li",
+      "Neng Wang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhaa089",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhaa089",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "be0c474d4f434d8e6113eb6b2375098e24abcd46966d9da51addc7eac9aea02d"
+  },
+  "Optimal Execution of Portfolio Transactions": {
+    "title": "Optimal execution of portfolio transactions",
+    "doi": "10.21314/jor.2001.041",
+    "venue": "The Journal of Risk",
+    "year": 2001,
+    "authors": [
+      "Robert Almgren",
+      "Neil Chriss"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.21314%2Fjor.2001.041",
+    "sourceUrl": "https://doi.org/10.21314/jor.2001.041",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f2e636959be843e94a374ca7ac20e44db0415614653a22d2b0fbefd453831bf8"
+  },
+  "The Cross-Section of Expected Stock Returns": {
+    "title": "The Cross‐Section of Expected Stock Returns",
+    "doi": "10.1111/j.1540-6261.1992.tb04398.x",
+    "venue": "The Journal of Finance",
+    "year": 1992,
+    "authors": [
+      "EUGENE F. FAMA",
+      "KENNETH R. FRENCH"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1992.tb04398.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1992.tb04398.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c67154243ce2705667c15a677b9c8765d9508de01acff359a1ef0096d76ee556"
+  },
+  "Intraday Information Efficiency on the Chinese Equity Market": {
+    "title": "Intraday information efficiency on the Chinese equity market",
+    "doi": "10.1016/j.chieco.2009.03.007",
+    "venue": "China Economic Review",
+    "year": 2009,
+    "authors": [
+      "Tao Chen",
+      "Jun Cai",
+      "Richard Y.K. Ho"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.chieco.2009.03.007",
+    "sourceUrl": "https://doi.org/10.1016/j.chieco.2009.03.007",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "da55f041bc6ebc8b567f307f228683d5e12486e98f03c670b86713d801936b8d"
+  },
+  "Giving Content to Investor Sentiment: The Role of Media in the Stock Market": {
+    "title": "Giving Content to Investor Sentiment: The Role of Media in the Stock Market",
+    "doi": "10.1111/j.1540-6261.2007.01232.x",
+    "venue": "The Journal of Finance",
+    "year": 2007,
+    "authors": [
+      "PAUL C. TETLOCK"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2007.01232.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2007.01232.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d8a876bda1f681800ce9494f34bb3d88b1a22fc56803b4bce93a1c378fbc4985"
+  },
+  "Risk, Return, and Equilibrium: Empirical Tests": {
+    "title": "Risk, Return, and Equilibrium: Empirical Tests",
+    "doi": "10.1086/260061",
+    "venue": "Journal of Political Economy",
+    "year": 1973,
+    "authors": [
+      "Eugene F. Fama",
+      "James D. MacBeth"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F260061",
+    "sourceUrl": "https://doi.org/10.1086/260061",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "3bc5497c742f9b426e730d49b8b24a55463fa2be3055fe6907baa173d27ffa81"
+  },
+  "Habit Formation: A Resolution of the Equity Premium Puzzle": {
+    "title": "Habit Formation: A Resolution of the Equity Premium Puzzle",
+    "doi": "10.1086/261693",
+    "venue": "Journal of Political Economy",
+    "year": 1990,
+    "authors": [
+      "George M. Constantinides"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F261693",
+    "sourceUrl": "https://doi.org/10.1086/261693",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f358b9a14f7cde9f5b9b660b6dca0fb5802808422c309fbc46b8ebea1b9a7712"
+  },
+  "Risks for the Long Run: A Potential Resolution of Asset Pricing Puzzles": {
+    "title": "Risks for the Long Run: A Potential Resolution of Asset Pricing Puzzles",
+    "doi": "10.1111/j.1540-6261.2004.00670.x",
+    "venue": "The Journal of Finance",
+    "year": 2004,
+    "authors": [
+      "Ravi Bansal",
+      "Amir Yaron"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2004.00670.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2004.00670.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "072a9a46010a306c604524c006bbfde3166c52600ef35ce343f1cc57cd55f227"
+  },
+  "Digesting Anomalies: An Investment Approach": {
+    "title": "Digesting Anomalies: An Investment Approach",
+    "doi": "10.1093/rfs/hhu068",
+    "venue": "Review of Financial Studies",
+    "year": 2015,
+    "authors": [
+      "Kewei Hou",
+      "Chen Xue",
+      "Lu Zhang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhu068",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhu068",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f852eebb314930fe10d26e8fefe97ef55d70345b07133c059902eaa11043d577"
+  },
+  "Replicating Anomalies": {
+    "title": "Replicating Anomalies",
+    "doi": "10.1093/rfs/hhy131",
+    "venue": "The Review of Financial Studies",
+    "year": 2020,
+    "authors": [
+      "Kewei Hou",
+      "Chen Xue",
+      "Lu Zhang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhy131",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhy131",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "1632d7d71856eed6359f166ca3688d96adae89b7e6bfc03a0ca5e70e2fc414ad"
+  },
+  "… and the Cross-Section of Expected Returns": {
+    "title": "… and the Cross-Section of Expected Returns",
+    "doi": "10.1093/rfs/hhv059",
+    "venue": "Review of Financial Studies",
+    "year": 2016,
+    "authors": [
+      "Campbell R. Harvey",
+      "Yan Liu",
+      "Heqing Zhu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhv059",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhv059",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e661de260f94ebe3b8c7f8450bbdc7fa881b1a592d2dc35e524060eec1d35994"
+  },
+  "The Other Side of Value: The Gross Profitability Premium": {
+    "title": "The other side of value: The gross profitability premium",
+    "doi": "10.1016/j.jfineco.2013.01.003",
+    "venue": "Journal of Financial Economics",
+    "year": 2013,
+    "authors": [
+      "Robert Novy-Marx"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2013.01.003",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2013.01.003",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "78c841b3e472f6e2088d79aa13a0b7bcf04b42fc29e5d282cee0fda121448a6c"
+  },
+  "Time Series Momentum": {
+    "title": "Time series momentum",
+    "doi": "10.1016/j.jfineco.2011.11.003",
+    "venue": "Journal of Financial Economics",
+    "year": 2012,
+    "authors": [
+      "Tobias J. Moskowitz",
+      "Yao Hua Ooi",
+      "Lasse Heje Pedersen"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2011.11.003",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2011.11.003",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e56aa0752aac873336638d6953799fe0f3efb50534cbddd2f50a86ce617c5db7"
+  },
+  "Idiosyncratic Risk and the Cross-Section of Expected Stock Returns": {
+    "title": "Idiosyncratic risk and the cross-section of expected stock returns",
+    "doi": "10.1016/j.jfineco.2008.02.003",
+    "venue": "Journal of Financial Economics",
+    "year": 2009,
+    "authors": [
+      "Fangjian Fu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2008.02.003",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2008.02.003",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "bf9d31725c5aac89011f1ea858e4d0fe87146ea4d747241ddb616736205dbd91"
+  },
+  "Tests of Asset Pricing with Time-Varying Expected Risk Premiums and Market Betas": {
+    "title": "Tests of Asset Pricing with Time‐Varying Expected Risk Premiums and Market Betas",
+    "doi": "10.1111/j.1540-6261.1987.tb02564.x",
+    "venue": "The Journal of Finance",
+    "year": 1987,
+    "authors": [
+      "WAYNE E. FERSON",
+      "SHMUEL KANDEL",
+      "ROBERT F. STAMBAUGH"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1987.tb02564.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1987.tb02564.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "cb4ec66ec039f92540244bed26dec681ee4b3a8f2ae490184dc47995c28fc123"
+  },
+  "Stock Prices, Earnings, and Expected Dividends": {
+    "title": "Stock Prices, Earnings, and Expected Dividends",
+    "doi": "10.1111/j.1540-6261.1988.tb04598.x",
+    "venue": "The Journal of Finance",
+    "year": 1988,
+    "authors": [
+      "JOHN Y. CAMPBELL",
+      "ROBERT J. SHILLER"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1988.tb04598.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1988.tb04598.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "423782ed8b48c7b77119353b78471f11a84861d554ab1e651333b0a140097f08"
+  },
+  "On the Estimation of Beta-Pricing Models": {
+    "title": "On the Estimation of Beta-Pricing Models",
+    "doi": "10.1093/rfs/5.1.1",
+    "venue": "Review of Financial Studies",
+    "year": 1992,
+    "authors": [
+      "Jay Shanken"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2F5.1.1",
+    "sourceUrl": "https://doi.org/10.1093/rfs/5.1.1",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "a3c2fbdbcdd5bf6c616ef5bbcdcdfb221305d2d996c458769d44c071d45181e4"
+  },
+  "Measuring the Information Content of Stock Trades": {
+    "title": "Measuring the Information Content of Stock Trades",
+    "doi": "10.1111/j.1540-6261.1991.tb03749.x",
+    "venue": "The Journal of Finance",
+    "year": 1991,
+    "authors": [
+      "JOEL HASBROUCK"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1991.tb03749.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1991.tb03749.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "007e7df097cebd4f09785cba3e36a0ec48dec08ca1e805058c6cbb2a42e7ed75"
+  },
+  "One Security, Many Markets: Determining the Contributions to Price Discovery": {
+    "title": "One Security, Many Markets: Determining the Contributions to Price Discovery",
+    "doi": "10.1111/j.1540-6261.1995.tb04054.x",
+    "venue": "The Journal of Finance",
+    "year": 1995,
+    "authors": [
+      "JOEL HASBROUCK"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1995.tb04054.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1995.tb04054.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "07b66743ebd3b80b14617d7c8bedbf532592e160ef64ea397536827cc0f45359"
+  },
+  "Liquidity Risk and Expected Stock Returns": {
+    "title": "Liquidity Risk and Expected Stock Returns",
+    "doi": "10.1086/374184",
+    "venue": "Journal of Political Economy",
+    "year": 2003,
+    "authors": [
+      "Ľuboš Pástor",
+      "Robert F. Stambaugh"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F374184",
+    "sourceUrl": "https://doi.org/10.1086/374184",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c7d1f82a5b8c6d34453d60cd77c0037a364d90506aa14ca1717b27f3f681a992"
+  },
+  "Trading Volume and Serial Correlation in Stock Returns": {
+    "title": "Trading Volume and Serial Correlation in Stock Returns",
+    "doi": "10.2307/2118454",
+    "venue": "The Quarterly Journal of Economics",
+    "year": 1993,
+    "authors": [
+      "J. Y. Campbell",
+      "S. J. Grossman",
+      "J. Wang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F2118454",
+    "sourceUrl": "https://doi.org/10.2307/2118454",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "4a93ffbe617f9d89816bc27505c6cfd00ba8ff737a289bee0c50ae30a689cd8c"
+  },
+  "Limit Order Book as a Market for Liquidity": {
+    "title": "Limit Order Book as a Market for Liquidity",
+    "doi": "10.1093/rfs/hhi029",
+    "venue": "Review of Financial Studies",
+    "year": 2005,
+    "authors": [
+      "Thierry Foucault",
+      "Ohad Kadan",
+      "Eugene Kandel"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhi029",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhi029",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c9cfff6058619a9866b032172b3992b5314020a0390bda91115fddc2e5322940"
+  },
+  "The Price Impact of Order Book Events": {
+    "title": "The Price Impact of Order Book Events",
+    "doi": "10.1093/jjfinec/nbt003",
+    "venue": "Journal of Financial Econometrics",
+    "year": 2014,
+    "authors": [
+      "R. Cont",
+      "A. Kukanov",
+      "S. Stoikov"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Fjjfinec%2Fnbt003",
+    "sourceUrl": "https://doi.org/10.1093/jjfinec/nbt003",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "ed52b2d3a5f3ff00fff2e51d6ffd6461377500661a8179532fbecf83c2d56364"
+  },
+  "Hawkes Processes in Finance": {
+    "title": "Hawkes Processes in Finance",
+    "doi": "10.1142/s2382626615500057",
+    "venue": "Market Microstructure and Liquidity",
+    "year": 2015,
+    "authors": [
+      "Emmanuel Bacry",
+      "Iacopo Mastromatteo",
+      "Jean-François Muzy"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1142%2Fs2382626615500057",
+    "sourceUrl": "https://doi.org/10.1142/s2382626615500057",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c084dbb4845aaac14509561cd04f99989d4b356b6a9a51ae2e6ae51fc2f2e752"
+  },
+  "The Long Memory of the Efficient Market": {
+    "title": "The Long Memory of the Efficient Market",
+    "doi": "10.2202/1558-3708.1226",
+    "venue": "Studies in Nonlinear Dynamics &amp; Econometrics",
+    "year": 2004,
+    "authors": [
+      "Fabrizio Lillo",
+      "J. Doyne Farmer"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2202%2F1558-3708.1226",
+    "sourceUrl": "https://doi.org/10.2202/1558-3708.1226",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "a2de2c251b74a9e91d17448f55d13a7392041eebd5060d8d7c4e165b1e23848a"
+  },
+  "An Analysis of Changes in Specialist Inventories and Quotations": {
+    "title": "An Analysis of Changes in Specialist Inventories and Quotations",
+    "doi": "10.1111/j.1540-6261.1993.tb05122.x",
+    "venue": "The Journal of Finance",
+    "year": 1993,
+    "authors": [
+      "ANANTH MADHAVAN",
+      "SEYMOUR SMIDT"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1993.tb05122.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1993.tb05122.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "287b49d9342cf9b2d31127c244f999f6e07dc19f38ee5cf9c0e7162758638673"
+  },
+  "High-Frequency Trading and Price Discovery": {
+    "title": "High-Frequency Trading and Price Discovery",
+    "doi": "10.1093/rfs/hhu032",
+    "venue": "Review of Financial Studies",
+    "year": 2014,
+    "authors": [
+      "Jonathan Brogaard",
+      "Terrence Hendershott",
+      "Ryan Riordan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhu032",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhu032",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "59a972702b9a92fcf8ab6e13e681f4676417f9cef9ba620aa9bf6d54b3214374"
+  },
+  "High Frequency Trading and the New Market Makers": {
+    "title": "High frequency trading and the new market makers",
+    "doi": "10.1016/j.finmar.2013.06.006",
+    "venue": "Journal of Financial Markets",
+    "year": 2013,
+    "authors": [
+      "Albert J. Menkveld"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.finmar.2013.06.006",
+    "sourceUrl": "https://doi.org/10.1016/j.finmar.2013.06.006",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "86773d39b0769051d9a93078a8cb960185bf7fe40ce0a0526ee6c1e951ee044c"
+  },
+  "Market Liquidity and Trading Activity": {
+    "title": "Market Liquidity and Trading Activity",
+    "doi": "10.1111/0022-1082.00335",
+    "venue": "The Journal of Finance",
+    "year": 2001,
+    "authors": [
+      "Tarun Chordia",
+      "Richard Roll",
+      "Avanidhar Subrahmanyam"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F0022-1082.00335",
+    "sourceUrl": "https://doi.org/10.1111/0022-1082.00335",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "2a7fc805affd026c87c6231527a92b9d07c5ea019903669abfd6812eccb6c115"
+  },
+  "A Heteroskedasticity-Consistent Covariance Matrix Estimator and a Direct Test for Heteroskedasticity": {
+    "title": "A Heteroskedasticity-Consistent Covariance Matrix Estimator and a Direct Test for Heteroskedasticity",
+    "doi": "10.2307/1912934",
+    "venue": "Econometrica",
+    "year": 1980,
+    "authors": [
+      "Halbert White"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F1912934",
+    "sourceUrl": "https://doi.org/10.2307/1912934",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "bde4c71dd052ca8889eb145325fc4d8d4b174845974b02c539e8145737e2fbed"
+  },
+  "False Discoveries in Mutual Fund Performance: Measuring Luck in Estimated Alphas": {
+    "title": "False Discoveries in Mutual Fund Performance: Measuring Luck in Estimated Alphas",
+    "doi": "10.1111/j.1540-6261.2009.01527.x",
+    "venue": "The Journal of Finance",
+    "year": 2010,
+    "authors": [
+      "LAURENT BARRAS",
+      "OLIVIER SCAILLET",
+      "RUSS WERMERS"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2009.01527.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2009.01527.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "7f8b6e15c564b74f2fe1e02837130304ed89877c65cdfee6fe6a2d8606740081"
+  },
+  "Controlling the False Discovery Rate: A Practical and Powerful Approach to Multiple Testing": {
+    "title": "Controlling the False Discovery Rate: A Practical and Powerful Approach to Multiple Testing",
+    "doi": "10.1111/j.2517-6161.1995.tb02031.x",
+    "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+    "year": 1995,
+    "authors": [
+      "Yoav Benjamini",
+      "Yosef Hochberg"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.2517-6161.1995.tb02031.x",
+    "sourceUrl": "https://doi.org/10.1111/j.2517-6161.1995.tb02031.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "29fd728b00d17c784d8390dcbdb4bc330a31403e3ac663648f027fb7c84fe981"
+  },
+  "The Stationary Bootstrap": {
+    "title": "The Stationary Bootstrap",
+    "doi": "10.1080/01621459.1994.10476870",
+    "venue": "Journal of the American Statistical Association",
+    "year": 1994,
+    "authors": [
+      "Dimitris N. Politis",
+      "Joseph P. Romano"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1080%2F01621459.1994.10476870",
+    "sourceUrl": "https://doi.org/10.1080/01621459.1994.10476870",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d21620539fc7bfeafb1dac7a55cfb6178d6be5c1ed57cbd3d2fc0f99c7e9f041"
+  },
+  "Regularization and Variable Selection via the Elastic Net": {
+    "title": "Regularization and Variable Selection Via the Elastic Net",
+    "doi": "10.1111/j.1467-9868.2005.00503.x",
+    "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+    "year": 2005,
+    "authors": [
+      "Hui Zou",
+      "Trevor Hastie"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1467-9868.2005.00503.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1467-9868.2005.00503.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e0060473d4e8aba9088043b0e5305ff2f41e46893e1e08dbd4ffb92a5fcdcf74"
+  },
+  "Greedy Function Approximation: A Gradient Boosting Machine": {
+    "title": "Greedy function approximation: A gradient boosting machine.",
+    "doi": "10.1214/aos/1013203451",
+    "venue": "The Annals of Statistics",
+    "year": 2001,
+    "authors": [
+      "Jerome H. Friedman"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1214%2Faos%2F1013203451",
+    "sourceUrl": "https://doi.org/10.1214/aos/1013203451",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "8ce66105a5095b3b2bd622a2ce576fb32e2dafad10357d6d27cde8cfd78f8af3"
+  },
+  "Empirical Asset Pricing via Machine Learning": {
+    "title": "Empirical Asset Pricing via Machine Learning",
+    "doi": "10.1093/rfs/hhaa009",
+    "venue": "The Review of Financial Studies",
+    "year": 2020,
+    "authors": [
+      "Shihao Gu",
+      "Bryan Kelly",
+      "Dacheng Xiu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhaa009",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhaa009",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "44eda17541a3290242478808685af9cb44a5c010f641a8f6e48fdcbd51fb43e7"
+  },
+  "Characteristics Are Covariances: A Unified Model of Risk and Return": {
+    "title": "Characteristics are covariances: A unified model of risk and return",
+    "doi": "10.1016/j.jfineco.2019.05.001",
+    "venue": "Journal of Financial Economics",
+    "year": 2019,
+    "authors": [
+      "Bryan T. Kelly",
+      "Seth Pruitt",
+      "Yinan Su"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2019.05.001",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2019.05.001",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "627eebf805282e2c405d24aecfc7c5a0d30d8d762195cfacb279d19b31072317"
+  },
+  "A Simple Approximate Long-Memory Model of Realized Volatility": {
+    "title": "A Simple Approximate Long-Memory Model of Realized Volatility",
+    "doi": "10.1093/jjfinec/nbp001",
+    "venue": "Journal of Financial Econometrics",
+    "year": 2008,
+    "authors": [
+      "F. Corsi"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Fjjfinec%2Fnbp001",
+    "sourceUrl": "https://doi.org/10.1093/jjfinec/nbp001",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "2511f9b6e7b06490bf2fc4373f776315864df682bd66760e3c279b0e783c3b03"
+  },
+  "The Quality of Accruals and Earnings: The Role of Accrual Estimation Errors": {
+    "title": "The Quality of Accruals and Earnings: The Role of Accrual Estimation Errors",
+    "doi": "10.2308/accr.2002.77.s-1.35",
+    "venue": "The Accounting Review",
+    "year": 2002,
+    "authors": [
+      "Patricia M. Dechow",
+      "Ilia D. Dichev"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2308%2Faccr.2002.77.s-1.35",
+    "sourceUrl": "https://doi.org/10.2308/accr.2002.77.s-1.35",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "223f4f436b68361f7de3b0fa6120ef3c76899a87925a65eaee58a419d4297f66"
+  },
+  "Earnings Management During Import Relief Investigations": {
+    "title": "Earnings Management During Import Relief Investigations",
+    "doi": "10.2307/2491047",
+    "venue": "Journal of Accounting Research",
+    "year": 1991,
+    "authors": [
+      "Jennifer J. Jones"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2307%2F2491047",
+    "sourceUrl": "https://doi.org/10.2307/2491047",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "aa0c8ef71cee6184d42c152d25850b3fb582d6b06e580224332c298f137d5ad3"
+  },
+  "The Detection of Earnings Manipulation": {
+    "title": "The Detection of Earnings Manipulation",
+    "doi": "10.2469/faj.v55.n5.2296",
+    "venue": "Financial Analysts Journal",
+    "year": 1999,
+    "authors": [
+      "Messod D. Beneish"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2469%2Ffaj.v55.n5.2296",
+    "sourceUrl": "https://doi.org/10.2469/faj.v55.n5.2296",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "73371a7dfd79e464cd93b236c8ed3568fe1d15e67a405b1226a23007a134837b"
+  },
+  "Corporate Governance and Equity Prices": {
+    "title": "Corporate Governance and Equity Prices",
+    "doi": "10.1162/00335530360535162",
+    "venue": "The Quarterly Journal of Economics",
+    "year": 2003,
+    "authors": [
+      "P. Gompers",
+      "J. Ishii",
+      "A. Metrick"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1162%2F00335530360535162",
+    "sourceUrl": "https://doi.org/10.1162/00335530360535162",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "652e70f07ab49a520527eb8ae7d25c343f7c48ef05340f9c43141d34cd4402f2"
+  },
+  "Law and Finance": {
+    "title": "Law and Finance",
+    "doi": "10.1086/250042",
+    "venue": "Journal of Political Economy",
+    "year": 1998,
+    "authors": [
+      "Rafael La Porta",
+      "Florencio Lopez‐de‐Silanes",
+      "Andrei Shleifer",
+      "Robert W. Vishny"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F250042",
+    "sourceUrl": "https://doi.org/10.1086/250042",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c504338cffa05105e56e46c8e3666c11f0f9f6ad80f0a4a6890d7bb60f3c6844"
+  },
+  "Corporate Ownership Around the World": {
+    "title": "Corporate Ownership Around the World",
+    "doi": "10.1111/0022-1082.00115",
+    "venue": "The Journal of Finance",
+    "year": 1999,
+    "authors": [
+      "Rafael La Porta",
+      "Florencio Lopez‐De‐Silanes",
+      "Andrei Shleifer"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F0022-1082.00115",
+    "sourceUrl": "https://doi.org/10.1111/0022-1082.00115",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "b88db99ad73b8596b642b6010b06a91d5e52199adcdcc5ab7e1be0638528b60e"
+  },
+  "The Separation of Ownership and Control in East Asian Corporations": {
+    "title": "The separation of ownership and control in East Asian Corporations",
+    "doi": "10.1016/s0304-405x(00)00067-2",
+    "venue": "Journal of Financial Economics",
+    "year": 2000,
+    "authors": [
+      "Stijn Claessens",
+      "Simeon Djankov",
+      "Larry H.P Lang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs0304-405x(00)00067-2",
+    "sourceUrl": "https://doi.org/10.1016/s0304-405x(00)00067-2",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "6ca3b43348d684bdf1c2bc984a76bffedde8302fe651bb6437386201328725f3"
+  },
+  "Toward an Implied Cost of Capital": {
+    "title": "Toward an Implied Cost of Capital",
+    "doi": "10.1111/1475-679x.00007",
+    "venue": "Journal of Accounting Research",
+    "year": 2001,
+    "authors": [
+      "William R. Gebhardt",
+      "Charles M. C. Lee",
+      "Bhaskaran Swaminathan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F1475-679x.00007",
+    "sourceUrl": "https://doi.org/10.1111/1475-679x.00007",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "2a8ac2c30d689548d3dedd7ef1f828e53143a9ed845d427ee60daa74486d68f1"
+  },
+  "PE Ratios, PEG Ratios, and Estimating the Implied Expected Rate of Return on Equity Capital": {
+    "title": "PE Ratios, PEG Ratios, and Estimating the Implied Expected Rate of Return on Equity Capital",
+    "doi": "10.2308/accr.2004.79.1.73",
+    "venue": "The Accounting Review",
+    "year": 2004,
+    "authors": [
+      "Peter D. Easton"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2308%2Faccr.2004.79.1.73",
+    "sourceUrl": "https://doi.org/10.2308/accr.2004.79.1.73",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e5d809c3e61050db508a86184004bc82cc792c482466c9cc515fa5a7fcc8405c"
+  },
+  "Information Asymmetry, Corporate Disclosure, and the Capital Markets: A Review of the Empirical Disclosure Literature": {
+    "title": "Information asymmetry, corporate disclosure, and the capital markets: A review of the empirical disclosure literature",
+    "doi": "10.1016/s0165-4101(01)00018-0",
+    "venue": "Journal of Accounting and Economics",
+    "year": 2001,
+    "authors": [
+      "Paul M Healy",
+      "Krishna G Palepu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fs0165-4101(01)00018-0",
+    "sourceUrl": "https://doi.org/10.1016/s0165-4101(01)00018-0",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "1bd956a6e8b4f7784441860874b0eabdd5a0c70a01b4ddebc093397c7311735d"
+  },
+  "Disclosure, Liquidity, and the Cost of Capital": {
+    "title": "Disclosure, Liquidity, and the Cost of Capital",
+    "doi": "10.1111/j.1540-6261.1991.tb04620.x",
+    "venue": "The Journal of Finance",
+    "year": 1991,
+    "authors": [
+      "DOUGLAS W. DIAMOND",
+      "ROBERT E. VERRECCHIA"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1991.tb04620.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1991.tb04620.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "ddef81efeac64ca9fef476c9930521e1abc312b25a8124763702b3e65d22296f"
+  },
+  "When Is a Liability Not a Liability? Textual Analysis, Dictionaries, and 10-Ks": {
+    "title": "When Is a Liability Not a Liability? Textual Analysis, Dictionaries, and 10‐Ks",
+    "doi": "10.1111/j.1540-6261.2010.01625.x",
+    "venue": "The Journal of Finance",
+    "year": 2011,
+    "authors": [
+      "TIM LOUGHRAN",
+      "BILL MCDONALD"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2010.01625.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2010.01625.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f3f9c0b2d8b2c5be2399f9cc4bfccf77071ebd8d1addf46d7625313bf333165b"
+  },
+  "Measuring Economic Policy Uncertainty": {
+    "title": "Measuring Economic Policy Uncertainty*",
+    "doi": "10.1093/qje/qjw024",
+    "venue": "The Quarterly Journal of Economics",
+    "year": 2016,
+    "authors": [
+      "Scott R. Baker",
+      "Nicholas Bloom",
+      "Steven J. Davis"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Fqje%2Fqjw024",
+    "sourceUrl": "https://doi.org/10.1093/qje/qjw024",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "a1dd605b23d87e1106d60d6eed94b9f7619b8de57136ba86167237f079bfcd2a"
+  },
+  "In Search of Attention": {
+    "title": "In Search of Attention",
+    "doi": "10.1111/j.1540-6261.2011.01679.x",
+    "venue": "The Journal of Finance",
+    "year": 2011,
+    "authors": [
+      "ZHI DA",
+      "JOSEPH ENGELBERG",
+      "PENGJIE GAO"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2011.01679.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2011.01679.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "39b1f396ff73739c905f8c05cdd688744587d9b22b8c942631d9fc53deefa90f"
+  },
+  "The Sum of All FEARS Investor Sentiment and Asset Prices": {
+    "title": "The Sum of All FEARS Investor Sentiment and Asset Prices",
+    "doi": "10.1093/rfs/hhu072",
+    "venue": "Review of Financial Studies",
+    "year": 2015,
+    "authors": [
+      "Zhi Da",
+      "Joseph Engelberg",
+      "Pengjie Gao"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhu072",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhu072",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "362d28a48a9d3367299c340f71c4ff6ae94cde7207bd39e4dd57e2a852249ac0"
+  },
+  "Wisdom of Crowds: The Value of Stock Opinions Transmitted Through Social Media": {
+    "title": "Wisdom of Crowds: The Value of Stock Opinions Transmitted Through Social Media",
+    "doi": "10.1093/rfs/hhu001",
+    "venue": "Review of Financial Studies",
+    "year": 2014,
+    "authors": [
+      "Hailiang Chen",
+      "Prabuddha De",
+      "Yu (Jeffrey) Hu",
+      "Byoung-Hyoun Hwang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhu001",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhu001",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "98d8b178f1c5eae4505a0e57b3769457ecddfc580b0f629efb087b9524fd5a2d"
+  },
+  "Investor Sentiment in the Stock Market": {
+    "title": "Investor Sentiment in the Stock Market",
+    "doi": "10.1257/jep.21.2.129",
+    "venue": "Journal of Economic Perspectives",
+    "year": 2007,
+    "authors": [
+      "Malcolm Baker",
+      "Jeffrey Wurgler"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1257%2Fjep.21.2.129",
+    "sourceUrl": "https://doi.org/10.1257/jep.21.2.129",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "b4d6a40a4a3a7a399e29de0e4a2b8237fe52cfe90cd0b31609cdd165c02c28a4"
+  },
+  "The Stock Market's Reaction to Unemployment News: Why Bad News Is Usually Good for Stocks": {
+    "title": "The Stock Market's Reaction to Unemployment News: Why Bad News Is Usually Good for Stocks",
+    "doi": "10.1111/j.1540-6261.2005.00742.x",
+    "venue": "The Journal of Finance",
+    "year": 2005,
+    "authors": [
+      "JOHN H. BOYD",
+      "JIAN HU",
+      "RAVI JAGANNATHAN"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2005.00742.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2005.00742.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d2917fbf25acc3627031c449a2efb0cef6bda80f7b3874ffebe236eccce4a6c3"
+  },
+  "The Impact of Public Information on the Stock Market": {
+    "title": "The Impact of Public Information on the Stock Market",
+    "doi": "10.1111/j.1540-6261.1994.tb00083.x",
+    "venue": "The Journal of Finance",
+    "year": 1994,
+    "authors": [
+      "MARK L. MITCHELL",
+      "J. HAROLD MULHERIN"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.1994.tb00083.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.1994.tb00083.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "a98ec7561b1c5e5aceb25561310b24b9ba7dd63521225080762eeae5c91d4078"
+  },
+  "Lazy Prices": {
+    "title": "Lazy Prices",
+    "doi": "10.1111/jofi.12885",
+    "venue": "The Journal of Finance",
+    "year": 2020,
+    "authors": [
+      "LAUREN COHEN",
+      "CHRISTOPHER MALLOY",
+      "QUOC NGUYEN"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fjofi.12885",
+    "sourceUrl": "https://doi.org/10.1111/jofi.12885",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "26ba28f9048661b633412e607a7b1fbd820959604a2f06d0a9d89b07564d6316"
+  },
+  "Common Factors Affecting Bond Returns": {
+    "title": "Common Factors Affecting Bond Returns",
+    "doi": "10.3905/jfi.1991.692347",
+    "venue": "The Journal of Fixed Income",
+    "year": 1991,
+    "authors": [
+      "Robert B Litterman",
+      "Josè Scheinkman"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.3905%2Fjfi.1991.692347",
+    "sourceUrl": "https://doi.org/10.3905/jfi.1991.692347",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "4c121a4cdbb58ec8c54dca456318964f6c30ded9a583c66e34b4d12d6f896c6d"
+  },
+  "Parsimonious Modeling of Yield Curves": {
+    "title": "Parsimonious Modeling of Yield Curves",
+    "doi": "10.1086/296409",
+    "venue": "The Journal of Business",
+    "year": 1987,
+    "authors": [
+      "Charles R. Nelson",
+      "Andrew F. Siegel"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F296409",
+    "sourceUrl": "https://doi.org/10.1086/296409",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "95aa2c6a37e5e88fa5e5ebe9534c243f0d37718760bae89facb4d30747d1d3b7"
+  },
+  "The Macroeconomy and the Yield Curve: A Dynamic Latent Factor Approach": {
+    "title": "The macroeconomy and the yield curve: a dynamic latent factor approach",
+    "doi": "10.1016/j.jeconom.2005.01.011",
+    "venue": "Journal of Econometrics",
+    "year": 2006,
+    "authors": [
+      "Francis X. Diebold",
+      "Glenn D. Rudebusch",
+      "S. Boragˇan Aruoba"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jeconom.2005.01.011",
+    "sourceUrl": "https://doi.org/10.1016/j.jeconom.2005.01.011",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "a4259bae027ab7bfb425872e724bce9a845acf0166794b39d2e724f3132cfc97"
+  },
+  "Common Risk Factors in Currency Markets": {
+    "title": "Common Risk Factors in Currency Markets",
+    "doi": "10.1093/rfs/hhr068",
+    "venue": "Review of Financial Studies",
+    "year": 2011,
+    "authors": [
+      "Hanno Lustig",
+      "Nikolai Roussanov",
+      "Adrien Verdelhan"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhr068",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhr068",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "7a55dd9ca910ddb6954d90730cc6bca4aac693a82882e443abcc7c075e9efaa7"
+  },
+  "Monetary Policy Shocks: What Have We Learned and to What End?": {
+    "title": "Monetary Policy Shocks: What Have We Learned and to What End?",
+    "doi": "10.3386/w6400",
+    "venue": "National Bureau of Economic Research",
+    "year": 1998,
+    "authors": [
+      "Lawrence Christiano",
+      "Martin Eichenbaum",
+      "Charles Evans"
+    ],
+    "type": "report",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.3386%2Fw6400",
+    "sourceUrl": "https://doi.org/10.3386/w6400",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "fb72632f9904f4e224b87f53c61782c5e8bce7b85428de583760a66a9d66f138"
+  },
+  "Measuring the Effects of Monetary Policy: A Factor-Augmented Vector Autoregressive (FAVAR) Approach": {
+    "title": "Measuring the Effects of Monetary Policy: A Factor-Augmented Vector Autoregressive (FAVAR) Approach",
+    "doi": "10.1162/0033553053327452",
+    "venue": "The Quarterly Journal of Economics",
+    "year": 2005,
+    "authors": [
+      "B. S. Bernanke",
+      "J. Boivin",
+      "P. Eliasz"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1162%2F0033553053327452",
+    "sourceUrl": "https://doi.org/10.1162/0033553053327452",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "6476b1cd97af2d2d566dcd10d05c6d7486bec5e727adfef60e677cd0cd9e25aa"
+  },
+  "The Macroeconomic Impact of Financial and Uncertainty Shocks": {
+    "title": "The macroeconomic impact of financial and uncertainty shocks",
+    "doi": "10.1016/j.euroecorev.2016.02.020",
+    "venue": "European Economic Review",
+    "year": 2016,
+    "authors": [
+      "Dario Caldara",
+      "Cristina Fuentes-Albero",
+      "Simon Gilchrist",
+      "Egon Zakrajšek"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.euroecorev.2016.02.020",
+    "sourceUrl": "https://doi.org/10.1016/j.euroecorev.2016.02.020",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "0178dc4093316349a10d187be0fc12535e68f571a68aa40092a5530befed920c"
+  },
+  "Credit Spreads and Business Cycle Fluctuations": {
+    "title": "Credit Spreads and Business Cycle Fluctuations",
+    "doi": "10.1257/aer.102.4.1692",
+    "venue": "American Economic Review",
+    "year": 2012,
+    "authors": [
+      "Simon Gilchrist",
+      "Egon Zakrajšek"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1257%2Faer.102.4.1692",
+    "sourceUrl": "https://doi.org/10.1257/aer.102.4.1692",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "862873dfece3be443a376c58f75a3bd2668aaaeb078cda9eae21e1a465b4d092"
+  },
+  "The Leverage Cycle": {
+    "title": "The Leverage Cycle",
+    "doi": "10.1086/648285",
+    "venue": "NBER Macroeconomics Annual",
+    "year": 2010,
+    "authors": [
+      "John Geanakoplos"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F648285",
+    "sourceUrl": "https://doi.org/10.1086/648285",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "78db802d757c11ac36260de89fdff40f0bfa65d2e93e6968e80a71ea3095f54a"
+  },
+  "Liquidity and Leverage": {
+    "title": "Liquidity and leverage",
+    "doi": "10.1016/j.jfi.2008.12.002",
+    "venue": "Journal of Financial Intermediation",
+    "year": 2010,
+    "authors": [
+      "Tobias Adrian",
+      "Hyun Song Shin"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfi.2008.12.002",
+    "sourceUrl": "https://doi.org/10.1016/j.jfi.2008.12.002",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "20ed9e69344a7b03f6e6124c342c1ee550b058f90aab3e8294c26328b2800a17"
+  },
+  "Forecasting Using Principal Components From a Large Number of Predictors": {
+    "title": "Forecasting Using Principal Components From a Large Number of Predictors",
+    "doi": "10.1198/016214502388618960",
+    "venue": "Journal of the American Statistical Association",
+    "year": 2002,
+    "authors": [
+      "James H Stock",
+      "Mark W Watson"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1198%2F016214502388618960",
+    "sourceUrl": "https://doi.org/10.1198/016214502388618960",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f53f93ea2fca14e121b1226c726039d0c9edf281c121ae2da8467ba95d204e96"
+  },
+  "The Real Value of China's Stock Market": {
+    "title": "The real value of China’s stock market",
+    "doi": "10.1016/j.jfineco.2020.08.012",
+    "venue": "Journal of Financial Economics",
+    "year": 2021,
+    "authors": [
+      "Jennifer N. Carpenter",
+      "Fangzhou Lu",
+      "Robert F. Whitelaw"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2020.08.012",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2020.08.012",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "c4656cab0595b8347f4defd37a28febf5528f729e3393bc1895d980a1ea17635"
+  },
+  "Law, Finance, and Economic Growth in China": {
+    "title": "Law, finance, and economic growth in China",
+    "doi": "10.1016/j.jfineco.2004.06.010",
+    "venue": "Journal of Financial Economics",
+    "year": 2005,
+    "authors": [
+      "F ALLEN",
+      "J QIAN",
+      "M QIAN"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2Fj.jfineco.2004.06.010",
+    "sourceUrl": "https://doi.org/10.1016/j.jfineco.2004.06.010",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f16073dc6fe479259e219f06e53103f178f4ac3019627a5a97f49867d626afb5"
+  },
+  "The Chinese Warrants Bubble": {
+    "title": "The Chinese Warrants Bubble",
+    "doi": "10.1257/aer.101.6.2723",
+    "venue": "American Economic Review",
+    "year": 2011,
+    "authors": [
+      "Wei Xiong",
+      "Jialin Yu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1257%2Faer.101.6.2723",
+    "sourceUrl": "https://doi.org/10.1257/aer.101.6.2723",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "fba5cb25938697f4d1fd6768832a03c9a7e26b9409ca460f195172644a63c19a"
+  },
+  "Short-Sales Constraints and Price Discovery: Evidence from the Hong Kong Market": {
+    "title": "Short‐Sales Constraints and Price Discovery: Evidence from the Hong Kong Market",
+    "doi": "10.1111/j.1540-6261.2007.01270.x",
+    "venue": "The Journal of Finance",
+    "year": 2007,
+    "authors": [
+      "ERIC C. CHANG",
+      "JOSEPH W. CHENG",
+      "YINGHUI YU"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2007.01270.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2007.01270.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "fb334c691835972b13be666326996d4467b712daa6f014c985f52f7b1fc6cec2"
+  },
+  "How Does Government Ownership Affect Firm Performance? Evidence from China’s Privatization Experience": {
+    "title": "How Does Government Ownership Affect Firm Performance? Evidence from China’s Privatization Experience",
+    "doi": "10.1111/1468-5957.00422",
+    "venue": "Journal of Business Finance &amp; Accounting",
+    "year": 2002,
+    "authors": [
+      "Qian Sun",
+      "Wilson H. S. Tong",
+      "Jing Tong"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2F1468-5957.00422",
+    "sourceUrl": "https://doi.org/10.1111/1468-5957.00422",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "5f9455e7c0a9a788b5b88db3ddf4b1024d35830174608be3dabe8f6be09dda88"
+  },
+  "The Effects of Political Connections and State Ownership on Corporate Litigation in China": {
+    "title": "The Effects of Political Connections and State Ownership on Corporate Litigation in China",
+    "doi": "10.1086/659261",
+    "venue": "The Journal of Law and Economics",
+    "year": 2011,
+    "authors": [
+      "Michael Firth",
+      "Oliver M. Rui",
+      "Wenfeng Wu"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1086%2F659261",
+    "sourceUrl": "https://doi.org/10.1086/659261",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "2b51c3b655326c0135d32d71b3246e389a380398ed282a2b7e47df27fb4bbdae"
+  },
+  "Asset Growth and the Cross-Section of Stock Returns": {
+    "title": "Asset Growth and the Cross‐Section of Stock Returns",
+    "doi": "10.1111/j.1540-6261.2008.01370.x",
+    "venue": "The Journal of Finance",
+    "year": 2008,
+    "authors": [
+      "MICHAEL J. COOPER",
+      "HUSEYIN GULEN",
+      "MICHAEL J. SCHILL"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fj.1540-6261.2008.01370.x",
+    "sourceUrl": "https://doi.org/10.1111/j.1540-6261.2008.01370.x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "acfe96113126201ae5dcea297688c8b88d0fcaf4d718817189824c8c87002755"
+  },
+  "The Economics of Cryptocurrencies—Bitcoin and Beyond": {
+    "title": "The Economics of Cryptocurrencies – Bitcoin and Beyond",
+    "doi": "10.2139/ssrn.3048124",
+    "venue": "Elsevier BV",
+    "year": 2017,
+    "authors": [
+      "Jonathan Chiu",
+      "Thorsten V. Koeppl"
+    ],
+    "type": "posted-content",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.2139%2Fssrn.3048124",
+    "sourceUrl": "https://doi.org/10.2139/ssrn.3048124",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "731611b677a601f8aea520840d8974d17ce9dbea8b29bf1093a94f11b24adb85"
+  },
+  "Risks and Returns of Cryptocurrency": {
+    "title": "Risks and Returns of Cryptocurrency",
+    "doi": "10.1093/rfs/hhaa113",
+    "venue": "The Review of Financial Studies",
+    "year": 2021,
+    "authors": [
+      "Yukun Liu",
+      "Aleh Tsyvinski"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhaa113",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhaa113",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "e1d4517d2c11514e489d938f7c401b03a3209ee5a164ad783fc879b75e98eba7"
+  },
+  "Is Bitcoin Really Un-Tethered?": {
+    "title": "Is Bitcoin Really Untethered?",
+    "doi": "10.1111/jofi.12903",
+    "venue": "The Journal of Finance",
+    "year": 2020,
+    "authors": [
+      "JOHN M. GRIFFIN",
+      "AMIN SHAMS"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1111%2Fjofi.12903",
+    "sourceUrl": "https://doi.org/10.1111/jofi.12903",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d70a7c30b8939ffd8435ebea2b5885d8da0e58fc267a59e587ada342fbc33133"
+  },
+  "Bitcoin: Economics, Technology, and Governance": {
+    "title": "Bitcoin: Economics, Technology, and Governance",
+    "doi": "10.1257/jep.29.2.213",
+    "venue": "Journal of Economic Perspectives",
+    "year": 2015,
+    "authors": [
+      "Rainer Böhme",
+      "Nicolas Christin",
+      "Benjamin Edelman",
+      "Tyler Moore"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1257%2Fjep.29.2.213",
+    "sourceUrl": "https://doi.org/10.1257/jep.29.2.213",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "d6cda96f6a75999d2efd09d827f0035301e6143776ced59c6a54fd623fee7aab"
+  },
+  "Blockchain Economics": {
+    "title": "Blockchain Economics",
+    "doi": "10.21799/frbp.wp.2022.15",
+    "venue": "Working paper (Federal Reserve Bank of Philadelphia)",
+    "year": 2022,
+    "authors": [
+      "Joseph Abadi",
+      "Markus Brunnermeier"
+    ],
+    "type": "report",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.21799%2Ffrbp.wp.2022.15",
+    "sourceUrl": "https://doi.org/10.21799/frbp.wp.2022.15",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "dabff71a9db2a46ee755c5495a7288abc2754fddaf5aaf720d7accab99e32e8f"
+  },
+  "SoK: Research Perspectives and Challenges for Bitcoin and Cryptocurrencies": {
+    "title": "SoK: Research Perspectives and Challenges for Bitcoin and Cryptocurrencies",
+    "doi": "10.1109/sp.2015.14",
+    "venue": "2015 IEEE Symposium on Security and Privacy",
+    "year": 2015,
+    "authors": [
+      "Joseph Bonneau",
+      "Andrew Miller",
+      "Jeremy Clark",
+      "Arvind Narayanan",
+      "Joshua A. Kroll",
+      "Edward W. Felten"
+    ],
+    "type": "proceedings-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1109%2Fsp.2015.14",
+    "sourceUrl": "https://doi.org/10.1109/sp.2015.14",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "aa561f07a74c3bde9a1ec0c16995b8e694be76e25c47931c95dbf8a9f59137a9"
+  },
+  "Decentralized Finance: On Blockchain- and Smart Contract-Based Financial Markets": {
+    "title": "Decentralized Finance: On Blockchain- and Smart Contract-Based Financial Markets",
+    "doi": "10.20955/r.103.153-74",
+    "venue": "Review",
+    "year": 2021,
+    "authors": [
+      "Fabian Schär"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.20955%2Fr.103.153-74",
+    "sourceUrl": "https://doi.org/10.20955/r.103.153-74",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "5281089c5a9f46ca22328ba7cc482045031b9679f973e0a69fbdfbdb60aa8666"
+  },
+  "SoK: Decentralized Finance (DeFi)": {
+    "title": "SoK: Decentralized Finance (DeFi)",
+    "doi": "10.1145/3558535.3559780",
+    "venue": "Proceedings of the 4th ACM Conference on Advances in Financial Technologies",
+    "year": 2022,
+    "authors": [
+      "Sam Werner",
+      "Daniel Perez",
+      "Lewis Gudgeon",
+      "Ariah Klages-Mundt",
+      "Dominik Harz",
+      "William Knottenbelt"
+    ],
+    "type": "proceedings-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1145%2F3558535.3559780",
+    "sourceUrl": "https://doi.org/10.1145/3558535.3559780",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "16ce51078950f35a1e1282a5029daf95745af0e7e93b5a66db5161f06af6866f"
+  },
+  "The Development of China's Stock Market and Stakes for the Global Economy": {
+    "title": "The Development of China's Stock Market and Stakes for the Global Economy",
+    "doi": "10.1146/annurev-financial-110716-032333",
+    "venue": "Annual Review of Financial Economics",
+    "year": 2017,
+    "authors": [
+      "Jennifer N. Carpenter",
+      "Robert F. Whitelaw"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1146%2Fannurev-financial-110716-032333",
+    "sourceUrl": "https://doi.org/10.1146/annurev-financial-110716-032333",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "6732d9796f9debb5e6acd4be7ac91b8fe4e7904dc12bb19a7c533491bad4618c"
+  },
+  "Using Daily Stock Returns: The Case of Event Studies": {
+    "title": "Using daily stock returns",
+    "doi": "10.1016/0304-405x(85)90042-x",
+    "venue": "Journal of Financial Economics",
+    "year": 1985,
+    "authors": [
+      "Stephen J. Brown",
+      "Jerold B. Warner"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0304-405x(85)90042-x",
+    "sourceUrl": "https://doi.org/10.1016/0304-405x(85)90042-x",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "919a02d1bfc855a6b9e619da0b91d88a0d0372c35bbea76130146c7b28e0fb3c"
+  },
+  "Agency Costs of Free Cash Flow, Corporate Finance, and Takeovers": {
+    "title": "Agency costs of free cash flow, corporate finance, and takeovers",
+    "doi": "10.1017/cbo9780511609435.005",
+    "venue": "Corporate Bankruptcy",
+    "year": 1996,
+    "authors": [
+      "Michael C. Jensen"
+    ],
+    "type": "book-chapter",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1017%2Fcbo9780511609435.005",
+    "sourceUrl": "https://doi.org/10.1017/cbo9780511609435.005",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "fbc5dfc7c0f2da3c2b14d1e73646f782c480eb4d4fbb2bd87dd5de198d13b206"
+  },
+  "Peer Pressure: Social Interaction and the Disposition Effect": {
+    "title": "Peer Pressure: Social Interaction and the Disposition Effect",
+    "doi": "10.1093/rfs/hhw063",
+    "venue": "Review of Financial Studies",
+    "year": 2016,
+    "authors": [
+      "Rawley Z. Heimer"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1093%2Frfs%2Fhhw063",
+    "sourceUrl": "https://doi.org/10.1093/rfs/hhw063",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "f5cec7616a9f54942d5afd3ebfa51572595dcabb54f0033e9202336ddb6781d6"
+  },
+  "Business Cycles in a Small Open Economy": {
+    "title": "Business cycles in a small open economy",
+    "doi": "10.1016/0014-2921(94)00105-9",
+    "venue": "European Economic Review",
+    "year": 1995,
+    "authors": [
+      "Isabel Correia",
+      "João C. Neves",
+      "Sergio Rebelo"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1016%2F0014-2921(94)00105-9",
+    "sourceUrl": "https://doi.org/10.1016/0014-2921(94)00105-9",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "7affb00a1ef0581e477d6e16caa03341bee17dba03ddb16b6867f2f12ea1446b"
+  },
+  "An Empirical Study of DeFi Liquidations: Incentives, Risks, and Instabilities": {
+    "title": "An empirical study of DeFi liquidations",
+    "doi": "10.1145/3487552.3487811",
+    "venue": "Proceedings of the 21st ACM Internet Measurement Conference",
+    "year": 2021,
+    "authors": [
+      "Kaihua Qin",
+      "Liyi Zhou",
+      "Pablo Gamito",
+      "Philipp Jovanovic",
+      "Arthur Gervais"
+    ],
+    "type": "proceedings-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1145%2F3487552.3487811",
+    "sourceUrl": "https://doi.org/10.1145/3487552.3487811",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "11f4d8a222cc88d33bce704841cc942b6fde7e7116316753d93eb5ede8567140"
+  },
+  "Cryptocurrency Pump-and-Dump Schemes": {
+    "title": "Cryptocurrency Pump-and-Dump Schemes",
+    "doi": "10.1017/s0022109025000201",
+    "venue": "Journal of Financial and Quantitative Analysis",
+    "year": 2025,
+    "authors": [
+      "Tao Li",
+      "Donghwa Shin",
+      "Baolian Wang"
+    ],
+    "type": "journal-article",
+    "checkedAt": "2026-08-30",
+    "evidenceUrl": "https://api.crossref.org/works/10.1017%2Fs0022109025000201",
+    "sourceUrl": "https://doi.org/10.1017/s0022109025000201",
+    "verification": "publisher_registered_metadata",
+    "metadataSha256": "227c12fb53309dac8ac0578b021491830ba9316a3e5329b7782fcdc8b98f867d"
+  }
+}

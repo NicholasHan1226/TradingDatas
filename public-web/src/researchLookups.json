@@ -1,0 +1,26 @@
+{
+  "Text as Data": { "doi": "10.1257/jel.20181020" },
+  "Comparing Predictive Accuracy": { "doi": "10.1080/07350015.1995.10524599" },
+  "Using Daily Stock Returns: The Case of Event Studies": {
+    "doi": "10.1016/0304-405x(85)90042-x",
+    "lookupTitle": "Using daily stock returns",
+    "note": "Crossref omits the subtitle shown on the Elsevier article page."
+  },
+  "An Introduction to the Bootstrap": {
+    "doi": "10.1201/9780429246593",
+    "note": "1994 Chapman and Hall/CRC book edition, not a journal book review."
+  },
+  "The Development of China's Stock Market and Stakes for the Global Economy": {
+    "doi": "10.1146/annurev-financial-110716-032333"
+  },
+  "Law and Finance": { "doi": "10.1086/250042" },
+  "An Empirical Study of DeFi Liquidations: Incentives, Risks, and Instabilities": {
+    "doi": "10.1145/3487552.3487811",
+    "lookupTitle": "An empirical study of DeFi liquidations",
+    "note": "Crossref uses the short proceedings title."
+  },
+  "Cryptocurrency Pump-and-Dump Schemes": { "doi": "10.1017/s0022109025000201" },
+  "Peer Pressure: Social Interaction and the Disposition Effect": {
+    "doi": "10.1093/rfs/hhw063"
+  }
+}
