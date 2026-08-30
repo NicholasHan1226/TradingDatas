@@ -35,7 +35,7 @@ Phone/Email explain their unavailable status; no contacts collected or fake OTP.
 
 ## Validation
 
-- `npm run test:sites`: 50 tests passed, including login transport/errors,
+- `npm run test:sites`: 53 tests passed, including login transport/errors,
   malformed account responses, eight-hour expiry, encrypted-cookie tamper,
   revoked key, CSRF origin, per-route methods, oversized/chunked request
   cancellation, sign-out outage/retry, and stale-state wiring.
@@ -48,9 +48,9 @@ Phone/Email explain their unavailable status; no contacts collected or fake OTP.
   not restore Account. Phone/Email unavailable views and settings entry checked.
 - Rendered 1280px desktop, 768px tablet, 390px mobile, English/Chinese and
   light/dark variants. At checked sizes document width equals viewport width.
-  Keyboard focus reviewed. The browser automation's Enter action did not produce
-  a request in the synthetic harness; native form markup is present, but actual
-  keyboard submission needs a manual-browser check. Reused static art introduces
+  Keyboard focus reviewed. In-app automation's Enter action did not produce
+  a request; the follow-up Chrome test below verifies native form submission.
+  Reused static art introduces
   no motion. Theme/language remain in Account, including when signed out.
 
 The harness is `public-web/scripts/login-qa-server.mjs`, loopback only, synthetic
@@ -71,6 +71,39 @@ issuance or production successful-login test is claimed.
 | Originality / brand fit | 9/10 |
 | Responsive integrity | 5/5 |
 | Total | 88/100 |
+
+## Follow-up: identity checking and keyboard acceptance
+
+The 2026-08-30 follow-up reproduced a brief signed-out prompt on Account reload,
+before a valid identity read completed. A shared presentation state now separates
+checking, authenticated, unavailable, and confirmed signed-out. Account entry
+buttons wait during verification; private panels hide stale projections and do
+not show a sign-in CTA during an outage. Public preferences and learning remain
+accessible. Invalid login credentials still lead to sign-in, not outage retry.
+This is a client presentation fix, not a new authorization mechanism.
+
+- Added two state-transition tests and a private-panel wiring regression (53
+  public-web tests total), plus slow-identity and identity-outage harness cases.
+- Synthetic browser: initial check -> signed-out, successful login -> Account,
+  refresh -> checking -> same Account; identity 503 -> retry with no private
+  facts/sign-in prompt; API keys and preferences remain correctly separated.
+- Chrome native Enter on the actual Login form reached `/account`; the harness
+  recorded exactly one POST. No additional keydown handler was added. This is
+  browser-level synthetic evidence, not a real-key or production login claim.
+- Checked light Chinese at 390px and dark English at 768px, plus desktop state
+  inspection; widths matched viewports. Existing typography, spacing, empty
+  state and notice components are reused without new tokens or motion. Scoped
+  design score remains 88/100; this pass fixes feedback, not the visual system.
+- A brief theme transition can still show mixed contrast immediately after
+  reload in the in-app browser; settled dark rendering is correct. First-paint
+  theme initialization remains a separate visual follow-up, not a passed claim.
+- Alipay onboarding still requires owner QR login in both available browsers;
+  no account-specific eligibility, fee/limit, signing or payment was verified.
+
+Files in this follow-up: App/accountSession presentation, state and workspace
+tests, the synthetic QA harness, README, this report and the public design
+contract, plus regenerated client build. No Worker, backend, keys or database
+changed. Rollback is the previous candidate frontend; no migration is needed.
 
 ## Remaining boundaries and next three priorities
 

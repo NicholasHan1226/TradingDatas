@@ -32,7 +32,7 @@ import {
   sourceCandidates,
 } from "./dataSourceLandscape";
 import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
-import { accountJson, confirmAccountSignOut, readAccountIdentity, startAccountSession } from "./accountSession";
+import { accountJson, confirmAccountSignOut, getAccountViewState, readAccountIdentity, startAccountSession } from "./accountSession";
 import { LoginPage } from "./LoginPage";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
@@ -859,6 +859,10 @@ export function App() {
   const accountKeyInFlight = useRef(false);
   const accountEpoch = useRef(0);
   const accountReadAbort = useRef(null);
+  const accountViewState = getAccountViewState({ loading: accountLoading, account: accountData, error: accountError });
+  const accountChecking = accountViewState === "checking";
+  const accountPrivateSection = ["overview", "subscription", "usage", "keys", "security", "billing"].includes(accountSection);
+  const accountEntryLabel = accountChecking ? (locale === "zh" ? "正在验证账户…" : "Checking account…") : accountViewState === "unavailable" ? (locale === "zh" ? "重试账户连接" : "Retry account connection") : accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in");
   const copy = messages[locale];
 
   function clearAccountView() {
@@ -1445,8 +1449,8 @@ export function App() {
         <div className="header-actions">
           <button className="icon-button bookmark-header-button" type="button" aria-label={locale === "zh" ? `已收藏 ${bookmarks.length} 项` : `${bookmarks.length} bookmarks`} onClick={() => openAccountSection("bookmarks")}><BookmarkSimple size={23} weight={bookmarks.length ? "fill" : "regular"} />{bookmarks.length > 0 && <span>{bookmarks.length}</span>}</button>
           <div className="popover-wrap account-wrap">
-            <button className="icon-button account-button" type="button" aria-label={accountData ? copy.account : (locale === "zh" ? "登录账户" : "Sign in")} aria-expanded={accountData ? accountMenuOpen : false} onClick={() => accountData ? setAccountMenuOpen((value) => !value) : goTo("/login")}><UserCircle size={30} weight="thin" /></button>
-            {accountMenuOpen && <div className="account-menu-popover">
+            <button className="icon-button account-button" type="button" disabled={accountChecking} aria-busy={accountChecking} aria-label={accountChecking ? accountEntryLabel : accountData ? copy.account : accountViewState === "unavailable" ? copy.account : (locale === "zh" ? "登录账户" : "Sign in")} aria-expanded={accountData && !accountChecking ? accountMenuOpen : false} onClick={() => accountData ? setAccountMenuOpen((value) => !value) : goTo(accountViewState === "unavailable" ? "/account" : "/login")}><UserCircle size={30} weight="thin" /></button>
+            {accountMenuOpen && accountData && !accountChecking && <div className="account-menu-popover">
               <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? accountData.tenant_id : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountData.tier} 套餐 · 已连接` : `${accountData.tier} plan · connected`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
               {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
             </div>}
@@ -1641,7 +1645,7 @@ export function App() {
               <h1>{locale === "zh" ? "你的 TradingDatas 工作区。" : "Your TradingDatas workspace."}</h1>
               <p>{locale === "zh" ? "在一个安静的工作区管理已收藏内容、数据访问、文档、Agent 接入、账单和个人设置。" : "A quiet workspace for saved materials, data access, documentation, Agent connections, billing, and preferences."}</p>
               <div className="account-entry-actions">
-                <button className="primary-button" type="button" onClick={() => accountData ? setAccountSection("overview") : goTo("/login")}>{accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in")}<ArrowRight /></button>
+                <button className="primary-button" type="button" disabled={accountChecking} aria-busy={accountChecking} onClick={() => accountViewState === "unavailable" ? setAccountConnectionRevision((value) => value + 1) : accountData ? setAccountSection("overview") : goTo("/login")}>{accountEntryLabel}<ArrowRight /></button>
                 <small>{locale === "zh" ? "登录后仅显示当前账户的订阅、授权和用量。" : "After sign-in, only the current account's plan, access, and usage are shown."}</small>
               </div>
             </div>
@@ -1666,7 +1670,9 @@ export function App() {
                 </div>}
                 {accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
                 {accountError && !accountData && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
-                {accountSection === "overview" ? (
+                {accountPrivateSection && accountChecking ? (
+                  <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
+                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountSection === "overview" ? (
                   accountData ? (
                     <div className="account-live-overview">
                       <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "断开连接" : "Disconnect")}</button></div>

@@ -12,7 +12,7 @@ let logoutAttempts = 0;
 let loginAttempts = 0;
 const portal = { tenant_id: "SYNTHETIC-QA-ONLY", tier: "basic", scopes: ["read"], enabled: true,
   expires_at: "2027-01-01T00:00:00Z", minute_request_limit: 200, data_categories: ["a_share"], usage: { today_count: 12 } };
-const cases = ["normal", "invalid", "unavailable", "malformed", "usage-failure", "logout-retry", "slow-login", "expired", "late-key"];
+const cases = ["normal", "invalid", "unavailable", "malformed", "usage-failure", "logout-retry", "slow-login", "slow-identity", "identity-outage", "expired", "late-key"];
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
@@ -24,6 +24,10 @@ http.createServer(async (req, res) => {
     return res.end(`<h1>Synthetic login QA — never enter a real key</h1><p>Scenario: ${scenario}. Use any synthetic test string.</p><p>POST login count: ${loginAttempts}</p>${cases.map((item) => `<p><a href="/__qa?case=${item}">${item}</a></p>`).join("")}<a href="/login">Open login</a>`);
   }
   if (url.pathname.startsWith("/api/account/")) {
+    if (url.pathname === "/api/account/me") {
+      if (scenario === "slow-identity") await pause(1800);
+      if (scenario === "identity-outage") return json(503, { error: "synthetic_identity_outage" });
+    }
     if (url.pathname === "/api/account/session" && req.method === "DELETE") {
       await pause(300);
       if (scenario === "logout-retry" && ++logoutAttempts === 1) return json(503, { error: "synthetic_failure" });

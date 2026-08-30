@@ -79,6 +79,10 @@ until verified identity and message delivery are connected. They neither collect
 contact details nor simulate sending a code. Identity and usage availability are
 separate: a usage failure must not sign out an otherwise authenticated account.
 Requests have timeouts; session changes invalidate late reads/key-write UI results.
+While identity is being checked, private Account panels show a neutral verification
+state instead of a sign-in prompt or cached credentials. Identity outages show a
+retry action, not a false signed-out conclusion; public bookmarks, docs and
+preferences remain accessible from the same workspace.
 
 Local synthetic UI verification: `npm run build`, then
 `node scripts/login-qa-server.mjs` and open `http://127.0.0.1:5193/__qa`.

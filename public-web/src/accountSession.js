@@ -1,5 +1,12 @@
 // Only the same-site gateway may exchange credentials for a browser session.
 // Keep transport failure distinct from authentication failure; never downgrade.
+export function getAccountViewState({ loading, account, error }) {
+  if (loading) return "checking";
+  if (account) return "authenticated";
+  if (error === "invalid_token" || error === "signed_out") return "signed_out";
+  return error ? "unavailable" : "signed_out";
+}
+
 export async function accountJson(endpoint, init = {}, fetchImpl = fetch, timeoutMs = 12_000) {
   const controller = new AbortController();
   const abort = () => controller.abort(init.signal.reason);

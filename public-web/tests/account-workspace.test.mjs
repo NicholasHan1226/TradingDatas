@@ -47,3 +47,11 @@ test("late reads and key mutations cannot restore a previous account", () => {
   assert.match(appSource, /if \(!current\(\)\) return/);
   assert.match(appSource, /用量暂时无法加载，你仍然处于登录状态/);
 });
+
+test("private panels wait for identity instead of flashing a sign-in prompt", () => {
+  assert.match(appSource, /getAccountViewState\(\{ loading: accountLoading, account: accountData, error: accountError \}\)/);
+  assert.match(appSource, /accountPrivateSection && accountChecking/);
+  assert.match(appSource, /accountPrivateSection && accountViewState === "unavailable" \? null/);
+  assert.match(appSource, /disabled=\{accountChecking\} aria-busy=\{accountChecking\}/);
+  assert.match(appSource, /No need to sign in again/);
+});

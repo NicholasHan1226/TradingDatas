@@ -478,6 +478,11 @@ Loading, invalid/expired key, denied access, throttling, timeout and service
 outage are distinct feedback states. Usage failure is independent of sign-in.
 After successful login, replace the route with `/account`; leaving Login clears
 the raw input. See `API.md` for the session/security contract.
+On initial load or foreground revalidation, the Account entry and private panels
+show a neutral checking state, not a signed-out prompt or stale credentials.
+Connection failures offer retry without claiming the user signed out. Only a
+confirmed absent/invalid session offers sign-in; bookmarks, learning content and
+preferences stay accessible independently of authentication.
 
 The account workspace is grouped by customer task:
 
