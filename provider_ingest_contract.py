@@ -75,8 +75,6 @@ def provider_ingest_config_hash(
             {"resumable_fanout": {
                 "cursor_contract_version": binding.resumable_fanout.cursor_contract_version,
                 "max_batches_per_run": binding.resumable_fanout.max_batches_per_run,
-                **({"window_scope": binding.resumable_fanout.window_scope}
-                   if binding.resumable_fanout.window_scope != "bar" else {}),
             }}
             if binding.resumable_fanout is not None
             else {}

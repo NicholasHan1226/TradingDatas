@@ -198,9 +198,7 @@ _RESPONSE_COMPLETENESS_KEYS = frozenset(
         "reject_at_row_limit",
     }
 )
-_RESUMABLE_FANOUT_KEYS = frozenset(
-    {"cursor_contract_version", "max_batches_per_run", "window_scope"}
-)
+_RESUMABLE_FANOUT_KEYS = frozenset({"cursor_contract_version", "max_batches_per_run"})
 _BINDING_REQUIRED_KEYS = frozenset(
     {
         "provider",
@@ -430,13 +428,6 @@ class ResumableFanoutPolicy:
 
     cursor_contract_version: int = 2
     max_batches_per_run: int = 1
-    window_scope: str = "bar"
-
-    def __post_init__(self) -> None:
-        if type(self.window_scope) is not str or self.window_scope not in {
-            "bar", "session_day"
-        }:
-            raise ValueError("resumable_fanout.window_scope is unsupported")
 
 
 @dataclass(frozen=True)
@@ -1229,19 +1220,11 @@ def _resumable_fanout_policy(raw: Any, *, path: str) -> ResumableFanoutPolicy | 
     if raw is None:
         return None
     value = _mapping(raw, path)
-    _reject_unknown_keys(
-        value, _RESUMABLE_FANOUT_KEYS, path,
-        required=frozenset({"cursor_contract_version", "max_batches_per_run"}),
-    )
+    _reject_unknown_keys(value, _RESUMABLE_FANOUT_KEYS, path, required=_RESUMABLE_FANOUT_KEYS)
     if value["cursor_contract_version"] != 2:
         raise ValueError(f"{path}.cursor_contract_version must be 2")
-    scope = _choice(
-        value.get("window_scope", "bar"),
-        frozenset({"bar", "session_day"}), f"{path}.window_scope",
-    )
     return ResumableFanoutPolicy(
         cursor_contract_version=2,
-        window_scope=scope,
         max_batches_per_run=_positive_int(
             value["max_batches_per_run"], f"{path}.max_batches_per_run"
         ),
@@ -2112,21 +2095,6 @@ def _load_dataset(
         _load_binding(binding, dataset_id=dataset_id, index=binding_index)
         for binding_index, binding in enumerate(raw_bindings)
     )
-    for binding in provider_bindings:
-        if (
-            binding.resumable_fanout is not None
-            and binding.resumable_fanout.window_scope == "session_day"
-        ):
-            if (
-                value["cadence_class"] != "session_minute"
-                or binding.request_window_policy is not None
-                or binding.response_completeness is not None
-                or any("${window." in item for item in binding.request_template.values())
-            ):
-                raise ValueError(
-                    "session_day requires session_minute with a current cumulative "
-                    "request and no window/completeness mapping"
-                )
     read_discriminator_values = tuple(
         binding.read_discriminator_value for binding in provider_bindings
     )

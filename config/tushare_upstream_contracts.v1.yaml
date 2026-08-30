@@ -28696,7 +28696,6 @@ contracts:
     batch_size: 5
   resumable_fanout:
     cursor_contract_version: 2
-    window_scope: session_day
     max_batches_per_run: 20
   pagination:
     strategy: none

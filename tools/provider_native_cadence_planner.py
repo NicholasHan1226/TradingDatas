@@ -1274,30 +1274,6 @@ def _dataset_plans(
     if session_state is not None:
         return (), session_state
     if dataset.cadence_class == "session_minute":
-        if (
-            binding.resumable_fanout is not None
-            and binding.resumable_fanout.window_scope == "session_day"
-        ):
-            # The date identifies only this current-day cumulative sweep. It
-            # neither asks the provider for history nor claims close coverage.
-            window = {"session_date": local_now.strftime("%Y%m%d")}
-            if _resumable_window_completed_at(
-                current.receipts, registry=registry, state=state, now=now,
-                dataset=dataset, binding=binding, request_window=window,
-            ) is not None:
-                return (), "not_due"
-            latest = _latest(current.receipts, window)
-            if latest is not None:
-                age = (now_utc - latest.finished_at).total_seconds()
-                interval = (
-                    policy.failure_retry_seconds if latest.status == "failed"
-                    else policy.minimum_interval_seconds
-                )
-                if age < interval:
-                    return (), "not_due"
-            return _runs(
-                dataset, binding, policy, MappingProxyType(window), "current"
-            ), "planned"
         # Each five-minute bar is its own resumable window: align the clock to
         # the latest completed bar end so the cursor resets per bar instead of
         # carrying one sweep across the whole session.

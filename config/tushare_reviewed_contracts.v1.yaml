@@ -2023,7 +2023,6 @@ contracts:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 20
-      window_scope: session_day
     pagination:
       strategy: none
     request_window_policy: null

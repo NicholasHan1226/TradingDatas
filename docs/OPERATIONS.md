@@ -40,17 +40,12 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 5（单批最多约 5×241 根 1 分钟线，午后 payload 最大），`max_rows_per_attempt=1500`，resumable cursor v2 每轮最多 20 批；敏感扫描包络按该乘积定价且必须 ≤ 2,000,000 节点。确定性 `resource_budget`/`config_error`/`validation_failed` 失败批次不得优先钉死同一窗口的 pending 批次。该绑定经 `active_evidence` 恢复采集；回滚时切回上一 immutable registry/release 并更新 activation-wave
 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
 
-当日累计、没有历史日期参数的 session-minute 合同可显式声明
-`resumable_fanout.window_scope: session_day`。该 scope 写入 ingest config hash，
-planner 以 dataset 本地日期 `request_window.session_date` 续采；日期只绑定回执与
-游标，不发送 provider。次日、config 或 universe 变化后必须重置，旧 bar 回执不得借用。
-默认 scope 仍是 `bar`，其既有 config hash 不变。该模式不允许 provider window
-模板、request-window policy 或 response-completeness 合同，以免把累计观察冒充
-精确窗口完整性。`rt_min_daily` 的候选使用该声明，但 1,194 批至少需要 60 轮；
-即便按 session buffers 的 52 次五分钟触发宽松上限，也无法在每天每轮 20 批的
-预算内扫完。早盘已扫描代码不自动具有下午分钟线；日续采完成不证明收盘完整。
-本轮源候选、生产与消费者边界见
+本轮拟议的日续采模式因旧日响应会被计作当日完成而撤回，未进入当前源码合同或生产。
+`rt_min_daily` 仍使用既有 bar 游标，因此每轮重复前缀、当日覆盖不足的问题尚未修复。
+后续方案需先声明并验证 provider `time`、非空业务身份和完整日期窗口，不能仅改变游标
+或以采集运行时间代替 provider 时间。详见
 [`2026-08-30 coverage/quality recovery`](reports/2026-08-30-coverage-quality-recovery.md)。
+
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
 所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，

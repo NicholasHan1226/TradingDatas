@@ -142,28 +142,42 @@ history remains stored but is not silently offered as a fallback. Until real
 major-2 collection/readback and required consumer validation, the candidate must
 not be described as a production quality fix.
 
-## Generic day-scoped cursor contract
+## Day-scoped cursor proposal withdrawn after P1 reproduction
 
-`resumable_fanout.window_scope: session_day` is opt-in; the default bar behavior
-and old default config hashes stay unchanged. The scope is included in the new
-ingest configuration hash. It is permitted only for a session-minute fanout
-with no provider window template, request-window policy, or response-completeness
-contract that could conflict with this cumulative-day interpretation.
+The first candidate `16e9dd84a00d2e50a533ada2942a17bbcc4756eb` attempted an
+opt-in daily cursor. Initial unit and SQLite round-trip tests passed, but two
+independent bounded SQLite reproductions then found a P1: the first batch
+returned previous-day rows with a valid success receipt; another batch returned
+current-day rows; the cursor regarded both as completed for the current day and
+never revisited the first batch. The aggregate projection was successful. The
+old per-bar cursor would revisit that prefix on the following bar.
 
-The planner records the dataset-local day as `request_window.session_date`.
-This identity is never sent to the provider. Same-day ticks continue unobserved
-batches; the next day restarts. Old bar receipts, another day, config, universe,
-provider or dataset cannot advance the cursor. Existing calendar, session hours,
-serial budgets and failure handling remain binding. `data_through` always comes
-from real provider data, never the requested day or an assumed closing time.
+This is a correctness regression, not a permissible full-market coverage gap.
+The generic runtime/compiler changes, scope field, activation configuration and
+scope tests were therefore removed from this PR before any production release.
+The original candidate remains in Git history for traceability, but is not a
+contract-ready or approved daily-cursor capability. Only the three schema-quality
+changes and their regression tests remain. The existing bar behavior and its
+known prefix/coverage limitation remain unchanged.
 
-This fixes repeated prefixes only. With 1,194 batches and 20 per run, at least
-60 successful opportunities are required. Even a generous 52 five-minute
-opportunities across the configured session buffers yields at most 1,040 batches
-(5,200 codes), before shared-budget and runtime losses. An early observed code
-also does not automatically gain its later minute bars. Day-cursor completion
-is never a full-market close-completeness claim. Sunday inspection cannot
-provide Monday session evidence.
+The inspection also found that the current minute contract lacks a response
+time/completeness declaration: `_data_through` can fall back to run start time.
+Accordingly, a fresh collection timestamp is not proof that its rows are from
+today. The schema-quality changes alone do not fix this older timing limitation.
+
+Before revisiting day accumulation, freeze a provider-time contract using the
+existing `windowed_unique_primary_key` mechanism, non-null `[ts_code,time]`
+identity, `date_field=time` and bounded cursor-only day start/end values. Test
+previous-day, mixed-day, empty and late-updating responses, including whether a
+failed early batch can be retried without starving other batches or expanding
+budgets. Do not filter old rows into an empty-success receipt or infer current
+coverage from the collector clock. This design remains unimplemented/unapproved.
+
+Capacity is an independent gap: 1,194 batches at 20/run require at least 60
+successful opportunities. Even a generous 52 five-minute opportunities across
+the configured buffers yields at most 1,040 batches (5,200 codes). Early samples
+also do not contain later bars. No full-market/close-completeness or next-session
+stability is established.
 
 ## Consumer and release boundaries
 
@@ -208,8 +222,8 @@ result alone is not dataset activation, fixed-API or consumer validation.
 
 Both existing compilers completed successfully. All four source-provenance
 hashes and the activation-wave registry hash match the compiled inputs. Pure
-plans select the monthly broker request and day-scoped minute request without
-calling a provider or writing a database. Focused tests, independent review and
+plans select the monthly broker and unchanged six-variant futures requests
+without calling a provider or writing a database. Focused tests, independent review and
 exact-candidate CI results are recorded in the PR; an unfinished test run is
 not a passing result. Production source remains on the inspected immutable
 release until the applicable gates and release preflight pass. Release validation must include

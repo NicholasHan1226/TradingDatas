@@ -2119,17 +2119,6 @@ def collect_provider_native_dataset(
         started_at=started_at,
         data_through=None,
     )
-    if (
-        binding.resumable_fanout is not None
-        and binding.resumable_fanout.window_scope == "session_day"
-    ):
-        local_start = datetime.fromisoformat(
-            started_at.replace("Z", "+00:00")
-        ).astimezone(ZoneInfo(dataset.timezone))
-        if normalized_window != {"session_date": local_start.strftime("%Y%m%d")}:
-            raise ValueError(
-                "session_day collection requires the current run's local session_date only"
-            )
     validate_provider_dataset_store(db_path)
     if not callable(getattr(collector, "collect_outcome", None)):
         raise TypeError("collector must provide collect_outcome")

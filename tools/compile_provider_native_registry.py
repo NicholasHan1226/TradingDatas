@@ -2200,18 +2200,11 @@ def _resumable_fanout(raw: object, label: str) -> dict[str, Any] | None:
     if raw is None:
         return None
     value = _mapping(raw, label)
-    _reject_keys(
-        value, frozenset({"cursor_contract_version", "max_batches_per_run", "window_scope"}),
-        label, required=frozenset({"cursor_contract_version", "max_batches_per_run"}),
-    )
+    _reject_keys(value, frozenset({"cursor_contract_version", "max_batches_per_run"}), label)
     if value.get("cursor_contract_version") != 2:
         raise ValueError(f"{label}.cursor_contract_version must be 2")
-    scope = value.get("window_scope", "bar")
-    if type(scope) is not str or scope not in {"bar", "session_day"}:
-        raise ValueError(f"{label}.window_scope is unsupported")
     return {
         "cursor_contract_version": 2,
-        **({"window_scope": scope} if scope != "bar" else {}),
         "max_batches_per_run": _required_positive_int(
             value.get("max_batches_per_run"), f"{label}.max_batches_per_run"
         ),
@@ -2529,20 +2522,6 @@ def _normalized_contract(
         window=window,
         label=f"{label}.response_completeness",
     )
-    if (
-        resumable_fanout is not None
-        and resumable_fanout.get("window_scope", "bar") == "session_day"
-    ):
-        if (
-            value["cadence_class"] != "session_minute"
-            or window is not None
-            or completeness is not None
-            or any("${window." in item for item in template.values())
-        ):
-            raise ValueError(
-                "session_day requires session_minute with a current cumulative "
-                "request and no window/completeness mapping"
-            )
     requested_fields = _string_list(
         value["requested_fields"], f"{label}.requested_fields", allow_empty=True
     )

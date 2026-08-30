@@ -863,23 +863,19 @@ def _request_fanout(
     }
 
 
-def _request_resumable_fanout(raw: object, *, label: str) -> dict[str, Any]:
+def _request_resumable_fanout(raw: object, *, label: str) -> dict[str, int]:
     value = _mapping(raw, label)
     _exact_keys(
-        {key: item for key, item in value.items() if key != "window_scope"},
+        value,
         frozenset({"cursor_contract_version", "max_batches_per_run"}),
         label,
     )
-    scope = value.get("window_scope", "bar")
-    if type(scope) is not str or scope not in {"bar", "session_day"}:
-        raise RuntimeContractCompilationError(f"{label}.window_scope is unsupported")
     if value["cursor_contract_version"] != 2:
         raise RuntimeContractCompilationError(
             f"{label}.cursor_contract_version must be 2"
         )
     return {
         "cursor_contract_version": 2,
-        **({"window_scope": scope} if scope != "bar" else {}),
         "max_batches_per_run": _positive_int(
             value["max_batches_per_run"], f"{label}.max_batches_per_run"
         ),
