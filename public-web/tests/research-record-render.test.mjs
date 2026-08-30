@@ -9,6 +9,7 @@ import { researchReaderNotes } from "../src/researchReaderNotes.js";
 
 let server;
 let ResearchRecord;
+const escapeHtml = value => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" }[char]));
 before(async () => {
   server = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)), configFile: false, logLevel: "silent", server: { middlewareMode: true, hmr: false, watch: null }, esbuild: { jsx: "automatic" } });
   ({ ResearchRecord } = await server.ssrLoadModule("/src/ResearchRecord.jsx"));
@@ -23,9 +24,18 @@ test("all 200 records render in both languages with direct sources and no intern
     assert.doesNotMatch(html, /准备状态|来源核验|出版信息已核对|三项检查|Bibliography checked|Preparation blueprint/);
     assert.doesNotMatch(html, /undefined|\[object Object\]/);
     assert.ok(html.includes(locale === "zh" ? "阅读原文" : "Read original"));
-    for (const section of paper.readingNotes || []) if (section.reference) {
-      assert.ok(html.includes(section.reference.label[locale].replaceAll("&", "&amp;")));
-      assert.ok(html.includes(section.reference.url.replaceAll("&", "&amp;").replaceAll("'", "&#x27;")));
+    const guide = researchReaderNotes[paper.title];
+    if (guide) {
+      assert.ok(!html.includes(escapeHtml(guide.evidenceScope)), `internal reading scope leaked: ${paper.id}`);
+      assert.ok(html.includes(escapeHtml(guide.limits[locale])), `missing source limitation: ${paper.id}:${locale}`);
+    }
+    for (const section of paper.readingNotes || []) {
+      assert.ok(html.includes(escapeHtml(section.title[locale])), `missing section title: ${paper.id}:${locale}`);
+      assert.ok(html.includes(escapeHtml(section.body[locale])), `missing section body: ${paper.id}:${locale}`);
+      if (section.reference) {
+        assert.ok(html.includes(escapeHtml(section.reference.label[locale])));
+        assert.ok(html.includes(escapeHtml(section.reference.url)));
+      }
     }
   }
 });

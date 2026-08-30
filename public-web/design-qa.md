@@ -622,3 +622,74 @@ Independent Datas PM review, exact-head CI, merge, exact-main CI, Cloudflare
 publication and live readback remain separate gates. No production write is part
 of this round. Next: restore an authorized preview, run the pending user flows,
 then obtain PM review; do not publish merely because code/kernel tests pass.
+
+# Research guide completion v7 — 2026-08-30
+
+Contract: `docs/design/research-depth-completion-v7.md`. Continues draft PR #400;
+supersedes v6 guide-depth counts, not its independent kernel/visual evidence.
+
+## Content and source review
+
+- Keep 200 works, 24 guides, eight subject journeys, six tutorials and 24 downloads.
+  Fourteen previously short guides gain two bilingual, source-specific sections
+  and reading locators. Combined with the prior eight, 22 now have six sections.
+- Original passages were inspected for Fama/French 1992 and 1993, Kyle, Tetlock,
+  Cochrane/Piazzesi and MacKinlay. Working/accepted-copy passages were inspected
+  for Replicating Anomalies, Lazy Prices, Bitcoin, Petersen and Makarov/Schoar.
+  The two China-market papers use their final publisher introductions/previews.
+  Corwin/Schultz uses author-issued program instructions and appendix explanations,
+  not an uninspected implementation formula. Review scope is stored per guide.
+- Additions explain information timing, full-sample beta assignment, return versus
+  yield definitions, overlapping horizons, text-category overlap and prior-year
+  PCA, historical session phases, disclosure timing, and fiat repatriation.
+  They do not implement estimates, publish trading signals or reproduce papers.
+- Dechow/Dichev and Nelson/Siegel remain unchanged four-section, abstract-based
+  guides. Attempts to retrieve usable full text failed (restricted, failed or
+  unavailable extraction). Their remaining depth work is **not complete**.
+  Bibliographic source dates and identity records were not advanced or rewritten.
+- Bitcoin uses a July 2014 author draft; Lazy Prices a March 2019 working-paper
+  revision; Petersen a June 2006 NBER revision. Public source locators and concise
+  limitations distinguish these from final publication identities. No historical
+  policy or protocol condition is asserted as current. No PDFs are redistributed.
+
+## Fresh local checks
+
+- `npm run build` passed: 211 metadata HTML entries and 24 offline downloads.
+  Research catalogue chunk: 277.08 kB / 93.29 kB gzip (previous 248.56 / 82.44).
+  CSS and page layout code are unchanged; extra prose still needs visual review.
+- `npm run test:sites`: 79 passed. Added explicit 22/2 guide membership, baseline
+  immutability, distinct bilingual additions, source locators and edition checks.
+  Static React rendering checks every guide paragraph/heading/limitation in both
+  languages and rejects leaked internal review scope across all 200 records.
+- All 24 generated downloads matched maintained generators byte-for-byte and
+  remain unchanged against the preceding commit. Python cell execution/parity
+  tests passed; actual Jupyter kernels were not rerun because notebooks did not
+  change. The separate v6 kernel pass is prior evidence, not a fresh UI check.
+- Read-only whole-library structural audit: zero errors; 176 summary-only records
+  and seven reading-scope review candidates. These warnings are not proven defects
+  or a quality score. No repeated/short-paragraph warning in this run.
+- Bounded checks of this pass's 15 source URLs: twelve HTTP 200, two HTTP 403
+  (ScienceDirect), one timeout (Replicating Anomalies NBER PDF); no observed 404/410.
+  Research-tool text retrieval succeeded independently for those three, but does
+  not turn their live link-check results into unrestricted-access passes.
+- All thirteen DOI-bearing works in this fourteen-guide batch matched current
+  Crossref title/DOI/venue/year/authors, with no returned update relation. The
+  MacKinlay record uses a separately maintained source-page identity and was not
+  included in this DOI comparison. Absence of an update relation is not proof that
+  no correction exists; this was not a whole-library live metadata/link sweep.
+- No protected Worker/Sites file, lockfile, dependency, registry, account code,
+  workflow or production setting changed. Build artifacts are regenerated, not
+  hand-edited. Removed old hashed chunks are recoverable in Git.
+
+## Pending acceptance and handoff
+
+The local-browser policy denial from v6 is unresolved. The existing open tab is
+not authorization to bypass it. No retry through another host, port, browser or
+indirect execution was attempted. Nicholas was asked to restore authorized access.
+There are no fresh screenshots, responsive checks, live language/theme switches,
+keyboard/screen-reader sessions, clipboard-denial interactions or native download
+completion checks for this build. Static tests do not certify those interactions.
+
+Keep PR #400 draft. Two full-text source gaps, authorized browser acceptance,
+independent Datas PM review, exact-head CI and main integration remain distinct
+handoff items. No merge or deployment is included in this round.

@@ -1,7 +1,8 @@
 import { researchEditorial } from "./researchEditorial.js";
 import { researchDeepReads } from "./researchDeepReads.js";
+import { researchGuideDepthExpansion } from "./researchGuideDepthExpansion.js";
 // Source-backed editorial notes, separate from internal preparation/QA profiles.
-export const researchReaderNotes = { ...researchEditorial, ...researchDeepReads };
+export const researchReaderNotes = { ...researchEditorial, ...researchDeepReads, ...researchGuideDepthExpansion };
 
 export const sourceSpecificReaderLimits = {
   "Modeling and Forecasting Realized Volatility": { en: "Sampling frequency, trading sessions, and microstructure noise affect realized-volatility measurement.", zh: "采样频率、交易时段与微观结构噪声会影响已实现波动率的测量。" },

@@ -71,15 +71,19 @@ disclosure content, explicitly not the paper's original sample. Source-specific
 reader notes and their internal review references live in `researchReaderNotes.js`.
 `researchEditorial.js` and `researchEditorialExpansion.js` provide 24 selected
 guides across all eight reading journeys. `researchDeepReads.js` overrides eight
-representatives with six bilingual sections and source-section reading links;
-the other sixteen retain four sections. All have source-specific limitations.
-Every guide retains an internal evidence URL
-and actual reading scope. Some use original/author-copy introductory sections;
-others are deliberately abstract-based (including Kyle, Corwin/Schultz,
-Nelson/Siegel and the Bitcoin overview). Dechow/Dichev and Replicating Anomalies
-retain their final publication identities while explicitly explaining the use
-of working-paper material. No draft numerical results are silently presented as
-final results. This does not certify 200 full-length guides or 24 full-text reviews.
+representatives; `researchGuideDepthExpansion.js` adds supported detail to fourteen
+more without mutating their original four-section records. Twenty-two guides have
+six bilingual sections with source locators; Dechow/Dichev and Nelson/Siegel remain
+four-section, abstract-based orientations pending usable full text. All retain
+source-specific limitations and internal evidence URLs/actual reading scopes.
+Scope varies: original passages, author copies, publisher previews, and (for
+Corwin/Schultz) author-issued program instructions and appendix explanations are
+not equivalent to complete paper review. Bitcoin's added detail uses a 2014 author
+draft; Lazy Prices uses the March 2019 revision; Petersen uses the June 2006 NBER
+revision. Their public limitations identify these editions. Dechow/Dichev and
+Replicating Anomalies also preserve final publication identity separately from
+working-paper material. No draft numerical results are silently presented as final
+results. This does not certify 200 full-length guides or 24 full-text reviews.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -111,7 +115,8 @@ generated from maintained examples; Python code cells execute offline and are
 tested against the JS output. No source paper PDFs, provider data or credentials
 are redistributed. See `docs/design/research-reading-depth-v4.md` and
 `docs/design/research-reading-continuity-v5.md` and
-`docs/design/research-depth-quality-v6.md`.
+`docs/design/research-depth-quality-v6.md` and
+`docs/design/research-depth-completion-v7.md`.
 
 View changes preserve filters/page. Selecting a subject or all literature resets
 format/page; format changes reset page. URL parameters reproduce view, topic, format

@@ -90,9 +90,12 @@ still searches all 200 records. Bookmarks and source routes remain language-neut
 
 Twenty-four selected records include bilingual reading guides in
 `src/researchEditorial.js` and `src/researchEditorialExpansion.js`.
-`src/researchDeepReads.js` deepens eight of them to six sections, covering original
-materials, method, findings and limits with public source-section reading links;
-the other sixteen retain four sections. Eight subject
+`src/researchDeepReads.js` deepens eight of them, and
+`src/researchGuideDepthExpansion.js` extends fourteen more using inspected primary
+passages or author-issued supporting instructions. Twenty-two guides now have
+six sections with source locators. Dechow/Dichev and Nelson/Siegel retain four
+abstract-based sections pending usable full-text evidence; section counts do not
+certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
 Articles show their position and previous/next reading with authored reasons.
@@ -101,6 +104,8 @@ local synthetic examples, never real requests. Their publication does not change
 the product manifest's underlying data/Feature/Recipe maturity or account grants.
 See [`research-reading-depth-v4.md`](../docs/design/research-reading-depth-v4.md).
 The current follow-up contract is
+[`research-depth-completion-v7.md`](../docs/design/research-depth-completion-v7.md),
+continuing the tutorial/maintenance contract in
 [`research-depth-quality-v6.md`](../docs/design/research-depth-quality-v6.md).
 Library scroll positions are isolated per in-tab history entry; explicit article
 return restores the latest library view. They are neither persisted nor synced.
