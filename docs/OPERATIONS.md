@@ -674,12 +674,21 @@ Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，�
 
 ## 采集巡检脚本
 
-Crypto目录的UTF-8回执候选扫描使用进程内锁，覆盖Python UDF注册、SQL读取和注销，
+Crypto目录的UTF-8回执候选扫描先尝试有界的数据库原生字节匹配：首个共同前缀后的
+精确后缀命中即可返回；首个未命中而有后续/重叠前缀时，仍调用原完整Python matcher。
+无共同前缀、后缀长度种类过多、参数或SQL文本超出优化上限时回到原匹配路径；
+这些优化上限不构成新的查询拒绝或扫描预算豁免。非UTF-8仍使用原SQLite语义。
+不以JSON预解析或跨请求投影缓存跳过损坏候选及receipt authority检查。
+同一次catalog请求内可按含typeof的完整原始行tuple复用该dataset已验证的seed分类与
+execution身份；必须先完成siblings原始读取及预算收费，任一字段不同、新行或invalid
+仍走原校验。此映射不跨请求、不按run_id单独判等，也不改变其它scanner调用者。
+
+UTF-8回执候选扫描仍使用进程内锁，覆盖Python UDF注册、SQL读取和注销，
 用于避免多个SQLite连接同时回调Python时的争用；不串行化整个HTTP服务，也不放宽
 原始候选、损坏回执与扫描预算检查。发布须验证两个同时发起的认证目录请求均在15秒内
 完成，单请求速度不能替代并发验收。当前4bb/WAL之后的运行时升级必须保持WAL，
 回退到4bb/WAL时不得沿用早期恢复DELETE的脚本。详见
-[并发目录验收记录](reports/2026-08-30-runtime-concurrency.md)。
+[原生匹配与验收记录](reports/2026-08-30-runtime-native-candidate.md)。
 
 已安装的 `/usr/local/sbin/tradingdatas-collector-watch.sh` 对应仓库
 `deploy/tradingdatas-collector-watch.sh`；本文件是既有巡检的可审计源，不创建新 timer，
