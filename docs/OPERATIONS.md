@@ -690,8 +690,10 @@ registry hash、SQLite 路径、账号及既有 cursor signer 指纹；不经任
 
 目录运行任务总数最多等于 worker 数，没有隐式等待队列。容量满或 worker/IPC 失败返回
 既有 503 `service_unavailable`，不自动重放或改走 query。父请求一直等待已接收的任务
-真正结束；客户端断开不释放仍在计算的任务/租户名额。正常退出停止接收新任务并等待
-自有任务结束。仅在预监听初始化失败时，允许有界终止并回收该次初始化创建的子进程；
+真正结束；客户端断开不释放仍在计算的任务/租户名额。Python 的正常 shutdown 停止接收
+新任务并等待自有任务结束。systemd 停止整个 control group 时会同时发送 SIGTERM，
+在途只读请求可能中断或返回 503；这不是无中断排空承诺，不自动重试。仅在预监听
+初始化失败时，允许有界终止并回收该次初始化创建的子进程；
 不终止 collector、正常客户任务或其它服务进程。systemd 仍须 `KillMode=control-group`，
 并预留启动/退出时间；不得为该功能放宽 SQLite、凭据和 filesystem 保护。
 
