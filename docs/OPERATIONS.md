@@ -34,11 +34,23 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 5 分钟 bar 独立重置游标，因此一个 bar 内完整扫完 5,963 个冻结代码。只有带匹配
 dataset/provider、config hash、frozen universe、batch identity 与
 success/empty 状态的 receipt 才能推进游标；失败批次只在本数据集内优先重试，不能借用其它
-dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 24、
+dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 48、
 rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime
 已接纳。每轮仍须保留实际 bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行
 可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 5（单批最多约 5×241 根 1 分钟线，午后 payload 最大），`max_rows_per_attempt=1500`，resumable cursor v2 每轮最多 20 批；敏感扫描包络按该乘积定价且必须 ≤ 2,000,000 节点。确定性 `resource_budget`/`config_error`/`validation_failed` 失败批次不得优先钉死同一窗口的 pending 批次。该绑定经 `active_evidence` 恢复采集；回滚时切回上一 immutable registry/release 并更新 activation-wave
 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
+
+当日累计、没有历史日期参数的 session-minute 合同可显式声明
+`resumable_fanout.window_scope: session_day`。该 scope 写入 ingest config hash，
+planner 以 dataset 本地日期 `request_window.session_date` 续采；日期只绑定回执与
+游标，不发送 provider。次日、config 或 universe 变化后必须重置，旧 bar 回执不得借用。
+默认 scope 仍是 `bar`，其既有 config hash 不变。该模式不允许 provider window
+模板、request-window policy 或 response-completeness 合同，以免把累计观察冒充
+精确窗口完整性。`rt_min_daily` 的候选使用该声明，但 1,194 批至少需要 60 轮；
+即便按 session buffers 的 52 次五分钟触发宽松上限，也无法在每天每轮 20 批的
+预算内扫完。早盘已扫描代码不自动具有下午分钟线；日续采完成不证明收盘完整。
+本轮源候选、生产与消费者边界见
+[`2026-08-30 coverage/quality recovery`](reports/2026-08-30-coverage-quality-recovery.md)。
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
 所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，
@@ -54,8 +66,10 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 
 `session_minute` 的最小成功间隔为 240 秒：五分钟 timer 在上一个窗口于临界时刻完成
 （例如完成后 265 秒触发下一次）时，仍会规划下一窗口；失败重试、开市日历、窗口和预算
-规则不变。当前 `standard` budget 每轮最多 12 个账号请求、12 个 provider 请求，
-同一 provider API 最多 6 个请求。runner 仍是串行、每五分钟最多运行一次；历史
+规则不变。当前 `standard` budget 每轮最多 64 个账号请求、64 个 provider 请求，
+同一 provider API 最多 16 个请求；`intraday` 为 48/48/6（分钟 API override 60），
+`event` 为 36/36/4（major_news override 16），`low_frequency` 为 16/16/4。
+这些是配置上限，不是上游每日额度或实际已完成调用数。runner 仍是串行、每五分钟最多运行一次；历史
 QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。发布前必须在目标 release 上证明完整
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。

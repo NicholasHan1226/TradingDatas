@@ -2639,7 +2639,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: monthly
   timezone: Asia/Shanghai
   freshness_sla_seconds: 2419200
@@ -14498,7 +14498,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: on_demand
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
@@ -14659,12 +14659,6 @@ datasets:
     filterable: true
     sortable: true
   - name: last_ddate
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: true
-    sortable: true
-  - name: trade_time_desc
     logical_type: text
     nullable: true
     selectable: true
@@ -26984,7 +26978,7 @@ datasets:
   market: CN
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   cadence_class: session_minute
   timezone: Asia/Shanghai
   freshness_sla_seconds: 300
@@ -27021,6 +27015,7 @@ datasets:
       batch_size: 5
     resumable_fanout:
       cursor_contract_version: 2
+      window_scope: session_day
       max_batches_per_run: 20
     pagination:
       strategy: none
@@ -27044,12 +27039,6 @@ datasets:
     selectable: true
     filterable: true
     sortable: true
-  - name: freq
-    logical_type: text
-    nullable: true
-    selectable: true
-    filterable: false
-    sortable: false
   - name: time
     logical_type: text
     nullable: true
@@ -27095,7 +27084,6 @@ datasets:
   primary_key: []
   default_projection:
   - ts_code
-  - freq
   - time
   - open
   - close
