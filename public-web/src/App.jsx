@@ -175,7 +175,7 @@ const papers = [
     title: "SSE Statistical Yearbook",
     authors: "Shanghai Stock Exchange",
     venue: "Market statistics",
-    year: "2025",
+    year: "2024 · rev. 2025",
     kind: "industry-research",
     topic: "a-share-market",
     data: "market statistics · listings · turnover · financing",
@@ -208,6 +208,117 @@ const papers = [
     summary: {
       en: "Organizes market, options, short-interest, and participation evidence around a high-attention trading episode.",
       zh: "围绕一次高关注交易事件，整理市场、期权、卖空与参与者活动证据。",
+    },
+  },
+  {
+    title: "Modeling and Forecasting Realized Volatility",
+    authors: "Torben G. Andersen · Tim Bollerslev · Francis X. Diebold · Paul Labys",
+    venue: "NBER Working Paper 8160",
+    year: "2001",
+    kind: "paper",
+    topic: "market-microstructure",
+    data: "minute returns · sampling interval · session boundaries · missingness",
+    sources: [{ label: "NBER Working Paper 8160", url: "https://www.nber.org/papers/w8160" }],
+    summary: {
+      en: "Shows how high-frequency returns can be aggregated into realized-volatility measures for lower-frequency analysis.",
+      zh: "说明如何将高频收益聚合为已实现波动率，用于更低频的分析。",
+    },
+    limits: {
+      en: "A measurement reference, not a volatility forecast or trading signal. Sampling, sessions, and microstructure noise must be specified before applying it to a dataset.",
+      zh: "这是度量参考，不是波动率预测或交易信号。应用到具体数据前，必须明确采样、交易时段与微观结构噪声处理。",
+    },
+  },
+  {
+    title: "Intraday Information Efficiency on the Chinese Equity Market",
+    authors: "Y. T. Tse · Peter Hackard · David B. Hatfield",
+    venue: "China Economic Review",
+    year: "2009",
+    kind: "paper",
+    topic: "a-share-market",
+    data: "tick trades · quotes · bid-ask spread · volume",
+    sources: [{ label: "Journal source record", url: "https://doi.org/10.1016/j.chieco.2009.03.007" }],
+    summary: {
+      en: "Uses tick-by-tick Shanghai evidence to examine intraday spreads and price discovery across more and less liquid stocks.",
+      zh: "使用上交所逐笔数据，研究不同流动性股票的日内价差与价格发现。",
+    },
+    limits: {
+      en: "The study depends on trades and quotes. Minute OHLCV alone cannot reproduce its spread or price-discovery tests; treat it as a Level-2 data requirement, not a current capability.",
+      zh: "研究依赖逐笔成交和报价。仅有分钟 OHLCV 无法复现价差或价格发现检验；应标为 Level-2 数据要求，而非当前能力。",
+    },
+  },
+  {
+    title: "Giving Content to Investor Sentiment: The Role of Media in the Stock Market",
+    authors: "Paul C. Tetlock",
+    venue: "The Journal of Finance",
+    year: "2007",
+    kind: "paper",
+    topic: "alternative-data",
+    data: "news text · publisher time · entity mapping · returns · volume",
+    sources: [{ label: "Publisher DOI record", url: "https://doi.org/10.1111/j.1540-6261.2007.01232.x" }],
+    summary: {
+      en: "Studies how the tone of financial media relates to market prices and trading volume.",
+      zh: "研究财经媒体语气如何与市场价格和交易量相关。",
+    },
+    limits: {
+      en: "News timestamp, publisher rights, source lineage, and entity mapping are prerequisites. The paper does not turn sentiment text into a recommendation or a licensed dataset.",
+      zh: "新闻时间戳、发布方权利、来源血缘与实体映射是前提。该论文不把情绪文本变成投资建议或已获授权的数据集。",
+    },
+  },
+  {
+    title: "Trading and Arbitrage in Cryptocurrency Markets",
+    authors: "Igor Makarov · Antoinette Schoar",
+    venue: "Journal of Financial Economics",
+    year: "2020",
+    kind: "paper",
+    topic: "crypto-markets",
+    data: "multi-exchange prices · signed volume · fiat markets · exchange identity",
+    sources: [{ label: "Publisher DOI record", url: "https://doi.org/10.1016/j.jfineco.2019.07.001" }],
+    summary: {
+      en: "Documents persistent cross-exchange price deviations and connects them to market segmentation and arbitrage constraints.",
+      zh: "记录持续的跨交易所价格偏离，并将其与市场分割和套利约束联系起来。",
+    },
+    limits: {
+      en: "A single-exchange spot series cannot reproduce a cross-exchange arbitrage study. Use it as market-structure orientation, not evidence of an executable opportunity.",
+      zh: "单一交易所现货序列无法复现跨交易所套利研究。它适合作为市场结构导读，不是可执行机会的证据。",
+    },
+  },
+  {
+    title: "Why DeFi Lending? Evidence from Aave V2",
+    authors: "Giulio Cornelli · Leonardo Gambacorta · Rodney Garratt · Alessio Reghezza",
+    venue: "BIS Working Papers No 1183",
+    year: "2024 · rev. 2025",
+    kind: "industry-research",
+    topic: "crypto-markets",
+    data: "funding rate · open interest · leverage context · protocol transactions",
+    sources: [{ label: "BIS Working Paper 1183", url: "https://www.bis.org/publ/work1183.htm" }],
+    summary: {
+      en: "Examines motivations for DeFi lending and borrowing, framing leverage and funding conditions as market context rather than a standalone signal.",
+      zh: "研究 DeFi 借贷动机，将杠杆与资金条件视为市场背景，而非独立信号。",
+    },
+    limits: {
+      en: "Its evidence is based on Aave and multi-venue context. A public Binance funding-rate or open-interest series is narrower and must not inherit the paper's conclusions.",
+      zh: "其证据来自 Aave 及多场所背景。公开 Binance 资金费率或持仓量序列范围更窄，不能直接继承论文结论。",
+    },
+  },
+  {
+    title: "Form 13F: Official Filing Guidance and EDGAR Data Access",
+    authors: "U.S. Securities and Exchange Commission",
+    venue: "SEC primary sources",
+    year: "2026",
+    kind: "primary-source",
+    topic: "alternative-data",
+    data: "institution universe · Form 13F filings · amendments · CIK · submission time",
+    sources: [
+      { label: "SEC Form 13F FAQ", url: "https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f" },
+      { label: "SEC EDGAR data APIs", url: "https://www.sec.gov/search-filings/edgar-application-programming-interfaces" },
+    ],
+    summary: {
+      en: "Defines the filing context and public access path for institutional Form 13F holdings disclosures.",
+      zh: "界定机构 Form 13F 持仓披露的申报背景与公开访问路径。",
+    },
+    limits: {
+      en: "Form 13F is quarterly and delayed, with amendments and scope limits. It is not a real-time portfolio, broad US-market coverage, or an investment recommendation.",
+      zh: "Form 13F 为季度、滞后披露，且存在修订与范围限制；它不是实时组合、全面美股覆盖或投资建议。",
     },
   },
 ];
@@ -247,9 +358,9 @@ const messages = {
     researchTopics: [
       ["all", "All"], ["asset-pricing", "Asset pricing"], ["market-microstructure", "Market microstructure"],
       ["corporate-fundamentals", "Corporate fundamentals"], ["alternative-data", "Alternative data"],
-      ["quant-methods", "Quant methods"], ["a-share-market", "A-share market"],
+      ["quant-methods", "Quant methods"], ["a-share-market", "A-share market"], ["crypto-markets", "Crypto markets"],
     ],
-    researchKinds: [["all", "All formats"], ["paper", "Papers"], ["industry-research", "Industry research"], ["case", "Cases"]],
+    researchKinds: [["all", "All formats"], ["paper", "Papers"], ["industry-research", "Industry research"], ["case", "Cases"], ["primary-source", "Primary sources"]],
     researchResults: "items in this curated sample",
     researchEmpty: "No research items match these filters.",
     requiredData: "DATA MATERIALS",
@@ -310,9 +421,9 @@ const messages = {
     researchTopics: [
       ["all", "全部"], ["asset-pricing", "资产定价"], ["market-microstructure", "市场微观结构"],
       ["corporate-fundamentals", "公司基本面"], ["alternative-data", "另类数据"],
-      ["quant-methods", "量化方法"], ["a-share-market", "A 股市场"],
+      ["quant-methods", "量化方法"], ["a-share-market", "A 股市场"], ["crypto-markets", "加密市场"],
     ],
-    researchKinds: [["all", "全部形式"], ["paper", "论文"], ["industry-research", "行业研究"], ["case", "案例"]],
+    researchKinds: [["all", "全部形式"], ["paper", "论文"], ["industry-research", "行业研究"], ["case", "案例"], ["primary-source", "原始资料"]],
     researchResults: "条内容收录于当前示例",
     researchEmpty: "没有匹配的研究内容。",
     requiredData: "所需数据材料",
@@ -1126,6 +1237,7 @@ export function App() {
       { label: "财务数据如何避免未来信息？", topic: "corporate-fundamentals" },
       { label: "价格、成交量与流动性如何关联？", topic: "market-microstructure" },
       { label: "公告应按哪个时点进入研究？", topic: "alternative-data" },
+      { label: "资金费率与持仓量能说明什么？", topic: "crypto-markets" },
     ],
     pathsTitle: "精选研究路径",
     pathsCopy: "三个经过整理的起点，把问题连接到论文和所需的数据材料。",
@@ -1152,6 +1264,7 @@ export function App() {
       { label: "How do fundamentals avoid look-ahead?", topic: "corporate-fundamentals" },
       { label: "How do price, volume, and liquidity interact?", topic: "market-microstructure" },
       { label: "When should an announcement enter a study?", topic: "alternative-data" },
+      { label: "What do funding and open interest describe?", topic: "crypto-markets" },
     ],
     pathsTitle: "Curated research paths",
     pathsCopy: "Three prepared starting points connect a question to papers and the raw data that matter.",
@@ -1262,7 +1375,7 @@ export function App() {
 
   const globalIndex = [
     ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
-    ...papers.map((paper) => ({ key: `research:${paperSlug(paper)}`, id: paperSlug(paper), group: "research", type: locale === "zh" ? "研究" : "Research", label: paper.title, description: `${paper.authors} · ${paper.year}`, aliases: [paper.venue, paper.kind, paper.topic, paper.data, paper.summary.en, paper.summary.zh], path: `/research/${paperSlug(paper)}` })),
+    ...papers.map((paper) => ({ key: `research:${paperSlug(paper)}`, id: paperSlug(paper), group: "research", type: locale === "zh" ? "研究" : "Research", label: paper.title, description: `${paper.authors} · ${paper.year}`, aliases: [paper.venue, paper.kind, paper.topic, paper.data, paper.summary.en, paper.summary.zh, ...(paper.sources || []).map((source) => source.label)], path: `/research/${paperSlug(paper)}` })),
     ...productManifest.objects.recipes.map((item) => ({ key: `method:${item.id}`, id: item.id, group: "methods", type: locale === "zh" ? "研究方法" : "Method", label: item.title[locale], description: item.detail, aliases: [item.title.en, item.title.zh, item.status], path: `/recipes/${item.id}` })),
     ...allDocs.map((entry) => ({ key: `doc:${entry.slug}`, id: entry.slug, group: "docs", type: locale === "zh" ? "文档" : "Docs", label: entry.title, description: entry.description, aliases: [entry.category, entry.categoryLabel], path: "/account", accountSection: "docs", docSlug: entry.slug })),
   ].map((item) => ({ ...item, searchDocument: createSearchDocument([item.id, item.type, item.label, item.description, item.aliases]) }));
@@ -1556,7 +1669,36 @@ export function App() {
 
         {primaryRoute === "research" && !routeSlug && <ResearchAtlasPage locale={locale} theme={theme} copy={copy} atlas={researchAtlas} featuredPaper={featuredPaper} visiblePapers={visiblePapers} researchTopic={researchTopic} setResearchTopic={setResearchTopic} researchKind={researchKind} setResearchKind={setResearchKind} browseOpen={researchBrowseOpen} setBrowseOpen={setResearchBrowseOpen} libraryRef={researchLibraryRef} onShowLibrary={showResearchLibrary} onNavigate={navigate} topicLabels={topicLabels} kindLabels={kindLabels} methods={productManifest.objects.recipes} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} />}
 
-        {primaryRoute === "research" && routeSlug && <section className="object-detail-page research-record"><a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a><div className="object-detail-hero"><div><span className="mono-kicker">EXTERNAL RESEARCH / CURATED RECORD</span><h1>{selectedPaper?.title || (locale === "zh" ? "研究记录未找到" : "Research record not found")}</h1><p>{selectedPaper ? `${selectedPaper.authors} · ${selectedPaper.venue} · ${selectedPaper.year}` : ""}</p></div><span className="maturity-tag">{locale === "zh" ? "外部来源" : "External source"}</span></div>{selectedPaper && <><div className="research-record-grid"><article><span>01 / QUESTION</span><h2>{locale === "zh" ? "研究问题" : "Research question"}</h2><p>{selectedPaper.summary[locale]}</p></article><article><span>02 / EVIDENCE</span><h2>{locale === "zh" ? "所需数据材料" : "Required data"}</h2><p>{selectedPaper.data}</p></article><article><span>03 / LIMITS</span><h2>{locale === "zh" ? "方法与限制" : "Method & limits"}</h2><p>{locale === "zh" ? "先核对样本、时间范围、可得时点、修订、幸存者偏差与市场适用性，再决定能否复现或迁移。" : "Check sample, time range, point-in-time availability, revisions, survivorship, and market applicability before replication or transfer."}</p></article></div><section className="object-boundary"><h2>{locale === "zh" ? "从阅读进入数据准备" : "Continue from reading to data preparation"}</h2><p>{locale === "zh" ? "下一步是检查对应 Dataset、透明 Feature 与 Recipe；TradingDatas 不发表或验证论文结论。" : "Next inspect the related Dataset, transparent Feature, and Recipe. TradingDatas neither publishes nor validates the paper's conclusions."}</p><div className="detail-actions"><a className="primary-button" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "查看数据" : "View data"}<ArrowRight /></a><a className="text-link" href={`https://scholar.google.com/scholar?q=${encodeURIComponent(selectedPaper.title)}`} target="_blank" rel="noreferrer">{copy.sourcePaper}<ArrowRight /></a></div></section></>}</section>}
+        {primaryRoute === "research" && routeSlug && (
+          <section className="object-detail-page research-record">
+            <a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a>
+            <div className="object-detail-hero">
+              <div>
+                <span className="mono-kicker">EXTERNAL RESEARCH / CURATED RECORD</span>
+                <h1>{selectedPaper?.title || (locale === "zh" ? "研究记录未找到" : "Research record not found")}</h1>
+                <p>{selectedPaper ? `${selectedPaper.authors} · ${selectedPaper.venue} · ${selectedPaper.year}` : ""}</p>
+              </div>
+              <span className="maturity-tag">{locale === "zh" ? "外部来源" : "External source"}</span>
+            </div>
+            {selectedPaper && <>
+              <div className="research-record-grid">
+                <article><span>01 / QUESTION</span><h2>{locale === "zh" ? "研究问题" : "Research question"}</h2><p>{selectedPaper.summary[locale]}</p></article>
+                <article><span>02 / EVIDENCE</span><h2>{locale === "zh" ? "所需数据材料" : "Required data"}</h2><p>{selectedPaper.data}</p></article>
+                <article><span>03 / LIMITS</span><h2>{locale === "zh" ? "方法与限制" : "Method & limits"}</h2><p>{selectedPaper.limits?.[locale] || (locale === "zh" ? "先核对样本、时间范围、可得时点、修订、幸存者偏差与市场适用性，再决定能否复现或迁移。" : "Check sample, time range, point-in-time availability, revisions, survivorship, and market applicability before replication or transfer.")}</p></article>
+              </div>
+              <section className="object-boundary">
+                <h2>{locale === "zh" ? "从阅读进入数据准备" : "Continue from reading to data preparation"}</h2>
+                <p>{locale === "zh" ? "下一步是检查对应 Dataset、透明 Feature 与 Recipe；TradingDatas 不发表或验证论文结论。" : "Next inspect the related Dataset, transparent Feature, and Recipe. TradingDatas neither publishes nor validates the paper's conclusions."}</p>
+                <div className="detail-actions">
+                  <a className="primary-button" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "查看数据" : "View data"}<ArrowRight /></a>
+                  {(selectedPaper.sources || [{ label: copy.sourcePaper, url: `https://scholar.google.com/scholar?q=${encodeURIComponent(selectedPaper.title)}` }]).map((source) => (
+                    <a className="text-link" href={source.url} key={source.url} target="_blank" rel="noreferrer">{source.label}<ArrowSquareOut /></a>
+                  ))}
+                </div>
+              </section>
+            </>}
+          </section>
+        )}
 
         {primaryRoute === "cookbook" && <section className="cookbook-section" id="cookbook">
           <div className="cookbook-visual" aria-hidden="true" />
