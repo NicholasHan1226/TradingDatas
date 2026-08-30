@@ -41,3 +41,13 @@ test("pricing shows annual total distinctly and opens only a purchase preview", 
   assert.doesNotMatch(component, /fetch\(|\/checkout/);
   assert.match(component, /buildPreviewPath\(plan.id, billingPeriod\)/);
 });
+
+test("legacy beta route cannot imply an available application or collect unusable input", async () => {
+  const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const beta = source.slice(source.indexOf('routeSlug === "beta"'), source.indexOf('primaryRoute === "docs" && !routeSlug'));
+  assert.match(beta, /内测申请暂未开放/);
+  assert.match(beta, /Beta applications are not open yet/);
+  assert.doesNotMatch(beta, /<input|<select|唯一真实的商业入口|only honest commercial entry/);
+  assert.match(beta, /href="\/pricing"/);
+  assert.match(beta, /href="\/data"/);
+});

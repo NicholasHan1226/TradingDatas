@@ -15,7 +15,7 @@ Every primary section represents a durable object:
 | Features | transparent derived field | What repeatable transformation is available, exactly how was it produced, and which version is it? | inspect methodology |
 | Recipes | executable preparation method | How do I combine datasets correctly for a research task? | open a recipe |
 | Research | external paper, report, or case | What can I learn, and which data/methods does the work rely on? | read the TradingDatas record, then the source |
-| Pricing | package or add-on | Which complete data access package matches my work? | request private-beta access |
+| Pricing | base plan; separate future add-on | Which request rate and billing period fit my needs? | review a non-paying purchase preview; no order or access grant |
 | Docs | product or technical guide | How does the platform, data contract, API, account, or policy work? | open a guide |
 | Account | tenant-owned access state | What can I access and how do I connect it? | manage access or an integration |
 

@@ -111,6 +111,41 @@ Do not overload technical dataset entitlement with purchased subscriptions.
 
 ## Delivery sequence and gates
 
+### Next independent-account slice (not implemented)
+
+Implement within the existing Login/Account, independently of payment activation.
+First freeze the identity store, email sender and SMS sender choices and the
+verified legacy-tenant linking contract. This document does not authorize a
+provider purchase, contact upload, production migration or secret change.
+
+| Website identity | Data entitlement | Account experience |
+| --- | --- | --- |
+| Verified | None | Account and personal library available; data access not subscribed; no key creation/grant |
+| Verified | Active | Show server-confirmed access, expiry, usage and separately scoped Agent keys |
+| Verified | Expired/suspended | Account and saved materials remain accessible; data requests remain denied |
+| Unavailable | Unknown | Retry identity verification; never infer signed-out or active access |
+
+Required local/sandbox acceptance before activation:
+
+- One-use verification, expiry, bounded retry/resend, generic known/unknown-account
+  responses and atomic challenge consumption under concurrent attempts.
+- Verified identity cannot claim another tenant; contact linking and existing-key
+  linking require explicit ownership proof, never email/key-label matching.
+- Session expiry/revocation is independent of API-key rotation or expiry. No
+  silent logout from a data-usage outage; no grant minted by registration.
+- Existing key holders retain the current bridge during a reviewed migration;
+  no key replacement, deletion, or upload to the identity vendor.
+- Cross-device bookmarks follow verified identity. Browser-local bookmarks stay
+  local until a user explicitly imports them into the displayed account. Sign-out
+  or account switching must clear any fetched private library from memory; no
+  implicit import, cross-account merge or analytics event containing saved items.
+
+Production email/SMS sending and persisted accounts remain disabled until service
+configuration, abuse controls, reviewed storage/API boundaries and end-to-end
+verification are complete. Local fixtures cannot claim a message was delivered.
+
+### Release sequence
+
 1. Finish sign-out PR #386 review, exact-head CI, merge and exact release readback.
    Current acceptance remains in its report; this draft does not approve merging.
 2. User signs in using an intended existing key; verify only Account/read-only

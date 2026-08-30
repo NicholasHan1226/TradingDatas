@@ -57,3 +57,9 @@ test("private panels wait for identity instead of flashing a sign-in prompt", ()
   assert.match(appSource, /No need to sign in again/);
   assert.match(appSource, /accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"/);
 });
+
+test("account design does not reintroduce the retired browser credential fallback", async () => {
+  const contract = await readFile(new URL("../../docs/design/account-admin-convergence-v1.md", import.meta.url), "utf8");
+  assert.match(contract, /There is no direct-bearer or browser-storage fallback/);
+  assert.doesNotMatch(contract, /compatibility path (keeps|is|remains|still clears)|falls back only to the current tab/);
+});

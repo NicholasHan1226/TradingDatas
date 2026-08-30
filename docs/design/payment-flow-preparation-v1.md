@@ -25,6 +25,9 @@ trading orders. The fixed catalog/query data plane is unchanged.
   payment disabled. Sign-in never changes subscription or grants.
 - Account uses effective Portal access; Billing says unavailable, without a fake
   ledger or using token tier as proof of payment.
+- Legacy `/pricing/beta` remains addressable but explicitly says applications
+  are not open. It collects no input and links to Data and non-paying Pricing;
+  it must not promise a waitlist, trial grant or an available application path.
 
 No order ID, payment URL, checkout request, invoice, refund or entitlement write
 exists in this slice. There is no frontend/environment switch to enable real

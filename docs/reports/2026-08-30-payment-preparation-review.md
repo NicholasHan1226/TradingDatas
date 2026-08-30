@@ -23,7 +23,7 @@ CI acceptance, deployment, verified identity delivery or live payment.
   missing filing and explicit owner pause. Lifecycle/resumption entry:
   [payment flow contract](../design/payment-flow-preparation-v1.md).
 
-## Fresh verification
+## Initial local verification (before delivery follow-up)
 
 - Test-first: purchase-preview suite initially failed because the module did not
   exist; after implementation all six new tests passed.
@@ -73,7 +73,7 @@ Next three validation priorities: native keyboard/screen-reader check; verified
 phone/email identity and tenant binding; sandbox payment/activation/reconciliation
 only after the resumption prerequisites and authorization are available.
 
-## Not implemented / not authorized by this preparation
+## Not implemented / not authorized by the initial preparation
 
 - Merchant application/signature, ICP filing, hosting migration, live secrets.
 - Real order store, provider checkout, signature validation handler, provisioning,
@@ -89,3 +89,44 @@ production service, keys, collectors and financial-facts SQLite were untouched.
 Rollback: discard/revert this local candidate or the preview integration patch;
 there is no payment/order state to migrate or undo. Preserve the independent
 login and pricing candidates and all existing credentials.
+
+## Delivery follow-up — owner requested execution, 2026-08-30
+
+The owner requested continuing the proposed release/account sequence. Scope is
+the unified public-web candidate; payment activation remains paused. Main was
+freshly fetched at `bec87b7`; #386/#387 were open and unchanged at inspection.
+This branch contains both exact candidates plus preview preparation. Submit one
+combined review candidate without closing, rewriting, or relabelling the original
+PRs. The reviewer should choose the combined candidate or the constituent PRs,
+not treat three branches as three independent releases. No `pm-merge` authority
+is inferred from the author's local verification.
+
+Additional corrections:
+
+- `/pricing/beta` no longer describes an unavailable application as a real
+  commercial entry. Remove its unusable input controls and retain Data/Pricing
+  navigation; collect no application or waitlist information.
+- Account convergence documentation no longer advertises the retired tab-storage
+  bearer fallback. Add a regression guard for this security-relevant discrepancy.
+- Independent-account delivery contract now separates verified identity from
+  missing/active/expired data access and describes explicit bookmark import and
+  account-switch isolation. This is a contract, not implemented registration.
+
+Fresh checks:
+
+- Added the beta regression first; it failed on the old claim/form, then passed.
+- Full public-web suite: 66 passed, 0 failed; build regenerated without changes to
+  worker source, provider/API runtime or secrets in this follow-up.
+- Browser pointer flow: Flagship annual -> existing-key synthetic login -> the
+  same preview; actual Account remains synthetic Basic/200, not the selected tier.
+- New beta page: Chinese/light desktop 1280 and mobile 390; English/dark tablet
+  768 inspected. No horizontal document overflow at the checked sizes.
+- In-app automated Enter again focused the native link without activating it.
+  Native keyboard activation/screen-reader traversal remain unverified; no
+  duplicate key handler was introduced to compensate for automation behavior.
+
+At preparation time the combined head still requires remote CI and independent
+PM review. No main merge, Cloudflare deployment, live-account verification,
+email/SMS delivery, cloud bookmarks or payment is claimed by this report.
+Email/SMS service ownership and identity storage/migration choices remain gates
+before independent-account implementation/activation.
