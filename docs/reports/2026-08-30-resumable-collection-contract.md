@@ -282,3 +282,14 @@ state, not current eligibility, provider success or deployment proof. Actual
 minute observation still requires a real eligible session and authenticated
 SQLite/receipt/API readback. This task did not run either command against the
 production database.
+
+The first candidate CI (`33299423804`) found one outdated scheduler expectation:
+its fixture seeds only daily prices and a calendar, but expected all seven
+continuation bindings to plan without a verified security-master universe.
+The corrected test explicitly requires `dependency_unavailable` for those seven,
+keeps the unchanged pledge binding planned, and preserves the not-on-demand
+assertion. No runtime/config change was made for this failure. Parent reran the
+corrected test plus all 35 new SQLite regressions: 36 passed in 42.47 seconds.
+Independent review confirmed that this closes an obsolete expectation without
+weakening the separate real-SQLite progress tests. The updated exact head still
+requires fresh CI before merge.
