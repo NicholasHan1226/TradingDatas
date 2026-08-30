@@ -2859,7 +2859,7 @@ contracts:
   api_name: broker_recommend
   source_document_url: https://tushare.pro/wctapi/documents/267.md
   source_document_sha256: dc0c8a079894a24b36b3315a47eb109f727c93961e2f11413f1ab887572b6e93
-  schema_version: 1.0.0
+  schema_version: 2.0.0
   input_fields:
   - name: month
     declared_source_type: str

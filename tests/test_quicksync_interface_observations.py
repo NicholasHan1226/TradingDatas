@@ -328,9 +328,10 @@ def test_schema_subset_removes_only_observed_non_structural_fields() -> None:
             target_binding["response_completeness"] == source["response_completeness"]
         )
 
-    assert "freq" in {
+    assert "freq" not in {
         field["name"] for field in registry_by_api["rt_min_daily"]["fields"]
     }
+    assert registry_by_api["rt_min_daily"]["provider_bindings"][0]["request_template"]["freq"] == "1MIN"
 
 
 def test_observed_response_contract_deltas_are_small_and_schema_versioned() -> None:
@@ -347,8 +348,10 @@ def test_observed_response_contract_deltas_are_small_and_schema_versioned() -> N
         "cb_issue",
         "dc_daily",
         "disclosure_date",
+        "fut_basic",
         "fut_settle",
         "moneyflow",
+        "rt_min_daily",
         "stk_holdertrade",
         "stk_managers",
         "ths_daily",

@@ -20,7 +20,9 @@ contracts:
     api_name: broker_recommend
     source_document_url: https://tushare.pro/wctapi/documents/267.md
     source_document_sha256: dc0c8a079894a24b36b3315a47eb109f727c93961e2f11413f1ab887572b6e93
-    schema_version: 1.0.0
+    # Re-observe into a new major; preserve the historical month-validator
+    # quality decision and receipt on the append-only major-1 facts.
+    schema_version: 2.0.0
     fields:
       - {name: month, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}
       - {name: broker, declared_source_type: str, logical_type: text, nullable: false, selectable: true, filterable: true, sortable: true}

@@ -6,6 +6,18 @@
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
 
+## 2026-08-30 采集恢复与覆盖复核
+
+本轮数据运行事实见[覆盖与质量恢复报告](docs/reports/2026-08-30-coverage-quality-recovery.md)。
+13:46 已在现有 A 股 release `385a4fa` 上补采五项 on-demand 数据，新增 1,148 行、
+5 份回执，认证 query 均 ready/valid/complete；定时器恢复 active。
+财报日窗口及分钟累计数据仍存在已量化的覆盖缺口，不能声称全量健康。
+第二批 fut_basic 新增 11,196 行、6 份回执，但查询仍因缺 trade_time_desc 降级，
+不能算质量健康。13:57 A 股目录为 87 success/43 empty/57 paused/4 unobserved/1 stale；
+Crypto 为 240 success。三项质量源码候选尚未发布、消费者兼容未通过；日续采方案因新复现的旧日数据
+误计当日完成问题已从候选撤回，原有前缀重复和覆盖不足仍未修复。下方 08-26 数据运行表为历史
+快照，不能替代本轮当前 release/readback。公开站状态未在本轮重新验收。
+
 ## 分层交付状态
 
 | 层 | 本轮事实 | 声明边界 |
