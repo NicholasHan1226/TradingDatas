@@ -59,6 +59,13 @@ test("locale changes titles but not stable canonical identity; navigation clears
   assert.equal(pageMetadata("research").type, "website");
 });
 
+test("canonical URLs match directory-index hosting and normalize either incoming slash form", () => {
+  for (const route of researchPageRoutes) {
+    assert.equal(pageMetadata(route).url, `https://tradingdatas.com/${route}/`);
+    assert.equal(pageMetadata(`/${route}/`).url, pageMetadata(route).url);
+  }
+});
+
 test("clipboard success, denied permission and unavailable API never report false success", async () => {
   let received;
   assert.equal(await copyText("citation", { writeText: async (text) => { received = text; } }), "copied");

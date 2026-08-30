@@ -461,3 +461,20 @@ Screenshots: `/tmp/tradingdatas-depth-qa-j9zYVy/01-featured-mobile-zh.png`,
 
 Result: content/build/function checks passed; accessibility/manual acceptance and
 release gates remain explicitly open.
+
+### Final hosting-path follow-up
+
+Cloudflare local runtime (existing Wrangler 4.127.1, `dev --local`, loopback 8788)
+verified all 208 slashless routes redirect to their directory forms and all 208
+directory responses contain the expected static sharing metadata. Canonical and
+copy-link URLs now use those final trailing-slash forms; legacy navigation and
+bookmark IDs are unchanged. This follows the existing Assets
+[HTML handling contract](https://developers.cloudflare.com/workers/static-assets/routing/advanced/html-handling/),
+without changing Worker code or deployment configuration. Vite preview alone
+does not reproduce these slashless redirects.
+
+Rebuilt and reran tests after this correction: **63 passed**. Browser readback of
+the revised Tokenomics page matched its canonical and OG URL, with no overflow.
+Local Wrangler used a default Request.cf placeholder after a certificate failure
+fetching that optional object; no TLS verification was disabled. This is local
+route evidence only, not a Cloudflare edge deployment or production readback.
