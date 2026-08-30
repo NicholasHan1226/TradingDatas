@@ -115,6 +115,12 @@ earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
 This does not certify 200 full-length guides or 43 full-text reviews; 157 works
 remain summary-only.
+The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
+counts while replacing generic passages in Lazy Prices with source-located
+document pairing, parsing and similarity definitions, and in governance with
+reverse coding, equal weights and firm-level opt-outs. Dechow/Dichev remains
+abstract-based, now explicitly identifying firm-specific estimation and linking
+the accessible abstract. Its unsuccessful full-text retrieval is not a new review.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -198,6 +204,9 @@ file-byte verification. Limits, offsets and interpretation are in
 `public-web/README.md`. Summary-only records and limited-reading scopes are
 editing candidates, not automatically defective works; HTTP success and length
 are never a quality certificate.
+The existing internal-note guard applies to bilingual headings, summaries,
+limitations and reference labels as well as section paragraphs. Internal evidence
+scopes remain separate and are not subjected to this reader-prose check.
 
 1. Add or revise editorial notes and identify the intended original work.
 2. Run `node scripts/verify-research-sources.mjs` in `public-web`. Review its

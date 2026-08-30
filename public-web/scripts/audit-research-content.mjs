@@ -40,6 +40,7 @@ export function auditContent({ records = papers, guides = researchReaderNotes, t
   const bilingual = (value, id, field) => {
     for (const locale of ["zh", "en"]) {
       if (typeof value?.[locale] !== "string" || !value[locale].trim()) issue(errors, "missing_translation", id, `${field}.${locale}`);
+      if (/出版信息已核对|准备状态|来源核验|TODO|PLACEHOLDER|AUTODEV_RETURN/.test(value?.[locale] || "")) issue(errors, "internal_note_in_prose", id, `${field}.${locale}`);
     }
     if (value?.zh && !/[\u3400-\u9fff]/.test(value.zh)) issue(review, "check_chinese_translation", id, field);
     if (value?.en && /[\u3400-\u9fff]/.test(value.en)) issue(review, "check_english_translation", id, field);
@@ -83,7 +84,6 @@ export function auditContent({ records = papers, guides = researchReaderNotes, t
         if (text.length < (locale === "zh" ? 60 : 120)) issue(review, "short_paragraph", title, `sections.${index}.${locale}`);
         if (key && prose.has(key)) issue(review, "repeated_paragraph", title, prose.get(key));
         if (key) prose.set(key, `${title}:${index}:${locale}`);
-        if (/出版信息已核对|准备状态|来源核验|TODO|PLACEHOLDER|AUTODEV_RETURN/.test(text)) issue(errors, "internal_note_in_prose", title, `sections.${index}.${locale}`);
       }
     }
   }

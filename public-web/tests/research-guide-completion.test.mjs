@@ -39,6 +39,11 @@ test("extensions preserve original sections and integrate bilingual, individuall
     const effective = researchMethodsMarketsGuides[title] || guide;
     assert.deepEqual(papers.find(p => p.title === title).readingNotes, effective.sections);
     for (const [oldIndex, newIndex] of [[0, 0], [1, 2], [3, 5]]) {
+      if (title === "Lazy Prices" && oldIndex === 1) {
+        assert.match(guide.sections[newIndex].reference.label.en, /§II, pp\. 11, 14/);
+        assert.equal(original.sections[oldIndex].title.en, "Start with a comparable pair");
+        continue;
+      }
       assert.deepEqual(guide.sections[newIndex], original.sections[oldIndex]);
       assert.notEqual(guide.sections[newIndex], original.sections[oldIndex]);
     }

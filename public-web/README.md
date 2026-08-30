@@ -71,6 +71,10 @@ residual-income valuation and financial-ratio classification. Three supplementar
 question routes connect nine works on the company-topic page and article sidebars;
 they do not replace core sequences or create duplicate records. Source reading
 scopes and acceptance: `../docs/design/research-corporate-questions-v9.md`.
+The editorial follow-up deepens Lazy Prices' document pairing/parsing and four
+similarity definitions, governance coding exceptions and opt-outs, and the
+abstract-supported firm-specific accrual method without increasing guide counts.
+See `../docs/design/research-editorial-polish-v10.md` for the current audit and gaps.
 
 `src/researchSeeds.js` holds new editorial notes; `src/researchLegacy.json` preserves
 the original records and stable routes. `src/researchBibliography.json` is generated
@@ -107,14 +111,14 @@ languages and original titles regardless of the selected display language.
 The complete library is available in Topics in pages of 12; global search
 still searches all 200 records. Bookmarks and source routes remain language-neutral.
 
-Twenty-six selected records include bilingual reading guides. The original 24
+The original 24 bilingual guides
 are in `src/researchEditorial.js` and `src/researchEditorialExpansion.js`;
 `src/researchAdditionalGuides.js` adds Amihud and Novy-Marx using located primary
 passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
-passages or author-issued supporting instructions. Twenty-five guides now have
-six sections with source locators. Nelson/Siegel uses the 1985 NBER working paper,
+passages or author-issued supporting instructions. Subsequent batches above bring
+the current total to 43 guides, 42 with six sections. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
 certify complete reading. Eight subject
@@ -129,9 +133,10 @@ Six preparation tutorials (`preparationTutorials.js`, `preparationTutorialExpans
 local synthetic examples, never real requests. Their publication does not change
 the product manifest's underlying data/Feature/Recipe maturity or account grants.
 See [`research-reading-depth-v4.md`](../docs/design/research-reading-depth-v4.md).
-The current follow-up contract is
-[`research-depth-completion-v7.md`](../docs/design/research-depth-completion-v7.md),
-continuing the tutorial/maintenance contract in
+The current editorial follow-up is
+[`research-editorial-polish-v10.md`](../docs/design/research-editorial-polish-v10.md),
+continuing the tutorial/maintenance contracts in
+[`research-depth-completion-v7.md`](../docs/design/research-depth-completion-v7.md) and
 [`research-depth-quality-v6.md`](../docs/design/research-depth-quality-v6.md).
 Library scroll positions are isolated per in-tab history entry; explicit article
 return restores the latest library view. They are neither persisted nor synced.
@@ -178,7 +183,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 160 summary-only records, repeated/short paragraphs and
+candidates (including the 157 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only

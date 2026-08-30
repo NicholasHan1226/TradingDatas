@@ -132,17 +132,23 @@ const additions = {
   },
   "Lazy Prices": {
     evidenceUrl: urls.filings,
-    evidenceScope: "March 2019 NBER revision abstract and introduction, including illustrative disclosure timing and discussion of MD&A versus risk-factor changes. No similarity formula or numeric return claims; final publication identity kept distinct.",
+    evidenceScope: "March 2019 NBER revision introduction and Section II, printed pp. 11–14, read for document pairing, parsing and four similarity measures; pp. 11–14 visually checked against extracted text on 2026-08-30 UTC. No numeric return claims or empirical replication; final publication identity kept distinct.",
     limits: bi("导读补充依据2019年3月工作论文；正式出版身份不变。文本变化不必然是坏消息，英文样本也不能直接验证中文指标或当前表现。", "Added reading detail uses the March 2019 working paper, separately from the final publication identity. Change is not automatically bad news; English-sample evidence does not validate Chinese measures or current performance."),
+    replacements: {
+      1: section("先配对，再确定文本范围", "Pair documents before defining the text",
+        "第II节将年报与上年年报比较，季报与上年同一季度比较，而不是简单连接相邻季度。正文提取还排除附件、HTML标签、XBRL内容等，并按数字字符超过15%的规则识别要移除的表格。比较对象与解析范围都属于方法；换成下载文件的全部内容，就已改变测量。",
+        "Section II compares annual reports with the previous annual report and quarterly reports with the same quarter in the prior year, not simply adjacent quarters. Parsing excludes exhibits, HTML tags and XBRL material, removing tables whose numeric character content exceeds 15%. Pairing and text boundaries are part of the method; tokenizing every downloaded component changes the measure.",
+        urls.filings, "2019年3月工作论文第II节，第11、14页", "March 2019 working paper §II, pp. 11, 14"),
+    },
     sections: [
       section("报告所属年度不是读者看到的日期", "The reporting year is not the release date",
         "2019年工作论文考察1995—2014年的定期披露，并用Baxter案例说明：一份标为2009年度的报告实际在2010年公开，之后又出现相关新闻。编辑建议：同时保存报告期、提交时间和后续消息时间，不能将年度标签当作报告已可阅读的日期。",
         "The March 2019 working paper studies recurring disclosures from 1995–2014. Its Baxter illustration distinguishes a report for 2009 from its public filing in 2010 and subsequent news. Editorial application: preserve reporting period, filing time and later-news time separately; a fiscal-year label does not establish public availability.",
         urls.filings, "2019年3月工作论文引言：Baxter披露案例", "March 2019 working-paper introduction: Baxter disclosure example"),
-      section("变化多的章节，不一定最有信息", "Frequent change need not be the most informative change",
-        "作者在引言中区分变化集中出现的管理层讨论章节，与对后续结果更有信息的风险因素等内容。编辑建议：比较总文本变化之外，还要保留章节边界，并抽查新增、删除和修改的实际语句。一个整体相似度分数，无法独自说明变化属于经营风险还是例行编辑。",
-        "The introduction distinguishes MD&A, where many changes occur, from sections such as risk factors that contain informative changes. Editorial application: preserve section boundaries and inspect additions, deletions and revisions alongside aggregate similarity. One whole-document score cannot by itself distinguish operating-risk disclosure from routine editing.",
-        urls.filings, "2019年3月工作论文引言：章节差异", "March 2019 working-paper introduction: differences across sections"),
+      section("四种相似度保留的信息不同", "Four similarity measures retain different information",
+        "余弦相似度使用词频向量；Jaccard比较词集合的交集与并集，每个词只计一次。最小编辑距离关注把一份文本改成另一份需要多少操作；简单相似度则从新增、删除和修改的词数出发，再做长度与尺度处理。因此同样叫“文本变化”，并不意味着分数、方向或计量单位可以互换。",
+        "Cosine similarity uses term-frequency vectors; Jaccard compares set intersection with union, counting each term once. Minimum edit distance counts transformation operations. Simple similarity starts from words added, deleted and changed, then adjusts for length and scale. These definitions retain different information: scores, direction and units are not interchangeable merely because each describes document change.",
+        urls.filings, "2019年3月工作论文第II节，第12–14页", "March 2019 working paper §II, pp. 12–14"),
     ],
   },
   "Bitcoin: Economics, Technology, and Governance": {
