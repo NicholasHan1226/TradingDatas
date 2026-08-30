@@ -16,7 +16,8 @@ import uuid
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
@@ -2268,11 +2269,48 @@ def _freshness_reference_in_utc(value: str, dataset: DatasetDefinition) -> datet
     )
 
 
-def _freshness_clock_in_utc(dataset: DatasetDefinition, now_utc: datetime) -> datetime:
-    """Freeze regular CN market cadence at Friday's close over the weekend.
+@lru_cache(maxsize=1)
+def _cn_freshness_policies() -> Mapping[str, tuple[datetime_time, tuple[int, ...]]]:
+    """Read only this immutable release's validated, immutable clock policy.
 
+    The planner imports receipt projection, so reuse its pure parser lazily,
+    after this module is initialized. No environment-selected schedule, planner
+    execution, provider access or trading-calendar inference is involved.
+    """
+    from tools.provider_native_cadence_planner import load_schedule_bytes
+    from yaml import YAMLError
+
+    try:
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "config/provider_native_schedule.yaml"
+        )
+        if not stat.S_ISREG(path.lstat().st_mode) or path.resolve(strict=True) != path:
+            raise ValueError("schedule must be a physical release file")
+        schedule = load_schedule_bytes(path.read_bytes())
+        policies = {}
+        for name in ("session_minute", "postclose_daily"):
+            policy = schedule.cadences[name]
+            if (
+                policy.availability_after_local is None
+                or not policy.weekdays
+                or not set(policy.weekdays) <= {1, 2, 3, 4, 5}
+            ):
+                raise ValueError("unsupported CN freshness policy")
+            policies[name] = (policy.availability_after_local, policy.weekdays)
+        return MappingProxyType(policies)
+    except (OSError, ValueError, YAMLError) as exc:
+        raise RuntimeProjectionError(
+            "CN freshness schedule is unavailable or invalid"
+        ) from exc
+
+
+def _freshness_clock_in_utc(dataset: DatasetDefinition, now_utc: datetime) -> datetime:
+    """Use the preceding configured weekday's close before the next window.
+
+    At configured availability the ordinary clock resumes without extra grace.
     This is not a holiday calendar or an exemption for event/reference/crypto
-    data. Missing Friday data must still fail the ordinary SLA comparison.
+    data. Missing preceding-session data still fails the ordinary SLA check.
     """
     if (
         dataset.market != "CN"
@@ -2281,13 +2319,16 @@ def _freshness_clock_in_utc(dataset: DatasetDefinition, now_utc: datetime) -> da
     ):
         return now_utc
     local = now_utc.astimezone(ZoneInfo(dataset.timezone))
-    if local.weekday() < 5:
+    availability, weekdays = _cn_freshness_policies()[dataset.cadence_class]
+    if local.isoweekday() in weekdays and local.time() >= availability:
         return now_utc
-    friday = local - timedelta(days=local.weekday() - 4)
+    preceding = local - timedelta(days=1)
+    while preceding.isoweekday() not in weekdays:
+        preceding -= timedelta(days=1)
     if dataset.cadence_class == "session_minute":
-        close = friday.replace(hour=15, minute=0, second=0, microsecond=0)
+        close = preceding.replace(hour=15, minute=0, second=0, microsecond=0)
     else:
-        close = (friday + timedelta(days=1)).replace(
+        close = (preceding + timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
     return close.astimezone(timezone.utc)
