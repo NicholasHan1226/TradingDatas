@@ -43,7 +43,7 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
     <div className="research-reader-layout">
       <div className="research-reader-body">
         <p className="research-reader-intro">{paper.summary[locale]}</p>
-        {paper.readingNotes?.map((section) => <section key={section.title.en}><h2>{section.title[locale]}</h2><p>{section.body[locale]}</p></section>)}
+        {paper.readingNotes?.map((section) => <section key={section.title.en}><h2>{section.title[locale]}</h2><p>{section.body[locale]}</p>{section.reference && <a className="text-link" href={section.reference.url} target="_blank" rel="noreferrer">{section.reference.label[locale]}<ArrowSquareOut /></a>}</section>)}
         <section><h2>{zh ? "涉及的数据" : "Data in focus"}</h2><p>{researchData(paper, locale)}</p></section>
         {paper.readerLimits && <section><h2>{zh ? "阅读时留意" : "Keep in mind"}</h2><p>{paper.readerLimits[locale]}</p></section>}
         {paper.sourceNote && <p className="research-edition-note">{paper.sourceNote[locale]}</p>}

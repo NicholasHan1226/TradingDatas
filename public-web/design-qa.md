@@ -545,3 +545,80 @@ Screenshots: `/tmp/tradingdatas-continuity-qa-1t0Wtr/01-guide-en-dark.png`,
 - Exact-head CI, independent Datas PM review / `pm-merge`, exact-main CI,
   Cloudflare deployment and public deep-route/download readback are separate
   gates. No merge or production write is claimed by this record.
+
+# Research depth and maintenance v6 — 2026-08-30
+
+Scope: `docs/design/research-depth-quality-v6.md`, dependent follow-up to PR #385.
+This section supersedes only the earlier content/download counts and kernel
+acceptance status; it does not reuse older visual checks as proof of this build.
+
+## Implemented
+
+- 200 unique external works remain. Of 24 bilingual guides, eight now have six
+  source-specific sections covering original materials, methods, findings,
+  interpretation and transfer limits; sixteen retain four sections. Each of the
+  eight display subjects has one deeper guide. Source-section links are public
+  reading aids, not internal QA cards. Exact review scope remains in source only.
+- Read original passages for Markowitz; Andersen et al.; Sloan;
+  Carpenter/Whitelaw; Loughran/McDonald; Cong/Li/Wang; Brown/Warner; Diebold/Li.
+  Internal scope names the sections actually checked. No claim of eight complete
+  full-text audits or replication. Tokenomics explicitly retains its 2021 final
+  identity while using a 2020 author copy; theory is not an empirical sample.
+- Six tutorials / 24 generated downloads: six JSON fixtures, six standalone JS
+  examples and twelve localized Python notebooks. New cases audit bar-grid gaps,
+  document revisions and spot/OI observation timing. They do not request real
+  provider data or change product maturity. Candidate dataset IDs resolve to
+  existing A-share/Crypto registries; this is not runtime availability evidence.
+- Fixed doubled notebook step numbering. Added failures for duplicate/off-grid
+  bars, impossible dates, content conflicts, tied revisions, unit mismatches and
+  late/stale observations; inputs remain immutable. Multilingual document ordering
+  uses explicit ordering rather than the host locale's collation.
+- Internal maintenance is offline by default, with separate bounded link and
+  publisher-metadata checks. It never writes source files, advances dates,
+  deletes records or installs a recurring job. Structural failures are separated
+  from review candidates; 176 summary-only works remain accurately classified.
+
+## Fresh verification
+
+- `npm run test:sites`: 76 tests passed, including static rendering of 200 records
+  in both languages, all six tutorial pages, source-locator links, the new content
+  maintenance failures and JS/Python input/output parity. Static rendering is not
+  browser layout, speech output or keyboard activation.
+- Build produces 211 research/tutorial/index metadata entries and 24 downloads.
+  All 24 generated download files matched fresh in-memory generation byte-for-byte.
+  Source/build projection still excludes internal verification data. No protected
+  Worker/Sites file, registry, credential, production setting or lockfile changed.
+- All twelve notebooks executed top-to-bottom in actual isolated Jupyter kernels,
+  four code cells each, with successful expected-output assertions. The optional
+  runner uses a temporary IPC connection and the exact isolated interpreter,
+  closes kernels and leaves shipped files unexecuted. Jupyter UI is not tested.
+- Fresh bounded checks of the twelve source URLs introduced/reused in this round:
+  nine HTTP 200, two HTTP 202 (Binance documentation redirects), one unresolved
+  transport error (Tushare announcement page). No observed 404/410. Source text
+  for that Tushare page was separately retrieved via research tooling, but that
+  does not change its unresolved status in the link-check run.
+- All eight selected works' publisher-registered metadata matched the stored
+  title/DOI/venue/year/authors. This is a metadata comparison, not a conclusion
+  check or proof no unregistered revision exists. Broader-library live link and
+  version checks were not run in this bounded acceptance pass.
+- Node's direct HTTPS transport encountered local issuer-certificate errors.
+  The checker therefore reuses the existing verifier's system-curl pattern;
+  normal TLS verification stays enabled, with no trust-store changes or bypass.
+
+## Blocked visual acceptance and release
+
+The prior preview was no longer listening. A local Vite preview was started on
+127.0.0.1:5186, but the Browser tool then explicitly blocked navigation/reload
+under its URL security policy. No alternate URL, browser, CDP or indirect browser
+execution was used to bypass that refusal. Nicholas was notified.
+
+Consequently this build has **no fresh browser-rendered acceptance**. Desktop/
+mobile layout, both themes, system/explicit language switching, keyboard/focus,
+screen-reader speech, actual clipboard denial and native download completion
+remain open. Do not mark these passed from the preceding v5 screenshots or from
+unit tests. Keep this follow-up PR draft until that gate is resolved.
+
+Independent Datas PM review, exact-head CI, merge, exact-main CI, Cloudflare
+publication and live readback remain separate gates. No production write is part
+of this round. Next: restore an authorized preview, run the pending user flows,
+then obtain PM review; do not publish merely because code/kernel tests pass.

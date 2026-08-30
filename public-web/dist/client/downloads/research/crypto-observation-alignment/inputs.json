@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "tutorial": "crypto-observation-alignment",
+  "identity": "synthetic",
+  "args": [
+    [
+      {
+        "openTime": "2025-01-06T00:00:00Z",
+        "endExclusive": "2025-01-06T00:05:00Z",
+        "close": 100
+      },
+      {
+        "openTime": "2025-01-06T00:05:00Z",
+        "endExclusive": "2025-01-06T00:10:00Z",
+        "close": 101
+      },
+      {
+        "openTime": "2025-01-06T00:10:00Z",
+        "endExclusive": "2025-01-06T00:15:00Z",
+        "close": 102
+      }
+    ],
+    [
+      {
+        "observedAt": "2025-01-06T00:04:00Z",
+        "firstSeenAt": "2025-01-06T00:06:00Z",
+        "value": 10,
+        "unit": "BTC"
+      },
+      {
+        "observedAt": "2025-01-06T00:09:00Z",
+        "firstSeenAt": "2025-01-06T00:09:30Z",
+        "value": 12,
+        "unit": "BTC"
+      }
+    ],
+    300,
+    "BTC"
+  ],
+  "expected": [
+    {
+      "openTime": "2025-01-06T00:00:00Z",
+      "endExclusive": "2025-01-06T00:05:00Z",
+      "close": 100,
+      "oiObservedAt": null,
+      "ageSeconds": null,
+      "openInterest": null,
+      "unit": "BTC",
+      "status": "no_available_observation"
+    },
+    {
+      "openTime": "2025-01-06T00:05:00Z",
+      "endExclusive": "2025-01-06T00:10:00Z",
+      "close": 101,
+      "oiObservedAt": "2025-01-06T00:09:00Z",
+      "ageSeconds": 60,
+      "openInterest": 12,
+      "unit": "BTC",
+      "status": "aligned"
+    },
+    {
+      "openTime": "2025-01-06T00:10:00Z",
+      "endExclusive": "2025-01-06T00:15:00Z",
+      "close": 102,
+      "oiObservedAt": "2025-01-06T00:09:00Z",
+      "ageSeconds": 360,
+      "openInterest": null,
+      "unit": "BTC",
+      "status": "stale"
+    }
+  ]
+}

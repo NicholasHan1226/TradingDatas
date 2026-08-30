@@ -88,23 +88,26 @@ languages and original titles regardless of the selected display language.
 The complete library is available in Topics in pages of 12; global search
 still searches all 200 records. Bookmarks and source routes remain language-neutral.
 
-Twenty-four selected records now include four-part bilingual reading guides in
-`src/researchEditorial.js` and `src/researchEditorialExpansion.js`; eight subject
+Twenty-four selected records include bilingual reading guides in
+`src/researchEditorial.js` and `src/researchEditorialExpansion.js`.
+`src/researchDeepReads.js` deepens eight of them to six sections, covering original
+materials, method, findings and limits with public source-section reading links;
+the other sixteen retain four sections. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
 Articles show their position and previous/next reading with authored reasons.
-Three preparation tutorials (`preparationTutorials.js`, `tutorialExamples.js`) use
+Six preparation tutorials (`preparationTutorials.js`, `preparationTutorialExpansion.js`, `tutorialExamples.js`) use
 local synthetic examples, never real requests. Their publication does not change
 the product manifest's underlying data/Feature/Recipe maturity or account grants.
 See [`research-reading-depth-v4.md`](../docs/design/research-reading-depth-v4.md).
-The follow-up contract is
-[`research-reading-continuity-v5.md`](../docs/design/research-reading-continuity-v5.md).
+The current follow-up contract is
+[`research-depth-quality-v6.md`](../docs/design/research-depth-quality-v6.md).
 Library scroll positions are isolated per in-tab history entry; explicit article
 return restores the latest library view. They are neither persisted nor synced.
 
-The normal build also generates twelve offline download artifacts under
-`dist/client/downloads/research/`: three synthetic input/expected-output JSON files,
-three standalone JavaScript examples and six localized Python notebooks. The
+The normal build also generates twenty-four offline download artifacts under
+`dist/client/downloads/research/`: six synthetic input/expected-output JSON files,
+six standalone JavaScript examples and twelve localized Python notebooks. The
 notebooks embed the same fixtures, require Python 3.10+ standard library only for
 computation, and open in an existing Jupyter environment. Source generation lives
 in `scripts/build-tutorial-downloads.mjs` and `scripts/tutorial-python/`. Do not
@@ -119,16 +122,47 @@ npm run test:sites
 The standard-library validator executes all code cells top-to-bottom and compares
 results with the browser examples. It is not a Jupyter UI/kernel integration test.
 The test suite requires `python3`, or `TD_NOTEBOOK_PYTHON` pointing at Python 3.10+.
+For actual Jupyter-kernel acceptance, run `scripts/verify-tutorial-jupyter.py`
+with an isolated Python containing `nbformat`, `nbclient` and `ipykernel`.
+This optional acceptance runner uses that interpreter, local IPC and temporary
+connection files, shuts down every kernel and does not rewrite shipped notebooks
+or register a global kernel. Opening the Jupyter UI remains a separate check.
 Download URLs are build output: review them with `npm run preview` after building,
 not the source-only Vite dev server. Changing language selects the matching
 notebook without changing any dataset identifier.
 
 The normal build now projects only reader fields into the browser catalogue,
 separates React and research-catalog cache chunks, lazy-loads tutorial execution UI, and generates
-208 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
+211 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
 these generated `dist/client` entries together with the current hashed assets;
 do not hand-edit them. Static metadata supports link previews, not article-body
 SSR or verified search indexing. Existing Sites packaging and Worker stay intact.
+
+### Read-only editorial maintenance
+
+```bash
+npm run audit:research
+npm run audit:research -- --links --limit=20 --offset=0 --timeout-ms=8000
+npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
+```
+
+The default is offline. Structural errors are separate from editorial review
+candidates (including the 176 summary-only records, repeated/short paragraphs and
+limited reading scope). Optional HTTPS link checks use system `curl`, at most two
+concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
+back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only
+and capped at 50 records per invocation. They flag registered title/author/year/
+venue changes and reported updates without rewriting identities. Offsets apply
+to the sorted unique URL list for links and DOI-bearing catalog order for metadata.
+Run the two modes separately when advancing batches.
+
+404/410 are broken links; 403/429, network and timeout results remain unresolved,
+not proof of deletion. A 200 does not detect a soft-404, authenticate full text or
+prove that the linked edition is the latest. Metadata matches do not validate
+paper findings. Review warnings and incomplete external checks are visible in
+JSON but do not fail the process; structural errors and observed broken links do.
+Check the report, not just exit status. No files are written, no source dates are
+advanced, and no recurring update, ingestion or publication job is installed.
 
 Keep the generated raster assets in `public/assets/`. Do not rebuild the brand
 mark or data-material artwork with CSS, inline SVG, or placeholder elements.

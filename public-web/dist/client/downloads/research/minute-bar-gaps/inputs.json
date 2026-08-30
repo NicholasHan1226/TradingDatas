@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "tutorial": "minute-bar-gaps",
+  "identity": "synthetic",
+  "args": [
+    [
+      {
+        "openTime": "2025-01-06T01:30:00Z",
+        "close": 100
+      },
+      {
+        "openTime": "2025-01-06T01:40:00Z",
+        "close": 102
+      }
+    ],
+    [
+      "2025-01-06T01:30:00Z",
+      "2025-01-06T01:35:00Z",
+      "2025-01-06T01:40:00Z"
+    ],
+    5
+  ],
+  "expected": [
+    {
+      "openTime": "2025-01-06T01:30:00.000Z",
+      "endExclusive": "2025-01-06T01:35:00.000Z",
+      "close": 100,
+      "status": "observed"
+    },
+    {
+      "openTime": "2025-01-06T01:35:00.000Z",
+      "endExclusive": "2025-01-06T01:40:00.000Z",
+      "close": null,
+      "status": "missing"
+    },
+    {
+      "openTime": "2025-01-06T01:40:00.000Z",
+      "endExclusive": "2025-01-06T01:45:00.000Z",
+      "close": 102,
+      "status": "observed"
+    }
+  ]
+}

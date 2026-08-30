@@ -69,9 +69,11 @@ orientation and specific reading limitations. Category-level limitations are not
 presented as individual-paper analysis. Additional data/method links are optional
 disclosure content, explicitly not the paper's original sample. Source-specific
 reader notes and their internal review references live in `researchReaderNotes.js`.
-`researchEditorial.js` and `researchEditorialExpansion.js` deepen 24 selected
-guides across all eight reading journeys, with four bilingual sections and
-source-specific limitations each. Every guide retains an internal evidence URL
+`researchEditorial.js` and `researchEditorialExpansion.js` provide 24 selected
+guides across all eight reading journeys. `researchDeepReads.js` overrides eight
+representatives with six bilingual sections and source-section reading links;
+the other sixteen retain four sections. All have source-specific limitations.
+Every guide retains an internal evidence URL
 and actual reading scope. Some use original/author-copy introductory sections;
 others are deliberately abstract-based (including Kyle, Corwin/Schultz,
 Nelson/Siegel and the Bitcoin overview). Dechow/Dichev and Replicating Anomalies
@@ -99,15 +101,17 @@ counts. Featured also exposes the 24 expanded guides below the lead story.
 Each journey has three distinct guides. Article sidebars show position and
 previous/next readings with sixteen authored connections explaining differences
 in questions, methods or evidence, not an implied author citation or ranking.
-Three bilingual `/recipes/:id` tutorials teach adjusted prices, as-of filing
-versions and event-calendar alignment using explicitly synthetic, local-only
+Six bilingual `/recipes/:id` tutorials teach adjusted prices, as-of filing
+versions, event-calendar alignment, minute-bar gaps, document-version ledgers
+and spot/open-interest observation alignment using explicitly synthetic, local-only
 examples. Publishing tutorials does not activate the underlying Recipe/Feature
 product contract. Each tutorial offers synthetic inputs/expected results, a
 standalone JavaScript file and a notebook in the selected language. All are
 generated from maintained examples; Python code cells execute offline and are
 tested against the JS output. No source paper PDFs, provider data or credentials
 are redistributed. See `docs/design/research-reading-depth-v4.md` and
-`docs/design/research-reading-continuity-v5.md`.
+`docs/design/research-reading-continuity-v5.md` and
+`docs/design/research-depth-quality-v6.md`.
 
 View changes preserve filters/page. Selecting a subject or all literature resets
 format/page; format changes reset page. URL parameters reproduce view, topic, format
@@ -117,7 +121,7 @@ This is not synchronized reading history. Clipboard failure exposes selectable
 citation text instead of claiming success. See `docs/design/research-dual-view-v3.md`.
 
 Article share links use stable production canonical URLs. Build-generated HTML
-for 200 records, three paths, three tutorials and both index routes supplies
+for 200 records, three paths, six tutorials and both index routes supplies
 bilingual title/description/Open Graph metadata before JavaScript; the SPA
 updates metadata to the active language during navigation. This is share-preview
 support, not server-rendered article bodies or proof of search-engine indexing.
@@ -130,6 +134,15 @@ reading-note reviews are separate evidence, neither implies replication.
 
 ## Maintenance and verification
 
+Use `npm run audit:research` for read-only structural and editorial checks before
+refreshing any source metadata. `--links` adds bounded URL checks; `--metadata`
+compares a bounded DOI batch with current publisher-registered metadata. These
+commands report unresolved access and potential version changes without writing
+files or changing source-check dates. Limits, offsets and interpretation are in
+`public-web/README.md`. Summary-only records and limited-reading scopes are
+editing candidates, not automatically defective works; HTTP success and length
+are never a quality certificate.
+
 1. Add or revise editorial notes and identify the intended original work.
 2. Run `node scripts/verify-research-sources.mjs` in `public-web`. Review its
    unresolved report and inspect authoritative sources for exceptions.
@@ -137,6 +150,9 @@ reading-note reviews are separate evidence, neither implies replication.
    `npm run build`. Review identity, duplicate, locale, source and related-link checks.
 4. Inspect actual desktop/narrow rendering, language preferences, both themes,
    pagination, filters, global search, saved links and source/detail navigation.
+   Execute generated notebooks with the standard-library checker; use
+   `scripts/verify-tutorial-jupyter.py` in an isolated Jupyter environment for
+   actual-kernel acceptance. Kernel execution does not certify the Jupyter UI.
 5. Commit only scoped content/UI/docs/build changes through the feature PR.
    CI, merge and production publication are distinct states requiring fresh evidence.
 

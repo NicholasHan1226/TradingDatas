@@ -21,10 +21,10 @@ test("build projection preserves every public record and omits internal verifica
   assert.equal(compiled.readingPaths.length, 3);
 });
 
-test("all 208 static entries have escaped bilingual titles, descriptions and canonical share URLs", () => {
+test("all 211 static entries have escaped bilingual titles, descriptions and canonical share URLs", () => {
   const template = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  assert.equal(researchPageRoutes.length, 208);
-  assert.equal(new Set(researchPageRoutes).size, 208);
+  assert.equal(researchPageRoutes.length, 211);
+  assert.equal(new Set(researchPageRoutes).size, 211);
   for (const route of researchPageRoutes) {
     const metadata = pageMetadata(route, "en");
     const html = renderResearchPage(template, route);

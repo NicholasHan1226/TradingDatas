@@ -4,15 +4,16 @@ import { runInNewContext } from "node:vm";
 import { adjustPrices, selectAsOf, alignEvents, tutorialExamples, tutorialCode } from "../src/tutorialExamples.js";
 import { preparationTutorials } from "../src/preparationTutorials.js";
 import { papers } from "../src/researchCatalog.js";
-import { researchEditorial } from "../src/researchEditorial.js";
-import snapshot from "../src/connectedInterfaceSnapshot.json" with { type: "json" };
+import { researchReaderNotes as researchEditorial } from "../src/researchReaderNotes.js";
+import { readFileSync } from "node:fs";
+const registry = ["provider_native_dataset_registry.yaml", "crypto_binance_canary_registry.v1.yaml"].map(name => readFileSync(new URL(`../../config/${name}`, import.meta.url), "utf8")).join("\n");
 
-test("three bilingual tutorials have sources, inputs, steps, outputs and working research links", () => {
-  assert.equal(Object.keys(preparationTutorials).length, 3);
+test("six bilingual tutorials have sources, inputs, steps, outputs and working research links", () => {
+  assert.equal(Object.keys(preparationTutorials).length, 6);
   for (const [id, tutorial] of Object.entries(preparationTutorials)) {
     assert.ok(tutorialExamples[id]);
     assert.ok(tutorial.datasetIds.length >= 2 && tutorial.steps.length >= 4);
-    for (const datasetId of tutorial.datasetIds) assert.ok(JSON.stringify(snapshot).includes(`"datasetId":"${datasetId}"`), datasetId);
+    for (const datasetId of tutorial.datasetIds) assert.ok(registry.includes(`- dataset_id: ${datasetId}\n`), datasetId);
     assert.ok(tutorial.sources.every(source => source.url.startsWith("https://")));
     assert.ok(tutorial.research.every(title => papers.some(paper => paper.title === title)));
     for (const locale of ["zh", "en"]) for (const step of tutorial.steps) assert.ok(step.title[locale] && step.body[locale].length > 80);
@@ -22,7 +23,7 @@ test("twenty-four source-grounded bilingual guides keep a bounded internal revie
   assert.equal(Object.keys(researchEditorial).length, 24);
   for (const [title, guide] of Object.entries(researchEditorial)) {
     assert.ok(papers.some(paper => paper.title === title), title);
-    assert.equal(guide.sections.length, 4);
+    assert.ok(guide.sections.length >= 4);
     assert.ok(guide.evidenceScope && guide.evidenceUrl.startsWith("https://"));
     for (const section of guide.sections) for (const locale of ["zh", "en"]) assert.ok(section.body[locale].length > 60, title);
   }

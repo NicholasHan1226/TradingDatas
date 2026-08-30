@@ -23,6 +23,10 @@ test("all 200 records render in both languages with direct sources and no intern
     assert.doesNotMatch(html, /准备状态|来源核验|出版信息已核对|三项检查|Bibliography checked|Preparation blueprint/);
     assert.doesNotMatch(html, /undefined|\[object Object\]/);
     assert.ok(html.includes(locale === "zh" ? "阅读原文" : "Read original"));
+    for (const section of paper.readingNotes || []) if (section.reference) {
+      assert.ok(html.includes(section.reference.label[locale].replaceAll("&", "&amp;")));
+      assert.ok(html.includes(section.reference.url.replaceAll("&", "&amp;").replaceAll("'", "&#x27;")));
+    }
   }
 });
 
