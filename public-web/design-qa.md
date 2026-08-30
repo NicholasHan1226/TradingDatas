@@ -102,6 +102,7 @@ passed
 
 final result: passed
 
+
 ---
 
 # Superseded TradingDatas package decision-flow QA
@@ -391,3 +392,72 @@ local verification completed. Revert the scoped commit through a PR to roll back
 no data migration or server operation is involved.
 
 final result: passed
+
+---
+
+# Reading depth, tutorials and sharing follow-up — 2026-08-30
+
+Scope: same PR #385; keep the accepted Featured/Topics layout. This follow-up
+supersedes the earlier planned-tutorial and main-bundle follow-up items, not the
+historical evidence above. It does not claim production publication.
+
+## Delivered and checked
+
+- 200 distinct external works remain unchanged in identity. Twelve records now
+  have four bilingual source-grounded sections plus specific limitations, and
+  appear in the Featured shelf. All eight topics have three reading stages.
+- Three bilingual preparation tutorials replace the generic planned-object body
+  at the existing method URLs. Their examples are local, synthetic and read-only.
+  Source functions and copyable examples share one implementation; production
+  preserves readable snippets rather than exposing minified function bodies.
+- Build-generated HTML contains title, description, canonical and Open Graph
+  metadata for 200 records, three paths, three tutorials and both index pages
+  (208 routes). Plain HTTP readback of a built Tokenomics route confirmed metadata
+  without running JavaScript. No full-body SSR or crawler-indexing claim.
+- `npm run build`: passed. `npm run test:sites`: 62 passed, including all 200
+  records in both languages, tutorial rendering, example execution, invalid
+  inputs, source IDs, reading sequences, projection, metadata escaping and
+  fulfilled/denied/unavailable clipboard helper outcomes.
+- `node scripts/verify-research-sources.mjs`: 186 requested metadata records,
+  186 verified, zero unresolved; cached identity verification, not 186 new full
+  source reads. Twelve new editorial reviews retain distinct evidence scopes.
+- In-app browser against the production build at port 5186: twelve guides opened
+  in Chinese at 390px and in English at 1280px; all retained four body sections,
+  source links and original identities, with no page-level horizontal overflow.
+  Eight Chinese topic sequences clicked individually; empty publication type
+  and reset verified. Native dropdown and pointer pagination worked.
+- All three examples ran in English/desktop and Chinese/320px with the expected
+  outputs: 50/50/51 adjusted prices; pre-revision financial value 100; one aligned
+  event plus one date-only review record. Main example buttons measured 44px high.
+  Light/dark, explicit language persistence, default System selection, native
+  headings/landmarks/status roles, bookmarks, citation-copy and share-copy success
+  were inspected. Browser errors/warnings were empty during these checks.
+- Current build: main app about 476.93 kB / 139.00 kB gzip; React cache chunk
+  193.01 / 60.26; tutorial chunk 19.44 / 6.86, loaded on demand. A same-content
+  comparison without catalogue projection was about 517.08 / 155.74 for the main
+  app. This measures emitted bytes, not network latency or Core Web Vitals.
+
+Screenshots: `/tmp/tradingdatas-depth-qa-j9zYVy/01-featured-mobile-zh.png`,
+`02-topics-mobile-zh.png`, `03-guide-mobile-zh.png`,
+`04-guide-desktop-en-dark.png`, `05-event-demo-en.png`, `06-tutorial-320-zh.png`.
+
+## Remaining verification and release gate
+
+- The browser control focused native buttons but did not produce an observable
+  Enter activation, including on the pre-existing pagination control. Do not call
+  keyboard behavior passed based on focus styling alone. Manual native keyboard
+  acceptance remains open; no speculative custom key handler was added.
+- Clipboard rejection is covered by deterministic helper tests and selectable
+  fallback markup; an actual browser permission-denied run is not verified.
+- Physical touch, real screen-reader speech, text-only zoom and divergent
+  multi-visit scroll history remain unverified. Basic in-tab page/filter return
+  worked; exact scroll comparisons are affected by automated click auto-scrolling.
+- Current main advanced only in backend/tests/operations outside this edit's
+  writing scope. Protected Worker/Sites files, dependencies/lockfile, workflows,
+  registry, accounts, secrets and provider runtimes are unchanged.
+- Await exact-head GitHub CI and the project's independent PM acceptance before
+  merge. `pm-merge` was absent at preflight. Main CI, Cloudflare deploy and public
+  route/asset readback remain separate gates; no production write was made here.
+
+Result: content/build/function checks passed; accessibility/manual acceptance and
+release gates remain explicitly open.

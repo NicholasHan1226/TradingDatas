@@ -1,19 +1,17 @@
 import { useState } from "react";
-import { ArrowRight, ArrowSquareOut, BookmarkSimple, Check, Copy } from "@phosphor-icons/react";
+import { ArrowRight, ArrowSquareOut, BookmarkSimple, Check, Copy, LinkSimple } from "@phosphor-icons/react";
 import { researchTitle, researchData, researchYear } from "./researchCatalog.js";
 import { researchCitation } from "./researchReader.js";
+import { copyText } from "./copyText.js";
+import { publicOrigin } from "./pageMetadata.js";
 
 export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, furtherReading, saved, onToggleBookmark, onNavigate, backHref = "/research" }) {
   const [copyState, setCopyState] = useState("idle");
+  const [linkState, setLinkState] = useState("idle");
   const zh = locale === "zh";
   const citation = researchCitation(paper);
   async function copyCitation() {
-    try {
-      await navigator.clipboard.writeText(citation);
-      setCopyState("copied");
-    } catch {
-      setCopyState("failed");
-    }
+    setCopyState(await copyText(citation));
   }
 
   return <article className="object-detail-page research-record">
@@ -28,10 +26,13 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
         <a className="primary-button" href={paper.sources[0].url} target="_blank" rel="noreferrer">{zh ? "阅读原文" : "Read original"}<ArrowSquareOut /></a>
         <button className="secondary-button" type="button" aria-pressed={saved} onClick={onToggleBookmark}><BookmarkSimple weight={saved ? "fill" : "regular"} />{saved ? (zh ? "已收藏" : "Saved") : (zh ? "收藏" : "Bookmark")}</button>
         <button className="secondary-button" type="button" onClick={copyCitation}>{copyState === "copied" ? <Check /> : <Copy />}{zh ? "复制引用" : "Copy citation"}</button>
+        <button className="secondary-button" type="button" onClick={async () => setLinkState(await copyText(`${publicOrigin}/research/${paper.id}`))}><LinkSimple />{zh ? "分享链接" : "Copy link"}</button>
       </div>
       <p className="research-reader-action-note">{zh ? "收藏保存在当前浏览器。原文可能需要出版方访问权限。" : "Bookmarks stay in this browser. Publisher access may be required."}</p>
       <span className="research-copy-status" role="status">{copyState === "copied" ? (zh ? "引用已复制" : "Citation copied") : copyState === "failed" ? (zh ? "未能复制，请选中下方引用手动复制。" : "Could not copy. Select the citation below to copy manually.") : ""}</span>
       {copyState === "failed" && <textarea className="research-citation-fallback" aria-label={zh ? "文献引用" : "Citation text"} readOnly value={citation} onFocus={(event) => event.target.select()} />}
+      <span role="status">{linkState === "copied" ? (zh ? "链接已复制" : "Link copied") : linkState === "failed" ? (zh ? "请选中下方链接手动复制。" : "Select the link below to copy manually.") : ""}</span>
+      {linkState === "failed" && <input className="research-citation-fallback" aria-label={zh ? "可复制链接" : "Selectable link"} readOnly value={`${publicOrigin}/research/${paper.id}`} onFocus={(event) => event.target.select()} />}
     </header>
 
     <div className="research-reader-layout">

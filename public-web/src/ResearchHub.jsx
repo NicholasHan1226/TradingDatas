@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { ArrowRight, ArrowSquareOut, BookmarkSimple } from "@phosphor-icons/react";
 import { papers, readingPaths, researchTitle, researchYear } from "./researchCatalog.js";
 import { researchSubjects, researchMatches, researchHref, researchPageSize } from "./researchDiscovery.js";
+import { researchJourneys, journeyStages } from "./researchJourneys.js";
 import "./researchHub.css";
 
 export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kindLabels, methods, bookmarks, onToggleBookmark, onNavigate }) {
@@ -28,6 +29,8 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
   const page = Math.min(view.page, pageCount - 1);
   const visible = matches.slice(page * researchPageSize, (page + 1) * researchPageSize);
   const featuredHref = `/research/${featuredPaper.id}`;
+  const guides = papers.filter((paper) => paper.readingNotes?.length >= 4);
+  const journey = researchJourneys[subject.id];
   function change(event, action, scroll = false) {
     if (event?.metaKey || event?.ctrlKey || event?.shiftKey || event?.altKey) return;
     event?.preventDefault();
@@ -60,6 +63,7 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
         return <a key={href} href={href} onClick={(event) => onNavigate(event, href)}><div><h2>{path.question}</h2><p>{path.data}</p></div><ArrowRight /></a>;
       })}</div>
       <a className="research-browse-link" href="/research?view=topics" onClick={(event) => change(event, { type: "open", topic: "all" })}>{zh ? "按主题浏览全部文献" : "Browse all literature by topic"}<ArrowRight /></a>
+      <section className="research-guide-shelf" aria-labelledby="research-guides-title"><header><h2 id="research-guides-title">{zh ? "精选导读" : "Selected reading guides"}</h2><p>{zh ? "从研究问题出发，读懂方法、主要发现与适用边界。" : "Read the question, approach, findings, and limitations together."}</p></header><div>{guides.map((paper) => <article key={paper.id}><p className="research-bibliographic-meta">{researchSubjects.find((item) => researchMatches(paper, item.id, "all") && item.id !== "all")?.label[locale]} · {researchYear(paper, locale)}</p><h3><a href={`/research/${paper.id}`} onClick={(event) => onNavigate(event, `/research/${paper.id}`)}>{researchTitle(paper, locale)}<ArrowRight /></a></h3><p>{paper.summary[locale]}</p><p className="research-bibliographic-meta">{paper.authors}</p></article>)}</div></section>
       <details className="research-method-disclosure"><summary>{zh ? "更多阅读路径与数据准备方法" : "More reading paths & data preparation"}</summary><div>
         <a href="/research/paths/market-microstructure" onClick={(event) => onNavigate(event, "/research/paths/market-microstructure")}>{atlas.paths[1].question}<ArrowRight /></a>
         {methods.map((method) => <a key={method.id} href={`/recipes/${method.id}`} onClick={(event) => onNavigate(event, `/recipes/${method.id}`)}>{method.title[locale]}<ArrowRight /></a>)}
@@ -70,6 +74,10 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
         <nav className="research-subject-index" ref={subjectsRef} aria-label={zh ? "研究主题" : "Research topics"}>{researchSubjects.map((item) => <a key={item.id} href={researchHref({ ...view, open: true, topic: item.id, kind: "all", page: 0 })} aria-current={subject.id === item.id ? "true" : undefined} onClick={(event) => change(event, { type: "open", topic: item.id })}><span>{item.label[locale]}</span><span>{papers.filter((paper) => researchMatches(paper, item.id, "all")).length}</span></a>)}</nav>
         <section className="research-subject-results" ref={resultsRef} tabIndex={-1} aria-labelledby="research-subject-title">
           <header className="research-subject-heading"><div><h2 id="research-subject-title">{subject.label[locale]}</h2><p>{subject.description[locale]}</p></div><select aria-label={zh ? "文献类型" : "Publication type"} value={view.kind} onChange={(event) => change(null, { type: "kind", value: event.target.value })}>{Object.entries(kindLabels).map(([id, label]) => <option key={id} value={id}>{id === "all" ? (zh ? "全部类型" : "All types") : label}</option>)}</select></header>
+          {journey && view.kind === "all" && page === 0 && <section className="research-journey" aria-label={zh ? "建议阅读顺序" : "Suggested reading order"}><h3>{zh ? "从这里开始" : "A reading route"}</h3><ol>{journey.map((step, index) => {
+            const paper = papers.find((item) => item.title === step.title || item.sourceTitle === step.title);
+            return <li key={step.title}><span>{String(index + 1).padStart(2, "0")} · {journeyStages[index][locale]}</span><div><a href={`/research/${paper.id}`} onClick={(event) => onNavigate(event, `/research/${paper.id}`)}>{researchTitle(paper, locale)}<ArrowRight /></a><p>{step.reason[locale]}</p></div></li>;
+          })}</ol></section>}
           <p className="research-result-status" role="status">{zh ? `${matches.length} 条文献` : `${matches.length} materials`}{view.kind !== "all" && <button type="button" onClick={() => onChange({ type: "kind", value: "all" })}>{zh ? "清除类型筛选" : "Clear type filter"}</button>}</p>
           <div className="research-bibliographic-list">{visible.map((paper) => {
             const href = `/research/${paper.id}`;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowSquareOut,
@@ -29,6 +29,9 @@ import { researchViewReducer } from "./researchReader.js";
 import { researchHref, researchLocation, researchSubjects } from "./researchDiscovery.js";
 import { ResearchHub } from "./ResearchHub.jsx";
 import { ResearchRecord } from "./ResearchRecord.jsx";
+import { preparationTutorials } from "./preparationTutorials.js";
+import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
+const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
 import connectedInterfaceSnapshot from "./connectedInterfaceSnapshot.json";
 import {
   collectionHistory,
@@ -824,6 +827,8 @@ export function App() {
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
   }, [theme, locale]);
 
+  useEffect(() => { applyPageMetadata(pageMetadata(route, locale)); }, [route, locale]);
+
   useEffect(() => {
     localStorage.setItem("td-bookmarks", JSON.stringify(bookmarks));
   }, [bookmarks]);
@@ -1060,7 +1065,7 @@ export function App() {
   const globalIndex = [
     ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
     ...papers.map((paper) => ({ key: `research:${paper.id}`, id: paper.id, group: "research", type: locale === "zh" ? "研究" : "Research", label: researchTitle(paper, locale), description: `${paper.authors} · ${researchYear(paper, locale)}`, aliases: [paper.title, paper.sourceTitle, paper.titleZh, paper.venue, paper.kind, paper.topic, paper.data, paper.dataZh, paper.summary.en, paper.summary.zh, ...(paper.sources || []).map((source) => source.label)], path: `/research/${paper.id}` })),
-    ...productManifest.objects.recipes.map((item) => ({ key: `method:${item.id}`, id: item.id, group: "methods", type: locale === "zh" ? "研究方法" : "Method", label: item.title[locale], description: item.detail, aliases: [item.title.en, item.title.zh, item.status], path: `/recipes/${item.id}` })),
+    ...productManifest.objects.recipes.map((item) => ({ key: `method:${item.id}`, id: item.id, group: "methods", type: locale === "zh" ? "数据准备教程" : "Data preparation tutorial", label: item.title[locale], description: preparationTutorials[item.id]?.summary[locale] || item.detail, aliases: [item.title.en, item.title.zh], path: `/recipes/${item.id}` })),
     ...allDocs.map((entry) => ({ key: `doc:${entry.slug}`, id: entry.slug, group: "docs", type: locale === "zh" ? "文档" : "Docs", label: entry.title, description: entry.description, aliases: [entry.category, entry.categoryLabel], path: "/account", accountSection: "docs", docSlug: entry.slug })),
   ].map((item) => ({ ...item, searchDocument: createSearchDocument([item.id, item.type, item.label, item.description, item.aliases]) }));
   const savedItems = globalIndex.filter((item) => bookmarks.includes(item.key));
@@ -1170,7 +1175,6 @@ export function App() {
 
   const selectedDataset = productManifest.objects.datasets.find((item) => item.id === routeSlug);
   const selectedFeature = productManifest.objects.features.find((item) => item.id === routeSlug);
-  const selectedRecipe = productManifest.objects.recipes.find((item) => item.id === routeSlug);
   const selectedPaper = routeSlug ? papers.find((paper) => paper.id === routeSlug) : null;
   const selectedReadingPath = readingPaths.find((path) => routeSlug === `paths/${path.id}`);
   const dataCategories = locale === "zh" ? [
@@ -1349,9 +1353,9 @@ export function App() {
         {primaryRoute === "recipes" && !routeSlug && <section className="object-index-page">
           <SectionNav locale={locale} active="/recipes" onNavigate={navigate} items={locale === "zh" ? [{ path: "/recipes", label: "全部 Recipes" }, { path: "/recipes/adjusted-price-series", label: "价格准备" }, { path: "/recipes/pit-fundamentals-panel", label: "财务对齐" }] : [{ path: "/recipes", label: "All recipes" }, { path: "/recipes/adjusted-price-series", label: "Price preparation" }, { path: "/recipes/pit-fundamentals-panel", label: "Fundamental alignment" }]} />
           <div className="object-index-hero"><span className="mono-kicker">DATA RECIPES / EXECUTABLE METHODS</span><h1>{locale === "zh" ? "教你正确组合数据，不替你完成研究。" : "Combine data correctly without outsourcing the research."}</h1><p>{locale === "zh" ? "每个 Recipe 都声明问题、输入、时间对齐、输出结构、验证与局限；结果判断仍属于用户。" : "Every Recipe declares the task, inputs, time alignment, output schema, validation, and limits. Conclusions remain the user's."}</p></div>
-          <div className="object-list large">{productManifest.objects.recipes.map((item) => <a key={item.id} href={`/recipes/${item.id}`} onClick={(event) => navigate(event, `/recipes/${item.id}`)}><div><MaturityTag status={item.status} locale={locale} /><h2>{item.title[locale]}</h2><p>{item.detail}</p></div><ArrowRight /></a>)}</div>
+          <div className="object-list large">{Object.entries(preparationTutorials).map(([id, item]) => <a key={id} href={`/recipes/${id}`} onClick={(event) => navigate(event, `/recipes/${id}`)}><div><span className="mono-kicker">{locale === "zh" ? "教程 · 含可运行示例" : "TUTORIAL · RUNNABLE EXAMPLE"}</span><h2>{item.title[locale]}</h2><p>{item.summary[locale]}</p></div><ArrowRight /></a>)}</div>
         </section>}
-        {primaryRoute === "recipes" && routeSlug && <ProductObjectDetail type="recipes" item={selectedRecipe} locale={locale} onNavigate={navigate} />}
+        {primaryRoute === "recipes" && routeSlug && <Suspense fallback={<p role="status">{locale === "zh" ? "正在载入教程…" : "Loading tutorial…"}</p>}><TutorialPage key={routeSlug} id={routeSlug} locale={locale} onNavigate={navigate} saved={bookmarks.includes(`method:${routeSlug}`)} onToggleBookmark={() => toggleBookmark(`method:${routeSlug}`)} /></Suspense>}
 
         {primaryRoute === "research" && !routeSlug && <ResearchHub locale={locale} view={researchView} onChange={changeResearchView} featuredPaper={featuredPaper} atlas={researchAtlas} kindLabels={kindLabels} methods={productManifest.objects.recipes} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} onNavigate={navigate} />}
 

@@ -88,6 +88,20 @@ languages and original titles regardless of the selected display language.
 The complete library is available in Topics in pages of 12; global search
 still searches all 200 records. Bookmarks and source routes remain language-neutral.
 
+Twelve selected records now include four-part bilingual reading guides in
+`src/researchEditorial.js`; eight subject sequences live in `src/researchJourneys.js`.
+Three preparation tutorials (`preparationTutorials.js`, `tutorialExamples.js`) use
+local synthetic examples, never real requests. Their publication does not change
+the product manifest's underlying data/Feature/Recipe maturity or account grants.
+See [`research-reading-depth-v4.md`](../docs/design/research-reading-depth-v4.md).
+
+The normal build now projects only reader fields into the browser catalogue,
+separates the React cache chunk, lazy-loads tutorial execution UI, and generates
+208 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
+these generated `dist/client` entries together with the current hashed assets;
+do not hand-edit them. Static metadata supports link previews, not article-body
+SSR or verified search indexing. Existing Sites packaging and Worker stay intact.
+
 Keep the generated raster assets in `public/assets/`. Do not rebuild the brand
 mark or data-material artwork with CSS, inline SVG, or placeholder elements.
 

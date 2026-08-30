@@ -69,8 +69,13 @@ orientation and specific reading limitations. Category-level limitations are not
 presented as individual-paper analysis. Additional data/method links are optional
 disclosure content, explicitly not the paper's original sample. Source-specific
 reader notes and their internal review references live in `researchReaderNotes.js`.
-This refinement deepens the Tokenomics orientation only; it does not certify all
-200 records as full-length guides or full-text reviews.
+`researchEditorial.js` now deepens 12 selected guides across all eight display
+subjects, with four bilingual sections and source-specific limitations each.
+Each guide retains an internal evidence URL and the exact reading scope: ten
+use original/author-copy abstracts and introductory sections; Kyle uses the
+publisher abstract, and Dechow/Dichev uses the dated working-paper abstract while
+retaining the final publication identity. This does not certify all 200 records
+as full-length guides or any of the 12 as complete full-text reviews.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -85,11 +90,28 @@ changing their stored identity. All three four-record reading paths stay reachab
 Global search covers both languages across all records; counts derive from records.
 No reading-time estimate implies a full-paper reading or review.
 
+Each subject has a three-stage introductory/core/deeper reading route in
+`researchJourneys.js`, shown on the first unfiltered topic page. Some stages
+deliberately bridge related subjects; this does not change original taxonomy or
+counts. Featured also exposes the twelve expanded guides below the lead story.
+Three bilingual `/recipes/:id` tutorials teach adjusted prices, as-of filing
+versions and event-calendar alignment using explicitly synthetic, local-only
+examples. Publishing tutorials does not activate the underlying Recipe/Feature
+product contract. See `docs/design/research-reading-depth-v4.md`.
+
 View changes preserve filters/page. Selecting a subject or all literature resets
 format/page; format changes reset page. URL parameters reproduce view, topic, format
 and page across reload/share; in-tab article return also restores scroll position.
 This is not synchronized reading history. Clipboard failure exposes selectable
 citation text instead of claiming success. See `docs/design/research-dual-view-v3.md`.
+
+Article share links use stable production canonical URLs. Build-generated HTML
+for 200 records, three paths, three tutorials and both index routes supplies
+bilingual title/description/Open Graph metadata before JavaScript; the SPA
+updates metadata to the active language during navigation. This is share-preview
+support, not server-rendered article bodies or proof of search-engine indexing.
+The build omits internal evidence/check profiles from the public catalogue;
+source records and validation still retain them. Tutorials load on demand.
 
 Legacy official-source verification dates are stored per source; a library-wide
 content update cannot advance those dates. Source identity checks and editorial
