@@ -109,8 +109,12 @@ and open `http://127.0.0.1:5195/login`. Use an `@example.com` fixture; codes app
 only in the local synthetic mailbox at `/__test__/mail`, never in a real inbox.
 The in-memory store resets on restart; no production secrets are used. Optional
 local workerd/D1 verification and the production approval gates are documented in
-[Email identity v1](../docs/design/email-identity-v1.md). Neither the schema file
-nor the review harness is deployed. SMS and payments stay unavailable.
+[Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
+harness are not public assets. The dedicated remote account DB has been initialized;
+the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
+`EMAIL_LOGIN_ENABLED="false"`. No sender/pepper secrets have been provisioned and
+this binding has not been deployed. See the [provisioning checkpoint](../docs/reports/2026-08-30-email-identity-provisioning.md).
+SMS and payments stay unavailable.
 
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,

@@ -15,11 +15,12 @@ SMS remains unavailable. Bookmarks remain browser-local, not account-synced.
 The candidate account store is a dedicated Cloudflare D1 binding `IDENTITY_DB`.
 `public-web/worker/identity-schema.sql` is for this store only; it must never run
 against financial facts SQLite or any existing database without explicit review.
-No D1 resource, production binding or migration has been created for this slice.
-The owner approved proceeding with the dedicated-store direction on 2026-08-30.
-Provisioning remains pending: local Cloudflare OAuth is expired, and renewing
-database/Worker write permissions needs explicit approval. Do not route around
-that permission boundary through dashboard writes or existing CI credentials.
+On 2026-08-30, following the owner's renewed go-ahead, the dedicated empty
+`tradingdatas-identity-v1` resource was created and the schema initialized there.
+Its candidate binding is recorded in `public-web/wrangler.jsonc`, with
+`EMAIL_LOGIN_ENABLED="false"`. No Worker release or live binding was changed.
+See the [provisioning checkpoint](../reports/2026-08-30-email-identity-provisioning.md)
+for the exact resource, schema hash, empty-table readback and remaining gates.
 
 ## Control-plane routes
 
@@ -87,12 +88,14 @@ inactive periods. No timer or retention deletion job is deployed here.
 New logins require all of `EMAIL_LOGIN_ENABLED="true"`, dedicated `IDENTITY_DB`,
 server-secret `IDENTITY_PEPPER` (at least 32 characters, securely generated) and
 least-privilege `RESEND_API_KEY`. Sender is fixed to
-`TradingDatas <login@account.tradingdatas.com>`. The committed Worker configuration
-does not add these bindings or secrets, and the UI therefore stays unavailable
-in unconfigured environments. Never put secrets in source, URLs or chat.
+`TradingDatas <login@account.tradingdatas.com>`. The candidate Worker configuration
+declares only the dedicated D1 binding and an explicit false enable flag; it
+contains no secrets. The UI therefore stays unavailable after configuration-only
+deployment, even if sender secrets are later added. Never put secrets in source,
+URLs or chat.
 
-Before activation: approve dedicated storage/migration and retention; review
-abuse budgets; provision approved secrets privately; exact-head PR/CI review;
+Before activation: approve retention; review abuse budgets; provision approved
+secrets privately; exact-head PR/CI review and the Datas PM merge gate;
 staging sender verification to an explicitly approved recipient; check actual
 inbox delivery, expiry/replay, session isolation, both legacy and email login,
 logout and desktop/mobile rendering. Then separately authorize an exact-source
@@ -117,8 +120,9 @@ Implementation files (relative to `public-web/`):
   `tests/account-workspace.test.mjs`, `tests/sites-worker.test.mjs`.
 - Packaging/review: `scripts/prepare-sites-build.mjs`,
   `scripts/preview-email-identity.mjs`, `scripts/check-email-runtime.mjs` and
-  generated `dist/client` / `dist/server` artifacts. No lockfile or production
-  Worker binding change. Documentation is synchronized in `public-web/README.md`,
+  generated `dist/client` / `dist/server` artifacts. No lockfile change. The D1
+  binding and disabled enable flag are candidate configuration, not a live Worker
+  update. Documentation is synchronized in `public-web/README.md`,
   root `STATUS.md`, `docs/API.md`, `docs/OPERATIONS.md` and the parent identity
   contract. Current verification evidence and remaining gaps live in STATUS.
 

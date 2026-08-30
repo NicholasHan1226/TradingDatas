@@ -1,7 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { identityDb } from './helpers/identity-db.mjs';
 import { createEmailIdentityHandler } from '../worker/email-identity.js';
+
+test('provisioned account binding does not enable email or use the data-plane store', async () => {
+  const config = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+  assert.equal(config.name, 'tradingdatas');
+  assert.equal(config.vars.EMAIL_LOGIN_ENABLED, 'false');
+  assert.deepEqual(config.d1_databases, [{
+    binding: 'IDENTITY_DB', database_name: 'tradingdatas-identity-v1',
+    database_id: 'bb5e8d90-090f-40a5-9aa1-b91b33af7199',
+  }]);
+  assert.equal(config.vars.IDENTITY_PEPPER, undefined);
+  assert.equal(config.vars.RESEND_API_KEY, undefined);
+  const f = fixture();
+  Object.assign(f.env, config.vars);
+  const methods = await f.call('auth-methods');
+  const readiness = await methods.json();
+  assert.equal(readiness.email, false);
+  assert.equal(readiness.phone, false);
+  assert.equal((await f.challenge()).response.status, 503);
+  assert.equal(f.sent.length, 0);
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare('SELECT count(*) n FROM identity_users').get().n, 0);
+});
 
 function fixture(options = {}) {
   let now = 1_800_000_000;

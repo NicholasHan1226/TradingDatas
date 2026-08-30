@@ -4,8 +4,16 @@
   "main": "./dist/server/index.js",
   "compatibility_date": "2026-08-29",
   "vars": {
-    "ACCOUNT_API_BASE": "https://td-admin-api.tradingagent.cc"
+    "ACCOUNT_API_BASE": "https://td-admin-api.tradingagent.cc",
+    "EMAIL_LOGIN_ENABLED": "false"
   },
+  "d1_databases": [
+    {
+      "binding": "IDENTITY_DB",
+      "database_name": "tradingdatas-identity-v1",
+      "database_id": "bb5e8d90-090f-40a5-9aa1-b91b33af7199"
+    }
+  ],
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",

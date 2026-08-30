@@ -626,19 +626,23 @@ recipient plus session/expiry/replay/isolation behavior. Never put the sender
 secret, user address, verification code or login link into logs or the bundle.
 
 The [email identity candidate](design/email-identity-v1.md) implements this flow
-inside the existing Login/Account with local-only D1-schema tests and synthetic
-mail. No production D1 binding, secret or enable flag is configured by that
-candidate. Its dedicated-store approval, exact-head release, retention policy,
-approved-recipient delivery check and runtime readback remain separate gates.
+inside the existing Login/Account with local D1 tests and synthetic mail. The
+dedicated account DB is now provisioned; its candidate Worker binding keeps the
+email enable flag explicitly false. Secret provisioning, exact-head release,
+retention policy, approved-recipient delivery and runtime readback remain separate
+gates. No real message or Worker deployment occurred during this preparation.
 
-2026-08-30 follow-up: the owner approved proceeding with the dedicated account
-store direction. GitHub HTTPS authorization and the Resend verified domain were
-rechecked. Local Wrangler authorization had expired; renewing D1/Worker write
-permissions was blocked pending explicit approval and the OAuth process was
-terminated. No dashboard-write or CI-credential workaround was attempted. Obtain
-the exact write scope and test recipient before provisioning or sending; preserve
-existing deployment credentials and unrelated Resend keys. Local verification
-and a reviewable PR may proceed without production access.
+2026-08-30 follow-up: the earlier permission pause was respected. After the
+owner's renewed go-ahead, minimal account/user read and D1/Worker-script write
+OAuth succeeded. The local Node TLS trust-chain failure was resolved using the
+existing `/etc/ssl/cert.pem` for that command only; TLS verification was never
+disabled and no global trust/proxy setting changed. The new account-only DB was
+initialized and read back empty. Exact identifiers, commands, schema hash,
+rollback boundaries and checks are in the
+[provisioning checkpoint](reports/2026-08-30-email-identity-provisioning.md).
+The test recipient is still missing. Preserve all existing deployment credentials,
+customer keys and unrelated Resend resources; do not send mail or open email login
+before the remaining gates pass.
 
 Rollback is separate and must target only these three newly created DNS records
 and this Resend domain, after checking that no sender has begun using them.
