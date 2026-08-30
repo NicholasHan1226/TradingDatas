@@ -4913,3 +4913,55 @@ def test_event_stream_fanout_preserves_current_source_when_sibling_page_is_old(t
         assert sorted(row[0] for row in conn.execute('SELECT status FROM market_ingest_runs')) == ['empty', 'success']
         payload = json.loads(conn.execute('SELECT payload_json FROM provider_dataset_rows').fetchone()[0])
     assert payload['title'] == 'current'
+@pytest.mark.parametrize("corrupt", [None, "unrelated", "target"])
+def test_resumable_history_validates_only_its_dataset_without_weakening_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, corrupt: str | None
+) -> None:
+    import storage.receipt_projection as projection
+
+    registry = _two_dataset_registry()
+    target, unrelated = registry.datasets
+    db_path = tmp_path / "scoped-history.sqlite"
+    _database(db_path)
+    monkeypatch.setattr(ingest_receipts, "_utc_now", lambda: SHANGHAI_TEST_NOW_UTC_TEXT)
+    for dataset in (target, unrelated):
+        result = native_ingest.collect_provider_native_dataset(
+            db_path,
+            registry=registry,
+            collector=_FakeCollector(ProviderCallOutcome(
+                state="success",
+                rows=({"ts_code": "600000.SH", "trade_date": "20260720", "close": 12.5},),
+                provider_code=0, error_code=None, error_message=None,
+            )),
+            dataset_id=dataset.dataset_id,
+            request_window={"start_date": "20260720", "end_date": "20260720"},
+            attempt_id=f"scoped-history-{dataset.dataset_id}",
+            started_at=(SHANGHAI_TEST_NOW - timedelta(minutes=1)).isoformat(),
+        )
+        assert result.status == "success"
+    if corrupt is not None:
+        damaged = target if corrupt == "target" else unrelated
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("UPDATE market_ingest_runs SET notes=? WHERE source=?", ("invalid-json", damaged.dataset_id))
+
+    with projection.open_verified_read_model_snapshot(db_path) as conn:
+        baseline = projection.validated_receipt_histories_by_dataset(
+            conn, registry, now=datetime.now(timezone.utc)
+        )
+    scanned: list[str] = []
+    original = projection._scan_ingest_run_rows_for_dataset_authority
+
+    def trace_scan(conn, *, dataset_id, known_dataset_ids):
+        scanned.append(dataset_id)
+        return original(conn, dataset_id=dataset_id, known_dataset_ids=known_dataset_ids)
+
+    monkeypatch.setattr(projection, "_scan_ingest_run_rows_for_dataset_authority", trace_scan)
+    if corrupt == "target":
+        assert target.dataset_id in baseline.failures_by_dataset
+        with pytest.raises(ValueError, match="resumable receipt authority is invalid"):
+            native_ingest._resumable_histories(db_path, registry, target)
+    else:
+        actual = native_ingest._resumable_histories(db_path, registry, target)
+        assert actual == baseline.entries_by_dataset[target.dataset_id]
+        assert len(actual) == 1
+    assert scanned == [target.dataset_id]

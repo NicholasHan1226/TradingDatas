@@ -67,6 +67,12 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
+分批续采读取历史时复用 `validated_receipt_history_for_dataset`，仅扫描当前 dataset 的
+完整回执历史；不能在每个分批任务中重复调用全目录 history loader。两者使用同一
+authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用缓存、截断历史、跳过
+校验或其它 dataset 的回执推进游标。该内部性能修正不改变 provider 预算、调度频率或
+发布时长门禁；生产提速必须经自然轮次单独验证。
+
 ### `market_ingest_runs` 的收据读取索引
 
 `market_ingest_runs` 是追加式收据运行日志。收据历史、evidence 与 journal 的验证读取必须按
