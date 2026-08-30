@@ -4324,3 +4324,41 @@ def test_unattributed_health_reports_envelope_mismatch(
         for anomaly in health.anomalies
     ] == [(receipt_id, "ghost.dataset", "receipt_envelope_mismatch")]
     assert health.benign_tombstones == 0
+
+
+@pytest.mark.parametrize('cadence,watermark,expected', [
+    ('session_minute', '2026-08-28T15:00:00+08:00', 'success'),
+    ('session_minute', '2026-08-28T14:30:00+08:00', 'stale'),
+    ('session_minute', '2026-08-27T15:00:00+08:00', 'stale'),
+    ('postclose_daily', '20260828', 'success'),
+    ('postclose_daily', '20260827', 'stale'),
+    ('event', '2026-08-28T15:00:00+08:00', 'stale'),
+])
+def test_cn_weekend_preserves_last_session_without_hiding_missing_data(monkeypatch, cadence, watermark, expected):
+    conn = _memory_db()
+    dataset = _dataset(cadence_class=cadence, freshness_sla_seconds=600 if cadence == 'session_minute' else 86400)
+    _insert_receipt(monkeypatch, conn, dataset=dataset, status='success', attempt_id='weekend',
+                    started_at='2026-08-28T07:00:00Z', finished_at='2026-08-28T07:10:00Z', data_through=watermark)
+    projection = project_dataset_runtime(conn, dataset, now=datetime(2026, 8, 30, 3, tzinfo=timezone.utc))
+    assert projection.state == expected
+
+
+def test_month_watermark_stays_current_for_its_whole_month(monkeypatch):
+    conn = _memory_db()
+    dataset = _dataset(cadence_class='monthly', freshness_sla_seconds=86400)
+    _insert_receipt(monkeypatch, conn, dataset=dataset, status='success', attempt_id='month',
+                    started_at='2026-08-01T01:00:00Z', finished_at='2026-08-01T01:01:00Z', data_through='202608')
+    assert project_dataset_runtime(conn, dataset, now=datetime(2026, 8, 30, 3, tzinfo=timezone.utc)).state == 'success'
+    assert project_dataset_runtime(conn, dataset, now=datetime(2026, 9, 2, 3, tzinfo=timezone.utc)).state == 'stale'
+
+
+@pytest.mark.parametrize('market,now', [
+    ('CRYPTO', datetime(2026, 8, 30, 3, tzinfo=timezone.utc)),
+    ('CN', datetime(2026, 8, 31, 2, tzinfo=timezone.utc)),
+])
+def test_weekend_clock_never_hides_crypto_or_monday_session_gap(monkeypatch, market, now):
+    conn = _memory_db()
+    dataset = replace(_dataset(cadence_class='session_minute', freshness_sla_seconds=600), market=market)
+    _insert_receipt(monkeypatch, conn, dataset=dataset, status='success', attempt_id='session-gap',
+                    started_at='2026-08-28T07:00:00Z', finished_at='2026-08-28T07:01:00Z', data_through='2026-08-28T15:00:00+08:00')
+    assert project_dataset_runtime(conn, dataset, now=now).state == 'stale'

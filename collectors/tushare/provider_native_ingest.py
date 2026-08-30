@@ -1629,11 +1629,24 @@ def _persist_provider_call(
         data_through=None,
     )
     try:
+        scoped_rows = _in_scope_success_rows(
+            binding, outcome, request_window=normalized_window
+        )
+        # A valid event page may contain only pre-window items. They have
+        # already passed completeness validation and are intentionally out
+        # of scope; do not send an empty batch to the non-empty row writer.
+        if not scoped_rows and dataset.empty_data_policy == "allowed":
+            return write_terminal_receipt(
+                db_path,
+                context=failure_context,
+                status="empty",
+                errors=(),
+            )
         return ingest_provider_native_rows(
             db_path,
             dataset=dataset,
             binding=binding,
-            rows=_in_scope_success_rows(binding, outcome, request_window=normalized_window),
+            rows=scoped_rows,
             context=call_context,
         )
     except ProviderNativeAdmissionError as exc:
@@ -1692,6 +1705,15 @@ def _aggregate_counts(
 
 
 def _aggregate_success_results(results: Sequence[IngestResult]) -> IngestResult:
+    if results and all(result.status == "empty" for result in results):
+        return IngestResult(
+            status="empty",
+            counts=_zero_counts(),
+            receipt_ids=tuple(
+                receipt_id for result in results for receipt_id in result.receipt_ids
+            ),
+            errors=(),
+        )
     counts = _aggregate_counts(
         results,
         count_semantics="aggregate_physical_call_transactions",

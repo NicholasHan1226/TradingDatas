@@ -33,6 +33,7 @@ def test_deploy_tree_contains_only_the_internal_v1_service_surface() -> None:
         "systemd/tradingdatas-provider-native-collect.service",
         "systemd/tradingdatas-provider-native-collect.timer",
         "systemd/tradingdatas-v1-internal.service",
+        "tradingdatas-collector-watch.sh",
         "tradingdatas_internal.env",
     }
 

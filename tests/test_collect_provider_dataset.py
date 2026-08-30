@@ -4839,3 +4839,77 @@ def test_failed_result_carries_and_surfaces_safe_diagnostic(
     assert summary["error_message"] == (
         "firecrawl request failed with HTTP status 500"
     )
+
+
+@pytest.mark.parametrize('empty_policy,expected', [('allowed', 'empty'), ('forbidden', 'failed')])
+def test_event_stream_old_only_page_writes_terminal_receipt(tmp_path, empty_policy, expected):
+    dataset, binding, _ = _event_stream_contract()
+    dataset = replace(dataset, empty_data_policy=empty_policy, provider_bindings=(binding,))
+    db = tmp_path / 'facts.sqlite'
+    _database(db)
+    outcome = ProviderCallOutcome(
+        state='success', rows=({'datetime': '2026-07-30 23:59:00', 'title': 'old', 'content': None},),
+        provider_code=0, error_code=None, error_message=None,
+    )
+    result = native_ingest.collect_provider_native_dataset(
+        db, registry=DatasetRegistry((dataset,)), collector=_FakeCollector(outcome),
+        dataset_id=dataset.dataset_id,
+        request_window={'start_time': '2026-07-31 00:00:00', 'end_time': '2026-07-31 23:59:59'},
+        attempt_id='old-page', started_at='2026-07-31T02:00:00Z',
+    )
+    assert result.status == expected
+    assert result.counts.committed == 0
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT count(*) FROM provider_dataset_rows').fetchone()[0] == 0
+        notes = json.loads(conn.execute('SELECT notes FROM market_ingest_runs').fetchone()[0])
+    assert notes['status'] == expected
+    assert notes['data_through'] is None
+    assert notes['errors'] == ([] if expected == 'empty' else ['validation_failed'])
+
+
+@pytest.mark.parametrize('new_time,expected,count', [
+    ('2026-07-31 09:00:00', 'success', 1),
+    ('2026-08-01 00:00:00', 'failed', 0),
+])
+def test_event_stream_scoping_keeps_current_rows_and_rejects_future_batch(tmp_path, new_time, expected, count):
+    dataset, binding, _ = _event_stream_contract()
+    dataset = replace(dataset, empty_data_policy='allowed', provider_bindings=(binding,))
+    db = tmp_path / 'facts.sqlite'
+    _database(db)
+    outcome = ProviderCallOutcome(state='success', rows=(
+        {'datetime': '2026-07-30 23:59:00', 'title': 'old', 'content': None},
+        {'datetime': new_time, 'title': 'new', 'content': None},
+    ), provider_code=0, error_code=None, error_message=None)
+    result = native_ingest.collect_provider_native_dataset(
+        db, registry=DatasetRegistry((dataset,)), collector=_FakeCollector(outcome),
+        dataset_id=dataset.dataset_id,
+        request_window={'start_time': '2026-07-31 00:00:00', 'end_time': '2026-07-31 23:59:59'},
+        attempt_id='mixed-page', started_at='2026-07-31T02:00:00Z',
+    )
+    assert result.status == expected
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT count(*) FROM provider_dataset_rows').fetchone()[0] == count
+
+
+def test_event_stream_fanout_preserves_current_source_when_sibling_page_is_old(tmp_path):
+    dataset, binding, _ = _event_stream_contract()
+    binding = replace(binding, fanout=FanoutPolicy(strategy='literal_values', parameter='symbol', values=('old', 'current'), batch_size=1))
+    dataset = replace(dataset, empty_data_policy='allowed', provider_bindings=(binding,))
+    db = tmp_path / 'facts.sqlite'
+    _database(db)
+    outcomes = {
+        source: ProviderCallOutcome(state='success', rows=({'datetime': stamp, 'title': source, 'content': None},), provider_code=0, error_code=None, error_message=None)
+        for source, stamp in [('old', '2026-07-30 23:59:00'), ('current', '2026-07-31 09:00:00')]
+    }
+    result = native_ingest.collect_provider_native_dataset(
+        db, registry=DatasetRegistry((dataset,)), collector=_FanoutOutcomeCollector(outcomes),
+        dataset_id=dataset.dataset_id,
+        request_window={'start_time': '2026-07-31 00:00:00', 'end_time': '2026-07-31 23:59:59'},
+        attempt_id='mixed-sources', started_at='2026-07-31T02:00:00Z',
+    )
+    assert result.status == 'success'
+    assert result.counts.committed == 1
+    with sqlite3.connect(db) as conn:
+        assert sorted(row[0] for row in conn.execute('SELECT status FROM market_ingest_runs')) == ['empty', 'success']
+        payload = json.loads(conn.execute('SELECT payload_json FROM provider_dataset_rows').fetchone()[0])
+    assert payload['title'] == 'current'
