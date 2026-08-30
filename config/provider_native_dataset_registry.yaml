@@ -37012,7 +37012,7 @@ datasets:
   market: GLOBAL
   entity_type: provider_row
   data_classification: objective_factual
-  schema_version: 1.0.0
+  schema_version: 1.1.0
   cadence_class: event
   timezone: America/New_York
   freshness_sla_seconds: 86400
@@ -37039,11 +37039,15 @@ datasets:
     - name: window_end
       declared_source_type: datetime
       required: true
+    - name: publication_provenance_mode
+      declared_source_type: str
+      required: false
     request_shape: event_or_intraday_window
     request_template:
       extraction_schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"url":{"type":"string"},"published_at":{"type":"string"}},"required":["title","url"],"additionalProperties":true}}},"required":["items"]}'
       max_age_ms: '900000'
       prompt: 只抽取页面中客观存在的新闻条目：标题、原文链接、页面显示的发布日期。禁止生成摘要、情绪判断或任何加工结论；禁止输出页面上不存在的内容。
+      publication_provenance_mode: raw_item_v1
       timeout_ms: '30000'
       window_end: ${window.end_time}
       window_start: ${window.start_time}
@@ -37125,6 +37129,24 @@ datasets:
     filterable: true
     sortable: true
   - name: summary
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: provider_published_at
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: raw_item_json
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: publication_precision
     logical_type: text
     nullable: true
     selectable: true
