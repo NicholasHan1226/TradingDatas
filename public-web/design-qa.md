@@ -741,3 +741,39 @@ handoff items. No merge or deployment is included in this round.
   through the updated transport. No whole-library live rescan or Jupyter rerun.
 - Browser-policy denial remains unresolved. No page inspection, account access,
   source PDF redistribution, production change or automated publication occurred.
+
+## Authorized desktop browser acceptance — 2026-08-30
+
+Nicholas explicitly authorized renewed preview access. The same in-app browser
+successfully opened `http://127.0.0.1:5186/research`; the prior denial no longer
+blocked this attempt. No alternate browser, host, port or indirect route was
+used. This supersedes the unresolved-access statements above, not other pending
+acceptance. Inspected the build present at `414bca3` (unchanged from `0b42afd`).
+
+- At the observed 1280px viewport, Chinese/light Featured, English/dark Topics,
+  Nelson/Siegel in both languages and the Chinese minute-bar tutorial rendered.
+  Screenshots and DOM readings showed no page-wide horizontal overflow on the
+  inspected surfaces; viewport screenshots, not a stitched full-page capture,
+  were used for visual judgments. This is not a mobile check.
+- Topics showed 200 works. Macro & fixed income selected 23; Next reached page
+  2/2. Opening CoVaR and using Back to Research returned to that topic/page.
+  Selecting Primary sources produced a clear zero-result state and reset page.
+- Bookmarking CoVaR updated the count and Saved state; the test bookmark was
+  removed. Copy citation displayed its success feedback; clipboard contents and
+  permission-denial behavior were not independently checked in the browser.
+- Chinese query 收益率曲线 returned English results. Three ArrowDown presses and
+  Enter opened Nelson/Siegel and focused its H1. Its new paragraphs and source
+  edition limits rendered in English; a fresh navigation preserved English.
+  System language selection became pressed and resolved to English in this
+  environment; an OS-language change was not simulated.
+- Minute-bar tutorial was found through Chinese global search. Running its
+  synthetic example visibly produced three rows: observed/missing/observed and
+  prices 100/null/102. Download links included the Chinese notebook. No native
+  download completion or Jupyter UI claim follows from their presence.
+- Restored Chinese/light Featured and removed the two test search entries.
+  No authenticated account, external source, provider or production operation.
+
+Remaining: mobile/tablet rendering, full keyboard traversal and screen-reader
+speech, clipboard-denial UI, native download completion, Dechow/Dichev full text,
+exact candidate CI, predecessor/main integration and independent Datas PM review.
+No code or build changes were needed for these inspected desktop flows.
