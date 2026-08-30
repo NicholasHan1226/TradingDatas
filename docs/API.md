@@ -24,6 +24,11 @@ schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state�
 在 SQLite 或 provider 访问前 fail closed。
 
 catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取时钟判断状态。
+`market=CN`、`timezone=Asia/Shanghai` 的分钟/收盘日频 success 在下一配置开窗前按前一配置工作日收盘锚点
+判断 freshness，开窗后恢复原 SLA 比较。该边界与 query 共用读取投影，不更改实际
+`data_through`/`observed_at`，也不等于实时新数据、节假日日历或全历史完整性。缺失前一
+时段数据、过期 empty、失败回执仍如实降级。固定读取 policy 不可用时 fail closed；
+配置来源及边界见 [运行说明](OPERATIONS.md)。
 `entitlement` 仅表示 provider 侧真实观测到的权限状态。当前 `provider=tushare` 的权限证据来自 `transport_service=quicksync` 的有界真实调用；凭证存在、官方积分、静态目录可见或 HTTP 200 都不能单独证明 QuickSync 权限、频控或数据可用性。
 
 `schema_version` 表示当前 provider-neutral 可读合同，而不是客户端对官方文档字段的假设。
