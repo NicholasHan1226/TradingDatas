@@ -11,7 +11,9 @@ test("registers a dedicated login route backed by the existing account session",
   assert.match(appSource, /"login", "account"/);
   assert.match(appSource, /primaryRoute === "login"/);
   assert.match(appSource, /onSubmit=\{connectAccount\}/);
-  assert.match(appSource, /window\.history\.replaceState\(\{\}, "", "\/account"\)/);
+  assert.match(appSource, /const destination = safeLoginDestination\(routeSearch\)/);
+  assert.match(appSource, /window\.history\.replaceState\(\{\}, "", destination\)/);
+  assert.match(appSource, /accountViewState !== "authenticated" \|\| route !== "login"/);
 });
 
 test("requires the same-site gateway and retires browser bearer storage", () => {

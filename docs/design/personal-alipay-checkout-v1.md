@@ -4,6 +4,12 @@ Decision: owner accepted active period purchase and manual renewal on 2026-08-30
 Status: design contract only; no merchant contract, payment request, callback,
 identity migration or entitlement activation is implemented by this document.
 
+Owner decision, 2026-08-30: pause merchant onboarding and real-payment closure.
+Prepare the product flow only. The owner confirmed the website has no ICP filing.
+Do not submit onboarding, accept the payment agreement, buy hosting, configure
+live payment secrets, or enable personal-transfer workarounds.
+Implementation and resumption gates: [Payment preparation](payment-flow-preparation-v1.md).
+
 ## Product contract
 
 - Keep the existing TradingDatas Account. Phone and email are independently
@@ -28,9 +34,12 @@ identity migration or entitlement activation is implemented by this document.
    (page updated 2026-08-28) requires authoritative notification or query results,
    verification of notification signatures and matching app/order/amount. A
    browser return is not payment evidence.
-3. [Onboarding](https://aipay.alipay.com/open-flow/products?product=web) presents
-   an Alipay QR login before account-specific eligibility/contract details. This
-   task stopped there; no agreement was accepted and no real charge was made.
+3. After the owner signed in, [Onboarding](https://aipay.alipay.com/open-flow/product)
+   showed desktop-web collection, an ICP-filed website URL requirement, and a
+   displayed 0.6% rate through 2026-12-31. These are dated UI observations, not a
+   signed contract. The agreement remained unchecked and the application was not
+   submitted. The category tree contained Internet data services, but no category
+   was selected or approved. Transaction/daily limits remain unknown.
 
 Do not infer financial-data resale eligibility from a general personal-account
 feature. Actual business category, supporting documents, seller identity,

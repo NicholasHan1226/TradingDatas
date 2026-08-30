@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 
 // Local, single-reviewer synthetic UI harness. No real credentials/upstream.
 const root = fileURLToPath(new URL("../dist/client/", import.meta.url));
-const port = 5193;
+const port = Number(process.env.TRADINGDATAS_QA_PORT || 5193);
+if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Invalid loopback QA port");
 let signedIn = false;
 let scenario = "normal";
 let logoutAttempts = 0;

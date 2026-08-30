@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowRight, EnvelopeSimple, Key, ShieldCheck, DeviceMobile } from "@phosphor-icons/react";
 
-export function LoginPage({ locale, theme, token, onTokenChange, onSubmit, loading, submitting, error, navigate }) {
+export function LoginPage({ locale, theme, returnPath = "/account", token, onTokenChange, onSubmit, loading, submitting, error, navigate }) {
   const [method, setMethod] = useState("key");
   const zh = locale === "zh";
   const methods = [{ id: "key", label: zh ? "访问密钥" : "Access key", Icon: Key }, { id: "phone", label: zh ? "手机号" : "Phone", Icon: DeviceMobile }, { id: "email", label: zh ? "邮箱" : "Email", Icon: EnvelopeSimple }];
@@ -23,6 +23,7 @@ export function LoginPage({ locale, theme, token, onTokenChange, onSubmit, loadi
     </div>
     <div className="login-panel">
       <div className="login-panel-copy"><span className="mono-kicker">TRADINGDATAS ACCOUNT</span><h1 id="login-title">{zh ? "欢迎回来" : "Welcome back"}</h1><p>{zh ? "在同一个账户里管理数据访问与订阅。" : "Your data access and subscription, in one account."}</p></div>
+      {returnPath !== "/account" && <p className="login-return-note">{zh ? "登录后回到刚才的购买预览。所选套餐与周期不会丢失，也不会自动下单。" : "After sign-in, return to your selected plan and term. No order is placed automatically."} <a className="text-link" href={returnPath} onClick={(event) => navigate(event, returnPath)}>{zh ? "先返回预览" : "Back to preview"}</a></p>}
       <div className="login-methods" aria-label={zh ? "登录方式" : "Sign-in method"}>
         {methods.map(({ id, label, Icon }) => <button type="button" key={id} aria-pressed={method === id} aria-controls="login-method-panel" disabled={submitting} onClick={() => setMethod(id)}><Icon size={17} />{label}</button>)}
       </div>

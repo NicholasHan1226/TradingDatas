@@ -17,7 +17,8 @@ Data/Features/Recipes/Research/Pricing/Docs navigation, a task-oriented Data cat
 the connected-interface index, collection-history ledger, reviewed candidate-source landscape and phased integration roadmap, and
 alternative-data ordering proposal, an external-paper/industry-research/case
 library with internal detail records, transparent Feature definitions, versioned
-Recipe examples, three proposed A-share workflow packages, a platform-wide
+Recipe examples, three base-data request-rate tiers with confirmed monthly/annual
+price display (checkout not yet available), a platform-wide
 searchable Docs hub with article routes, independent history-aware product pages, a grouped Account workspace
 containing `zh-CN`/`en` and system/light/dark settings, and a client-only Agent
 setup prompt flow. `src/productManifest.js` is explicitly a design contract;
@@ -39,6 +40,13 @@ python scripts/build-connected-interface-snapshot.py --check
 ```
 
 ## Checks
+
+Purchase preparation: `/pricing` opens the non-paying
+`/pricing/preview?plan=basic&period=monthly`. Six combinations share `src/pricing.js`;
+selection survives refresh and login via a strict same-site return allowlist.
+It never creates orders or changes grants. Account billing remains unavailable.
+Payment onboarding is paused; no merchant calls or live purchase switch exist.
+See [flow and resumption gates](../docs/design/payment-flow-preparation-v1.md).
 
 ```bash
 npm run build
@@ -88,6 +96,8 @@ Local synthetic UI verification: `npm run build`, then
 `node scripts/login-qa-server.mjs` and open `http://127.0.0.1:5193/__qa`.
 The harness binds only loopback, is single-reviewer, never calls upstream, and
 accepts only synthetic test strings for review. It is not a production login test.
+Use `TRADINGDATAS_QA_PORT=5194 node scripts/login-qa-server.mjs` for an isolated
+purchase-flow review while another login harness is running. Binding stays loopback.
 
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,

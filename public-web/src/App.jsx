@@ -23,6 +23,9 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { productManifest } from "./productManifest";
+import { formatCny, getBasePlanCards, getPlanPrice } from "./pricing";
+import { buildPreviewPath, readPreviewSelection, safeLoginDestination } from "./purchasePreview";
+import { PurchasePreview } from "./PurchasePreview.jsx";
 import connectedInterfaceSnapshot from "./connectedInterfaceSnapshot.json";
 import {
   collectionHistory,
@@ -447,9 +450,10 @@ function SectionNav({ items, active, onNavigate, locale }) {
   );
 }
 
-function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate }) {
+function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate, billingPeriod, setBillingPeriod }) {
   const plan = plans[activeIndex];
   const zh = locale === "zh";
+  const price = getPlanPrice(plan.id, billingPeriod);
   const move = (direction) => onChange((activeIndex + direction + plans.length) % plans.length);
 
   const sharedFacts = zh ? [
@@ -466,19 +470,30 @@ function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate }) 
 
   return <section className="base-plan-showcase" aria-labelledby="base-plan-showcase-title">
     <header className="base-plan-switcher">
-      <div><span className="mono-kicker">{zh ? "3 档基础套餐" : "3 BASE PLANS"}</span><h2 id="base-plan-showcase-title">{zh ? "选择适合的数据范围。" : "Choose the data scope you need."}</h2></div>
+      <div><span className="mono-kicker">{zh ? "3 档基础套餐" : "3 BASE PLANS"}</span><h2 id="base-plan-showcase-title">{zh ? "选择你的请求频率。" : "Choose your request rate."}</h2></div>
       <div className="base-plan-controls">
         <button type="button" className="base-plan-arrow is-prev" onClick={() => move(-1)} aria-label={zh ? "上一档套餐" : "Previous plan"}><ArrowRight /></button>
-        <div role="tablist" aria-label={zh ? "基础套餐" : "Base plans"}>{plans.map((candidate, index) => <button type="button" role="tab" aria-selected={activeIndex === index} className={activeIndex === index ? "is-active" : ""} key={candidate.name} onClick={() => onChange(index)}><span>0{index + 1}</span>{candidate.short}</button>)}</div>
+        <div role="group" aria-label={zh ? "基础套餐" : "Base plans"}>{plans.map((candidate, index) => <button type="button" aria-pressed={activeIndex === index} className={activeIndex === index ? "is-active" : ""} key={candidate.name} onClick={() => onChange(index)}><span>0{index + 1}</span>{candidate.short}</button>)}</div>
         <button type="button" className="base-plan-arrow is-next" onClick={() => move(1)} aria-label={zh ? "下一档套餐" : "Next plan"}><ArrowRight /></button>
       </div>
     </header>
+
+    <div className="base-plan-billing">
+      <div role="group" aria-label={zh ? "付款周期" : "Billing period"}>
+        {["monthly", "annual"].map((period) => <button key={period} type="button" aria-pressed={billingPeriod === period} onClick={() => setBillingPeriod(period)}>{period === "monthly" ? (zh ? "月付" : "Monthly") : (zh ? "年付" : "Annual")}{period === "annual" && <small>{zh ? "9 折" : "Save 10%"}</small>}</button>)}
+      </div>
+      <span>{zh ? "人民币 CNY · 支付暂未开放" : "CNY · Checkout not yet available"}</span>
+    </div>
 
     <article className={`base-plan-product tone-${plan.tone}`} aria-live="polite">
       <div className="base-plan-art" aria-hidden="true"><span /><span /><span /><i /><i /></div>
       <div className="base-plan-identity">
         <span>{plan.label}</span>
         <h3>{plan.name}</h3>
+        <div className="base-plan-price">
+          <div><strong>{formatCny(price.totalMinor, locale)}</strong><span>{billingPeriod === "annual" ? (zh ? "/ 年" : "/ year") : (zh ? "/ 月" : "/ month")}</span></div>
+          <p>{billingPeriod === "annual" ? (zh ? `按年一次支付，折合 ${formatCny(price.monthlyEquivalentMinor, locale)} / 月；每年省 ${formatCny(price.savingsMinor, locale)}。` : `Billed annually. Equivalent to ${formatCny(price.monthlyEquivalentMinor, locale)} / month; save ${formatCny(price.savingsMinor, locale)} per year.`) : (zh ? "按月支付。选择年付可节省 10%。" : "Billed monthly. Save 10% with annual billing.")}</p>
+        </div>
         <p>{plan.audience}</p>
         <div className="base-plan-position"><small>{zh ? "适用范围" : "POSITION"}</small><strong>{plan.position}</strong></div>
       </div>
@@ -490,8 +505,8 @@ function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate }) 
         <div><span>{zh ? "数据覆盖" : "COVERAGE"}</span><strong>{plan.coverage}</strong></div>
         <div><span>{zh ? "历史深度" : "HISTORY"}</span><strong>{plan.history}</strong></div>
         <div><span>{zh ? "请求频率" : "REQUEST RATE"}</span><strong>{plan.runtime}</strong></div>
-        <div><span>{zh ? "价格" : "PRICE"}</span><strong>{zh ? "待正式发布" : "To be announced"}</strong></div>
-        <a href="/pricing/beta" onClick={(event) => onNavigate(event, "/pricing/beta")}>{zh ? "申请这一档" : "Request this plan"}<ArrowRight /></a>
+        <a href={buildPreviewPath(plan.id, billingPeriod)} onClick={(event) => onNavigate(event, buildPreviewPath(plan.id, billingPeriod))}>{zh ? "查看购买预览" : "Preview this plan"}<ArrowRight /></a>
+        <a className="base-plan-access" href={`/login?next=${encodeURIComponent(buildPreviewPath(plan.id, billingPeriod))}`} onClick={(event) => onNavigate(event, `/login?next=${encodeURIComponent(buildPreviewPath(plan.id, billingPeriod))}`)}>{zh ? "已有访问密钥？登录" : "Have an access key? Sign in"}<ArrowRight /></a>
       </div>
       <span className="base-plan-count">0{activeIndex + 1} / 0{plans.length}</span>
     </article>
@@ -816,6 +831,7 @@ export function App() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [route, setRoute] = useState(getRouteFromPath);
+  const [routeSearch, setRouteSearch] = useState(() => window.location.search);
   const [accountSection, setAccountSection] = useState("overview");
   const [accountDocSlug, setAccountDocSlug] = useState("start-1");
   const [bookmarks, setBookmarks] = useState(() => {
@@ -837,7 +853,8 @@ export function App() {
   const [dataFamily, setDataFamily] = useState("all");
   const [dataStage, setDataStage] = useState("all");
   const [docsCategory, setDocsCategory] = useState("all");
-  const [pricingPlanIndex, setPricingPlanIndex] = useState(0);
+  const [pricingPlanIndex, setPricingPlanIndex] = useState(() => Math.max(0, getBasePlanCards("en").findIndex((plan) => plan.id === readPreviewSelection(window.location.search)?.plan.id)));
+  const [pricingBillingPeriod, setPricingBillingPeriod] = useState(() => readPreviewSelection(window.location.search)?.period || "monthly");
   const [accountConnectionRevision, setAccountConnectionRevision] = useState(0);
   const [accountTokenInput, setAccountTokenInput] = useState("");
   const [accountData, setAccountData] = useState(null);
@@ -953,11 +970,13 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!accountData || route !== "login") return;
+    if (accountViewState !== "authenticated" || route !== "login") return;
     setAccountTokenInput("");
-    window.history.replaceState({}, "", "/account");
-    setRoute("account");
-  }, [accountData, route]);
+    const destination = safeLoginDestination(routeSearch);
+    window.history.replaceState({}, "", destination);
+    setRoute(getRouteFromPath());
+    setRouteSearch(window.location.search);
+  }, [accountViewState, route, routeSearch]);
 
   async function connectAccount(event) {
     event.preventDefault();
@@ -1084,10 +1103,18 @@ export function App() {
   }, [globalQuery]);
 
   useEffect(() => {
-    const syncRoute = () => setRoute(getRouteFromPath());
+    const syncRoute = () => { setRoute(getRouteFromPath()); setRouteSearch(window.location.search); };
     window.addEventListener("popstate", syncRoute);
     return () => window.removeEventListener("popstate", syncRoute);
   }, []);
+
+  useEffect(() => {
+    if (route !== "pricing") return;
+    const selection = readPreviewSelection(routeSearch);
+    if (!selection) return;
+    setPricingPlanIndex(getBasePlanCards("en").findIndex((plan) => plan.id === selection.plan.id));
+    setPricingBillingPeriod(selection.period);
+  }, [route, routeSearch]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -1127,6 +1154,7 @@ export function App() {
     window.history.pushState({}, "", path);
     const pathname = new URL(path, window.location.origin).pathname;
     setRoute(pathname === "/" ? "home" : pathname.replace(/^\/+|\/+$/g, ""));
+    setRouteSearch(window.location.search);
     setMobileOpen(false);
     setAccountMenuOpen(false);
   }
@@ -1244,15 +1272,7 @@ export function App() {
       { key: "security", label: "Security", description: "Manage sign-in sessions, account security, and access audit." },
     ] },
   ];
-  const packageCards = locale === "zh" ? [
-    { name: "基础版", short: "基础", label: "BASE / 01", audience: "覆盖国内市场研究所需的核心日频、公司、事件与参考数据。", position: "完整的 A 股基础数据入口", coverage: "核心日频与公司数据", history: "日频完整历史", runtime: "200 次 / 分钟", tone: "research", includes: ["A 股日线、复权与交易日历", "公司基础、财务与公司行动", "公告、指数、基金与宏观参考", "每日请求总量不限"] },
-    { name: "专业版", short: "专业", label: "PRO / 02", audience: "在基础版之上加入历史分钟、竞价与更完整的国内交易数据。", position: "面向更高频的数据准备", coverage: "基础版 + 历史分钟", history: "日频与分钟历史", runtime: "600 次 / 分钟", tone: "systematic", includes: ["包含基础版全部数据", "A 股历史分钟与集合竞价", "ETF、指数、期货与期权历史分钟", "每日请求总量不限"] },
-    { name: "旗舰版", short: "旗舰", label: "FLAGSHIP / 03", audience: "覆盖当前最高等级的基础金融数据范围与运行能力。", position: "完整基础数据能力候选", coverage: "专业版 + 实时数据候选", history: "历史数据与盘中候选", runtime: "1,000 次 / 分钟", tone: "trading", includes: ["包含专业版全部数据", "A 股、ETF 与指数实时日线候选", "分钟级实时数据候选", "每日请求总量不限"] },
-  ] : [
-    { name: "Basic", short: "Basic", label: "BASE / 01", audience: "Core daily, company, event, and reference data for China's domestic markets.", position: "The complete A-share data foundation", coverage: "Core daily and company data", history: "Complete daily history", runtime: "200 requests / minute", tone: "research", includes: ["A-share daily, adjusted prices, and calendar", "Company master, financials, and actions", "Announcements, indices, funds, and macro reference", "No daily request cap"] },
-    { name: "Professional", short: "Pro", label: "PRO / 02", audience: "Adds historical minutes, auctions, and broader domestic trading data to Basic.", position: "For higher-frequency data preparation", coverage: "Basic + historical minutes", history: "Daily and minute history", runtime: "600 requests / minute", tone: "systematic", includes: ["Everything in Basic", "A-share historical minutes and auctions", "ETF, index, futures, and options history", "No daily request cap"] },
-    { name: "Flagship", short: "Flagship", label: "FLAGSHIP / 03", audience: "The broadest proposed base financial-data scope and runtime profile.", position: "Full base-data capability candidate", coverage: "Professional + real-time candidates", history: "History plus intraday candidates", runtime: "1,000 requests / minute", tone: "trading", includes: ["Everything in Professional", "Candidate A-share, ETF, and index real-time daily", "Candidate real-time minute data", "No daily request cap"] },
-  ];
+  const packageCards = getBasePlanCards(locale);
   const readingSteps = locale === "zh" ? [
     ["01", "先看研究问题", "这篇内容试图解释、测量或重建什么。"],
     ["02", "再看证据与数据", "需要哪些市场、财务、另类数据和时间窗口。"],
@@ -1269,13 +1289,13 @@ export function App() {
     { key: "data", label: "数据说明", items: [["数据分类与模板", "市场、domain、字段、覆盖、更新时间与 receipt 的统一结构。"], ["另类数据", "来源、再分发边界、试用、加购和授权读回。"], ["数据凭证", "如何阅读 source、quality、freshness、coverage 与 receipt。"]] },
     { key: "api", label: "API 与 Agent", items: [["Catalog", "发现已授权数据集及其结构、覆盖与限制。"], ["Query", "字段、游标、预算、错误和 fail-closed 行为。"], ["Agent 与 MCP", "Claude、Codex、OpenClaw、Hermes 的安全接入说明。"]] },
     { key: "learn", label: "学习与方法", items: [["Research 阅读指南", "如何阅读外部论文、行业研究和案例。"], ["研究方法", "查询、连接、时点对齐、复权、缺失与验证。"]] },
-    { key: "commerce", label: "套餐与账户", items: [["套餐比较", "基础版、专业版与旗舰版的范围、历史深度和目标运行档。"], ["订阅与账单", "有效期、试用、加购、续费、账单和发票。"], ["账户与安全", "用量、密钥、会话、语言、主题与访问审计。"]] },
+    { key: "commerce", label: "套餐与账户", items: [["套餐比较", "相同基础数据，三档请求频率及月付、年付价格；支付尚未开放。"], ["订阅与账单", "有效期、试用、加购、续费、账单和发票。"], ["账户与安全", "用量、密钥、会话、语言、主题与访问审计。"]] },
   ] : [
     { key: "start", label: "Get started", items: [["Platform overview", "How Data, Research, Pricing, site search, and Account fit together."], ["First connection", "Create an account, choose a package, generate a key, and make the first Catalog request."]] },
     { key: "data", label: "Data guide", items: [["Classification & template", "The shared market, domain, field, coverage, update, and receipt structure."], ["Alternative data", "Source, redistribution boundary, trial, add-on, and entitlement readback."], ["Data receipts", "How to read source, quality, freshness, coverage, and receipt evidence."]] },
     { key: "api", label: "API & Agents", items: [["Catalog", "Discover authorized datasets, schemas, coverage, and limitations."], ["Query", "Fields, cursors, budgets, errors, and fail-closed behavior."], ["Agents & MCP", "Safe setup for Claude, Codex, OpenClaw, Hermes, and other Agents."]] },
     { key: "learn", label: "Learning & methods", items: [["Research reading guide", "How to read external papers, industry research, and cases."], ["Research methods", "Querying, joins, point-in-time alignment, adjustment, missingness, and validation."]] },
-    { key: "commerce", label: "Plans & account", items: [["Compare packages", "Scope, history depth, and target runtime for Basic, Professional, and Flagship."], ["Subscription & billing", "Expiry, trials, add-ons, renewal, billing, and invoices."], ["Account & security", "Usage, keys, sessions, language, appearance, and access audit."]] },
+    { key: "commerce", label: "Plans & account", items: [["Compare packages", "The same base data, three request rates, and monthly/annual prices; checkout is not yet available."], ["Subscription & billing", "Expiry, trials, add-ons, renewal, billing, and invoices."], ["Account & security", "Usage, keys, sessions, language, appearance, and access audit."]] },
   ];
   const allDocs = docsCategories.flatMap((category) => category.items.map(([title, description], index) => ({ category: category.key, categoryLabel: category.label, title, description, slug: `${category.key}-${index + 1}` })));
   const visibleDocs = allDocs.filter((entry) => {
@@ -1604,10 +1624,10 @@ export function App() {
           <header className="pricing-intro">
             <span className="mono-kicker">BASE DATA / THREE PLANS</span>
             <h1>{locale === "zh" ? "三档基础套餐。" : "Three base-data plans."}</h1>
-            <p>{locale === "zh" ? "基础版、专业版、旗舰版。数据范围、历史深度与运行能力逐档扩展；本页套餐均不包含另类数据。" : "Basic, Professional, and Flagship. Data scope, history, and runtime expand by tier. Alternative data is not included here."}</p>
+            <p>{locale === "zh" ? "相同基础数据，200 / 600 / 1,000 次每分钟。没有每日额度限制，另类数据独立加购。" : "The same base data, at 200 / 600 / 1,000 requests per minute. No daily quota. Alternative data is a separate add-on."}</p>
           </header>
-          <BasePlanShowcase locale={locale} plans={packageCards} activeIndex={pricingPlanIndex} onChange={setPricingPlanIndex} onNavigate={navigate} />
-          <p className="commercial-disclaimer">{locale === "zh" ? "本页固定三档基础套餐结构。价格、实时数据开放范围和最终授权仍以正式商业合同及账户读回为准。" : "This page fixes the three-tier base-plan structure. Price, real-time scope, and final grants remain subject to the commercial contract and authenticated account readback."}</p>
+          <BasePlanShowcase locale={locale} plans={packageCards} activeIndex={pricingPlanIndex} onChange={setPricingPlanIndex} onNavigate={navigate} billingPeriod={pricingBillingPeriod} setBillingPeriod={setPricingBillingPeriod} />
+          <p className="commercial-disclaimer">{locale === "zh" ? "价格已确定，在线订阅与支付尚未开放。年付为月价 × 12 × 90%，按年一次支付，不代表已启用自动续费。具体数据开放范围、历史覆盖和有效权限以数据产品说明及账户读回为准。" : "Prices are set; online subscriptions and checkout are not yet available. Annual billing is monthly price × 12 × 90%, paid yearly; automatic renewal is not enabled. Available data, historical coverage, and effective access remain subject to product disclosures and authenticated account readback."}</p>
         </section>}
 
         {primaryRoute === "pricing" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/pricing/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "套餐比较" }, { path: "/pricing/alternative", label: "另类数据加购" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Compare plans" }, { path: "/pricing/alternative", label: "Alternative add-ons" }, { path: "/pricing/beta", label: "Request beta" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / OPTIONAL PRODUCTS</span><h1>{locale === "zh" ? "按具体产品试用，再明确选择是否加购。" : "Trial a specific product, then explicitly choose whether to add it."}</h1><p>{locale === "zh" ? "Pizza 指数、客流、招聘、应用关注等分别展示来源、授权范围和未来价格，不把整个另类数据分类打成一个模糊套餐。" : "Pizza Index, foot traffic, hiring, app attention, and other products show source, entitlement, and future price separately—not as one vague alternative-data bundle."}</p></div><MaturityTag status="planned" locale={locale} /></div><AlternativeProductList locale={locale} onNavigate={navigate} /><p className="commercial-disclaimer">{locale === "zh" ? "试用期限、价格、支付、续费和可购买范围等待 commerce backend 合同。" : "Trial term, price, payment, renewal, and purchasable scope await the commerce backend contract."}</p></section>}
@@ -1634,8 +1654,10 @@ export function App() {
 
         {primaryRoute === "docs" && routeSlug && <section className="object-detail-page docs-article"><a className="object-back" href="/docs" onClick={(event) => navigate(event, "/docs")}>← {locale === "zh" ? "返回文档" : "Back to Docs"}</a><div className="object-detail-hero"><div><span className="mono-kicker">{selectedDoc?.categoryLabel?.toUpperCase() || "DOCUMENTATION"}</span><h1>{selectedDoc?.title || (locale === "zh" ? "说明未找到" : "Guide not found")}</h1><p>{selectedDoc?.description}</p></div><span className="maturity-tag">{locale === "zh" ? "版本化说明" : "Versioned guide"}</span></div>{selectedDoc && <div className="docs-article-body"><aside><span>{locale === "zh" ? "本文回答" : "THIS GUIDE ANSWERS"}</span><p>{selectedDoc.description}</p><span>{locale === "zh" ? "权威来源" : "AUTHORITY"}</span><p>{selectedDoc.category === "api" ? "docs/API.md + authenticated runtime" : selectedDoc.category === "data" ? "registry + facts/receipts + docs/PRODUCT.md" : "docs/PRODUCT.md + backend contract"}</p></aside><article><h2>{locale === "zh" ? "说明结构" : "Guide structure"}</h2><p>{locale === "zh" ? "每篇文档会明确当前能力、目标能力、使用步骤、限制、错误状态、相关对象与下一步。它不会把产品提案写成生产事实。" : "Every guide identifies current capability, target capability, steps, limits, error states, related objects, and next action. It never turns a product proposal into a production fact."}</p><h2>{locale === "zh" ? "相关入口" : "Related entries"}</h2><div className="detail-actions"><a className="text-link" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "数据目录" : "Data catalog"}<ArrowRight /></a><a className="text-link" href="/recipes" onClick={(event) => navigate(event, "/recipes")}>Recipes<ArrowRight /></a></div></article></div>}</section>}
 
+        {primaryRoute === "pricing" && routeSlug === "preview" && <PurchasePreview locale={locale} selection={readPreviewSelection(routeSearch)} accountState={accountViewState} navigate={navigate} onRetry={() => setAccountConnectionRevision((value) => value + 1)} onAccount={() => openAccountSection("subscription")} />}
+
         {primaryRoute === "login" && (
-          <LoginPage locale={locale} theme={theme} token={accountTokenInput} onTokenChange={(value) => { setAccountTokenInput(value); setAccountError(""); }} onSubmit={connectAccount} loading={accountLoading} submitting={accountLoginPending} error={accountError} navigate={navigate} />
+          <LoginPage locale={locale} theme={theme} returnPath={safeLoginDestination(routeSearch)} token={accountTokenInput} onTokenChange={(value) => { setAccountTokenInput(value); setAccountError(""); }} onSubmit={connectAccount} loading={accountLoading} submitting={accountLoginPending} error={accountError} navigate={navigate} />
         )}
 
         {primaryRoute === "account" && (
@@ -1700,7 +1722,7 @@ export function App() {
                         <div><span>{locale === "zh" ? "授权模式" : "GRANT MODE"}</span><strong>{accountData.data_category_mode === "all" ? (locale === "zh" ? "全部已登记分类" : "All registered categories") : (locale === "zh" ? "按分类授权" : "Category allowlist")}</strong></div>
                       </section>
                       <div className="account-boundary-note"><ShieldCheck /> <div><strong>{locale === "zh" ? "另类数据加购尚未单独投影" : "Alternative-data add-ons are not projected separately yet"}</strong><p>{locale === "zh" ? "当前接口只返回有效数据分类授权。待加购合同上线后，这里再显示试用、单独有效期和续费状态。" : "The current contract returns effective category grants only. Trials, separate expiry, and renewal will appear after the add-on contract is live."}</p></div></div>
-                      <a className="account-inline-action" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐" : "View plans"}<ArrowRight /></a>
+                      <a className="account-inline-action" href={packageCards.some((plan) => plan.id === accountData.tier) ? buildPreviewPath(accountData.tier, "monthly") : "/pricing"} onClick={(event) => navigate(event, packageCards.some((plan) => plan.id === accountData.tier) ? buildPreviewPath(accountData.tier, "monthly") : "/pricing")}>{locale === "zh" ? "预览购买与续费 · 暂未开放支付" : "Preview purchase & renewal · payment unavailable"}<ArrowRight /></a>
                     </div>
                   ) : (
                     <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后查看套餐与授权" : "Sign in to view plan and access"}</strong><p>{locale === "zh" ? "这里只显示当前租户的真实套餐、有效期和分类授权。" : "Only the current tenant's live plan, expiry, and category grants appear here."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
@@ -1775,7 +1797,7 @@ export function App() {
                   </div>
                 ) : accountSection === "billing" ? (
                   <div className="account-billing-panel">
-                    <div><span className="mono-kicker">COMMERCE BOUNDARY</span><h3>{locale === "zh" ? "账单记录尚未接入。" : "Billing records are not connected yet."}</h3><p>{locale === "zh" ? "当前账户页不展示模拟订单、支付或发票。商业合同上线后，才会按当前租户返回真实记录。" : "This account page does not show simulated orders, payments, or invoices. Records will appear per tenant only after the commerce contract is live."}</p></div>
+                    <div><span className="mono-kicker">BILLING / NOT YET AVAILABLE</span><h3>{locale === "zh" ? "支付与账单暂未开放。" : "Payments and billing are not open yet."}</h3><p>{locale === "zh" ? "购买预览不会生成订单或账单，也不会改变现有权限。正式接通后，这里会分别展示订单、支付结果和开通状态；现在不展示模拟记录。续费需主动购买，不自动扣款。" : "A purchase preview creates no order or bill and never changes existing access. Once connected, this space will distinguish orders, payment results, and activation. No simulated records are shown. Renewals require an active purchase, with no automatic debit."}</p></div>
                     {accountData && <dl><div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountPlanLabel}</dd></div><div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div></dl>}
                     <a className="account-inline-action" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看公开套餐" : "View public plans"}<ArrowRight /></a>
                   </div>

@@ -100,6 +100,12 @@ must never invent availability or history.
 
 ## Data products, packages, and add-ons
 
+As of the owner's 2026-08-30 decision, payment activation is paused. Prepare the
+selection -> purchase preview -> sign-in return path only, with no orders,
+charges or grants created. Manual renewal/no automatic debit is confirmed.
+Implementation, state distinctions and resumption gates are recorded in
+[Payment flow preparation](design/payment-flow-preparation-v1.md).
+
 The commercial presentation may group datasets into a small number of complete
 packages organized by customer workload, instead of exposing upstream
 permissions or per-interface checkboxes. Package names, prices, dataset grants,
@@ -114,6 +120,28 @@ per-minute request limit: 200, 600, and 1000. It has no daily quota or
 commercial concurrency limit. The frontend may not grant those limits by
 itself: authenticated Account readback remains the authority for the effective
 tier, request frequency, expiry, and category access.
+
+Owner-confirmed commercial choices (2026-08-30): support both mobile-phone
+and email sign-in/registration, independently of API keys. Delivery providers,
+verified identity binding, recovery, and production activation are not yet
+implemented. Both credentials must be verified before they can be linked to
+the same account; never merge accounts from matching unverified input.
+
+The approved numeric prices are 99 / 299 / 499 per month. The domestic-first
+display uses CNY (currency assumption to confirm before merchant activation).
+Annual payment is twelve monthly prices at 10% off, billed as one annual total:
+
+| Plan | Per month | Annual total | Monthly equivalent on annual plan |
+| --- | ---: | ---: | ---: |
+| Basic (`basic`) | ¥99 | ¥1,069.20 | ¥89.10 |
+| Professional (`standard`) | ¥299 | ¥3,229.20 | ¥269.10 |
+| Flagship (`flagship`) | ¥499 | ¥5,389.20 | ¥449.10 |
+
+Prices may be displayed with an explicit checkout-unavailable state; they do
+not establish a live offer, payment, automatic renewal, tax/invoice treatment,
+or data entitlement. Merchant configuration, renewal/refund policy and the
+approved sellable dataset scope remain activation gates. Implementation plan:
+[Customer identity and commerce](design/customer-identity-commerce-v1.md).
 
 The backend contract in this code tree enforces those three rolling minute
 limits, rejects commercial `daily_limit` and `max_concurrent` writes, and retains
