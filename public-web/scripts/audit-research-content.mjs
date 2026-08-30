@@ -19,13 +19,17 @@ export async function fetchEditorialSource(url, options = {}) {
   const args = ["--silent", "--show-error", "--location", "--proto", "=https", "--proto-redir", "=https", "--max-redirs", "5", "--max-time", "30"];
   if (options.method === "HEAD") args.push("--head");
   for (const [key, value] of Object.entries(options.headers || {})) args.push("--header", `${key}: ${value}`);
-  args.push("--write-out", "\nTD_EDITORIAL_HTTP:%{http_code} %{url_effective}", url);
+  args.push("--write-out", "\nTD_EDITORIAL_HTTP:%{http_code}\t%{url_effective}\t%{content_type}", url);
   const { stdout } = await run("curl", args, { signal: options.signal, maxBuffer: 4 * 1024 * 1024 });
+  return parseEditorialResponse(stdout);
+}
+
+export function parseEditorialResponse(stdout) {
   const marker = stdout.lastIndexOf("\nTD_EDITORIAL_HTTP:");
   if (marker < 0) throw new Error("missing_http_status");
-  const [statusText, finalUrl] = stdout.slice(marker + "\nTD_EDITORIAL_HTTP:".length).split(" ");
+  const [statusText, finalUrl, contentType = ""] = stdout.slice(marker + "\nTD_EDITORIAL_HTTP:".length).split("\t");
   const status = Number(statusText), body = stdout.slice(0, marker);
-  return { status, url: finalUrl, ok: status >= 200 && status < 300, json: async () => JSON.parse(body) };
+  return { status, url: finalUrl, contentType, ok: status >= 200 && status < 300, json: async () => JSON.parse(body) };
 }
 
 export function auditContent({ records = papers, guides = researchReaderNotes, tutorials = preparationTutorials, paths = readingPaths, journeys = researchJourneys, today = new Date().toISOString().slice(0, 10) } = {}) {
@@ -159,7 +163,16 @@ export async function checkLinks(urls, { fetcher = fetchEditorialSource, timeout
           await response.body?.cancel();
           response = await fetcher(url, { ...options, method: "GET", headers: { ...options.headers, Range: "bytes=0-0" } });
         }
-        results[index] = { url, finalUrl: response.url || url, status: response.status, state: classifyLink(response.status) };
+        const contentType = String(response.headers?.get?.("content-type") ?? response.contentType ?? "").split(";")[0].trim().toLowerCase();
+        // Only explicit file paths carry a format expectation. A DOI or landing
+        // page is not assumed to serve a PDF, even if its query mentions one.
+        const path = new URL(url).pathname.toLowerCase();
+        const expectedContentType = path.endsWith(".pdf") ? "application/pdf" : path.endsWith(".txt") ? "text/plain" : null;
+        let state = classifyLink(response.status);
+        if (state === "reachable_not_content_verified" && expectedContentType && contentType !== expectedContentType) {
+          state = !contentType || contentType === "application/octet-stream" ? "file_type_unconfirmed" : "unexpected_content_type";
+        }
+        results[index] = { url, finalUrl: response.url || url, status: response.status, contentType, expectedContentType, state };
         await response.body?.cancel();
       } catch (error) { results[index] = { url, state: controller.signal.aborted ? "timeout" : "network_error", error: error.name }; }
       finally { clearTimeout(timer); }

@@ -145,7 +145,10 @@ Use `npm run audit:research` for read-only structural and editorial checks befor
 refreshing any source metadata. `--links` adds bounded URL checks; `--metadata`
 compares a bounded DOI batch with current publisher-registered metadata. These
 commands report unresolved access and potential version changes without writing
-files or changing source-check dates. Limits, offsets and interpretation are in
+files or changing source-check dates. Explicit PDF/text download paths also get
+a final Content-Type check: HTML or other mismatches require review; missing or
+generic binary types remain unconfirmed. Matching headers are not full-text or
+file-byte verification. Limits, offsets and interpretation are in
 `public-web/README.md`. Summary-only records and limited-reading scopes are
 editing candidates, not automatically defective works; HTTP success and length
 are never a quality certificate.

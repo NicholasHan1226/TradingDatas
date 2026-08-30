@@ -718,3 +718,26 @@ handoff items. No merge or deployment is included in this round.
   denial remains unresolved; PDF inspection is source verification, not webpage
   visual acceptance. The PR remains draft pending authorized page review, exact
   current-head CI, predecessor/main integration and independent Datas PM review.
+
+## Direct-file maintenance checks — 2026-08-30
+
+- Current previous candidate `0b42afd` passed exact-head remote CI run
+  33313235516. This does not certify the subsequent maintenance patch.
+- A further bounded Dechow/Dichev source search found the university's linked
+  `.txt` archive URL. Direct retrieval returned HTTP 200 but `text/html` containing
+  only a Deep Blue application shell, not the paper. The original evidence gap
+  remains; no article, source dates, guide counts or public build changed.
+- Refined the existing read-only checker: final Content-Type is captured from
+  curl; explicit PDF/text paths flag mismatches and distinguish missing/generic
+  types. HTTP 403/404/429 retain their status classification. No body download is
+  added; existing HEAD-to-bounded-GET behavior for 405/501 remains unchanged.
+- Regression tests cover HTML shells, redirects, case/charset normalization,
+  absent/binary types, query-only filenames and unchanged JSON metadata parsing.
+  This is a header-level warning, not a claim to identify every soft-404 or verify
+  PDF bytes. Review results do not automatically remove sources or fail CI.
+- Fresh validation: 83 public-web tests passed; build passed and generated files
+  remained byte-identical in Git (211 metadata entries, 24 downloads). A bounded
+  live NBER PDF HEAD returned `application/pdf`; one Crossref identity matched
+  through the updated transport. No whole-library live rescan or Jupyter rerun.
+- Browser-policy denial remains unresolved. No page inspection, account access,
+  source PDF redistribution, production change or automated publication occurred.

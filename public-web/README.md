@@ -163,8 +163,14 @@ to the sorted unique URL list for links and DOI-bearing catalog order for metada
 Run the two modes separately when advancing batches.
 
 404/410 are broken links; 403/429, network and timeout results remain unresolved,
-not proof of deletion. A 200 does not detect a soft-404, authenticate full text or
-prove that the linked edition is the latest. Metadata matches do not validate
+not proof of deletion. For explicit `.pdf` / `.txt` URL paths, the report compares
+the final response Content-Type with `application/pdf` / `text/plain`. A mismatch
+(including an HTML shell returned with 200) is `unexpected_content_type`; missing
+or generic binary types are `file_type_unconfirmed`. Query-string filenames do
+not imply an expected format. These are review items, not automatic broken-link
+declarations. The check uses headers only, does not authenticate file bytes, and
+cannot detect every soft-404 or prove that the linked edition is the latest.
+Even a matching type remains `reachable_not_content_verified`. Metadata matches do not validate
 paper findings. Review warnings and incomplete external checks are visible in
 JSON but do not fail the process; structural errors and observed broken links do.
 Check the report, not just exit status. No files are written, no source dates are
