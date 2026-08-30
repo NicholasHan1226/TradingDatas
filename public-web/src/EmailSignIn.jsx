@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, ShieldCheck } from "@phosphor-icons/react";
 import { accountJson } from "./accountSession";
+import { getSystemEmailLocale } from "./systemEmailLocale";
 
 export function EmailSignIn({ locale, checking, onVerify }) {
   const zh = locale === "zh";
@@ -26,7 +27,7 @@ export function EmailSignIn({ locale, checking, onVerify }) {
     if (pending.current || checking || remaining > 0) return;
     pending.current = true; setBusy(true); setError(""); controller.current = new AbortController();
     try {
-      const payload = await accountJson("email/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), locale }), signal: controller.current.signal });
+      const payload = await accountJson("email/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), locale: getSystemEmailLocale() }), signal: controller.current.signal });
       if (!mounted.current) return;
       if (payload.delivery !== "accepted" || typeof payload.challenge_id !== "string" || !Number.isFinite(payload.retry_after)) throw new Error("account_unavailable");
       setCode(""); setChallenge({ id: payload.challenge_id, email: email.trim(), retryAt: Date.now() + payload.retry_after * 1000 });

@@ -118,7 +118,10 @@ SMS and payments stay unavailable.
 
 All external email uses the versioned brand templates in `worker/email-templates.js`,
 with explicit HTML and plain text. Sign-in and delivery-test variants support Chinese
-and English; the login sender supplies the actual challenge expiry. See
+and English; the login sender supplies the actual challenge expiry. On every send
+and resend, email language follows the primary device/browser language (`zh` or
+`zh-*` -> Chinese, otherwise English), independently of the website language toggle.
+No locale is inferred from the recipient address. See
 [Transactional email system v1](../docs/design/transactional-email-system-v1.md).
 Run `npm run preview:email` for the read-only loopback gallery at
 `http://127.0.0.1:5196/` (override with `TD_EMAIL_PREVIEW_PORT`). Its code is an

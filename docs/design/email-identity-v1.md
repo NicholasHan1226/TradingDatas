@@ -22,6 +22,10 @@ Outbound sign-in messages use the shared [transactional email template system](t
 with authored Chinese/English HTML and plain text; expiry comes from the challenge
 policy. All future external messages, including delivery tests, require a reviewed
 template. The shared rendering layer does not send mail or alter identity authority.
+Email language is resolved from the initiating device/browser's primary language
+on each send and resend, not the manual website language setting. Chinese variants
+map to `zh`; every other or missing language maps to `en`. This presentation hint
+does not influence email verification, account identity, roles or data grants.
 
 The candidate account store is a dedicated Cloudflare D1 binding `IDENTITY_DB`.
 `public-web/worker/identity-schema.sql` is for this store only; it must never run

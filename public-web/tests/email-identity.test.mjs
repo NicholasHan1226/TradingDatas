@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { identityDb } from './helpers/identity-db.mjs';
 import { createEmailIdentityHandler } from '../worker/email-identity.js';
+import { getSystemEmailLocale } from '../src/systemEmailLocale.js';
 
 test('provisioned account binding does not enable email or use the data-plane store', async () => {
   const config = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
@@ -69,6 +70,25 @@ test('the actual sender uses the shared localized HTML and text template with th
     assert.deepEqual(Object.keys(mail).sort(), ['from', 'html', 'subject', 'text', 'to']);
   }
 });
+test('device language reaches the branded sender on initial send and resend', async () => {
+  const f = fixture();
+  // Switching the website UI does not supply this field. A changed device
+  // preference is resolved again on resend, never retained from the first send.
+  for (const language of ['zh-Hant-TW', 'en-US', 'ja-JP']) {
+    const response = await f.call('email/challenge', {
+      email: 'language@example.com', locale: getSystemEmailLocale({language}),
+    });
+    assert.equal(response.status, 202);
+    const mail = f.sent.at(-1);
+    const chinese = language.startsWith('zh');
+    assert.match(mail.html, chinese ? /lang="zh-CN"/ : /lang="en"/);
+    assert.match(mail.subject, chinese ? /验证码/ : /sign-in code/i);
+    assert.match(mail.text, chinese ? /请勿分享/ : /Do not share/);
+    f.advance(61);
+  }
+  assert.equal(f.sent.length, 3);
+});
+
 test('one verified email creates one identity, no tenant or data grant; opaque cookie only', async () => {
   const f=fixture(); const c=await f.challenge(); assert.equal(c.response.status,202);
   assert.equal(c.payload.delivery,'accepted'); assert.equal(JSON.stringify(c.payload).includes(c.code),false);

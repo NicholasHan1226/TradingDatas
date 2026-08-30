@@ -22,6 +22,14 @@ All TradingDatas external emails, including future delivery tests, must use a re
 
 `public-web/worker/email-templates.js` owns the shared frame and localized content. It returns only `subject`, `html`, and `text` for the existing Resend sender. No network access or recipient handling lives in the renderer.
 
+Mail language follows the recipient device's primary browser/system language, not
+the website language toggle. `zh` / `zh-*` map to Chinese; other or missing values
+map to English. `EmailSignIn` resolves this for every send and resend. Browsers may
+override the OS language, so the website can only use the primary language the
+browser exposes. Future server-initiated notifications must save a verified
+recipient language preference first; operator language and email suffix are not
+substitutes. The current two templates do not introduce asynchronous notices.
+
 Supported template IDs:
 
 - `sign-in-code-v1`: zh / en; eight-digit code, caller-supplied expiry matching the challenge policy, one-use and non-sharing instructions, ignore-if-unrequested guidance. No code in subject/preheader.
@@ -33,7 +41,7 @@ Future security, subscription and payment messages reuse the frame but need thei
 
 Resend supports both [`html` and `text`](https://resend.com/docs/api-reference/emails/send-email); both are supplied explicitly. Reviewed against Cloudflare [Workers production guidance](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/) and types `5.20260830.1`. No dependency, binding, database or provider change is required.
 
-Verification (2026-08-30):
+Template implementation checkpoint (2026-08-30 21:15 CST):
 
 - `cd public-web && npm run test:sites`: 92/92 passed, including strict inputs, localized HTML/text equivalence, production send-path integration and build-module presence. New template tests first failed with the missing module before implementation.
 - `npm run build`: passed; all three Worker source modules match generated copies, and client JS/CSS hashes are unchanged.
@@ -43,6 +51,11 @@ Verification (2026-08-30):
 
 Design self-assessment for the local template, not mailbox certification: **91/100** — hierarchy 19/20, typography 14/15, color 14/15, spacing 14/15, instruction clarity 9/10, accessibility 8/10, brand continuity 9/10, responsive 4/5. Dynamic interaction states are not applicable; instruction clarity replaces interaction feedback for email.
 
-Three next checks: (1) separately authorize a branded test to QQ and inspect folder placement plus narrow-screen/dark rendering; (2) inspect Gmail/Outlook style stripping and forced inversion; (3) add event-specific templates only as corresponding real security/subscription services become available. Do not send just to raise a design score.
+The later system-language change and authorized branded QQ delivery check are recorded
+in [language and readiness acceptance](../reports/2026-08-30-email-language-readiness.md).
+Three next checks: (1) confirm QQ folder placement plus narrow-screen/dark rendering;
+(2) inspect Gmail/Outlook style stripping and forced inversion; (3) add event-specific
+templates only as corresponding real security/subscription services become available.
+Do not send just to raise a design score.
 
 Email login stays disabled. No production deployment, credentials, identity roles, payments or SMS changed. Browser preview is not proof of rendering inside QQ, Gmail or Outlook, and template completion is not a production release. The candidate remains subject to exact-head CI and Datas PM review. Rollback is a normal revert of the template-only commit; no schema/data rollback is involved. The project rule file was checked in this session; discovery in a fresh session is not yet verified.
