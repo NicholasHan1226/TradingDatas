@@ -9,15 +9,14 @@ import { sourceUrls, auditContent } from "../scripts/audit-research-content.mjs"
 
 const pending = [
   "The Quality of Accruals and Earnings: The Role of Accrual Estimation Errors",
-  "Parsimonious Modeling of Yield Curves",
 ];
 
-test("14 supported extensions preserve 200 works, 24 guides and two honest source gaps", () => {
-  assert.equal(Object.keys(researchGuideDepthExpansion).length, 14);
+test("15 supported extensions preserve 200 works, 24 guides and one honest source gap", () => {
+  assert.equal(Object.keys(researchGuideDepthExpansion).length, 15);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
   assert.equal(Object.keys(researchReaderNotes).length, 24);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 22);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 23);
   assert.deepEqual(Object.entries(researchReaderNotes).filter(([, g]) => g.sections.length === 4).map(([title]) => title).sort(), [...pending].sort());
   for (const title of pending) {
     assert.equal(researchReaderNotes[title], researchEditorial[title]);
@@ -70,4 +69,19 @@ test("working-copy caveats and estimator-specific adjustments survive public pro
   const crossSection = researchGuideDepthExpansion["The Cross-Section of Expected Stock Returns"];
   assert.match(crossSection.sections[4].body.en, /full-sample/);
   assert.match(crossSection.sections[4].body.en, /already available/);
+});
+
+test("Nelson–Siegel distinguishes its working-paper source and maturity extrapolation", () => {
+  const guide = researchGuideDepthExpansion["Parsimonious Modeling of Yield Curves"];
+  const paper = papers.find(p => p.title === "Parsimonious Modeling of Yield Curves");
+  assert.match(guide.evidenceUrl, /w1594\/w1594\.pdf$/);
+  assert.deepEqual(paper.readerLimits, guide.limits);
+  for (const locale of ["zh", "en"]) {
+    assert.match(guide.limits[locale], /1985/);
+    assert.match(guide.limits[locale], /1987/);
+    for (const index of [1, 4]) assert.match(guide.sections[index].reference.label[locale], /1985/);
+  }
+  assert.match(guide.sections[1].body.en, /Conditional on a decay parameter/);
+  assert.match(guide.sections[4].body.en, /not the observation date/);
+  assert.doesNotMatch(guide.limits.en, /abstract-based/);
 });

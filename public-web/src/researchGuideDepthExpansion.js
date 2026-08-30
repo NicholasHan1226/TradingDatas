@@ -18,6 +18,7 @@ const urls = {
   filings: "https://www.nber.org/system/files/working_papers/w25084/w25084.pdf",
   bitcoin: "https://www.benedelman.org/publications/bitcoin-15jul2014.pdf",
   panels: "https://www.nber.org/system/files/working_papers/w11280/w11280.pdf",
+  curve: "https://www.nber.org/system/files/working_papers/w1594/w1594.pdf",
   premia: "https://web.stanford.edu/~piazzesi/cp.pdf",
   kyle: "https://people.duke.edu/~qc2/BA532/1985%20EMA%20Kyle.pdf",
   media: "https://www.columbia.edu/~pt2238/papers/Tetlock_Media_Sentiment_JF.pdf",
@@ -26,6 +27,21 @@ const urls = {
 };
 
 const additions = {
+  "Parsimonious Modeling of Yield Curves": {
+    evidenceUrl: urls.curve,
+    evidenceScope: "March 1985 NBER Working Paper 1594, Sections 2–3 and 5: conditional linear estimation and maturity extrapolation. Original scanned PDF pages 10, 13–14 and 22–23 visually inspected against extracted text. Final 1987 publication identity retained; no final-edition numerical findings or replication claim.",
+    limits: bi("方法细节依据1985年NBER工作论文，书目信息保留1987年终刊。曲线拟合不保证跨期限外推可靠，也不等于无套利证明或未来预测能力。", "Method details use the 1985 NBER working paper; the citation identifies the 1987 journal publication. Curve fit does not establish reliable maturity extrapolation, no-arbitrage or future forecasting performance."),
+    sections: [
+      section("先固定衰减尺度，再估计系数", "Fix the decay scale before estimating coefficients",
+        "1985年工作论文把估计分成两层：给定衰减参数后，其余三个系数可用线性最小二乘求得，再比较不同衰减参数下的拟合。该参数影响曲率集中在哪些期限；它不是无关紧要的设置。因此，“三个线性系数”不意味着整个估计问题只有三个待定量。",
+        "The 1985 working paper separates estimation into two layers. Conditional on a decay parameter, three coefficients follow from linear least squares; fit is then compared across decay values. The decay scale affects where curvature can occur along maturity. Three linear coefficients therefore do not mean that only three quantities must be chosen.",
+        urls.curve, "1985年工作论文第2–3节，正文第8、11–12页", "1985 working paper §§2–3, printed pp. 8, 11–12"),
+      section("这里的样本外，是跨期限外推", "Out of sample here means extrapolating across maturities",
+        "工作论文第5节用短期国库券拟合的曲线为长期债券定价，检验的是超出已有期限范围后的表现，不是未来日期的预测。文中说明，局部拟合相近的参数可能给出差别很大的长期贴现率。阅读这类检验时，要先分清留出的是期限还是时间，不能把二者当成同一种预测证据。",
+        "Section 5 of the working paper prices a long bond using a curve fitted to short bills. Its extrapolation leaves the observed maturity range, not the observation date. Similar short-end fits can imply very different long-term discount rates. Distinguish a held-out maturity from a future date before interpreting either exercise as forecast evidence.",
+        urls.curve, "1985年工作论文第5节，正文第20–21页", "1985 working paper §5, printed pp. 20–21"),
+    ],
+  },
   "The Cross-Section of Expected Stock Returns": {
     evidenceUrl: urls.crossSection,
     evidenceScope: "Original article introduction and Sections I.A–I.B, pp. 427–432: sample inclusion, accounting alignment, portfolio beta assignment and cross-sectional design. No numerical table audit or replication.",

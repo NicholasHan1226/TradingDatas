@@ -91,9 +91,10 @@ still searches all 200 records. Bookmarks and source routes remain language-neut
 Twenty-four selected records include bilingual reading guides in
 `src/researchEditorial.js` and `src/researchEditorialExpansion.js`.
 `src/researchDeepReads.js` deepens eight of them, and
-`src/researchGuideDepthExpansion.js` extends fourteen more using inspected primary
-passages or author-issued supporting instructions. Twenty-two guides now have
-six sections with source locators. Dechow/Dichev and Nelson/Siegel retain four
+`src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
+passages or author-issued supporting instructions. Twenty-three guides now have
+six sections with source locators. Nelson/Siegel uses the 1985 NBER working paper,
+explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
 certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.

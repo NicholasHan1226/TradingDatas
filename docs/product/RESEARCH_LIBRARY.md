@@ -71,10 +71,12 @@ disclosure content, explicitly not the paper's original sample. Source-specific
 reader notes and their internal review references live in `researchReaderNotes.js`.
 `researchEditorial.js` and `researchEditorialExpansion.js` provide 24 selected
 guides across all eight reading journeys. `researchDeepReads.js` overrides eight
-representatives; `researchGuideDepthExpansion.js` adds supported detail to fourteen
-more without mutating their original four-section records. Twenty-two guides have
-six bilingual sections with source locators; Dechow/Dichev and Nelson/Siegel remain
-four-section, abstract-based orientations pending usable full text. All retain
+representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
+more without mutating their original four-section records. Twenty-three guides have
+six bilingual sections with source locators; Dechow/Dichev remains a four-section,
+abstract-based orientation pending usable full text. Nelson/Siegel's additions use
+the March 1985 NBER working paper, with public edition-specific locators and limits
+that distinguish it from the retained 1987 final publication identity. All retain
 source-specific limitations and internal evidence URLs/actual reading scopes.
 Scope varies: original passages, author copies, publisher previews, and (for
 Corwin/Schultz) author-issued program instructions and appendix explanations are

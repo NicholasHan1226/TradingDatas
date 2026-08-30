@@ -693,3 +693,28 @@ completion checks for this build. Static tests do not certify those interactions
 Keep PR #400 draft. Two full-text source gaps, authorized browser acceptance,
 independent Datas PM review, exact-head CI and main integration remain distinct
 handoff items. No merge or deployment is included in this round.
+
+## Source-gap follow-up — 2026-08-30 evening
+
+- NBER Working Paper 1594 (March 1985) supplied usable Nelson/Siegel text and a
+  44-page original PDF (HTTP 200). Visually inspected PDF pages 10, 13–14 and
+  22–23 (printed pp. 8, 11–12 and 20–21), checking conditional least squares,
+  decay-scale choice and maturity extrapolation against the extracted prose.
+- Two authored bilingual sections and edition-specific source locators added.
+  Public limits distinguish the 1985 working paper from the unchanged 1987
+  journal citation. No formula implementation, numerical replication or final
+  paper full-text review is claimed. The source PDF is not redistributed.
+- Current counts supersede the baseline above: 200 works, 24 guides, 23 with six
+  sections and one with four. Dechow/Dichev's university PDF returned HTTP 403;
+  SSRN retrieval failed. An anonymous transcription was excluded as unverified.
+  Nelson/Siegel's author-uploaded ResearchGate PDF also returned HTTP 403; the
+  independently published NBER version, not that PDF, supports the addition.
+- Fresh `npm run test:sites`: 80 passed, including the full 200-record bilingual
+  static-render test and a new working-paper/temporal-interpretation regression.
+  Fresh build passed: 211 metadata entries and 24 downloads. Catalogue chunk:
+  279.18 kB / 94.10 kB gzip. Offline audit: zero errors, 176 summary-only and six
+  reading-scope review items (not a quality grade). Downloads remain unchanged.
+- No UI/CSS, dependency, backend, provider or deployment change. Browser-policy
+  denial remains unresolved; PDF inspection is source verification, not webpage
+  visual acceptance. The PR remains draft pending authorized page review, exact
+  current-head CI, predecessor/main integration and independent Datas PM review.

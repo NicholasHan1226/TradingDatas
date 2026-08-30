@@ -37,3 +37,18 @@ authorized access is restored. Static rendering cannot replace those checks.
 Update candidate documentation and the existing draft PR with exact-head CI.
 No merge, PM approval, deployment or production claim. Rollback is a scoped
 revert of this follow-up commit; no database or provider artifacts are touched.
+
+## Source-gap follow-up, 2026-08-30 evening
+
+The initial 22/2 counts above describe the v7 baseline. NBER Working Paper 1594
+(March 1985) is now available as an original scanned PDF. Its §§2–3 and 5 support
+two bilingual Nelson/Siegel sections on conditional linear estimation and
+maturity-range extrapolation versus future-date forecasting. Printed pages 8,
+11–12 and 20–21 were visually inspected. Do not transfer numerical draft findings
+to the final 1987 publication or imply that its full text was reviewed.
+
+Current acceptance is 23 six-section guides and one four-section Dechow/Dichev
+orientation, still 200 works and 24 guides. Its university PDF returned HTTP 403;
+the SSRN PDF did not yield usable text. Anonymous transcriptions and secondary
+summaries do not close that evidence gap. Internal retrieval notes stay here, not
+in public articles. Browser access and release stop lines above are unchanged.
