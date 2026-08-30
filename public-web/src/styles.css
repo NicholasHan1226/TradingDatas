@@ -482,6 +482,12 @@ button { color: inherit; }
 .account-live-status strong { color: var(--ink); font-weight: 500; }
 .account-live-status button { margin-left: auto; border: 0; padding: 6px 0; background: transparent; color: var(--faint); cursor: pointer; font-size: 10px; }
 .account-live-status button:hover { color: var(--ink); }
+.account-signout-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 0 0 24px; padding: 16px; border: 1px solid color-mix(in srgb, var(--yellow) 55%, var(--line)); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--surface-solid) 94%, var(--yellow) 6%); color: var(--ink); }
+.account-signout-feedback p { flex: 1 1 240px; margin: 0; font-size: 13px; line-height: 1.65; }
+.account-signout-feedback button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-solid); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.account-signout-feedback button:hover { border-color: var(--blue); }
+.account-signout-feedback button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.account-live-status button:disabled, .account-security-panel button:disabled { opacity: .6; cursor: wait; }
 .account-live-facts { margin-top: 12px; }
 .account-plan-panel, .account-usage-panel, .account-security-panel, .account-billing-panel { margin-top: 30px; }
 .account-plan-hero { min-height: 226px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(210px, .7fr); overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(135deg, color-mix(in srgb, var(--surface-solid) 94%, var(--aqua) 6%), color-mix(in srgb, var(--surface) 91%, var(--blue) 9%)); }

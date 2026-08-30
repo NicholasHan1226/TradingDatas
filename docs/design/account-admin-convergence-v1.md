@@ -25,7 +25,7 @@ The current authenticated backend can truthfully supply account identity, entitl
 
 `/login` is the dedicated customer authentication entry. It verifies an existing TradingDatas access key against the same customer portal contract and sends a verified customer to `/account`. The public Worker now contains a disabled-by-default same-site session bridge: once its production encryption secret and upstream binding are configured, `/login` exchanges the key for an eight-hour encrypted `HttpOnly`, `Secure`, `SameSite=Strict` cookie and all Account reads/mutations stay on `tradingdatas.com/api/account/*`. Until that binding is enabled, the compatibility path keeps the key in `sessionStorage` for the current tab only. It migrates and removes the former `localStorage` value, so a long-lived key is no longer retained as persistent browser state. Signed-out Account actions and the header account icon route to this page. Email, SMS, password-reset, registration, durable cross-device sessions, and session-list/audit flows remain unavailable until the full identity contract exists; the interface must say so rather than simulate them.
 
-The session bridge is a credential-containment migration, not the finished user identity system. Its production switch is deliberately absent from the committed Worker configuration. Enabling it requires a separately reviewed Cloudflare secret named `SESSION_ENCRYPTION_KEY`, a non-secret `ACCOUNT_API_BASE` binding, exact Worker deployment, and login/read/key-mutation/logout readback. Missing bindings return `503 identity_gateway_unavailable`; the current tab-only compatibility path remains available and the Worker never silently invents an account.
+The session bridge is a credential-containment migration, not the finished user identity system. The committed Worker configuration contains the non-secret `ACCOUNT_API_BASE` binding; the deployment workflow injects `SESSION_ENCRYPTION_KEY` from the repository secret using the explicit public Worker configuration. Runtime activation still requires exact Worker deployment and independent readback; successful customer login/read/key-mutation/logout must be verified separately from unauthenticated checks. Missing bindings return `503 identity_gateway_unavailable`; the current tab-only compatibility path remains available and the Worker never silently invents an account. Current release evidence belongs in `STATUS.md`, not in this design contract.
 
 Before email or passwordless sign-in may replace the browser access-key entry, the backend contract must provide all of the following as one reviewed identity boundary:
 
@@ -62,6 +62,15 @@ The React application under `static/app/` is administrator-only. Customer-scoped
 The administrator console links out to the public Account instead of rendering an embedded customer preview. This keeps customer session state, customer navigation, and administrator authority visibly separate.
 
 ## Acceptance
+
+Account sign-out has one shared pending/error state across Overview and Security.
+The session path clears account state only after `DELETE /api/account/session`
+returns a successful JSON response with `signed_out: true`. Network failure,
+non-success HTTP, malformed confirmation and a ten-second timeout leave the UI
+in an explicitly unconfirmed state with a retry action; they never claim logout.
+Requests are single-flight and older account reads are invalidated after success.
+The tab-only compatibility path still clears its own local credential without
+calling the session gateway. None of this implements server-side revocation.
 
 - A customer sees `Account`, not a separate “customer portal” product.
 - A signed-out customer enters through `/login`; successful verification restores the existing Account workspace without duplicating its navigation.

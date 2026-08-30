@@ -32,6 +32,7 @@ import {
   sourceCandidates,
 } from "./dataSourceLandscape";
 import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
+import { confirmAccountSignOut } from "./accountSession";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
@@ -851,6 +852,9 @@ export function App() {
   const [accountKeyError, setAccountKeyError] = useState("");
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState("");
+  const [accountSignOutPending, setAccountSignOutPending] = useState(false);
+  const [accountSignOutError, setAccountSignOutError] = useState(false);
+  const accountSignOutInFlight = useRef(false);
   const copy = messages[locale];
 
   function accountRequest(endpoint, init = {}) {
@@ -966,18 +970,29 @@ export function App() {
   }
 
   async function disconnectAccount() {
-    if (accountAuthMode === "session") {
-      try { await fetch("/api/account/session", { method: "DELETE", credentials: "same-origin" }); } catch { /* The local signed-out state still wins. */ }
+    if (accountSignOutInFlight.current) return;
+    accountSignOutInFlight.current = true;
+    setAccountSignOutPending(true);
+    setAccountSignOutError(false);
+    try {
+      await confirmAccountSignOut(accountAuthMode);
+      localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY);
+      sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
+      setAccountToken("");
+      setAccountAuthMode("session");
+      setAccountData(null);
+      setAccountUsage(null);
+      setAccountKeys([]);
+      setAccountNewKey("");
+      setAccountError("");
+      // Abort older Account reads before they can restore a signed-out UI.
+      setAccountConnectionRevision((value) => value + 1);
+    } catch {
+      setAccountSignOutError(true);
+    } finally {
+      accountSignOutInFlight.current = false;
+      setAccountSignOutPending(false);
     }
-    localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY);
-    sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
-    setAccountToken("");
-    setAccountAuthMode("session");
-    setAccountData(null);
-    setAccountUsage(null);
-    setAccountKeys([]);
-    setAccountNewKey("");
-    setAccountError("");
   }
 
   async function createAccountKey(event) {
@@ -1663,10 +1678,14 @@ export function App() {
                   <h2>{activeAccountItem.label}</h2>
                   <p>{activeAccountItem.description}</p>
                 </div>
+                {(accountSignOutError || accountSignOutPending) && <div className="account-signout-feedback" role={accountSignOutError ? "alert" : "status"} aria-atomic="true">
+                  <p>{accountSignOutPending ? (locale === "zh" ? "正在安全退出，请稍候…" : "Signing out securely. Please wait…") : (locale === "zh" ? "未能确认退出，会话可能仍然有效。请重试，确认退出前不要离开共享设备。" : "Sign-out could not be confirmed. Your session may still be active. Retry before leaving a shared device.")}</p>
+                  {accountSignOutError && <button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{locale === "zh" ? "重试退出" : "Retry sign-out"}<ArrowRight size={16} /></button>}
+                </div>}
                 {accountSection === "overview" ? (
                   accountData ? (
                     <div className="account-live-overview">
-                      <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount}>{locale === "zh" ? "断开连接" : "Disconnect"}</button></div>
+                      <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "断开连接" : "Disconnect")}</button></div>
                       <dl className="account-facts account-live-facts">
                         <div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountPlanLabel}</dd></div>
                         <div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div>
@@ -1773,7 +1792,7 @@ export function App() {
                 ) : accountSection === "security" ? (
                   accountData ? (
                     <div className="account-security-panel">
-                      <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{accountAuthMode === "session" ? (locale === "zh" ? "安全网页会话" : "Secure web session") : accountCurrentKey?.label || (locale === "zh" ? "访问密钥会话" : "Access-key session")}</h3><p>{accountAuthMode === "session" ? (locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read.") : accountCurrentKey?.fingerprint || (locale === "zh" ? "密钥仅保留在当前标签页会话。" : "The key is kept only for this tab session.")}</p></div><button type="button" onClick={disconnectAccount}>{locale === "zh" ? "退出此浏览器" : "Sign out here"}</button></section>
+                      <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{accountAuthMode === "session" ? (locale === "zh" ? "安全网页会话" : "Secure web session") : accountCurrentKey?.label || (locale === "zh" ? "访问密钥会话" : "Access-key session")}</h3><p>{accountAuthMode === "session" ? (locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read.") : accountCurrentKey?.fingerprint || (locale === "zh" ? "密钥仅保留在当前标签页会话。" : "The key is kept only for this tab session.")}</p></div><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "退出此浏览器" : "Sign out here")}</button></section>
                       <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{accountAuthMode === "session" ? (locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session") : (locale === "zh" ? "当前标签页中的 TradingDatas 访问密钥" : "TradingDatas access key in this tab")}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
                       <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "邮箱、短信和跨设备会话尚未开放" : "Email, SMS, and cross-device sessions are not available"}</strong><p>{locale === "zh" ? "在身份库、一次性验证、防重放、HttpOnly 会话和撤销审计合同上线前，不提供模拟入口。" : "No simulated entry will be offered before identity storage, one-time verification, replay protection, HttpOnly sessions, and revocation audit are live."}</p></div></div>
                     </div>
