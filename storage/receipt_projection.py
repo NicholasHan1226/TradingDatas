@@ -2109,11 +2109,40 @@ def _freshness_reference_in_utc(value: str, dataset: DatasetDefinition) -> datet
     except ZoneInfoNotFoundError:
         raise ValueError("dataset_timezone_invalid") from None
     local = data_through_utc.astimezone(dataset_timezone)
+    if len(value.strip()) == 6 and value.strip().isdigit():
+        # YYYYMM denotes the whole month, not its first calendar day.
+        next_month = (local.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return (next_month - timedelta(microseconds=1)).astimezone(timezone.utc)
     if any((local.hour, local.minute, local.second, local.microsecond)):
         return data_through_utc
     return (local + timedelta(days=1) - timedelta(microseconds=1)).astimezone(
         timezone.utc
     )
+
+
+def _freshness_clock_in_utc(dataset: DatasetDefinition, now_utc: datetime) -> datetime:
+    """Freeze regular CN market cadence at Friday's close over the weekend.
+
+    This is not a holiday calendar or an exemption for event/reference/crypto
+    data. Missing Friday data must still fail the ordinary SLA comparison.
+    """
+    if (
+        dataset.market != "CN"
+        or dataset.timezone != "Asia/Shanghai"
+        or dataset.cadence_class not in {"session_minute", "postclose_daily"}
+    ):
+        return now_utc
+    local = now_utc.astimezone(ZoneInfo(dataset.timezone))
+    if local.weekday() < 5:
+        return now_utc
+    friday = local - timedelta(days=local.weekday() - 4)
+    if dataset.cadence_class == "session_minute":
+        close = friday.replace(hour=15, minute=0, second=0, microsecond=0)
+    else:
+        close = (friday + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    return close.astimezone(timezone.utc)
 
 
 def _is_cn_session_minute_lunch_break(
@@ -2359,7 +2388,7 @@ def _project_dataset_runtime(
     # mark them stale (query-on-demand semantics per registry contract).
     is_stale = (
         dataset.cadence_class != "on_demand"
-        and now_utc - data_through_utc
+        and _freshness_clock_in_utc(dataset, now_utc) - data_through_utc
         > timedelta(seconds=dataset.freshness_sla_seconds)
         and not _is_cn_session_minute_lunch_break(
             dataset,
