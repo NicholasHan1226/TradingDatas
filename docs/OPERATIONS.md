@@ -98,6 +98,11 @@ execution 的中部开始，因此可见 `physical_call_index` 允许是从非�
 该批 coverage；停牌代码带回的历史最后 bar 也按 `[ts_code,time]` 独立保留。越界代码、重复
 主键和非可恢复批次的跨日快照仍失败。允许空结果和禁止空结果继续遵循各自既有策略。
 
+内容流页面全部早于当前窗口时，既有窗口过滤可能移除所有行。允许空结果的数据集此时写入
+`empty` terminal receipt（`data_through=null`），聚合结果同样为 `empty`；不得把零行交给
+非空行写入器而误报 `validation_failed`。混合页面只保留窗口内行，未来时间、重复主键和
+上游失败仍按原合同拒绝，禁止空结果的数据集仍失败。这里不声明原始页面覆盖完整。
+
 生产 one-shot 必须通过安装好的 collector service 启动，使 systemd 按 unit 合同创建并回收
 `RuntimeDirectory=tradingdatas`。不得从 shell 直接执行 runner 却继续使用
 `/run/tradingdatas/collect.lock`；这种调用绕过 systemd，运行账号无权创建 `/run` 子目录。
@@ -602,3 +607,18 @@ QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界�
 
 Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，仅作为 on_demand
 补充手段设计，不在自动调度内；激活前需先验证其真实响应契约。
+
+## 采集巡检脚本
+
+已安装的 `/usr/local/sbin/tradingdatas-collector-watch.sh` 对应仓库
+`deploy/tradingdatas-collector-watch.sh`；本文件是既有巡检的可审计源，不创建新 timer，
+也不发送通知。退出码 `1` 表示发现告警，不能单凭 systemd `failed` 断言巡检程序损坏。
+Polymarket 的新失败回执不能刷新成功捕获时间：使用 capture 内的 `observed_at`，并核对
+非空 market/snapshot 数量；超过 26 小时无成功捕获、损坏回执或缺失成功捕获报 ALERT，
+最近六份去重回执至少四次失败报 WARN，同一次判断不得同时输出 OK。这仅是运行诊断，
+不取代 SQLite receipt、认证 API 或 activation/stable 门禁。既有 TA 账本告警保持独立，
+修复 TD 不会抹除或伪造 TA 结果。
+
+更新脚本需先记录现有字节 hash、备份到新的 root-only 路径、通过
+`bash -n` 与 `tests/test_collector_watch.py`，再原子安装并读回 hash；不改 timer 排期。
+回滚只恢复该备份脚本，保留既有日志和数据。读取日志应区分告警内容与工具执行错误。

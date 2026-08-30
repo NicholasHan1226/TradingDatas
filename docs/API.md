@@ -109,6 +109,14 @@ runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor wate
 `runtime_state`。HTTP 200 不得掩盖 dataset 级 degraded 状态；消费者必须逐数据集读取
 metadata，不能只看 HTTP 状态码。
 
+新鲜度按数据时间粒度计算：`YYYYMM` 水印覆盖完整月份，以该月末作为 SLA 参考。
+对于 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute` 与 `postclose_daily`，
+周六/周日读取时分别以最近周五 15:00 和周六 00:00 作为新鲜度时钟，避免已覆盖周五的
+数据因周末无交易被误报过期。仍缺周五数据的水印继续按 SLA 判断；事件、参考数据和
+Crypto 不适用这个时钟。此规则不推断法定节假日、不证明历史完整性；周一和工作日仍
+使用原有时钟（午休按既有规则处理），failed/paused/invalid receipt 不会被放宽。
+
+
 中国市场的 `session_minute` 数据集在同一交易日的 11:30--13:00
 （Asia/Shanghai）午间休市内暂停 freshness 时钟；13:00 起恢复严格 SLA 判断。该规则
 不适用于其它市场、非 `session_minute` cadence 或前一交易日的水位。
