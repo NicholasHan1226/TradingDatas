@@ -9,8 +9,10 @@ import { researchFiftyGuides } from "./researchFiftyGuides.js";
 import { researchSixtyGuides } from "./researchSixtyGuides.js";
 import { researchSeventyGuides } from "./researchSeventyGuides.js";
 import { researchEightyGuides } from "./researchEightyGuides.js";
+import { researchNinetyGuides } from "./researchNinetyGuides.js";
+import { researchHundredGuides } from "./researchHundredGuides.js";
 // Source-backed editorial notes, separate from internal preparation/QA profiles.
-export const researchReaderNotes = { ...researchEditorial, ...researchDeepReads, ...researchGuideDepthExpansion, ...researchAdditionalGuides, ...researchFundamentalsMicrostructureGuides, ...researchMethodsMarketsGuides, ...researchCorporateGuides, ...researchFiftyGuides, ...researchSixtyGuides, ...researchSeventyGuides, ...researchEightyGuides };
+export const researchReaderNotes = { ...researchEditorial, ...researchDeepReads, ...researchGuideDepthExpansion, ...researchAdditionalGuides, ...researchFundamentalsMicrostructureGuides, ...researchMethodsMarketsGuides, ...researchCorporateGuides, ...researchFiftyGuides, ...researchSixtyGuides, ...researchSeventyGuides, ...researchEightyGuides, ...researchNinetyGuides, ...researchHundredGuides };
 
 export const sourceSpecificReaderLimits = {
   "Modeling and Forecasting Realized Volatility": { en: "Sampling frequency, trading sessions, and microstructure noise affect realized-volatility measurement.", zh: "采样频率、交易时段与微观结构噪声会影响已实现波动率的测量。" },

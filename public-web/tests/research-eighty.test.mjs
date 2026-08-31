@@ -15,8 +15,8 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   assert.equal(Object.keys(additions).length, 20);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 80);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 79);
+  assert.equal(Object.keys(researchReaderNotes).length, 100);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 99);
   for (const [title, guide] of Object.entries(additions)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
     assert.equal(researchReaderNotes[title], guide);
@@ -37,7 +37,7 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   }
   const audit = auditContent();
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 120);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 100);
 });
 
 test("measurement, edition and source-access limits survive expansion", () => {
@@ -52,8 +52,8 @@ test("measurement, edition and source-access limits survive expansion", () => {
   assert.equal(researchReaderNotes["Textual Analysis in Accounting and Finance: A Survey"], undefined);
 });
 
-test("29 authored comparison pairs resolve to real works and have localized reasons", () => {
-  assert.equal(researchConnections.length, 29);
+test("65 authored comparison pairs resolve to real works and have localized reasons", () => {
+  assert.equal(researchConnections.length, 65);
   const seen = new Set();
   for (const pair of researchConnections) {
     assert.notEqual(pair.left, pair.right);

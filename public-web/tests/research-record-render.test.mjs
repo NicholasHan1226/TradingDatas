@@ -19,8 +19,8 @@ before(async () => {
 });
 after(async () => server?.close());
 
-test("comparison navigation retains core journeys and localizes reasons even without body text", () => {
-  for (const title of ["Lazy Prices", "Time Series Momentum", "Robust Inference With Multiway Clustering"]) {
+test("all guide comparisons retain core journeys and localize reasons across body states", () => {
+  for (const title of Object.keys(researchReaderNotes)) {
     const paper = projectResearchIndex(papers.find(p => p.title === title));
     const journey = readingJourney(paper, papers);
     const comparisons = comparisonReadings(paper, papers, journey?.links.map(l => l.paper.id));

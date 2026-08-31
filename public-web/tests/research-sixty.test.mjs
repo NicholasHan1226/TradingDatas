@@ -7,9 +7,9 @@ import { researchGuideMaterials } from "../src/researchGuideMaterials.js";
 import { researchSummaryMaterials } from "../src/researchSummaryMaterials.js";
 import { auditContent } from "../scripts/audit-research-content.mjs";
 
-test("ten earlier source-bounded additions coexist within 80 guides without inventing works", () => {
+test("ten earlier source-bounded additions coexist within 100 guides without inventing works", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 80);
+  assert.equal(Object.keys(researchReaderNotes).length, 100);
   assert.equal(Object.keys(researchSixtyGuides).length, 10);
   for (const [title, guide] of Object.entries(researchSixtyGuides)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
@@ -25,7 +25,7 @@ test("ten earlier source-bounded additions coexist within 80 guides without inve
     }
   }
   assert.deepEqual(auditContent().errors, []);
-  assert.equal(auditContent().review.filter(r => r.code === "summary_only").length, 120);
+  assert.equal(auditContent().review.filter(r => r.code === "summary_only").length, 100);
 });
 
 test("all 200 material selections are explicit; a topic never supplies a fallback", () => {

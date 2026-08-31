@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 80 guides: 79 have six bilingual sections with source locators;
+library has 100 guides: 99 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,7 +113,7 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 80 full-text reviews; 120 works
+This does not certify 200 full-length guides or 100 full-text reviews; 100 works
 remain summary-only.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
@@ -144,7 +144,17 @@ add twenty existing works on volatility, inference, liquidity, attention, financ
 macro-finance and blockchain economics. Each has six bilingual, source-located
 sections with actual edition and reading limits. All twenty intentionally have no
 material links; this avoids implying maintained original samples or replication
-inputs. Current source scope and acceptance: `docs/design/research-eighty-guides-v13.md`.
+inputs. That batch's source scope: `docs/design/research-eighty-guides-v13.md`.
+The next twenty in `researchNinetyGuides.js` and `researchHundredGuides.js` cover
+eight asset-pricing, seven A-share/institutional-comparison and five alternative-data
+records. Every section has an edition-specific locator. The existing Fama/MacBeth
+price-preparation and two text-versioning links remain preparation examples only;
+the other seventeen selections are deliberately empty. Overall material coverage
+stays 75 linked / 125 empty. `researchComparisonExpansion.js` adds 36 comparisons
+after the previous 29; all 100 guides remain covered after core-neighbor exclusions.
+Current source ledger and independent acceptance packet:
+`docs/design/research-hundred-guides-v14.md`. Blocked browser checks, pending Datas PM
+review and predecessor integration are not represented as release acceptance.
 Daily high/low and illiquidity guides link to daily data rather than minute bars;
 text guides link to document versioning. No available order-book, governance,
 token-adoption or general model-fitting tutorial is implied. Related materials
@@ -170,11 +180,11 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 80 expanded guides below the lead story.
+counts. Featured also exposes the 100 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides do not invent a fourth stage or change original sequence membership.
-`researchConnections.js` supplies 29 explicit, symmetric editorial comparison
-pairs across 39 works, including all twenty latest guides. They contrast definitions,
+`researchConnections.js` supplies 65 explicit, symmetric editorial comparison
+pairs across 101 works, covering all 100 guides. They contrast definitions,
 inputs or methods; they do not assert citations, agreement, replication or evidence
 ranking. The reader shows at most three comparisons with bilingual reasons and
 excludes already displayed previous/next sequence links. Matching uses stable

@@ -52,8 +52,8 @@ Chinese/English editorial titles, orientations, data requirements and limitation
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 80 bilingual guides: 79 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 120 records are
+There are 100 bilingual guides: 99 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 100 records are
 summary-only. The eight three-stage core journeys retain their 24 original works.
 `src/researchFiftyGuides.js` adds seven primary-source-located guides and
 `src/researchSixtyGuides.js` adds ten more; `src/researchSeventyGuides.js` and
@@ -62,7 +62,16 @@ per-work material selections (including intentional empty sets); unassigned
 records fail closed to no materials, never topic defaults. The 150 previously
 summary-only selections are in `src/researchSummaryMaterials.js`; this curation
 does not constitute 150 full-text reviews. See
-`../docs/design/research-eighty-guides-v13.md` for current source scope and acceptance.
+`../docs/design/research-hundred-guides-v14.md` for current source scope and acceptance.
+
+`src/researchNinetyGuides.js` and `src/researchHundredGuides.js` add twenty further
+bounded guides: eight asset-pricing, seven A-share/institutional-comparison and five
+alternative-data records. They retain the earlier three preparation links and
+seventeen intentional empty selections (75 linked records / 125 empty overall).
+`src/researchComparisonExpansion.js` adds 36 explicit comparisons after the earlier
+29, preserving their priority. Every guide has a comparison even after core-path
+neighbors are excluded. The v14 packet separates executable checks, blocked real
+browser acceptance, independent Datas PM approval and production release.
 
 Production discovery retains both languages, stable IDs and `guideSectionCount`
 but excludes article bodies. `ResearchArticle.jsx` requests one bilingual body
@@ -135,15 +144,15 @@ passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
 passages or author-issued supporting instructions. Subsequent batches above bring
-the current total to 80 guides, 79 with six sections. Nelson/Siegel uses the 1985 NBER working paper,
+the current total to 100 guides, 99 with six sections. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
 certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
 Core articles show their position and previous/next reading with authored reasons;
-`src/researchConnections.js` adds 29 authored comparison pairs across 39 works,
-including all twenty latest guides. Each article shows up to three bilingual
+`src/researchConnections.js` adds 65 authored comparison pairs across 101 works,
+covering all 100 guides. Each article shows up to three bilingual
 comparison reasons, excluding its existing previous/next links. These are editorial
 contrasts, not inferred citation edges, agreement or evidence rankings. They work
 from discovery metadata during body loading/error and preserve the core reading
@@ -206,7 +215,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 120 summary-only records, repeated/short paragraphs and
+candidates (including the 100 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only
