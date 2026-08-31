@@ -25,9 +25,20 @@ price display (checkout not yet available), a platform-wide
 searchable Docs hub with article routes, independent history-aware product pages, a grouped Account workspace
 containing `zh-CN`/`en` and system/light/dark settings, and a client-only Agent
 setup prompt flow. `src/productManifest.js` is explicitly a design contract;
-Feature/PIT/commerce states are not runtime claims. Example receipt values and the
-`api.tradingdatas.com` address are explicitly proposal/synthetic UI content,
-not runtime evidence.
+Feature/PIT/commerce states are not runtime claims. Unbound dataset pages show
+unverified evidence, not invented percentages, successful collection timestamps
+or historical coverage. Samples and the separate receipt illustration are
+labelled synthetic beside the content. Product slugs are not API dataset IDs.
+
+Agent setup is lazy-loaded and derives both authored languages directly from
+`../docs/AGENT_INTEGRATIONS.md`; update that document rather than duplicating
+prompts in components. The optional public build setting
+`VITE_TRADINGDATAS_API_BASE_URL` accepts a reviewed HTTPS origin only, without
+credentials, paths, query or fragment. Leave it absent until the service origin
+is confirmed: the dialog then copies a clearly labelled draft with a placeholder.
+Configuration is not connection verification or proof of a deployed MCP server.
+The dialog never transmits a data request or reads a credential.
+See [evidence and Agent readiness](../docs/design/public-evidence-readiness-v1.md).
 
 The candidate landscape is maintained research, not an exhaustive list of every
 global API. Technical reachability, redistribution rights, runtime activation,

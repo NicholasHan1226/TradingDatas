@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
   ArrowSquareOut,
@@ -23,6 +23,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { productManifest } from "./productManifest";
+import { buildQueryTemplate, evidenceView } from "./productEvidence";
 import { formatCny, getBasePlanCards, getPlanPrice } from "./pricing";
 import { buildPreviewPath, readPreviewSelection, safeLoginDestination } from "./purchasePreview";
 import { PurchasePreview } from "./PurchasePreview.jsx";
@@ -41,7 +42,7 @@ import { EmailAccountPanel } from "./EmailAccountPanel";
 import { AccountConnection } from "./AccountConnection";
 import { createBookmarkLibrary } from "./bookmarkLibrary";
 
-const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
+const AgentDialog = lazy(() => import("./AgentDialog.jsx"));
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
 const LEGACY_ACCOUNT_TOKEN_KEY = "td-account-token";
 const TAB_ACCOUNT_TOKEN_KEY = "td-account-tab-token";
@@ -366,58 +367,6 @@ function Brand({ onNavigate }) {
   );
 }
 
-function AgentDialog({ open, onClose, copy, locale }) {
-  const [agent, setAgent] = useState("Codex");
-  const [copied, setCopied] = useState(false);
-  const dialogRef = useRef(null);
-  const prompt = useMemo(
-    () => locale === "zh"
-      ? `请为 ${agent} 配置 TradingDatas MCP。使用安全的本地密钥存储，不要把 API Key 写入提示词、URL 或日志。首先调用 GET /v1/catalog 验证连接；只通过 POST /v1/query 请求已授权数据，并遵守游标与限额。`
-      : `Configure TradingDatas MCP for ${agent}. Keep the API key in secure local secret storage; never place it in prompts, URLs, or logs. Test with GET /v1/catalog first. Use POST /v1/query only for authorized data and respect cursors and limits.`,
-    [agent, locale],
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event) => event.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    requestAnimationFrame(() => dialogRef.current?.focus());
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  async function copyPrompt() {
-    await navigator.clipboard.writeText(prompt);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  }
-
-  if (!open) return null;
-  return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="agent-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-dialog-title" tabIndex="-1" ref={dialogRef}>
-        <button className="icon-button dialog-close" type="button" onClick={onClose} aria-label={copy.close}><X size={20} /></button>
-        <span className="mono-kicker">AGENT CONNECTIONS</span>
-        <h2 id="agent-dialog-title">{copy.agentTitle}</h2>
-        <p>{copy.agentCopy}</p>
-        <div className="agent-tabs" role="tablist" aria-label="Agent">
-          {agents.map((name) => (
-            <button key={name} type="button" role="tab" aria-selected={agent === name} className={agent === name ? "is-active" : ""} onClick={() => setAgent(name)}>{name}</button>
-          ))}
-        </div>
-        <div className="endpoint-row"><span>{copy.endpoint} · planned</span><code>https://api.tradingdatas.com</code></div>
-        <div className="prompt-block">
-          <div><span>{copy.setupPrompt}</span><span>catalog + query</span></div>
-          <pre>{prompt}</pre>
-        </div>
-        <button className="primary-button dialog-action" type="button" onClick={copyPrompt}>
-          {copied ? <Check weight="bold" /> : <Copy weight="bold" />}
-          {copied ? copy.copied : copy.copyPrompt}
-        </button>
-      </section>
-    </div>
-  );
-}
-
 function ReceiptProof({ copy }) {
   return (
     <div className="receipt-proof" aria-label="Synthetic receipt example">
@@ -438,6 +387,7 @@ function ReceiptProof({ copy }) {
 function MaturityTag({ status, locale }) {
   const labels = {
     observed_example: locale === "zh" ? "已观测" : "Observed",
+    synthetic: locale === "zh" ? "机制示例" : "Illustration",
     pending_open: locale === "zh" ? "待开放" : "Pending release",
     product_definition: locale === "zh" ? "产品定义" : "Product definition",
     planned: locale === "zh" ? "规划中" : "Planned",
@@ -528,17 +478,12 @@ function ProductMark({ item, compact = false }) {
 }
 
 function StabilityTrack({ item, locale, compact = false, showStage = true }) {
-  const available = item.stability !== "—";
+  const evidence = evidenceView(item, locale);
   return (
-    <div className={`stability-block ${compact ? "is-compact" : ""} ${available ? "" : "is-unavailable"}`}>
-      {(showStage || available) && <div className="stability-heading">
-        {showStage && <MaturityTag status={item.status} locale={locale} />}
-        {available && <strong>{item.stability}</strong>}
-      </div>}
-      {available ? <div className="stability-dots" aria-label={item.stabilityNote[locale]}>
-        {Array.from({ length: compact ? 18 : 30 }, (_, index) => <span key={index} className={item.delayedDays.includes(index) ? "is-delayed" : ""} />)}
-      </div> : <span className="stability-empty-line" aria-hidden="true" />}
-      {(!compact || !available) && <small>{available ? item.stabilityNote[locale] : (locale === "zh" ? `尚无采集历史 · ${item.cadence}` : `No collection history · ${item.cadence}`)}</small>}
+    <div className={`stability-block ${compact ? "is-compact" : ""} is-unavailable`}>
+      {showStage && <div className="stability-heading"><MaturityTag status={item.status} locale={locale} /></div>}
+      <span className="stability-empty-line" aria-hidden="true" />
+      <small>{compact ? evidence.value : evidence.note}</small>
     </div>
   );
 }
@@ -548,7 +493,7 @@ function DatasetSample({ item, locale, compact = false }) {
     <div className={`dataset-sample ${compact ? "is-compact" : ""}`}>
       <div className="dataset-sample-heading">
         <span>{locale === "zh" ? "数据内容示例" : "Sample data"}</span>
-        <small>{item.fields ? `${item.fields} ${locale === "zh" ? "个字段" : "fields"}` : (locale === "zh" ? "合同预览 · 非真实数据" : "Contract preview · not live data")}</small>
+        <small>{locale === "zh" ? "合成样例 · 非市场数据" : "Synthetic sample · not market data"}</small>
       </div>
       <div className="dataset-sample-scroll">
         <table>
@@ -561,26 +506,24 @@ function DatasetSample({ item, locale, compact = false }) {
 }
 
 function DatasetProductDetail({ item, locale, onNavigate }) {
-  const [queryCopied, setQueryCopied] = useState(false);
+  const [queryCopyState, setQueryCopyState] = useState('idle');
+  const queryCopyGeneration = useRef(0);
+  useEffect(() => { ++queryCopyGeneration.current; setQueryCopyState('idle'); return () => { ++queryCopyGeneration.current; }; }, [item?.id, locale]);
   if (!item) {
     return <section className="object-detail-page"><a className="object-back" href="/data" onClick={(event) => onNavigate(event, "/data")}>← {locale === "zh" ? "返回数据目录" : "Back to Data"}</a><div className="object-detail-hero"><div><h1>{locale === "zh" ? "数据产品未找到" : "Data product not found"}</h1></div></div></section>;
   }
   const sameCategory = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family === item.family);
   const otherCategories = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family !== item.family);
   const related = [...sameCategory, ...otherCategories].slice(0, 3);
-  const queryExample = `POST /v1/query\nAuthorization: Bearer <API_TOKEN>\nContent-Type: application/json\n\n${JSON.stringify({
-    dataset_id: item.id,
-    schema_major: 1,
-    fields: item.sampleColumns,
-    filters: {},
-    as_of: null,
-    limit: 100,
-    cursor: null,
-  }, null, 2)}`;
+  const queryExample = buildQueryTemplate();
+  const evidence = evidenceView(item, locale);
   const copyQueryExample = async () => {
-    await navigator.clipboard.writeText(queryExample);
-    setQueryCopied(true);
-    window.setTimeout(() => setQueryCopied(false), 1600);
+    const current = ++queryCopyGeneration.current;
+    setQueryCopyState('pending');
+    try {
+      await navigator.clipboard.writeText(queryExample);
+      if (current === queryCopyGeneration.current) setQueryCopyState('copied');
+    } catch { if (current === queryCopyGeneration.current) setQueryCopyState('failed'); }
   };
   return (
     <section className="dataset-product-page">
@@ -612,23 +555,24 @@ function DatasetProductDetail({ item, locale, onNavigate }) {
             <div className="dataset-query-inline">
               <div className="dataset-query-heading">
                 <div><span className="mono-kicker">POST /v1/query</span><h2>{locale === "zh" ? "查询示例" : "Query example"}</h2></div>
-                <button type="button" onClick={copyQueryExample}>{queryCopied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{queryCopied ? (locale === "zh" ? "已复制" : "Copied") : (locale === "zh" ? "复制请求" : "Copy request")}</button>
+                <button type="button" disabled={queryCopyState === 'pending'} onClick={copyQueryExample}>{queryCopyState === 'copied' ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{queryCopyState === 'copied' ? (locale === "zh" ? "已复制" : "Copied") : (locale === "zh" ? "复制模板" : "Copy template")}</button>
               </div>
               <pre><code>{queryExample}</code></pre>
-              <p>{locale === "zh" ? "示例不会发起请求。使用前请先通过 GET /v1/catalog 确认正式 dataset_id、schema_major 与账户权限。" : "This example does not send a request. Confirm dataset_id, schema_major, and account access with GET /v1/catalog first."}</p>
+              {queryCopyState === 'failed' && <p role="status">{locale === 'zh' ? '复制未成功，请手动选择模板。' : 'Copy failed. Select the template manually.'}</p>}
+              <p>{locale === "zh" ? "这是不可直接执行的模板。先查询 GET /v1/catalog，再填入正式 dataset_id、整数 schema_major、允许的字段与时间筛选。网页产品 ID 不是 API 数据集 ID。" : "This is a non-executable template. Read GET /v1/catalog first, then supply its dataset_id, integer schema_major, allowed fields and time filters. A product slug is not an API dataset ID."}</p>
             </div>
           </section>
           <DatasetSample item={item} locale={locale} />
           <section className="dataset-history">
-            <div><span className="mono-kicker">90 DAY COLLECTION HISTORY</span><h2>{locale === "zh" ? "公开采集稳定性与缺口" : "Public collection stability and gaps"}</h2></div>
+            <div><span className="mono-kicker">COLLECTION EVIDENCE</span><h2>{locale === "zh" ? "公开采集稳定性与缺口" : "Public collection stability and gaps"}</h2></div>
             <StabilityTrack item={item} locale={locale} showStage={false} />
           </section>
           <dl className="dataset-evidence-rail">
-            <div><dt>{locale === "zh" ? "来源" : "Source"}</dt><dd>{item.source}</dd></div>
-            <div><dt>{locale === "zh" ? "最近成功" : "Last success"}</dt><dd>{item.lastSuccess}</dd></div>
-            <div><dt>{locale === "zh" ? "覆盖" : "Coverage"}</dt><dd>{item.coverage}</dd></div>
-            <div><dt>{locale === "zh" ? "频率" : "Cadence"}</dt><dd>{item.cadence}</dd></div>
-            <div><dt>Receipt</dt><dd>{item.receipt}</dd></div>
+            <div><dt>{locale === "zh" ? "候选来源" : "Intended source"}</dt><dd>{item.source}</dd></div>
+            <div><dt>{locale === "zh" ? "最近成功" : "Last success"}</dt><dd>{evidence.value}</dd></div>
+            <div><dt>{locale === "zh" ? "覆盖" : "Coverage"}</dt><dd>{evidence.value}</dd></div>
+            <div><dt>{locale === "zh" ? "合同频率" : "Contract cadence"}</dt><dd>{item.cadence}</dd></div>
+            <div><dt>Receipt</dt><dd>{evidence.value}</dd></div>
           </dl>
           <div className="collection-disclosure-roadmap"><span>{locale === "zh" ? "形成真实观测后继续披露" : "Disclosed after real observations exist"}</span><div>{(locale === "zh" ? ["成功 / 空响应 / 失败分布", "数据延迟趋势", "入库行数增长", "字段漂移", "修订量"] : ["success / empty / failure mix", "delivery-lag trend", "stored-row growth", "schema drift", "revision volume"]).map((signal) => <small key={signal}>{signal}</small>)}</div></div>
           <p className="catalog-authority-note">{locale === "zh" ? "当前页面展示产品合同与示例证据。真实可用性只来自 Registry、SQLite facts/receipts、认证 Catalog/Query 回读与账户授权。" : "This page presents the product contract and example evidence. Live availability comes only from the Registry, SQLite facts/receipts, authenticated Catalog/Query readback, and account entitlement."}</p>
@@ -797,7 +741,7 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
       <header className="data-source-hero">
         <span className="mono-kicker">SOURCE LANDSCAPE / CONNECTED + CANDIDATE</span>
         <h1>{locale === "zh" ? "把已接入、历史观测与下一步分开看。" : "Separate connected data, historical observations, and what comes next."}</h1>
-        <p>{locale === "zh" ? "这里公开接口合同、候选来源与接入门槛；任何规划都不自动等于已购买、可再分发或正在稳定采集。" : "This view publishes interface contracts, candidate sources, and onboarding gates. A plan never means purchased, redistributable, or stably collected."}</p>
+        <p>{locale === "zh" ? `这是 ${landscapeMeta.reviewedAt} 审阅的合同与来源快照，不是实时运行面。任何规划都不自动等于已购买、可再分发或正在稳定采集。` : `Contract and source snapshot reviewed ${landscapeMeta.reviewedAt}, not a live runtime view. A plan never means purchased, redistributable, or stably collected.`}</p>
         <dl>
           <div><dt>{locale === "zh" ? "合同接口" : "Contract interfaces"}</dt><dd>{connected.length}</dd></div>
           <div><dt>{locale === "zh" ? "配置 active" : "Configured active"}</dt><dd>{activeCount}</dd></div>
@@ -1548,7 +1492,7 @@ export function App() {
             </div>
           </div>
           <div className="hero-verification mono-text" aria-hidden="true">
-            <span>2026-08-26T18:04:00Z</span>
+            <span>illustration · not live evidence</span>
             <span>batch_7f9c2a1e</span>
           </div>
           <div className="hero-hash mono-text" aria-hidden="true">
@@ -1576,7 +1520,7 @@ export function App() {
           </section>
 
           {showDataDirectory ? <section className="data-category-directory" aria-label={locale === "zh" ? "数据分类目录" : "Data category directory"}>
-            <div className="data-directory-summary"><span>{locale === "zh" ? "9 个分类 · 41 个数据产品" : "9 categories · 41 data products"}</span><span>{locale === "zh" ? "选择分类后查看完整产品与接入计划" : "Choose a category for complete products and onboarding plans"}</span></div>
+            <div className="data-directory-summary"><span>{locale === "zh" ? `${dataCategories.length} 个分类 · ${productManifest.objects.datasets.length} 个产品定义` : `${dataCategories.length} categories · ${productManifest.objects.datasets.length} product definitions`}</span><span>{locale === "zh" ? "产品规划，不是实时可用目录" : "Product plans, not a live availability catalog"}</span></div>
             {dataCategories.map((category, categoryIndex) => {
               const products = productManifest.objects.datasets.filter((item) => item.family === category.family);
               return <article className="data-category-shelf" key={category.family}>
@@ -1602,7 +1546,7 @@ export function App() {
             </div>
             <section className="data-product-list" aria-live="polite">
               {visibleDataProducts.map((item) => {
-                const hasCollectionHistory = item.stability !== "—";
+                const hasCollectionHistory = evidenceView(item, locale).hasHistory;
                 return <article className={`data-product-row ${hasCollectionHistory ? "" : "is-unobserved"}`} key={item.id}>
                 <ProductMark item={item} />
                 <div className="data-product-copy">
@@ -1642,7 +1586,7 @@ export function App() {
 
         {primaryRoute === "data" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / PRODUCT CATEGORY</span><h1>{locale === "zh" ? "另类数据是分类，每一种指数都是独立产品。" : "Alternative data is a category; every index is its own product."}</h1><p>{locale === "zh" ? "从 Pizza 指数到客流、招聘、应用关注、航运、卫星和消费价格，每个产品分别披露来源、许可、覆盖和接入计划。" : "From Pizza Index to foot traffic, hiring, app attention, shipping, satellite, and consumer prices, every product discloses its own source, license, coverage, and onboarding plan."}</p></div><MaturityTag status="planned" locale={locale} /></div><AlternativeProductList locale={locale} onNavigate={navigate} /><section className="object-boundary"><h2>{locale === "zh" ? "购买前必须可见" : "Visible before purchase"}</h2><p>{locale === "zh" ? "来源、许可与再分发边界、样例字段、历史覆盖、更新频率、试用期限、价格、到期与续费选择。" : "Source, license and redistribution boundary, sample fields, history, cadence, trial term, price, expiry, and renewal choice."}</p><a className="primary-button" href="/pricing/alternative" onClick={(event) => navigate(event, "/pricing/alternative")}>{locale === "zh" ? "查看加购逻辑" : "Review add-on logic"}<ArrowRight /></a></section></section>}
 
-        {primaryRoute === "data" && routeSlug === "receipts" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/receipts" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">DATA WITH RECEIPTS</span><h1>{locale === "zh" ? "每个可用性声明，都回到证据。" : "Every availability claim returns to evidence."}</h1><p>{locale === "zh" ? "Registry 定义身份，事实与 receipt 记录观测，API 只投影同一权威链。" : "Registry defines identity, facts and receipts record observations, and the API projects the same authority chain."}</p></div><MaturityTag status="observed_example" locale={locale} /></div><ReceiptProof copy={copy} /><section className="object-boundary"><h2>{locale === "zh" ? "Receipt 能证明什么，也不能证明什么" : "What a receipt proves—and what it does not"}</h2><p>{locale === "zh" ? "它证明一次来源绑定的采集、验证与落库事务；单次成功不等于连续健康、历史完整或时点一致。" : "It proves one source-bound collection, validation, and storage transaction. One success is not continuous health, complete history, or point-in-time correctness."}</p></section></section>}
+        {primaryRoute === "data" && routeSlug === "receipts" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/receipts" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">DATA WITH RECEIPTS</span><h1>{locale === "zh" ? "每个可用性声明，都回到证据。" : "Every availability claim returns to evidence."}</h1><p>{locale === "zh" ? "Registry 定义身份，事实与 receipt 记录观测，API 只投影同一权威链。" : "Registry defines identity, facts and receipts record observations, and the API projects the same authority chain."}</p></div><MaturityTag status="synthetic" locale={locale} /></div><ReceiptProof copy={copy} /><section className="object-boundary"><h2>{locale === "zh" ? "Receipt 能证明什么，也不能证明什么" : "What a receipt proves—and what it does not"}</h2><p>{locale === "zh" ? "它证明一次来源绑定的采集、验证与落库事务；单次成功不等于连续健康、历史完整或时点一致。" : "It proves one source-bound collection, validation, and storage transaction. One success is not continuous health, complete history, or point-in-time correctness."}</p></section></section>}
 
         {primaryRoute === "features" && !routeSlug && <section className="object-index-page">
           <SectionNav locale={locale} active="/features" onNavigate={navigate} items={locale === "zh" ? [{ path: "/features", label: "特征目录" }, { path: "/features/methodology", label: "方法与版本" }] : [{ path: "/features", label: "Feature index" }, { path: "/features/methodology", label: "Method & versions" }]} />
@@ -1890,7 +1834,7 @@ export function App() {
       </main>
 
       <footer><Brand onNavigate={navigate} /><p>Raw materials for financial research.</p><span>© 2026 TradingDatas</span></footer>
-      <AgentDialog open={agentOpen} onClose={() => setAgentOpen(false)} copy={copy} locale={locale} />
+      <Suspense fallback={null}>{agentOpen && <AgentDialog onClose={() => setAgentOpen(false)} copy={copy} locale={locale} />}</Suspense>
     </div>
   );
 }

@@ -1,4 +1,9 @@
-# TradingData Agent integration contract
+# TradingDatas Agent integration contract
+
+Prompt version: `2026-08-31.1`. The public dialog reads this Markdown as its
+canonical source; `public-web/src/agentPrompts.js` extracts the authored blocks
+and only substitutes the documented non-secret variables. Display branding is
+normalized from the legacy `TradingData` name to `TradingDatas`.
 
 ## Purpose
 
@@ -51,6 +56,45 @@ Required workflow for every data task:
 8. TradingData supplies raw material. Do not describe its data as a TradingData strategy, signal, forecast, recommendation, or guaranteed research result.
 
 When a request is ambiguous, show the relevant catalog choices and ask the user to choose. When no authorized dataset can satisfy the request, say so clearly.
+```
+
+## Canonical setup prompt (Chinese)
+
+```text
+你正在为 {{AGENT_NAME}} 准备 TradingDatas HTTP 数据工具（版本 {{PROMPT_VERSION}}）。
+这不是 MCP 服务已部署或第三方 Agent 已自动配置成功的声明。
+
+连接：
+- API Base URL：{{TRADINGDATA_BASE_URL}}
+- 从独立的安全密钥存储读取 TRADINGDATA_API_KEY，以 Authorization: Bearer <secret> 发送。
+- 不在提示词、仓库、URL、浏览器存储、日志、截图或回复里输出密钥。
+- 若 Base URL 尚未配置，或 Agent 无法独立保存密钥与执行认证 HTTP 请求，停止并报告不支持；不要猜测域名或使用浏览器 Cookie。
+
+每次取数必须遵循：
+1. 先调用 GET /v1/catalog，仅发现本账户可见的数据集。
+2. 从返回结果选择 dataset_id、整数 schema_major 和 selectable 字段，不使用网页产品 slug 或猜测的版本；仅在 queryability.queryable === true 时查询，否则停止并说明 queryability.reasons。
+3. 通过 POST /v1/query 发起有界请求。首次只取 limit=1，使用最小字段集与目录支持的时间筛选；不超过 limits.max_page_size，未给出的限制不得自造。
+4. 分页只使用返回的 next_cursor；不得自造 offset，也不得改变条件后复用游标。
+5. 每次检查 metadata.state、runtime_state、degraded、freshness、quality、lineage、receipt_id、data_through、observed_at 和 reasons。HTTP 200 本身不证明数据可用。
+6. 遇到缺 receipt/lineage、partial、degraded、stale、paused、failed、unobserved、schema mismatch、401、403 或 429，明确报告限制并停止自动重试。429 遵循 Retry-After；不得绕过限频、改用其它 provider route、缓存或外部数据补齐。
+7. 保留字段名、时间戳、单位、provider 血缘和修订/as-of 限制。单次成功不证明完整历史、连续稳定或 PIT。
+8. TradingDatas 提供数据原料，不提供策略、信号、预测、交易建议或保证的研究结果。
+
+结果有歧义时展示目录候选请用户选择；没有符合权限的数据时明确说明。
+```
+
+The English canonical prompt above has the same stop conditions. Its rendered
+version appends the shared first-query and HTTP-error checklist documented below.
+
+### Shared first-query checklist
+
+```text
+First-query acceptance ({{PROMPT_VERSION}}):
+- This configures an HTTP-capable tool, not a claim of a deployed MCP server.
+- If the base URL is unconfigured or separate secret storage is unavailable, stop. Never guess a hostname or reuse browser cookies.
+- Require queryability.queryable === true; otherwise stop and report queryability.reasons. Use selectable fields and integer schema_major from the catalog, start at limit=1, and obey limits.max_page_size and supported time filters.
+- HTTP 200 alone is not data readiness. One observation is not continuous stability, complete history, or point-in-time correctness.
+- On 401, 403, 429 or schema mismatch, report the cause and stop automatic retries. For 429 respect Retry-After; never bypass rate limits or substitute a provider route.
 ```
 
 ## Agent variants
@@ -120,8 +164,12 @@ dataset, consume a payment action, modify an account, or persist the raw key.
 
 ## Prompt compiler and tests
 
-The future frontend maintains one typed canonical template and thin Agent
-prefixes. It must not keep separate complete prompt strings in UI components.
+The frontend extracts the canonical templates and thin Agent prefixes from this
+document. It must not keep separate complete prompt strings in UI components.
+`VITE_TRADINGDATAS_API_BASE_URL` may provide a reviewed HTTPS origin at build
+time. It is public configuration, never a secret or proof of route readiness.
+When absent, the dialog labels the prompt as a draft and uses an explicit
+placeholder. Copying remains available for preparation, with no network request.
 
 Deterministic tests assert for every variant:
 

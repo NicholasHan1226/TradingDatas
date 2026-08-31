@@ -1186,7 +1186,7 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
 .agent-dialog h2 { margin: 0; font-size: 42px; line-height: 1.08; letter-spacing: -0.045em; }
 .agent-dialog > p { margin: 17px 0 30px; max-width: 530px; color: var(--muted); font-size: 15px; line-height: 1.65; }
 .agent-tabs { display: flex; flex-wrap: wrap; gap: 7px; }
-.agent-tabs button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
+.agent-tabs button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
 .agent-tabs button.is-active { border-color: var(--blue); color: var(--blue); background: rgba(7, 92, 255, 0.07); }
 .endpoint-row { margin-top: 28px; display: flex; justify-content: space-between; gap: 20px; padding: 15px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--faint); font-size: 11px; }
 .endpoint-row code { color: var(--ink); font-family: "IBM Plex Mono", monospace; }
@@ -1194,6 +1194,10 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
 .prompt-block > div { display: flex; justify-content: space-between; padding: 12px 15px; border-bottom: 1px solid var(--line); color: var(--faint); font: 10px "IBM Plex Mono", monospace; }
 .prompt-block pre { margin: 0; padding: 18px; max-height: 200px; overflow: auto; white-space: pre-wrap; background: rgba(119, 142, 135, 0.05); color: var(--muted); font: 11px/1.8 "IBM Plex Mono", monospace; }
 .dialog-action { margin-top: 22px; min-height: 48px; font-size: 14px; }
+.agent-dialog > .agent-readiness-note { margin: 14px 0; font-size: 12px; }
+.agent-dialog > .agent-copy-status { margin: 12px 0 0; font-size: 12px; }
+.agent-acceptance-steps { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; color: var(--muted); font: 10px/1.6 "IBM Plex Mono", monospace; }
+.agent-dialog .endpoint-row code { overflow-wrap: anywhere; min-width: 0; }
 
 @media (max-width: 1000px) {
   .global-header { inset-inline: 18px; width: auto; padding: 0 12px 0 14px; grid-template-columns: 1fr auto; }

@@ -36,6 +36,14 @@ receipt/API-observed dataset, and redistribution-authorized sellable data. The
 landscape method and first reviewed source universe are defined in
 [`docs/product/DATA_SOURCE_LANDSCAPE.md`](product/DATA_SOURCE_LANDSCAPE.md).
 
+Unbound public product pages must label collection evidence as unverified on
+that page, without inferring that collection has not started. Synthetic sample
+rows and receipt illustrations are labelled beside the object; no authored
+percentage, time window or receipt is a health claim. Product slugs do not become
+API dataset IDs. Agent setup remains a draft until the public API origin and
+authorized catalog/query behavior are verified; see
+[public evidence readiness](design/public-evidence-readiness-v1.md).
+
 ## Primary consumers
 
 TradingDatas is Agent-first infrastructure. The main consumption path is an AI
