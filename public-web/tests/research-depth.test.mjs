@@ -8,7 +8,7 @@ import { auditBarGrid, preserveDocumentVersions, alignSpotAndOpenInterest, tutor
 
 test("eight original deep reads retain every subject within the expanded guide library", () => {
   assert.equal(Object.keys(researchDeepReads).length, 8);
-  assert.equal(Object.keys(researchReaderNotes).length, 60);
+  assert.equal(Object.keys(researchReaderNotes).length, 80);
   assert.equal(papers.length, 200);
   const deep = Object.entries(researchDeepReads).map(([title, guide]) => {
     const paper = papers.find(item => item.title === title);

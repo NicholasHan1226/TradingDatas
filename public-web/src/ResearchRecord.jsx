@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowRight, ArrowSquareOut, BookmarkSimple, Check, Copy, LinkSimple } from "@phosphor-icons/react";
 import { papers, researchTitle, researchData, researchYear } from "./researchCatalog.js";
 import { readingJourney } from "./researchJourneys.js";
+import { comparisonReadings } from "./researchConnections.js";
 import { questionRoutesFor } from "./researchQuestionRoutes.js";
 import { ResearchQuestionRoutes } from "./ResearchQuestionRoutes.jsx";
 import { researchSubjects } from "./researchDiscovery.js";
@@ -17,6 +18,7 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
   const shareUrl = pageMetadata(`research/${paper.id}`, locale).url;
   const journey = readingJourney(paper, papers);
   const journeyTopic = researchSubjects.find((subject) => subject.id === journey?.topic);
+  const comparisons = comparisonReadings(paper, papers, journey?.links.map(link => link.paper.id));
   async function copyCitation() {
     setCopyState(await copyText(citation));
   }
@@ -60,7 +62,11 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
           <h2>{journeyTopic.label[locale]}</h2><p className="research-journey-position">{journey.index + 1} / 3 · {journey.stage[locale]}</p><p>{journey.reason[locale]}</p>
           {journey.links.map(({ paper: item, direction, stage, reason }) => <div className="research-journey-link" key={item.id}><a href={`/research/${item.id}`} onClick={(event) => onNavigate(event, `/research/${item.id}`)}><small>{direction === "next" ? (zh ? "下一篇" : "Next read") : (zh ? "上一篇" : "Previous read")} · {stage[locale]}</small><span>{researchTitle(item, locale)}<ArrowRight /></span></a><p>{reason[locale]}</p></div>)}
           <a className="text-link" href={`/research?view=topics&topic=${journey.topic}`} onClick={(event) => onNavigate(event, `/research?view=topics&topic=${journey.topic}`)}>{zh ? "浏览这个主题" : "Explore this topic"}<ArrowRight /></a>
-        </nav> : furtherReading.length > 0 && <section><h2>{zh ? "同主题文献" : "In this topic"}</h2><div className="research-next-list">{furtherReading.map((item) => <a key={item.id} href={`/research/${item.id}`} onClick={(event) => onNavigate(event, `/research/${item.id}`)}><span>{researchTitle(item, locale)}</span><ArrowRight /></a>)}</div></section>}
+        </nav> : comparisons.length === 0 && furtherReading.length > 0 && <section><h2>{zh ? "同主题文献" : "In this topic"}</h2><div className="research-next-list">{furtherReading.map((item) => <a key={item.id} href={`/research/${item.id}`} onClick={(event) => onNavigate(event, `/research/${item.id}`)}><span>{researchTitle(item, locale)}</span><ArrowRight /></a>)}</div></section>}
+        {comparisons.length > 0 && <nav className="research-journey-continuation research-comparison-readings" aria-label={zh ? "对照阅读" : "Read alongside"}>
+          <h2>{zh ? "对照阅读" : "Read alongside"}</h2>
+          {comparisons.map(({ paper: item, reason }) => <div className="research-journey-link" key={item.id}><a href={`/research/${item.id}`} onClick={(event) => onNavigate(event, `/research/${item.id}`)}><span>{researchTitle(item, locale)}<ArrowRight /></span></a><p>{reason[locale]}</p></div>)}
+        </nav>}
         {related.length > 0 && <details className="research-related-disclosure"><summary>{zh ? "相关数据与方法" : "Related data & methods"}</summary><p>{zh ? "用于延伸探索，不等同于论文原始样本。" : "For further exploration, not the paper’s original sample."}</p><div className="research-related-list">{related.map((item) => <a key={`${item.label}:${item.id}`} href={item.href} onClick={(event) => onNavigate(event, item.href)}><small>{item.label}</small><span>{item.title}<ArrowRight /></span></a>)}</div></details>}
         {paper.sources.length > 1 && <section><h2>{zh ? "更多来源" : "Additional sources"}</h2>{paper.sources.slice(1).map((source) => <a className="text-link" key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.label}<ArrowSquareOut /></a>)}</section>}
       </aside>

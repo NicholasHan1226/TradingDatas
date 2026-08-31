@@ -7,6 +7,8 @@ import { createServer } from "vite";
 import { papers, legacySourceChecks } from "../src/researchCatalog.js";
 import { researchReaderNotes } from "../src/researchReaderNotes.js";
 import { projectResearchIndex } from "../scripts/research-public-projection.mjs";
+import { comparisonReadings } from "../src/researchConnections.js";
+import { readingJourney } from "../src/researchJourneys.js";
 
 let server;
 let ResearchRecord;
@@ -16,6 +18,33 @@ before(async () => {
   ({ ResearchRecord } = await server.ssrLoadModule("/src/ResearchRecord.jsx"));
 });
 after(async () => server?.close());
+
+test("comparison navigation retains core journeys and localizes reasons even without body text", () => {
+  for (const title of ["Lazy Prices", "Time Series Momentum", "Robust Inference With Multiway Clustering"]) {
+    const paper = projectResearchIndex(papers.find(p => p.title === title));
+    const journey = readingJourney(paper, papers);
+    const comparisons = comparisonReadings(paper, papers, journey?.links.map(l => l.paper.id));
+    for (const locale of ["zh", "en"]) for (const bodyStatus of ["loading", "error", "ready"]) {
+      const html = renderToStaticMarkup(createElement(ResearchRecord, { paper, locale, bodyStatus, onRetryBody() {}, topicLabel: paper.topic, kindLabel: paper.kind, related: [], furtherReading: papers.slice(0, 3), saved: false, onToggleBookmark() {}, onNavigate() {} }));
+      assert.ok(html.includes(locale === "zh" ? 'aria-label="对照阅读"' : 'aria-label="Read alongside"'));
+      assert.doesNotMatch(html, /research-next-list/);
+      for (const { paper: target, reason } of comparisons) {
+        assert.ok(html.includes(`href="/research/${target.id}"`));
+        assert.ok(html.includes(escapeHtml(reason[locale])));
+        assert.ok(!html.includes(escapeHtml(reason[locale === "zh" ? "en" : "zh"])));
+      }
+      if (journey) assert.ok(html.includes(locale === "zh" ? 'aria-label="主题阅读顺序"' : 'aria-label="Topic reading sequence"'));
+    }
+  }
+});
+
+test("uncurated summary records retain the same-topic fallback", () => {
+  const paper = papers.find(p => !p.readingNotes?.length && !readingJourney(p, papers) && !comparisonReadings(p, papers).length);
+  assert.ok(paper);
+  const html = renderToStaticMarkup(createElement(ResearchRecord, { paper, locale: "en", topicLabel: paper.topic, kindLabel: paper.kind, related: [], furtherReading: papers.slice(0, 3), saved: false, onToggleBookmark() {}, onNavigate() {} }));
+  assert.match(html, /research-next-list/);
+  assert.doesNotMatch(html, /research-comparison-readings/);
+});
 
 test("all 200 records render in both languages with direct sources and no internal QA text", () => {
   for (const paper of papers) for (const locale of ["zh", "en"]) {

@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 60 guides: 59 have six bilingual sections with source locators;
+library has 80 guides: 79 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,7 +113,7 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 60 full-text reviews; 140 works
+This does not certify 200 full-length guides or 80 full-text reviews; 120 works
 remain summary-only.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
@@ -138,7 +138,13 @@ review or endorsement. Ten now have additional source-located guides in
 China size/value, discount rates, equity-premium prediction, Flash Boys, Aave V2
 and Schär's DeFi survey. China size/value focuses on the author's variable
 appendix, not the main empirical results. Source editions, read pages and current
-acceptance are in `docs/design/research-delivery-v12.md`.
+acceptance for that batch are in `docs/design/research-delivery-v12.md`.
+Two further batches in `researchSeventyGuides.js` and `researchEightyGuides.js`
+add twenty existing works on volatility, inference, liquidity, attention, financing,
+macro-finance and blockchain economics. Each has six bilingual, source-located
+sections with actual edition and reading limits. All twenty intentionally have no
+material links; this avoids implying maintained original samples or replication
+inputs. Current source scope and acceptance: `docs/design/research-eighty-guides-v13.md`.
 Daily high/low and illiquidity guides link to daily data rather than minute bars;
 text guides link to document versioning. No available order-book, governance,
 token-adoption or general model-fitting tutorial is implied. Related materials
@@ -164,10 +170,18 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 60 expanded guides below the lead story.
+counts. Featured also exposes the 80 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
-guides use the existing same-topic further-reading sidebar without inventing a
-fourth stage or changing original sequence membership.
+guides do not invent a fourth stage or change original sequence membership.
+`researchConnections.js` supplies 29 explicit, symmetric editorial comparison
+pairs across 39 works, including all twenty latest guides. They contrast definitions,
+inputs or methods; they do not assert citations, agreement, replication or evidence
+ranking. The reader shows at most three comparisons with bilingual reasons and
+excludes already displayed previous/next sequence links. Matching uses stable
+catalog identities resolved from authored titles; missing matches fail closed.
+Metadata is sufficient, so comparison navigation remains available while article
+text is loading or has failed. Without a sequence or curated comparisons, the
+existing same-topic fallback remains. No new route, API or stored preference.
 Three supplementary corporate question routes in `researchQuestionRoutes.js`
 connect nine existing works around earnings quality, company comparison and
 financial distress. They appear as closed disclosures on the first unfiltered
