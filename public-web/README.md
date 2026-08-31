@@ -52,8 +52,8 @@ Chinese/English editorial titles, orientations, data requirements and limitation
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 100 bilingual guides: 99 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 100 records are
+There are 120 bilingual guides: 119 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 80 records are
 summary-only. The eight three-stage core journeys retain their 24 original works.
 `src/researchFiftyGuides.js` adds seven primary-source-located guides and
 `src/researchSixtyGuides.js` adds ten more; `src/researchSeventyGuides.js` and
@@ -62,7 +62,7 @@ per-work material selections (including intentional empty sets); unassigned
 records fail closed to no materials, never topic defaults. The 150 previously
 summary-only selections are in `src/researchSummaryMaterials.js`; this curation
 does not constitute 150 full-text reviews. See
-`../docs/design/research-hundred-guides-v14.md` for current source scope and acceptance.
+`../docs/design/research-120-guides-v15.md` for current source scope and acceptance.
 
 `src/researchNinetyGuides.js` and `src/researchHundredGuides.js` add twenty further
 bounded guides: eight asset-pricing, seven A-share/institutional-comparison and five
@@ -144,15 +144,18 @@ passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
 passages or author-issued supporting instructions. Subsequent batches above bring
-the current total to 100 guides, 99 with six sections. Nelson/Siegel uses the 1985 NBER working paper,
+the current total to 120 guides, 119 with six sections. The latest modules are
+`researchMicrostructure120.js`, `researchCrypto120.js` and `researchMacro120.js`
+(seven, seven and six guides). They retain edition-specific limits and the existing
+per-work preparation selections. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
 certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
 Core articles show their position and previous/next reading with authored reasons;
-`src/researchConnections.js` adds 65 authored comparison pairs across 101 works,
-covering all 100 guides. Each article shows up to three bilingual
+`src/researchConnections.js` adds 85 authored comparison pairs across 121 works,
+covering all 120 guides. Each article shows up to three bilingual
 comparison reasons, excluding its existing previous/next links. These are editorial
 contrasts, not inferred citation edges, agreement or evidence rankings. They work
 from discovery metadata during body loading/error and preserve the core reading
@@ -215,7 +218,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 100 summary-only records, repeated/short paragraphs and
+candidates (including the 80 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only

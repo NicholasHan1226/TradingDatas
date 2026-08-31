@@ -1,5 +1,6 @@
 // Editorial comparisons, not inferred citations, agreement, or evidence rankings.
 import { researchComparisonExpansion } from "./researchComparisonExpansion.js";
+import { researchComparisons120 } from "./researchComparisons120.js";
 const pair = (left, right, zh, en) => ({ left, right, reason: { zh, en } });
 export const researchConnections = [
   pair("A Simple Approximate Long-Memory Model of Realized Volatility", "Generalized Autoregressive Conditional Heteroskedasticity",
@@ -90,6 +91,7 @@ export const researchConnections = [
     "对照降低中介控制的经济设想与实际治理集中风险；去中心化架构不会自动消除协调、输入或控制权问题。",
     "Compare the economic case for reducing intermediary control with governance concentration risks. Decentralized architecture does not automatically remove coordination or control problems."),
   ...researchComparisonExpansion,
+  ...researchComparisons120,
 ];
 
 export function comparisonReadings(paper, catalog, excludedIds = []) {
