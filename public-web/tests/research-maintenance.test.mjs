@@ -8,9 +8,9 @@ test("read-only maintenance distinguishes valid structure from editorial depth c
   const report = auditContent({ today: "2026-08-31" });
   assert.deepEqual(report.errors, []);
   assert.equal(report.records, 200);
-  assert.equal(report.guides, 43);
+  assert.equal(report.guides, 50);
   assert.equal(report.tutorials, 6);
-  assert.equal(report.review.filter(item => item.code === "summary_only").length, 157);
+  assert.equal(report.review.filter(item => item.code === "summary_only").length, 150);
   assert.equal(new Set(sourceUrls()).size, sourceUrls().length);
 });
 

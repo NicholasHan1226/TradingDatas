@@ -54,6 +54,18 @@ test("specific reading notes have bilingual text and a dated primary-source refe
   }
 });
 
+test("intentionally empty materials hide the disclosure while selected materials remain navigable", () => {
+  const paper = papers.find(p => p.title === "DeFi Risks and the Decentralisation Illusion");
+  for (const locale of ["zh", "en"]) {
+    const render = related => renderToStaticMarkup(createElement(ResearchRecord, { paper, locale, topicLabel: paper.topic, kindLabel: paper.kind, related, furtherReading: [], saved: false, onToggleBookmark() {}, onNavigate() {} }));
+    assert.doesNotMatch(render([]), /research-related-disclosure/);
+    const selected = render([{ id: "document-version-ledger", label: "Method", title: "Document versions", href: "/recipes/document-version-ledger" }]);
+    assert.match(selected, /research-related-disclosure/);
+    assert.match(selected, /href="\/recipes\/document-version-ledger"/);
+    assert.ok(selected.includes(locale === "zh" ? "不等同于论文原始样本" : "not the paper’s original sample"));
+  }
+});
+
 test("legacy official-source check dates are explicit per-record history", () => {
   for (const [title, date] of Object.entries(legacySourceChecks)) {
     const paper = papers.find((item) => item.title === title);

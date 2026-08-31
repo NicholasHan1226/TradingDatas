@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 43 guides: 42 have six bilingual sections with source locators;
+library has 50 guides: 49 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,14 +113,29 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 43 full-text reviews; 157 works
+This does not certify 200 full-length guides or 50 full-text reviews; 150 works
 remain summary-only.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
-counts while replacing generic passages in Lazy Prices with source-located
+then-current counts while replacing generic passages in Lazy Prices with source-located
 document pairing, parsing and similarity definitions, and in governance with
 reverse coding, equal weights and firm-level opt-outs. Dechow/Dichev remains
 abstract-based, now explicitly identifying firm-specific estimation and linking
 the accessible abstract. Its unsuccessful full-text retrieval is not a new review.
+
+`researchFiftyGuides.js` adds seven existing works on systemic risk, leverage,
+text, geopolitical risk, random forests, Chinese warrants and DeFi, based on
+bounded primary-source passages. Edition and reading boundaries are recorded in
+`docs/design/research-fifty-guides-v11.md`; no whole-paper review is implied.
+All 50 expanded guides now have deliberate per-work material selections:
+new-guide `related` overrides take precedence over `researchGuideMaterials.js`,
+then record-specific and topic defaults. An explicit empty object suppresses the
+related-material disclosure; no material is better than a misleading match.
+The remaining 150 summary-only records retain their topic/record associations;
+their link targets are structurally checked, not individually endorsed.
+Daily high/low and illiquidity guides link to daily data rather than minute bars;
+text guides link to document versioning. No available order-book, governance,
+token-adoption or general model-fitting tutorial is implied. Related materials
+remain further exploration, not original samples or a replication bundle.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -142,7 +157,7 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 43 expanded guides below the lead story.
+counts. Featured also exposes the 50 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides use the existing same-topic further-reading sidebar without inventing a
 fourth stage or changing original sequence membership.

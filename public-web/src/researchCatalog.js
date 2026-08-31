@@ -3,8 +3,9 @@ import bibliography from "./researchBibliography.json" with { type: "json" };
 import sourcePages from "./researchSourcePages.json" with { type: "json" };
 import { researchSeeds } from "./researchSeeds.js";
 import { researchReaderNotes, sourceSpecificReaderLimits } from "./researchReaderNotes.js";
+import { researchGuideMaterials } from "./researchGuideMaterials.js";
 
-export const researchUpdatedAt = "2026-08-30";
+export const researchUpdatedAt = "2026-08-31";
 const cleanText = (value) => value?.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 export const paperSlug = (paper) => paper.id || paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 export const researchTitle = (paper, locale) => locale === "zh" ? paper.titleZh : (paper.sourceTitle || paper.title);
@@ -122,7 +123,7 @@ function assemble(seed, legacyIndex) {
     evidence: metadata || { verification: "official_source_page", checkedAt: legacySourceChecks[seed.title] },
     verifiedAt: metadata?.checkedAt || legacySourceChecks[seed.title],
     readiness: original ? seed.readiness || "orientation_only" : "orientation_only",
-    related: seed.related || profile.related,
+    related: researchReaderNotes[seed.title]?.related ?? researchGuideMaterials[seed.title] ?? seed.related ?? profile.related,
     limits: seed.limits || profile.limits,
     checks: profile.checks,
     readingNotes: researchReaderNotes[seed.title]?.sections,
