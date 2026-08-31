@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
@@ -48,6 +49,7 @@ from query_cursor import (
 from storage.receipt_projection import (
     DatasetRuntimeEvidence,
     RuntimeProjectionError,
+    ValidatedRowReceiptProof,
     open_verified_read_model_snapshot,
     project_dataset_runtime_evidence,
     validated_receipt_history_for_dataset,
@@ -822,18 +824,18 @@ def _row_receipt_proof_semantic_key(
     )
 
 
-def _row_receipt_proof_metadata(
+def _validated_page_receipt_proofs(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
     dataset: DatasetDefinition,
     rows: tuple[tuple[object, ...], ...],
     *,
     now: datetime,
-) -> list[dict[str, object]]:
-    """Build opt-in per-row proof metadata from B1's validated receipt join."""
+) -> Mapping[str, ValidatedRowReceiptProof]:
+    """Validate every returned row's own authority, including default queries."""
 
     if not rows:
-        return []
+        return {}
     receipt_ids = tuple(dict.fromkeys(row[5] for row in rows))
     if any(type(receipt_id) is not str or not receipt_id for receipt_id in receipt_ids):
         raise QueryServiceUnavailable("query service is unavailable")
@@ -844,6 +846,29 @@ def _row_receipt_proof_metadata(
         receipt_ids,
         now=now,
     )
+    for row in rows:
+        proof = proofs.get(row[5])
+        if (
+            proof is None
+            or proof.dataset_id != dataset.dataset_id
+            or proof.provider != row[1]
+            or proof.receipt_id != row[5]
+            or proof.status != "success"
+        ):
+            raise QueryServiceUnavailable("query service is unavailable")
+    return proofs
+
+
+def _row_receipt_proof_metadata(
+    dataset: DatasetDefinition,
+    rows: tuple[tuple[object, ...], ...],
+    proofs: Mapping[str, ValidatedRowReceiptProof],
+    *,
+    now: datetime,
+) -> list[dict[str, object]]:
+    """Format opt-in proofs with their additional single-cohort contract."""
+    if not rows:
+        return []
     cohort_identity: tuple[object, ...] | None = None
     output: list[dict[str, object]] = []
     no_window = dataset.cadence_class == "session_minute" and (
@@ -2605,6 +2630,13 @@ class QueryService:
                         flat_key.extend((provider, row_key))
                         sort_keys.append(tuple(flat_key))
 
+                row_proofs = _validated_page_receipt_proofs(
+                    conn,
+                    self._registry,
+                    dataset,
+                    tuple(selected_rows),
+                    now=validated_now,
+                )
                 _merge_provider_native_quality(
                     metadata,
                     dataset_degraded=provider_native_dataset_degraded,
@@ -2612,10 +2644,9 @@ class QueryService:
                 )
                 if validated_request.include_receipt_proofs:
                     metadata["row_receipt_proofs"] = _row_receipt_proof_metadata(
-                        conn,
-                        self._registry,
                         dataset,
                         tuple(selected_rows),
+                        row_proofs,
                         now=validated_now,
                     )
 

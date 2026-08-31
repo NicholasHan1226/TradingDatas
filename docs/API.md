@@ -63,6 +63,17 @@ runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor wate
 
 ## POST /v1/query
 
+每一页返回的行都必须在同一只读 SQLite 快照内通过自身 `receipt_id` 的身份、
+dataset/provider、成功状态与完整采集序列校验。缺失或无效的行回执返回
+`503 service_unavailable`，不得用最新 dataset 回执替代，也不得标记
+`lineage.complete=true` 后继续返回该行。校验限于当前页引用的去重回执及其
+采集序列，不遍历其它数据集，也不访问 provider；定位序列成员的 SQL 仍可能
+检查当前数据集的历史回执，因此页大小有界不等于历史规模对耗时完全无影响。
+
+`include_receipt_proofs` 只控制是否输出逐行证明及其既有的单一采集序列限制，
+不控制上述基础校验是否执行。默认查询继续允许同页包含来自多个有效历史
+采集序列的行；字段投影、分页和默认响应格式不变。
+
 请求：
 
 ```json
