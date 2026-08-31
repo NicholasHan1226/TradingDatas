@@ -46,7 +46,7 @@ Required workflow for every data task:
 3. Call `POST /v1/query` with a bounded request using only catalog-supported fields and filters. Start with the smallest useful field set, date/window, and limit; never exceed the documented limit.
 4. Follow `next_cursor` for pagination. Do not invent offsets or reuse a cursor with changed query parameters.
 5. Before treating data as usable, inspect `metadata.state`, `runtime_state`, `degraded`, `freshness`, `quality`, `lineage`, `receipt_id`, `data_through`, `observed_at`, and `reasons`.
-6. Treat missing receipt/lineage, `partial`, `degraded`, `stale`, `paused`, `failed`, `unobserved`, schema mismatch, authentication failure, and rate-limit responses as explicit limitations. Do not silently substitute another dataset, provider route, cached file, or external source.
+6. Treat HTTP 503 `service_unavailable`, missing receipt/lineage, `partial`, `degraded`, `stale`, `paused`, `failed`, `unobserved`, schema mismatch, authentication failure, and rate-limit responses as explicit limitations. Do not silently substitute another dataset, provider route, cached file, or external source. A query 503 can mean the page's own row receipts are missing or invalid even when catalog looks ready; do not invent rows or reuse an older HTTP 200.
 7. Preserve dataset IDs, field names, timestamps, units, provider lineage, and revision/as-of caveats in downstream work.
 8. TradingData supplies raw material. Do not describe its data as a TradingData strategy, signal, forecast, recommendation, or guaranteed research result.
 
@@ -129,7 +129,8 @@ Deterministic tests assert for every variant:
 - catalog discovery precedes query;
 - `dataset_id` and `schema_major` are catalog-derived;
 - query guidance is bounded and cursor-aware;
-- receipt, freshness, quality, lineage, and degraded state are checked;
+- receipt, freshness, quality, lineage, degraded state, and HTTP 503
+  `service_unavailable` are treated as explicit limitations;
 - provider-specific fallback and invented data are forbidden;
 - no API key or secret-shaped fixture appears in rendered text;
 - copy feedback and screen-reader announcement are present;

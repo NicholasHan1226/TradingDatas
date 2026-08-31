@@ -69,10 +69,36 @@ dataset/provider、成功状态与完整采集序列校验。缺失或无效的�
 `lineage.complete=true` 后继续返回该行。校验限于当前页引用的去重回执及其
 采集序列，不遍历其它数据集，也不访问 provider；定位序列成员的 SQL 仍可能
 检查当前数据集的历史回执，因此页大小有界不等于历史规模对耗时完全无影响。
+空页（`data=[]`）没有行回执可校验；catalog 显示 `success` 不能证明即将返回的
+历史行仍绑着完整回执。
 
 `include_receipt_proofs` 只控制是否输出逐行证明及其既有的单一采集序列限制，
-不控制上述基础校验是否执行。默认查询继续允许同页包含来自多个有效历史
-采集序列的行；字段投影、分页和默认响应格式不变。
+不控制上述基础校验是否执行。省略该字段等于 `false`。默认查询继续允许同页
+包含来自多个有效历史采集序列的行；字段投影、分页和默认响应格式不变。
+同一页若行回执分属不同 `execution_id` / `request_window` / `config_hash` /
+`data_through`，默认查询在各回执均有效时可返回这些行；显式 `true` 会因单一
+序列合同失败并同样返回 503。
+
+该 503 使用与其它 query fail-closed 相同的错误信封，不单独暴露哪一行或哪份
+回执损坏：
+
+```json
+{
+  "api_version": "v1",
+  "request_id": "...",
+  "error": {
+    "code": "service_unavailable",
+    "message": "service temporarily unavailable",
+    "retryable": true
+  }
+}
+```
+
+`retryable` 是该错误码的固定分类（容量不足、IPC 失败与行回执损坏共用），
+不是“同一页再试就会好”的承诺。行回执缺失或无效时，缩小 `filters`/`limit`
+可以隔离损坏页，但相同页会持续 503，直到原始 success 回执被恢复；省略
+`include_receipt_proofs`、改用后续 dataset 回执或复用旧 HTTP 200 都不能绕过。
+诊断步骤见 [查询页行回执校验](OPERATIONS.md#查询页的行回执校验)。
 
 请求：
 
@@ -84,7 +110,8 @@ dataset/provider、成功状态与完整采集序列校验。缺失或无效的�
   "filters": {},
   "as_of": null,
   "limit": 500,
-  "cursor": null
+  "cursor": null,
+  "include_receipt_proofs": false
 }
 ```
 

@@ -549,6 +549,61 @@ DNS failover 都从目标 release 配置及带时间戳的有界探测读回，�
 预算约束，消费者应缩小日期范围，不能通过无限重试或旧 route fallback 绕过。非分区
 snapshot（如 security master）及有界 calendar 可按 registry 默认排序完整翻页。
 
+## 查询页的行回执校验
+
+默认 `POST /v1/query` 在写出每一页前，会在同一只读快照内校验该页每行自己的
+`receipt_id`：身份、dataset/provider、`status=success` 以及该 execution 的完整
+采集序列。这与 catalog / query metadata 使用的最新 dataset 回执是两件独立事实。
+合同见 [API query](API.md#post-v1query)。
+
+### 何时会 503
+
+下列情况对默认查询和 `include_receipt_proofs=true` 都会返回既有
+`503 service_unavailable`，不会返回该行，也不会把 `lineage.complete=true` 贴到
+无权威的结果上：
+
+- 事实行的 `receipt_id` 在 `market_ingest_runs.run_id` 中不存在；
+- 回执 `notes` 损坏、无法通过既有 receipt validator；
+- 回执 provider 与该行 `provider` 不一致，或 dataset 不匹配；
+- 同一 execution 的采集序列不完整（缺中间 `call_index` 等）；
+- 回执不是 `success`（failed/empty/其它状态不能给行背书）。
+
+catalog 仍可能对该 dataset 显示 `success`：最新可信 run 完好，只是本页引用的
+历史行回执已经缺失或损坏。空页没有行回执可校验，因此 `unobserved`/`empty` 的
+`data=[]` 不会走这条门禁。`include_receipt_proofs` 只额外要求整页单一采集序列，
+不是这条校验的开关。
+
+### 不要做的事
+
+- 不要把最新 `metadata.receipt_id` 写回历史行，也不要复制最新回执信封去冒充
+  行的原始 `receipt_id`；
+- 不要为了让查询通过而删除事实行、补造回执或在业务库内建临时表/索引/视图；
+- 不要把 `retryable: true` 理解成同一页再请求就会恢复；容量/IPC 类 503 可以
+  有界重试，行回执损坏必须先恢复原始 success 信封；
+- 不要把一次认证 catalog 200 或旧 HTTP 200 当作该页仍可查询的证明。
+
+### 只读诊断
+
+在库外副本或 `mode=ro` + `PRAGMA query_only=ON` 下核对，结果如需落盘只用
+ATTACH 临时文件。不要在读模型库内创建对象。
+
+```sql
+SELECT r.dataset_id, r.provider, r.schema_major, count(*) AS rows_missing_receipt
+FROM provider_dataset_rows AS r
+LEFT JOIN market_ingest_runs AS m ON m.run_id = r.receipt_id
+WHERE m.run_id IS NULL
+GROUP BY r.dataset_id, r.provider, r.schema_major;
+```
+
+缩小到正在 503 的 `dataset_id`、过滤字段和 `limit`，确认失败页上的
+`receipt_id` 是否存在、`status` 是否为 `success`、以及同 `execution_id` 的
+兄弟回执是否从 `call_index=0` 连续。`tools/diagnose_projection_failure.py`
+只报告全站未知 `source`，不能替代本页行回执核对。
+
+恢复只能还原该行原始、字节保持的 success 回执；生产切库需要新的冻结快照与
+其后采集对账，隔离副本不是回滚件。应用回滚只撤销本校验，不会把缺失回执变回
+可查询。
+
 ## 管理控制台公网回源
 
 管理控制台前端继续由 Cloudflare Pages 提供，生产 API 主机名固定为
