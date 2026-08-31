@@ -41,8 +41,13 @@ Contract: [Account continuity v1](../design/account-library-v1.md).
   narrow responsive Account, and the reused administrator app's actual render.
   The latest handler was tested on port 5202. No actual administrator mutation
   or real customer email was sent from the browser.
-- `git diff --check` passed. GitHub CI and production acceptance are separate
-  gates and must be recorded after the candidate exists remotely.
+- Source/documentation whitespace checks passed. The full generated-artifact
+  diff reports ten whitespace-only lines inside the unchanged third-party
+  scroll-lock CSS template in the two built Admin bundles. Generated/vendor
+  bytes were not hand-edited to suppress that warning.
+- Latest main `ddccda1` was integrated without conflicts, preserving its catalog
+  process isolation and prewindow clock repairs. Public source was unchanged
+  by that integration. GitHub CI and production acceptance remain separate gates.
 
 ## Independent review and fixed finding
 
