@@ -2294,3 +2294,147 @@ def test_admin_usage_history_accepts_dashboard_days_parameter(
     assert status == 200
     assert payload is not None
     assert len(payload["history"]) == 7
+
+
+def _install_catalog_execution_probe(monkeypatch, execute):
+    import sys
+    from types import SimpleNamespace
+
+    monkeypatch.setitem(sys.modules, "catalog_executor", SimpleNamespace(
+        execute_catalog=execute, shutdown_catalog_executor=lambda: None,
+    ))
+
+
+def test_catalog_executor_is_after_auth_and_preserves_tenant_claim(
+    v1_server: _Harness, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    def execute(catalog, **kwargs):
+        assert auth._ACTIVE_REQUESTS.get("tenant-mixed") == 1
+        assert set(kwargs) == {"access", "filters", "limit", "cursor", "now", "request_id"}
+        assert kwargs["access"].tenant_id == "tenant-mixed"
+        calls.append(kwargs)
+        return catalog.list_datasets(**kwargs)
+
+    _install_catalog_execution_probe(monkeypatch, execute)
+    assert v1_server.request("GET", "/v1/catalog", token=None)[0] == 401
+    assert v1_server.request("GET", "/v1/catalog", token="health-token")[0] == 403
+    assert not calls
+    status, payload, _, _ = v1_server.request(
+        "GET", "/v1/catalog?market=CN", token="mixed-finite-token",
+    )
+    assert status == 200 and payload is not None
+    assert len(calls) == 1
+    assert calls[0]["request_id"] == payload["request_id"]
+    assert calls[0]["filters"].market == "CN"
+    assert auth._ACTIVE_REQUESTS.get("tenant-mixed", 0) == 0
+
+
+def test_catalog_executor_capacity_failure_is_503_without_query_fallback(
+    v1_server: _Harness, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def execute(catalog, **kwargs):
+        assert auth._ACTIVE_REQUESTS.get("tenant-mixed") == 1
+        raise QueryServiceUnavailable("private worker detail")
+
+    _install_catalog_execution_probe(monkeypatch, execute)
+    status, payload, _, raw = v1_server.request(
+        "GET", "/v1/catalog", token="mixed-finite-token",
+    )
+    assert status == 503 and payload is not None
+    _error_shape(payload, "service_unavailable")
+    assert b"private worker detail" not in raw
+    assert not v1_server.catalog.calls
+    assert auth._ACTIVE_REQUESTS.get("tenant-mixed", 0) == 0
+    body = _json_body(GOOD_QUERY)
+    assert v1_server.request("POST", "/v1/query", body=body,
+                             headers=_post_headers(body), token="mixed-finite-token")[0] == 200
+
+
+def test_catalog_executor_client_timeout_does_not_release_running_claim(
+    v1_server: _Harness, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    def execute(catalog, **kwargs):
+        entered.set()
+        try:
+            assert release.wait(timeout=4)
+            return catalog.list_datasets(**kwargs)
+        finally:
+            finished.set()
+
+    _install_catalog_execution_probe(monkeypatch, execute)
+    connection = http.client.HTTPConnection(v1_server.host, v1_server.port, timeout=0.1)
+    try:
+        connection.request("GET", "/v1/catalog",
+                           headers={"Authorization": "Bearer mixed-finite-token"})
+        assert entered.wait(timeout=2)
+        with pytest.raises(TimeoutError):
+            connection.getresponse()
+        connection.close()
+        assert auth._ACTIVE_REQUESTS.get("tenant-mixed") == 1
+        status, payload, _, _ = v1_server.request(
+            "GET", "/v1/catalog", token="mixed-finite-token",
+        )
+        assert status == 429 and payload is not None
+        _error_shape(payload, "concurrency_limit_exceeded")
+    finally:
+        connection.close()
+        release.set()
+    assert finished.wait(timeout=2)
+    deadline = time.monotonic() + 2
+    while auth._ACTIVE_REQUESTS.get("tenant-mixed", 0) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert auth._ACTIVE_REQUESTS.get("tenant-mixed", 0) == 0
+
+
+@pytest.mark.parametrize("failure", ["serve", "bootstrap", "close"])
+def test_catalog_executor_bootstrap_precedes_listener_and_always_closes(
+    monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    import signal
+    import sys
+    from types import SimpleNamespace
+
+    import data_plane_runtime
+
+    events = []
+    sentinel = object()
+    old_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def initialize(catalog):
+        assert catalog is sentinel
+        events.append("bootstrap")
+        if failure == "bootstrap":
+            raise RuntimeError("bootstrap failed")
+
+    class Server:
+        def __init__(self, *args, **kwargs):
+            assert events == ["bootstrap"]
+            events.append("listen")
+
+        def serve_forever(self):
+            events.append("serve")
+            raise RuntimeError("serve stopped")
+
+        def server_close(self):
+            events.append("close")
+            if failure == "close":
+                raise RuntimeError("close failed")
+
+    monkeypatch.setattr(api_server, "_ensure_process_config_loaded", lambda: None)
+    monkeypatch.setattr(api_server, "TradingDatasHTTPServer", Server)
+    monkeypatch.setattr(data_plane_runtime, "build_data_plane_runtime",
+                        lambda: SimpleNamespace(catalog=sentinel))
+    monkeypatch.setitem(sys.modules, "catalog_executor", SimpleNamespace(
+        catalog_worker_count=lambda: 2,
+        initialize_catalog_executor=initialize,
+        shutdown_catalog_executor=lambda: events.append("shutdown"),
+    ))
+    with pytest.raises(RuntimeError):
+        api_server.main()
+    assert events == (["bootstrap", "shutdown"] if failure == "bootstrap" else
+                      ["bootstrap", "listen", "serve", "close", "shutdown"])
+    assert signal.getsignal(signal.SIGTERM) is old_sigterm
