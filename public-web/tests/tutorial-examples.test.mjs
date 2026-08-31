@@ -19,8 +19,8 @@ test("six bilingual tutorials have sources, inputs, steps, outputs and working r
     for (const locale of ["zh", "en"]) for (const step of tutorial.steps) assert.ok(step.title[locale] && step.body[locale].length > 80);
   }
 });
-test("50 source-grounded bilingual guides keep a bounded internal review scope", () => {
-  assert.equal(Object.keys(researchEditorial).length, 50);
+test("60 source-grounded bilingual guides keep a bounded internal review scope", () => {
+  assert.equal(Object.keys(researchEditorial).length, 60);
   for (const [title, guide] of Object.entries(researchEditorial)) {
     assert.ok(papers.some(paper => paper.title === title), title);
     assert.ok(guide.sections.length >= 4);

@@ -9,7 +9,7 @@ import { researchCitation } from "./researchReader.js";
 import { copyText } from "./copyText.js";
 import { pageMetadata } from "./pageMetadata.js";
 
-export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, furtherReading, saved, onToggleBookmark, onNavigate, backHref = "/research" }) {
+export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, furtherReading, saved, onToggleBookmark, onNavigate, backHref = "/research", bodyStatus = "ready", onRetryBody }) {
   const [copyState, setCopyState] = useState("idle");
   const [linkState, setLinkState] = useState("idle");
   const zh = locale === "zh";
@@ -45,6 +45,8 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
     {paper.readingNotes?.length > 0 && <details className="research-article-contents"><summary>{zh ? "本篇内容" : "In this guide"}</summary><nav aria-label={zh ? "文章目录" : "Article contents"}><ol>{paper.readingNotes.map((section,index)=><li key={section.title.en}><a href={`#research-section-${index+1}`}>{section.title[locale]}</a></li>)}</ol></nav></details>}
     <div className="research-reader-layout">
       <div className="research-reader-body">
+        {bodyStatus === "loading" && <p role="status">{zh ? "正在载入导读…" : "Loading reading guide…"}</p>}
+        {bodyStatus === "error" && <div role="alert"><p>{zh ? "导读暂时未能载入，你仍可打开原文或重试。" : "The guide could not be loaded. You can still open the original or try again."}</p><button className="secondary-button" type="button" onClick={onRetryBody}>{zh ? "重试" : "Try again"}</button></div>}
         <p className="research-reader-intro">{paper.summary[locale]}</p>
         {paper.readingNotes?.map((section,index) => <section key={section.title.en} id={`research-section-${index+1}`} tabIndex={-1}><h2>{section.title[locale]}</h2><p>{section.body[locale]}</p>{section.reference && <a className="text-link" href={section.reference.url} target="_blank" rel="noreferrer">{section.reference.label[locale]}<ArrowSquareOut /></a>}</section>)}
         <section><h2>{zh ? "涉及的数据" : "Data in focus"}</h2><p>{researchData(paper, locale)}</p></section>

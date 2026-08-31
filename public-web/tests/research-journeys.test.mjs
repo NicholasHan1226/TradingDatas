@@ -37,9 +37,9 @@ test("all core journey continuations have specific bilingual connections and rec
   assert.equal(readingJourney({ title: "unknown" }, papers), null);
 });
 
-test("featured shelf has 50 guides and covers every core journey stage", () => {
+test("featured shelf has 60 guides and covers every core journey stage", () => {
   const guides = papers.filter((paper) => paper.readingNotes?.length >= 4);
-  assert.equal(guides.length, 50);
+  assert.equal(guides.length, 60);
   for (const steps of Object.values(researchJourneys)) for (const step of steps) {
     assert.ok(guides.some((paper) => paper.title === step.title), step.title);
   }

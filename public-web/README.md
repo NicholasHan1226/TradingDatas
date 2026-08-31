@@ -52,13 +52,25 @@ Chinese/English editorial titles, orientations, data requirements and limitation
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 50 bilingual guides: 49 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 150 records are
+There are 60 bilingual guides: 59 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 140 records are
 summary-only. The eight three-stage core journeys retain their 24 original works.
-`src/researchFiftyGuides.js` adds seven primary-source-located guides. All 50
-expanded guides use per-work material selections (including intentional empty
-sets), rather than inheriting topic links indiscriminately. See
-`docs/design/research-fifty-guides-v11.md` for source scope and current acceptance.
+`src/researchFiftyGuides.js` adds seven primary-source-located guides and
+`src/researchSixtyGuides.js` adds ten more. All 200 records now use explicit
+per-work material selections (including intentional empty sets); unassigned
+records fail closed to no materials, never topic defaults. The 150 previously
+summary-only selections are in `src/researchSummaryMaterials.js`; this curation
+does not constitute 150 full-text reviews. See
+`../docs/design/research-delivery-v12.md` for current source scope and acceptance.
+
+Production discovery retains both languages, stable IDs and `guideSectionCount`
+but excludes article bodies. `ResearchArticle.jsx` requests one bilingual body
+through `researchGuideLoader.js`, with loading/error/retry states, cancellation
+of stale responses and section-fragment restoration after loading. Development
+uses the full source modules. The build projection emits one dynamic module per
+guide and fails if bodies are merged, missing or statically reachable from entry
+chunks; its console report measures generated JavaScript bytes, not device speed.
+No new API, analytics, account persistence or live-data request is introduced.
 `src/researchFundamentalsMicrostructureGuides.js` adds six source-backed guides
 on accounting signals, governance, distress and market microstructure. Source
 edition differences are visible in locators/limitations; internal review notes
@@ -122,7 +134,7 @@ passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
 passages or author-issued supporting instructions. Subsequent batches above bring
-the current total to 50 guides, 49 with six sections. Nelson/Siegel uses the 1985 NBER working paper,
+the current total to 60 guides, 59 with six sections. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
 certify complete reading. Eight subject
@@ -187,7 +199,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 150 summary-only records, repeated/short paragraphs and
+candidates (including the 140 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only

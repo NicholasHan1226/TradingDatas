@@ -31,7 +31,7 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
   const page = Math.min(view.page, pageCount - 1);
   const visible = matches.slice(page * researchPageSize, (page + 1) * researchPageSize);
   const featuredHref = `/research/${featuredPaper.id}`;
-  const guides = papers.filter((paper) => paper.readingNotes?.length >= 4);
+  const guides = papers.filter((paper) => paper.guideSectionCount >= 4);
   const journey = researchJourneys[subject.id];
   function change(event, action, scroll = false) {
     if (event?.metaKey || event?.ctrlKey || event?.shiftKey || event?.altKey) return;

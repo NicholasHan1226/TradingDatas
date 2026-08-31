@@ -28,7 +28,7 @@ import { researchViewReducer } from "./researchReader.js";
 import { researchHref, researchLocation, researchSubjects } from "./researchDiscovery.js";
 import { ResearchHub } from "./ResearchHub.jsx";
 import { GlobalSearchField } from "./GlobalSearchField.jsx";
-import { ResearchRecord } from "./ResearchRecord.jsx";
+import { ResearchArticle } from "./ResearchArticle.jsx";
 import { createReadingPositions, isInPageNavigation, researchSectionTarget } from "./researchHistory.js";
 import { preparationTutorials } from "./preparationTutorials.js";
 import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
@@ -1403,7 +1403,7 @@ export function App() {
         </section>}
 
         {primaryRoute === "research" && routeSlug && !selectedReadingPath && (selectedPaper ?
-          <ResearchRecord backHref={researchHref(researchView)} key={selectedPaper.id} paper={selectedPaper} locale={locale} topicLabel={topicLabels[selectedPaper.topic]} kindLabel={kindLabels[selectedPaper.kind]} related={getResearchRelatedObjects(selectedPaper, locale)} furtherReading={papers.filter((paper) => paper.topic === selectedPaper.topic && paper.id !== selectedPaper.id).slice(0, 3)} saved={bookmarks.includes(`research:${selectedPaper.id}`)} onToggleBookmark={() => toggleBookmark(`research:${selectedPaper.id}`)} onNavigate={navigate} /> :
+          <ResearchArticle backHref={researchHref(researchView)} key={selectedPaper.id} paper={selectedPaper} locale={locale} topicLabel={topicLabels[selectedPaper.topic]} kindLabel={kindLabels[selectedPaper.kind]} related={getResearchRelatedObjects(selectedPaper, locale)} furtherReading={papers.filter((paper) => paper.topic === selectedPaper.topic && paper.id !== selectedPaper.id).slice(0, 3)} saved={bookmarks.includes(`research:${selectedPaper.id}`)} onToggleBookmark={() => toggleBookmark(`research:${selectedPaper.id}`)} onNavigate={navigate} /> :
           <section className="object-detail-page"><a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a><h1>{locale === "zh" ? "研究记录未找到" : "Research record not found"}</h1></section>
         )}
 

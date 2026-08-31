@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { papers, legacySourceChecks } from "../src/researchCatalog.js";
 import { researchReaderNotes } from "../src/researchReaderNotes.js";
+import { projectResearchIndex } from "../scripts/research-public-projection.mjs";
 
 let server;
 let ResearchRecord;
@@ -71,5 +72,17 @@ test("legacy official-source check dates are explicit per-record history", () =>
     const paper = papers.find((item) => item.title === title);
     assert.equal(paper.verifiedAt, date);
     assert.equal(paper.evidence.checkedAt, date);
+  }
+});
+
+test("loading and error shells retain source actions and expose bilingual status and retry", () => {
+  const paper = projectResearchIndex(papers.find(p => p.id === "lazy-prices"));
+  for (const locale of ["zh", "en"]) for (const bodyStatus of ["loading", "error"]) {
+    const html = renderToStaticMarkup(createElement(ResearchRecord, { paper, locale, bodyStatus, onRetryBody() {}, topicLabel: paper.topic, kindLabel: paper.kind, related: [], furtherReading: [], saved: false, onToggleBookmark() {}, onNavigate() {} }));
+    assert.ok(html.includes(paper.sources[0].url.replaceAll("&", "&amp;")));
+    assert.ok(html.includes(locale === "zh" ? "阅读原文" : "Read original"));
+    assert.match(html, bodyStatus === "loading" ? /role="status"/ : /role="alert"/);
+    assert.doesNotMatch(html, /undefined|\[object Object\]|id="research-section-1"/);
+    if (bodyStatus === "error") assert.ok(html.includes(locale === "zh" ? "重试" : "Try again"));
   }
 });

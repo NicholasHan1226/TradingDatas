@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 50 guides: 49 have six bilingual sections with source locators;
+library has 60 guides: 59 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,7 +113,7 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 50 full-text reviews; 150 works
+This does not certify 200 full-length guides or 60 full-text reviews; 140 works
 remain summary-only.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
@@ -126,12 +126,19 @@ the accessible abstract. Its unsuccessful full-text retrieval is not a new revie
 text, geopolitical risk, random forests, Chinese warrants and DeFi, based on
 bounded primary-source passages. Edition and reading boundaries are recorded in
 `docs/design/research-fifty-guides-v11.md`; no whole-paper review is implied.
-All 50 expanded guides now have deliberate per-work material selections:
+All 200 records now have deliberate per-work material selections:
 new-guide `related` overrides take precedence over `researchGuideMaterials.js`,
-then record-specific and topic defaults. An explicit empty object suppresses the
+then `researchSummaryMaterials.js`, then an empty object. No topic fallback is
+used. An explicit empty object suppresses the
 related-material disclosure; no material is better than a misleading match.
-The remaining 150 summary-only records retain their topic/record associations;
-their link targets are structurally checked, not individually endorsed.
+All 150 previously summary-only records were curated against their existing
+orientations and data requirements. This is navigation curation, not full-text
+review or endorsement. Ten now have additional source-located guides in
+`researchSixtyGuides.js`: elastic net, Taylor rules, principal components, PBO,
+China size/value, discount rates, equity-premium prediction, Flash Boys, Aave V2
+and Schär's DeFi survey. China size/value focuses on the author's variable
+appendix, not the main empirical results. Source editions, read pages and current
+acceptance are in `docs/design/research-delivery-v12.md`.
 Daily high/low and illiquidity guides link to daily data rather than minute bars;
 text guides link to document versioning. No available order-book, governance,
 token-adoption or general model-fitting tutorial is implied. Related materials
@@ -157,7 +164,7 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 50 expanded guides below the lead story.
+counts. Featured also exposes the 60 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides use the existing same-topic further-reading sidebar without inventing a
 fourth stage or changing original sequence membership.
@@ -201,6 +208,14 @@ updates metadata to the active language during navigation. This is share-preview
 support, not server-rendered article bodies or proof of search-engine indexing.
 The build omits internal evidence/check profiles from the public catalogue;
 source records and validation still retain them. Tutorials load on demand.
+Production research discovery also omits body paragraphs and expanded-guide
+limitations while retaining both languages and `guideSectionCount`. Article
+bodies load in one bilingual module per guide, independent of locale choice.
+Loading and retryable failure keep identity/source actions visible; cancelled
+article requests cannot overwrite the current article. Valid section fragments
+are restored after content appears. The build rejects eagerly imported, merged
+or missing body chunks. Byte/import-graph checks are not browser performance or
+accessibility acceptance, and browser acceptance remains required before release.
 
 Legacy official-source verification dates are stored per source; a library-wide
 content update cannot advance those dates. Source identity checks and editorial

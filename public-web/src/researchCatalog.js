@@ -4,6 +4,7 @@ import sourcePages from "./researchSourcePages.json" with { type: "json" };
 import { researchSeeds } from "./researchSeeds.js";
 import { researchReaderNotes, sourceSpecificReaderLimits } from "./researchReaderNotes.js";
 import { researchGuideMaterials } from "./researchGuideMaterials.js";
+import { researchSummaryMaterials } from "./researchSummaryMaterials.js";
 
 export const researchUpdatedAt = "2026-08-31";
 const cleanText = (value) => value?.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -123,10 +124,11 @@ function assemble(seed, legacyIndex) {
     evidence: metadata || { verification: "official_source_page", checkedAt: legacySourceChecks[seed.title] },
     verifiedAt: metadata?.checkedAt || legacySourceChecks[seed.title],
     readiness: original ? seed.readiness || "orientation_only" : "orientation_only",
-    related: researchReaderNotes[seed.title]?.related ?? researchGuideMaterials[seed.title] ?? seed.related ?? profile.related,
+    related: researchReaderNotes[seed.title]?.related ?? researchGuideMaterials[seed.title] ?? researchSummaryMaterials[seed.title] ?? {},
     limits: seed.limits || profile.limits,
     checks: profile.checks,
     readingNotes: researchReaderNotes[seed.title]?.sections,
+    guideSectionCount: researchReaderNotes[seed.title]?.sections.length ?? 0,
     readerLimits: researchReaderNotes[seed.title]?.limits || sourceSpecificReaderLimits[seed.title],
     // An orientation estimate for this concise record, never the full source.
     orientationMinutes: 3,
