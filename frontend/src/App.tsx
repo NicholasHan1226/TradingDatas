@@ -13,6 +13,7 @@ import {
 } from './lib/workspaceRoute'
 
 const AdminApp = lazy(() => import('./views/admin/AdminApp'))
+const AccountAdminRoot = lazy(() => import('./AccountAdminRoot'))
 
 interface Session {
   client: ApiClient
@@ -26,6 +27,12 @@ function hasAdminAccess(scopes: string[], tier: string): boolean {
 }
 
 export default function App() {
+  if (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/')) {
+    return <Suspense fallback={<LoadingPanel label="正在验证账户…" />}><AccountAdminRoot /></Suspense>
+  }
+  return <StandaloneAdminApp />
+}
+function StandaloneAdminApp() {
   const [session, setSession] = useState<Session | null>(null)
   const [booting, setBooting] = useState(true)
   const [route, setRoute] = useState<WorkspaceRoute>({ workspace: 'admin', section: 'tokens' })

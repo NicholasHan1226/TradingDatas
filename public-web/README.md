@@ -44,6 +44,20 @@ python scripts/build-connected-interface-snapshot.py --check
 
 ## Checks
 
+Account continuity candidate: the existing `/account` can explicitly connect an
+already-issued data key and use a separate authenticated personal library. The
+existing administrator app is reused at `/admin/` via a same-origin authorized
+gateway; no new customer dashboard. Flags `ACCOUNT_CONNECTION_ENABLED`,
+`ACCOUNT_LIBRARY_ENABLED`, `ACCOUNT_ADMIN_ENABLED` all default false. Additive
+`worker/account-library-schema.sql` has **not** been applied remotely. No new
+subscription, production identity, admin grant or email delivery is asserted.
+See [contract and acceptance gates](../docs/design/account-library-v1.md).
+
+When admin source changes, first run `npm ci && npm run build` in `../frontend`.
+Its versioned `../static/app` output is copied into the public build's `/app/`
+asset directory; the Worker serves that shell at the gated `/admin/` route.
+Standalone Pages `/app/` remains its existing bearer-only admin fallback.
+
 Purchase preparation: `/pricing` opens the non-paying
 `/pricing/preview?plan=basic&period=monthly`. Six combinations share `src/pricing.js`;
 selection survives refresh and login via a strict same-site return allowlist.

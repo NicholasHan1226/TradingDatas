@@ -6,6 +6,7 @@ export function identityDb() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../../worker/identity-schema.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../../worker/identity-retention-schema.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../../worker/account-library-schema.sql', import.meta.url), 'utf8'));
   const db = {
     sqlite,
     prepare(sql) {

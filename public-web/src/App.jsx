@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
   ArrowSquareOut,
@@ -38,6 +38,8 @@ import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut,
 import { accountJson, confirmAccountSignOut, getAccountViewState, readAccountIdentity, requestProfileDeletion, startAccountSession, startEmailSession } from "./accountSession";
 import { LoginPage } from "./LoginPage";
 import { EmailAccountPanel } from "./EmailAccountPanel";
+import { AccountConnection } from "./AccountConnection";
+import { createBookmarkLibrary } from "./bookmarkLibrary";
 
 const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
@@ -835,9 +837,8 @@ export function App() {
   const [routeSearch, setRouteSearch] = useState(() => window.location.search);
   const [accountSection, setAccountSection] = useState("overview");
   const [accountDocSlug, setAccountDocSlug] = useState("start-1");
-  const [bookmarks, setBookmarks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("td-bookmarks") || "[]"); } catch { return []; }
-  });
+  const [bookmarkLibrary] = useState(() => createBookmarkLibrary({request:accountJson,storage:{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}}));
+  const library = useSyncExternalStore(bookmarkLibrary.subscribe,bookmarkLibrary.snapshot);
   const [globalQuery, setGlobalQuery] = useState("");
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
@@ -880,11 +881,15 @@ export function App() {
   const accountReadAbort = useRef(null);
   const accountViewState = getAccountViewState({ loading: accountLoading, account: accountData, error: accountError });
   const accountChecking = accountViewState === "checking";
+  const libraryContextMatches = !accountChecking && accountViewState !== "unavailable" && (library.mode === "cloud" ? library.userId === accountData?.user_id : !(accountData?.identity_kind === "email" && accountData.capabilities?.library));
+  const bookmarks = libraryContextMatches ? library.keys : [];
+  useEffect(() => { void bookmarkLibrary.setContext(accountData,accountViewState); }, [bookmarkLibrary,accountViewState,accountData?.user_id,accountData?.capabilities?.library]);
   const accountPrivateSection = ["overview", "subscription", "usage", "keys", "security", "billing"].includes(accountSection);
   const accountEntryLabel = accountChecking ? (locale === "zh" ? "正在验证账户…" : "Checking account…") : accountViewState === "unavailable" ? (locale === "zh" ? "重试账户连接" : "Retry account connection") : accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in");
   const copy = messages[locale];
 
   function clearAccountView() {
+    bookmarkLibrary.setContext(null,"checking");
     accountEpoch.current += 1;
     accountReadAbort.current?.abort();
     setAccountData(null);
@@ -905,7 +910,7 @@ export function App() {
     accountEpoch.current += 1;
     accountReadAbort.current?.abort();
     try {
-      const receipt = await requestProfileDeletion();
+      const receipt = await requestProfileDeletion(fetch,accountData?.user_id);
       clearAccountView();
       setAccountError("");
       setAccountDeletionReceipt(receipt);
@@ -930,10 +935,10 @@ export function App() {
       if (!current()) return;
       setAccountData(account);
       setAccountLoading(false);
-      if (account.identity_kind === "email") { setAccountUsage(null); return; }
+      if (account.identity_kind === "email" && account.data_access_state !== "connected") { setAccountUsage(null); return; }
       // Usage availability is not an identity check. Never log out on a 5xx here.
       try {
-        const usage = await accountJson("usage?days=30", { signal: controller.signal });
+        const usage = await accountJson("usage?days=30", { signal: controller.signal, expectedIdentity: account.user_id });
         if (!usage?.portal_usage || !Array.isArray(usage.portal_usage.history)) throw new Error("usage_unavailable");
         if (current()) setAccountUsage(usage.portal_usage);
       } catch (error) {
@@ -953,7 +958,7 @@ export function App() {
   }, [accountConnectionRevision]);
 
   useEffect(() => {
-    if (!accountData || accountData.identity_kind === "email") return undefined;
+    if (!accountData || (accountData.identity_kind === "email" && accountData.data_access_state !== "connected")) return undefined;
     const controller = new AbortController();
     const epoch = accountEpoch.current;
     const current = () => !controller.signal.aborted && accountEpoch.current === epoch;
@@ -961,7 +966,7 @@ export function App() {
     setAccountKeys([]);
     setAccountKeysLoading(true);
     accountJson("keys", {
-      signal: controller.signal,
+      signal: controller.signal, expectedIdentity: accountData.user_id,
     }).then((payload) => {
       if (current()) setAccountKeys(payload.api_keys || []);
     }).catch((error) => {
@@ -1075,6 +1080,7 @@ export function App() {
     try {
       const payload = await accountJson("keys", {
         method: "POST",
+        expectedIdentity: accountData.user_id,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label }),
       });
@@ -1101,6 +1107,7 @@ export function App() {
     try {
       const payload = await accountJson(`keys/${key.key_id}`, {
         method: "PATCH",
+        expectedIdentity: accountData.user_id,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: false }),
       });
@@ -1128,10 +1135,6 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
   }, [theme, locale]);
-
-  useEffect(() => {
-    localStorage.setItem("td-bookmarks", JSON.stringify(bookmarks));
-  }, [bookmarks]);
 
   useEffect(() => {
     localStorage.setItem("td-recent-searches", JSON.stringify(recentSearches));
@@ -1207,7 +1210,17 @@ export function App() {
     goTo("/account");
   }
   function toggleBookmark(key) {
-    setBookmarks((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+    if (libraryContextMatches) void bookmarkLibrary.toggle(key);
+  }
+  async function changeDataConnection(method,body) {
+    if (accountLoginInFlight.current || accountSignOutInFlight.current) throw new Error("account_unavailable");
+    accountLoginInFlight.current = true;
+    const epoch=accountEpoch.current;
+    try {
+      const result=await accountJson("connection",{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body),expectedIdentity:accountData?.user_id});
+      if (epoch!==accountEpoch.current || result.user_id!==accountData?.user_id || (method==="POST"?result.connected!==true:result.disconnected!==true)) throw new Error("identity_changed");
+      setAccountConnectionRevision(value=>value+1);
+    } finally {accountLoginInFlight.current=false;}
   }
   const topicLabels = Object.fromEntries(copy.researchTopics);
   const kindLabels = Object.fromEntries(copy.researchKinds);
@@ -1347,7 +1360,7 @@ export function App() {
   const accountPlanLabels = locale === "zh" ? { basic: "基础版", standard: "专业版", flagship: "旗舰版", free: "免费版", starter: "入门版", research: "研究版", pro: "专业版", enterprise: "企业版", internal: "内部账户" } : { basic: "Basic", standard: "Professional", flagship: "Flagship", free: "Free", starter: "Starter", research: "Research", pro: "Pro", enterprise: "Enterprise", internal: "Internal" };
   const accountCategoryLabels = locale === "zh" ? { a_share: "A 股基础数据", crypto: "加密资产", news: "新闻与事件" } : { a_share: "A-share base data", crypto: "Crypto", news: "News & events" };
   const isEmailAccount = accountData?.identity_kind === "email";
-  const accountPlanLabel = isEmailAccount ? (locale === "zh" ? "未订阅" : "Not subscribed") : accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
+  const accountPlanLabel = isEmailAccount && accountData.data_access_state !== "connected" ? (locale === "zh" ? "未连接数据权限" : "No data access connected") : accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
   const accountCategories = accountData ? (accountData.data_categories || []).map((category) => accountCategoryLabels[category] || category) : [];
   const accountUsageHistory = accountUsage?.history || [];
   const accountUsagePeak = Math.max(1, ...accountUsageHistory.map((entry) => Number(entry.total) || 0));
@@ -1520,6 +1533,7 @@ export function App() {
         {mobileOpen && <nav className="mobile-nav" aria-label="Mobile navigation">{renderGlobalSearch("mobile-global-search")}{copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])}>{label}<ArrowRight /></a>)}</nav>}
       </header>
 
+      {library.error && (primaryRoute !== "account" || accountSection !== "bookmarks") && <aside className="library-feedback" role="alert">{locale === "zh"?"未能确认收藏结果。请到收藏页刷新；不会自动重新上传。":"Saved state could not be confirmed. Refresh your library; uploads are not retried automatically."}<button type="button" onClick={()=>openAccountSection("bookmarks")}>{locale === "zh"?"查看收藏状态":"Review library status"}</button></aside>}
       <main>
         {primaryRoute === "home" && <section className="hero" aria-labelledby="hero-title">
           <picture className="hero-art" aria-hidden="true">
@@ -1737,9 +1751,10 @@ export function App() {
                 </div>}
                 {accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
                 {accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
+                {isEmailAccount && !accountChecking && ["overview","security"].includes(accountSection) && <AccountConnection key={accountData.user_id} account={accountData} locale={locale} onChange={changeDataConnection} disabled={accountSignOutPending} />}
                 {accountPrivateSection && accountChecking ? (
                   <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
-                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountPrivateSection && isEmailAccount ? (
+                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountPrivateSection && isEmailAccount && (accountData.data_access_state !== "connected" || ["security","billing"].includes(accountSection)) ? (
                   <EmailAccountPanel key={`${accountData.user_id}:${accountSection}`} account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} onDelete={deleteEmailProfile} />
                 ) : accountSection === "overview" ? (
                   accountData ? (
@@ -1810,8 +1825,11 @@ export function App() {
                   )
                 ) : accountSection === "bookmarks" ? (
                   <div className="account-bookmarks">
-                    <div className="account-local-note"><BookmarkSimple />{locale === "zh" ? "当前收藏保存在此浏览器。登录账户同步功能尚未连接。" : "Bookmarks currently stay in this browser. Account sync is not connected yet."}</div>
-                    {savedItems.length ? savedItems.map((item) => <div className="account-bookmark-row" key={item.key}><a href={item.path} onClick={(event) => openSearchItem(event, item)}><span>{item.type}</span><strong>{item.label}</strong><small>{item.description}</small></a><button type="button" onClick={() => toggleBookmark(item.key)} aria-label={locale === "zh" ? "取消收藏" : "Remove bookmark"}><BookmarkSimple weight="fill" /></button></div>) : <div className="account-empty-state"><BookmarkSimple size={28} /><strong>{locale === "zh" ? "还没有收藏内容" : "Nothing saved yet"}</strong><p>{locale === "zh" ? "可从全站搜索或研究库收藏数据产品、论文、方法和文档。" : "Save datasets, papers, methods, and docs from site search or the Research library."}</p></div>}
+                    <div className="account-local-note"><BookmarkSimple />{!libraryContextMatches?(locale === "zh"?"正在确认账户，暂不显示收藏。":"Verifying the account; saved items are hidden."):library.mode==="cloud"?(locale === "zh"?`账户收藏 · ${accountData.email}`:`Account library · ${accountData.email}`):(locale === "zh"?"本机收藏 · 仅保存在此浏览器。":"Local library · saved only in this browser.")}</div>
+                    {libraryContextMatches && library.mode==="cloud" && <div className="account-library-controls"><p>{locale === "zh"?"登录后可跨设备读取账户收藏。本机收藏不会自动上传。":"Account bookmarks are available across devices after sign-in. Local bookmarks are never uploaded automatically."}</p><button type="button" className="account-inline-action" disabled={library.status==="loading"} onClick={()=>bookmarkLibrary.refresh()}>{locale === "zh"?"刷新账户收藏":"Refresh account library"}</button>{bookmarkLibrary.importCount()>0 && <button type="button" className="account-inline-action" disabled={library.status!=="ready"} onClick={()=>bookmarkLibrary.importLocal()}>{locale === "zh"?`将 ${Math.min(100,bookmarkLibrary.importCount())} 项本机收藏导入此账户`:`Import ${Math.min(100,bookmarkLibrary.importCount())} local bookmarks into this account`}</button>}</div>}
+                    {library.status==="loading" && <p role="status">{locale === "zh"?"正在确认收藏…":"Checking saved items…"}</p>}
+                    {library.error && <p className="account-key-error" role="alert">{library.error==="library_full"?(locale === "zh"?"账户收藏已达 500 项，请先移除部分内容。":"The 500-item library limit has been reached. Remove some items first."):(locale === "zh"?"未能确认收藏结果，请刷新账户收藏。不会自动重试上传。":"Saved state could not be confirmed. Refresh the library; uploads are not retried automatically.")}</p>}
+                    {savedItems.length ? savedItems.map((item) => <div className="account-bookmark-row" key={item.key}><a href={item.path} onClick={(event) => openSearchItem(event, item)}><span>{item.type}</span><strong>{item.label}</strong><small>{item.description}</small></a><button type="button" disabled={library.status!=="ready"} onClick={() => toggleBookmark(item.key)} aria-label={locale === "zh" ? "取消收藏" : "Remove bookmark"}><BookmarkSimple weight="fill" /></button></div>) : libraryContextMatches && library.status==="ready" && <div className="account-empty-state"><BookmarkSimple size={28} /><strong>{locale === "zh" ? "还没有收藏内容" : "Nothing saved yet"}</strong><p>{locale === "zh" ? "可从全站搜索或研究库收藏数据产品、论文、方法和文档。" : "Save datasets, papers, methods, and docs from site search or the Research library."}</p></div>}
                   </div>
                 ) : accountSection === "docs" ? (
                   <div className="account-docs-browser">

@@ -14,14 +14,21 @@ cleanup. It is not deployed and does not establish an operational SLA.
   email identity, a same-origin JSON request with `confirmation: "DELETE"`,
   and a session verified within the last ten minutes. The client cannot choose
   a user ID. No API-key or administrator deletion endpoint is introduced.
+  The continuity candidate additionally requires `X-TD-Identity` to match that
+  authenticated identity and returns `user_id` in the acceptance receipt; this is
+  a stale-tab safety check, never a client authority selector. Missing/mismatched
+  identity is rejected with 409 before writes. The caller validates receipt identity.
 - Within one D1 batch, revalidate the session, queue an explicit user-owned
   deletion request, disable the user and revoke every email session. Return
   acceptance only after commit. A service failure is not a deletion receipt.
 - Already disabled profiles are not automatically deleted. Only a queued,
-  disabled profile qualifies. No paid tenant/admin grants exist in this slice;
-  future linking MUST revise deletion to revoke dependent authority before
-  exposing it to linked users. Do not carry this unsubscribed-only contract
-  into a future linked-account implementation unchanged.
+  disabled profile qualifies. The identity-only baseline creates no paid
+  tenant/admin grants. The follow-on [account continuity contract](account-library-v1.md)
+  permits an explicitly connected existing credential, not a new grant: its
+  database disable trigger immediately removes that web connection, and every
+  bridged operation rechecks the active identity. Keep that trigger and the
+  expected-identity deletion check when releasing or rolling back linked accounts.
+  Legacy credentials and their independently issued authority remain untouched.
 - The hourly scheduled handler deletes expired challenges, expired/revoked or
   disabled-user sessions, expired rate/cooldown buckets, and explicitly queued
   disabled profiles with their email challenges/sessions. Batch bounds and
@@ -29,7 +36,9 @@ cleanup. It is not deployed and does not establish an operational SLA.
   Repeating a run is safe. Never log addresses, IDs, cookies, codes or raw SQL
   errors. A failure/backlog is visible as a failed scheduled invocation.
 - Re-registration after completed deletion creates a new identity and restores
-  no previous authority. Bookmarks remain browser-local, not part of D1 deletion.
+  no previous authority. Browser-local bookmarks remain outside D1 deletion;
+  cloud bookmarks introduced by the continuity candidate cascade on profile
+  purge and are inaccessible as soon as the identity is disabled.
 
 ## Release, limits and rollback
 

@@ -24,8 +24,8 @@ export function EmailAccountPanel({ account, section, locale, onSignOut, signing
     finally { deletionInFlight.current = false; setDeleting(false); }
   }
   const copy = {
-    overview: [zh ? "邮箱已验证" : "Email verified", zh ? "账户已建立，尚未订阅数据。" : "Your account is ready. No data subscription yet."],
-    subscription: [zh ? "尚未订阅" : "Not subscribed", zh ? "可先了解三档基础数据套餐。支付仍未开放，浏览预览不会下单或扣费。" : "Explore the three base-data plans. Payment is not open; previews create no orders or charges."],
+    overview: [zh ? "邮箱已验证" : "Email verified", zh ? "账户已建立。数据权限需要另行连接或开通，以服务端确认为准。" : "Your account is ready. Data access requires a separate connection or grant, confirmed by the service."],
+    subscription: [zh ? "尚无已确认的数据连接" : "No verified data connection", zh ? "可先了解三档基础数据套餐，或在概览连接已有密钥。支付仍未开放，浏览预览不会下单或扣费。" : "Explore the three base-data plans, or connect an existing key in Overview. Payment is not open; previews create no orders or charges."],
     usage: [zh ? "尚无数据用量" : "No data usage yet", zh ? "当前账户没有数据授权，因此没有可展示的 API 请求用量。" : "This account has no data entitlement, so no API usage is available."],
     keys: [zh ? "数据授权后再创建密钥" : "API keys follow data access", zh ? "邮箱登录不是 API 密钥。未订阅账户不能创建或继承数据权限；已有密钥也不会自动绑定。" : "An email login is not an API key. An unsubscribed account cannot create or inherit data access. Existing keys are not linked automatically."],
     billing: [zh ? "暂无订单与账单" : "No orders or bills", zh ? "支付暂未开放。邮箱验证不会创建订单、扣费或自动续费。" : "Payment is not open. Email verification creates no orders, charges, or automatic renewals."],
@@ -36,13 +36,13 @@ export function EmailAccountPanel({ account, section, locale, onSignOut, signing
     <div className="email-account-intro"><ShieldCheck size={28} /><h3>{copy[0]}</h3><p>{copy[1]}</p></div>
     {["overview", "security"].includes(section) && <dl className="account-facts account-live-facts">
       <div><dt>{zh ? "已验证邮箱" : "Verified email"}</dt><dd>{account.email}</dd></div>
-      <div><dt>{zh ? "数据订阅" : "Data subscription"}</dt><dd>{zh ? "未订阅 · 无数据授权" : "Not subscribed · no data grants"}</dd></div>
+      <div><dt>{zh ? "数据访问" : "Data access"}</dt><dd>{account.data_access_state==="connected"?(zh?"已连接 · 以数据服务授权为准":"Connected · backend-authorized"):(zh ? "未连接数据授权" : "No data access connected")}</dd></div>
       <div><dt>{zh ? "网页会话到期" : "Web session expires"}</dt><dd>{new Date(account.session_expires_at).toLocaleString(zh ? "zh-CN" : "en-US")}</dd></div>
       <div><dt>{zh ? "短信登录" : "Phone sign-in"}</dt><dd>{zh ? "尚未开放" : "Not available yet"}</dd></div>
     </dl>}
     {section === "security" && <section className="email-account-deletion" aria-labelledby="account-deletion-title">
       <h3 id="account-deletion-title">{zh ? "账户资料与注销" : "Profile & deletion"}</h3>
-      <p>{zh ? "注销会立即停用此账户并撤销所有邮箱会话，账户库中的资料将在 30 天内清理。重新注册不会恢复旧身份或权限。浏览器中的收藏需自行清除。" : "Deletion disables this account and revokes every email session immediately. Profile data in the account store is removed within 30 days. Registering again restores no old identity or access. Browser-local bookmarks need to be cleared separately."}</p>
+      <p>{zh ? "注销会立即停用此账户、撤销所有邮箱会话并移除网页登录的数据连接。账户资料和账户收藏将在 30 天内清理。重新注册不会恢复旧身份或权限。本机收藏需自行清除。" : "Deletion disables this account, revokes all email sessions and removes its web data connection immediately. Profile data and account bookmarks are removed within 30 days. Registering again restores no old identity or access. Browser-local bookmarks need to be cleared separately."}</p>
       {account.deletion_available !== true ? <p>{zh ? "注销服务尚未开放，请先联系平台处理。" : "Self-service deletion is not available yet. Contact the platform for assistance."}</p> : !confirming ? <button ref={deletionTrigger} type="button" className="account-inline-action" disabled={signingOut} onClick={() => { setConfirming(true); requestAnimationFrame(() => confirmationInput.current?.focus()); }}>{zh ? "申请注销账户" : "Request account deletion"}</button> : <form onSubmit={submitDeletion}>
         <label htmlFor="account-delete-confirm">{zh ? "输入 DELETE 确认注销（不可撤销）" : "Type DELETE to confirm (cannot be undone)"}</label>
         <input ref={confirmationInput} id="account-delete-confirm" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} disabled={deleting || signingOut} />

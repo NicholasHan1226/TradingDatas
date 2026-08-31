@@ -208,6 +208,11 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+      if (env.ACCOUNT_ADMIN_ENABLED !== "true" || !["GET", "HEAD"].includes(request.method)) return jsonResponse({ error: "not_found" }, 404);
+      const shell = new URL("/app/index.html", url.origin);
+      return env.ASSETS.fetch(new Request(shell, request));
+    }
     if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {
       try { return await handleAccountApi(request, env); }
       catch (error) { return jsonResponse({ error: "account_upstream_unavailable" }, error.name === "TimeoutError" ? 504 : 502); }

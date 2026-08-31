@@ -1,5 +1,6 @@
 // Isolated account control plane. This module cannot mint data/API entitlements.
 import { renderEmail } from './email-templates.js';
+import { accountCapabilities, accountContinuityProjection, handleAccountContinuity } from './account-continuity.js';
 const COOKIE = 'td_identity_session';
 const TTL = 8 * 60 * 60;
 const CHALLENGE_TTL = 10 * 60;
@@ -69,7 +70,7 @@ async function pruneExpired(db, now) {
 function identityProjection(user, expiresAt, env) {
   return {identity:{kind:'email',user_id:user.id,email:user.email,email_verified:true,tenant_id:null,
     subscription_state:'not_subscribed',data_categories:[],session_expires_at:new Date(expiresAt*1000).toISOString(),
-    deletion_available:env.IDENTITY_RETENTION_ENABLED==='true'}};
+    deletion_available:env.IDENTITY_RETENTION_ENABLED==='true'},capabilities:accountCapabilities(env)};
 }
 async function readSession(db, token, now) {
   if(!/^[a-f0-9]{64}$/.test(token)) return null;
@@ -160,10 +161,14 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
       if(!db) return json({error:'identity_unavailable'},503);
       const session=await readSession(db,token,now());
       if(!session) return json({error:'unauthenticated'},401,[cookie('',0),clearLegacy]);
-      if(path==='/api/account/me') return request.method==='GET' ? json(identityProjection(session,session.expires_at,env)) : json({error:'method_not_allowed'},405);
+      const context={request,env,session,tokenHash:await digest(token),now,fetchImpl};
+      if(path==='/api/account/me') return request.method==='GET' ? json({...identityProjection(session,session.expires_at,env),...await accountContinuityProjection(context)}) : json({error:'method_not_allowed'},405);
+      const continuity=await handleAccountContinuity(context);
+      if(continuity) return continuity;
       if(path==='/api/account/profile/deletion') {
         if(request.method!=='POST') return json({error:'method_not_allowed'},405);
         if(env.IDENTITY_RETENTION_ENABLED!=='true') return json({error:'deletion_unavailable'},503);
+        if(request.headers.get('x-td-identity')!==session.id) return json({error:'identity_changed'},409);
         let payload; try {payload=await boundedJson(request);} catch {return json({error:'invalid_request'},400);}
         if(payload?.confirmation!=='DELETE') return json({error:'confirmation_required'},400);
         const time=now();
@@ -180,7 +185,7 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
           db.prepare('DELETE FROM identity_challenges WHERE email=(SELECT email FROM identity_users WHERE id=? AND id IN (SELECT user_id FROM identity_deletion_requests))').bind(session.id),
         ]);
         if(!results[0]?.results?.length) return json({error:'unauthenticated'},401,[cookie('',0),clearLegacy]);
-        return json({deletion:{state:'accepted',requested_at:new Date(time*1000).toISOString(),delete_by:new Date((time+30*86400)*1000).toISOString()}},202,[cookie('',0),clearLegacy]);
+        return json({deletion:{state:'accepted',user_id:session.id,requested_at:new Date(time*1000).toISOString(),delete_by:new Date((time+30*86400)*1000).toISOString()}},202,[cookie('',0),clearLegacy]);
       }
       if(path==='/api/account/session' && request.method==='POST') return json({error:'sign_out_first'},409);
       if(path==='/api/account/usage' || path==='/api/account/keys' || path.startsWith('/api/account/keys/')) return json({error:'subscription_required'},403);

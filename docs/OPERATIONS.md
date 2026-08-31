@@ -812,3 +812,37 @@ Polymarket 的新失败回执不能刷新成功捕获时间：使用 capture 内
 更新脚本需先记录现有字节 hash、备份到新的 root-only 路径、通过
 `bash -n` 与 `tests/test_collector_watch.py`，再原子安装并读回 hash；不改 timer 排期。
 回滚只恢复该备份脚本，保留既有日志和数据。读取日志应区分告警内容与工具执行错误。
+
+## Account continuity release preparation (2026-08-31 candidate)
+
+See [account/library contract](design/account-library-v1.md). This slice adds no
+data-plane service, provider request, collection timer, subscription or payment.
+All three new switches remain false: `ACCOUNT_CONNECTION_ENABLED`,
+`ACCOUNT_LIBRARY_ENABLED`, `ACCOUNT_ADMIN_ENABLED`. Email and retention release
+gates remain independent. Do not deploy the old-code secret-preparation version
+`2b64f7d6-5b47-41c7-b704-b156abcc5a05` as the new application.
+
+After review, apply `public-web/worker/account-library-schema.sql` only to the
+dedicated identity D1 database, after its original and retention schemas. It adds
+personal references, user-bound encrypted key connections, a 500-reference limit,
+and triggers that remove the stored connection when a profile is disabled. Purging
+the profile cascades its personal references. The schema has not been applied
+remotely in this work. No account identity or existing key is automatically linked.
+
+Build `frontend` before `public-web`; commit generated `static/app` and public
+artifacts together. Public packaging copies that same admin asset tree to `/app/`;
+only `/admin/` uses the email-session gateway, and only when its flag is true.
+The standalone legacy Pages console remains a bearer-only fallback. The backend's
+wildcard-CORS interface never receives identity cookies.
+
+Before activation: exact-head CI, independent review, PM go-ahead, explicit D1 and
+flag preflight, exact-source version upload preserving encrypted staged secrets,
+recipient-approved real OTP acceptance, same-identity Account/Admin readback,
+another user's denial and bookmark isolation. Test production API-grant expiry and
+revocation separately; synthetic previews are not customer or collection evidence.
+Rollback disables new feature flags and restores reviewed source while preserving
+D1 tables/triggers and staged secrets. Do not restore a self-service deletion route
+without the expected-identity check; disable deletion if such a rollback is required.
+Never remove schemas, cloud libraries, raw financial facts or legacy API keys as
+deployment cleanup. Key rotation invalidates encrypted connections and requires
+explicit reconnect; it is not performed automatically by the application.

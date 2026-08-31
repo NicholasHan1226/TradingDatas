@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { requestProfileDeletion } from '../src/accountSession.js';
 
-const receipt = { state: 'accepted', requested_at: '2026-08-30T12:00:00Z', delete_by: '2026-09-29T12:00:00Z' };
+const receipt = { state: 'accepted', user_id:'alice', requested_at: '2026-08-30T12:00:00Z', delete_by: '2026-09-29T12:00:00Z' };
 test('account deletion sends only explicit confirmation to the same-site route', async () => {
   let calls = 0;
   const result = await requestProfileDeletion(async (url, init) => {
@@ -11,11 +11,15 @@ test('account deletion sends only explicit confirmation to the same-site route',
     assert.equal(url, '/api/account/profile/deletion');
     assert.equal(init.method, 'POST');
     assert.equal(init.credentials, 'same-origin');
+    assert.equal(init.headers.get('X-TD-Identity'),'alice');
     assert.deepEqual(JSON.parse(init.body), { confirmation: 'DELETE' });
     assert.ok(init.signal instanceof AbortSignal);
     return Response.json({ deletion: receipt }, { status: 202 });
-  });
+  },'alice');
   assert.deepEqual(result, receipt); assert.equal(calls, 1);
+});
+test('a receipt for a different identity cannot confirm deletion',async()=>{
+  await assert.rejects(requestProfileDeletion(async()=>Response.json({deletion:{...receipt,user_id:'bob'}}),'alice'),/deletion_unconfirmed/);
 });
 test('missing or malformed acceptance is not presented as deletion success', async () => {
   for (const body of [{}, { deletion: { state: 'complete' } }, { deletion: { ...receipt, delete_by: 'invalid' } }]) {

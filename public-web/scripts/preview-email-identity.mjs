@@ -12,7 +12,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist/cl
 const port=Number(process.env.TD_IDENTITY_PREVIEW_PORT || 5195);
 const origin=`http://127.0.0.1:${port}`;
 const outbox=[];
-const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_RETENTION_ENABLED:'true',IDENTITY_DB:identityDb(),IDENTITY_PEPPER:'local-preview-only-not-a-real-secret-0123456789012345',RESEND_API_KEY:'local-synthetic-only',
+const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_RETENTION_ENABLED:'true',ACCOUNT_CONNECTION_ENABLED:'true',ACCOUNT_LIBRARY_ENABLED:'true',ACCOUNT_ADMIN_ENABLED:'true',SESSION_ENCRYPTION_KEY:'local-preview-only-encryption-material',ACCOUNT_API_BASE:'https://account.example.test',IDENTITY_DB:identityDb(),IDENTITY_PEPPER:'local-preview-only-not-a-real-secret-0123456789012345',RESEND_API_KEY:'local-synthetic-only',
   ASSETS:{async fetch(request){
     const requested=decodeURIComponent(new URL(request.url).pathname);
     const file=path.resolve(root,`.${requested==='/'?'/index.html':requested}`);
@@ -22,6 +22,16 @@ const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_RETENTION_ENABLED:'true',IDENTITY
     } catch{return new Response('Not found',{status:404});}
   }}};
 const handler=createEmailIdentityHandler({fetchImpl:async (_url,init)=>{
+  if(_url.startsWith('https://account.example.test/')) {
+    const key=init.headers.get('authorization');
+    if(!['Bearer preview-reader-key','Bearer preview-admin-key'].includes(key)) return Response.json({error:'invalid_token'},{status:401});
+    if(_url.endsWith('/portal/api/me')) return Response.json({portal:{tenant_id:'synthetic-preview',tier:'basic',scopes:key==='Bearer preview-admin-key'?['read','admin']:['read'],data_categories:['a_share'],enabled:true,minute_request_limit:200,daily_limit:null,expires_at:'2027-01-01T00:00:00Z',usage:{today_count:7}}});
+    if(_url.includes('/portal/api/me/usage')) return Response.json({portal_usage:{today_count:7,history:[]}});
+    if(_url.endsWith('/portal/api/me/keys')) return Response.json({api_keys:[]});
+    if(_url.endsWith('/admin/api/tokens')) return Response.json({tokens:[],count:0});
+    return Response.json({error:'synthetic_route_unavailable'},{status:404});
+  }
+  if(_url!=='https://api.resend.com/emails') throw new Error('Synthetic harness blocks unknown outbound');
   const email=JSON.parse(init.body);
   if(!email.to.every(address=>address.endsWith('@example.com'))) return Response.json({error:'use-example-com-only'},{status:400});
   outbox.push(email); return Response.json({id:`synthetic-${outbox.length}`});
