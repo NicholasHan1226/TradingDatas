@@ -36,6 +36,10 @@ Its candidate binding is recorded in `public-web/wrangler.jsonc`, with
 `EMAIL_LOGIN_ENABLED="false"`. No Worker release or live binding was changed.
 See the [provisioning checkpoint](../reports/2026-08-30-email-identity-provisioning.md)
 for the exact resource, schema hash, empty-table readback and remaining gates.
+The [August 31 preparation](../reports/2026-08-31-identity-private-provisioning.md)
+adds the account-only deletion schema and privately stages sender/pepper secrets
+in an undeployed old-code Worker version. It does not activate identity or change
+the live service; a later exact-source release must verify secret preservation.
 
 ## Control-plane routes
 

@@ -115,8 +115,11 @@ local workerd/D1 verification and the production approval gates are documented i
 [Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
 harness are not public assets. The dedicated remote account DB has been initialized;
 the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
-`EMAIL_LOGIN_ENABLED="false"`. No sender/pepper secrets have been provisioned and
-this binding has not been deployed. See the [provisioning checkpoint](../docs/reports/2026-08-30-email-identity-provisioning.md).
+`EMAIL_LOGIN_ENABLED="false"`. On August 31, sender/pepper secrets were privately
+prepared in an **undeployed** Worker version; the live version and identity binding
+were not changed. See the [private provisioning checkpoint](../docs/reports/2026-08-31-identity-private-provisioning.md)
+for the exact version and release gates. Do not deploy that old-code preparation
+version as the email implementation or assume its secrets survive a later upload.
 SMS and payments stay unavailable.
 
 Account deletion stays inside the existing Account → Security panel. It requires
@@ -128,7 +131,8 @@ are outside this account-only action. The owner-approved active-store maxima are
 after a profile deletion request. See [retention contract](../docs/design/identity-retention-v1.md).
 The new hourly maintenance job is gated by `IDENTITY_RETENTION_ENABLED="false"`;
 both it and email login remain off. `worker/identity-retention-schema.sql` is an
-additive migration for the dedicated account DB only, not yet applied remotely.
+additive migration for the dedicated account DB only, applied and read back on
+August 31 with zero users/sessions/deletion requests and no foreign-key violations.
 Tests/harnesses apply it after `worker/identity-schema.sql` to disposable stores.
 No change here deploys a timer, deletes real users, or enables linked-account deletion.
 
