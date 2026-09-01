@@ -62,8 +62,9 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
 所有 `session_minute` 合同先执行，`event` 合同随后执行，其它 automatic 合同再按既有顺序执行；
-该排序只按 cadence class 决定，避免低频大批量采集把分钟或事件观测拖过 freshness SLA，
-不为某个 dataset、provider 或消费者增加专用分支。
+`event` 内部再按 registry 的 `freshness_sla_seconds` 从短到长、dataset ID 确定性排序。
+该排序只使用通用 cadence 与 freshness 合同，避免低频大批量或长 SLA 事件把分钟、短 SLA
+事件观测拖过 freshness SLA，不为某个 dataset、provider 或消费者增加专用分支。
 
 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`、`postclose_daily` 成功水位读取，在下一配置
 开窗前或配置工作日之外，以前一配置工作日的既有收盘锚点计算 freshness。开窗时间和

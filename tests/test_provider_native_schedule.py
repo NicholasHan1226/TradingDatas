@@ -2205,6 +2205,11 @@ def test_failed_dataset_does_not_hide_later_terminal_results(tmp_path: Path) -> 
         (
             priority_rank[plan.priority],
             cadence_rank.get(plan.cadence_class, 2),
+            (
+                plan.freshness_sla_seconds
+                if plan.cadence_class == "event"
+                else 0
+            ),
             plan.dataset_id,
             index,
         )
@@ -3647,6 +3652,35 @@ def test_event_current_plan_precedes_low_frequency_current_plan() -> None:
             key=lambda item: (*cadence_planner._execution_order(item[1]), item[0]),
         )
     ] == ["cn.dataset.cn_schedule", "cn.dataset.balancesheet"]
+
+
+def test_shorter_event_freshness_sla_precedes_alphabetical_event_order() -> None:
+    plans = (
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.anns_d",
+            provider="tushare",
+            provider_api="anns_d",
+            cadence_class="event",
+            request_window={},
+            freshness_sla_seconds=86_400,
+        ),
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.stk_holdernumber",
+            provider="tushare",
+            provider_api="stk_holdernumber",
+            cadence_class="event",
+            request_window={},
+            freshness_sla_seconds=900,
+        ),
+    )
+
+    assert [
+        plan.dataset_id
+        for _, plan in sorted(
+            enumerate(plans),
+            key=lambda item: (*cadence_planner._execution_order(item[1]), item[0]),
+        )
+    ] == ["cn.dataset.stk_holdernumber", "cn.dataset.anns_d"]
 
 
 def test_cadence_class_selection_is_generic_and_excludes_other_cadences(
