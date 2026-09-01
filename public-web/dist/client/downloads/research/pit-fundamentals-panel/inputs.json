@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "tutorial": "pit-fundamentals-panel",
+  "identity": "synthetic",
+  "args": [
+    [
+      {
+        "entity": "DEMO",
+        "period": "2024-12-31",
+        "metric": "revenue",
+        "unit": "CNY_million",
+        "value": 100,
+        "version": "v1",
+        "publishedAt": "2025-03-20T18:00:00+08:00",
+        "firstSeenAt": "2025-03-20T18:05:00+08:00"
+      },
+      {
+        "entity": "DEMO",
+        "period": "2024-12-31",
+        "metric": "revenue",
+        "unit": "CNY_million",
+        "value": 105,
+        "version": "v2",
+        "publishedAt": "2025-04-10T18:00:00+08:00",
+        "firstSeenAt": "2025-04-10T18:02:00+08:00"
+      }
+    ],
+    "2025-03-31T23:59:59+08:00"
+  ],
+  "expected": [
+    {
+      "entity": "DEMO",
+      "period": "2024-12-31",
+      "metric": "revenue",
+      "unit": "CNY_million",
+      "value": 100,
+      "version": "v1",
+      "publishedAt": "2025-03-20T18:00:00+08:00",
+      "firstSeenAt": "2025-03-20T18:05:00+08:00",
+      "availableAt": "2025-03-20T10:05:00.000Z"
+    }
+  ]
+}

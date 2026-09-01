@@ -102,6 +102,7 @@ passed
 
 final result: passed
 
+
 ---
 
 # Superseded TradingDatas package decision-flow QA
@@ -277,3 +278,270 @@ passed
 The navigation now reads as one calm object floating above the warm editorial canvas. The Hovvi-informed single-layer primary navigation removes the previous capsule-inside-capsule hierarchy while retaining the TradingDatas blue current-location cue. Pricing begins near the task header, Account headings keep readable line breaks, section navigation inherits the same pill grammar, and Data rows add only localized hover feedback rather than card-heavy chrome.
 
 final result: passed
+
+---
+
+# Research dual-view implementation QA
+
+Date: 2026-08-30. Scope: PR #385, Featured/Topics discovery and its existing
+reader navigation. This is local candidate verification, not a production audit.
+
+## Findings and iteration
+
+- Fixed P2 — the first desktop render added excessive space below the existing
+  floating header. Reduced hub top padding and bounded the architectural hero
+  height; the final spread restores the editorial hierarchy and visible paths.
+- Fixed P2 — the Chinese hero title was undersized and broke at an unintended
+  point. Increased the desktop display scale and authored the two editorial
+  lines; the mobile rule preserves readable wrapping rather than clipping.
+- Fixed P2 — the selected subject could be offscreen in the mobile horizontal
+  index after returning or switching language. Reveal the selected link on
+  subject/language/viewport changes without scrolling the whole document.
+- Fixed P2 — the inherited primary-button treatment was not the selected solid
+  blue/white action. Applied the local button token and retained visible focus.
+- Accepted P3 — the new original architectural image is more neutral than the
+  blue source mock. Its curved colonnade, stairs, crop, sharpness and quiet role
+  match the composition; it is decorative, not evidence or a real venue claim.
+- Accepted product constraints — retain the established global floating header,
+  original bibliographic order and maintained source metadata. The mock's sample
+  rows are illustrative: the implementation does not rewrite source titles or
+  reorder authoritative records to mimic them. All Chinese rows show original
+  titles, so density varies with actual title/author length.
+
+No unresolved P0/P1/P2 was found in the implemented dual-view scope.
+
+## Source and combined comparison evidence
+
+Selected source: `exec-2aec2b00-09b7-4fc7-a312-9735bb302624.png`, a 1054 × 1492
+combined mock. Split its two 1054 × 746 panels and normalize each to 1440 × 1024;
+this introduces approximately 0.5% aspect normalization. Browser captures are
+1440 × 1024 CSS/pixel viewports at DPR 1, Chinese/light, signed out, Featured and
+Topics / Company & financials. Source and candidate were placed together, then
+opened and inspected, not judged from filenames or separate screenshots.
+
+Local evidence folder: `/tmp/tradingdatas-dual-view-5ccY8R` (temporary QA artifacts,
+not published site assets or durable release evidence).
+
+- Initial comparison: `featured-comparison-v1.png`.
+- Final full-frame comparisons: `featured-comparison-final.png`,
+  `topics-comparison-final.png` (source left, candidate right).
+- Focused typography comparison: `featured-type-comparison.png`.
+- Responsive captures: `featured-zh-light-390-final.png`,
+  `topics-zh-light-390-final.png`, `topics-zh-light-768.png`,
+  `featured-en-dark.png`, `featured-en-dark-390.png`,
+  `topics-en-dark-390-final.png`.
+
+## Required fidelity surfaces
+
+- Fonts/typography: Songti/Georgia editorial display, existing sans body, italic
+  original titles; checked Chinese two-line hero, English long title, authors
+  and wrapped publication metadata. Local font fallback can differ by OS.
+- Spacing/layout: unboxed local views, split editorial spread, two path links,
+  subject index and ruled bibliography; no status-card grid. Desktop, 768px
+  tablet and 390px mobile have no document horizontal overflow. Only the mobile
+  subject index intentionally scrolls horizontally.
+- Colors/tokens: warm light and existing dark surfaces, quiet separators,
+  blue active/action states, sufficient solid-button contrast, visible focus.
+  This is a visual/basic contrast check, not a full WCAG certification.
+- Image quality: original 1024 × 1024 WebP, 118708 bytes, responsive crop; no
+  fabricated data, logos, charts, CSS illustration or distorted stretching.
+  Empty alt correctly marks decorative art; existing Phosphor icons retained.
+- Copy/content: two explicit reading views; 200 external materials, eight
+  derived subjects, no translated duplicates; reader retains authors, original
+  source and concise limitations. The reported Tokenomics status grid is absent.
+
+## Interaction and validation evidence
+
+- Both views switch and preserve discovery filters/page; selecting another
+  subject resets incompatible publication type and page.
+- Company & financials contains 28 records; book-only produces an actionable
+  zero-result state. Clearing the type restores all 28.
+- Page 2 → Law and Finance → reader return preserves page/scroll. Refresh
+  preserves the query/page. Native Back/Forward was exercised across that visit.
+- Bookmark and copy-citation success verified in the reader; bookmark state
+  reflected in the list. Test bookmark removed after verification.
+- All three reading paths opened, the method disclosure expanded, and an
+  existing preparation-method deep link resolved.
+- Global search for Tokenomics returned the stable paper route and opened its
+  content-led Chinese reader. No research-local duplicate search was added.
+- Signed-out Account Chinese/English and light/dark switching exercised;
+  system-language resolution remains covered by the existing automated tests.
+- Native links/selects/buttons, selected states, disabled pagination and visible
+  keyboard focus checked. Pagination explicitly focuses the result region.
+- Browser error/warning log returned an empty list during the final path/search
+  checks. The earlier stopped local preview server was restarted and rechecked.
+- `npm run test:sites`: 47 passed, including all 200 readers in both languages,
+  all subject/type combinations and URL normalization. Build and diff whitespace
+  check passed; generated distribution is committed with its source.
+
+## Boundaries and follow-up
+
+- The retained `/recipes/:id` pages still show their pre-existing planned
+  product-contract content; this pass verifies reachability, not completed
+  tutorials. They need a separate content pass before being promoted as guides.
+- Physical-device touch, screen-reader audit, text-only zoom, clipboard-denied
+  runtime and divergent multi-visit scroll history are not verified here.
+- Existing main-chunk warning remains (about 647 kB, 192 kB gzip). No dependency,
+  backend, authentication, registry, provider or production changes were made.
+- Project design-rule text was inspected; discovery in a new agent session was
+  not tested. CI, merge, deployment and source/full-text review are separate.
+
+Implementation checklist: dual views, shared identities, URL state, empty state,
+responsive index, source access, bilingual rendering, scoped documentation and
+local verification completed. Revert the scoped commit through a PR to roll back;
+no data migration or server operation is involved.
+
+final result: passed
+
+---
+
+# Reading depth, tutorials and sharing follow-up — 2026-08-30
+
+Scope: same PR #385; keep the accepted Featured/Topics layout. This follow-up
+supersedes the earlier planned-tutorial and main-bundle follow-up items, not the
+historical evidence above. It does not claim production publication.
+
+## Delivered and checked
+
+- 200 distinct external works remain unchanged in identity. Twelve records now
+  have four bilingual source-grounded sections plus specific limitations, and
+  appear in the Featured shelf. All eight topics have three reading stages.
+- Three bilingual preparation tutorials replace the generic planned-object body
+  at the existing method URLs. Their examples are local, synthetic and read-only.
+  Source functions and copyable examples share one implementation; production
+  preserves readable snippets rather than exposing minified function bodies.
+- Build-generated HTML contains title, description, canonical and Open Graph
+  metadata for 200 records, three paths, three tutorials and both index pages
+  (208 routes). Plain HTTP readback of a built Tokenomics route confirmed metadata
+  without running JavaScript. No full-body SSR or crawler-indexing claim.
+- `npm run build`: passed. `npm run test:sites`: 62 passed, including all 200
+  records in both languages, tutorial rendering, example execution, invalid
+  inputs, source IDs, reading sequences, projection, metadata escaping and
+  fulfilled/denied/unavailable clipboard helper outcomes.
+- `node scripts/verify-research-sources.mjs`: 186 requested metadata records,
+  186 verified, zero unresolved; cached identity verification, not 186 new full
+  source reads. Twelve new editorial reviews retain distinct evidence scopes.
+- In-app browser against the production build at port 5186: twelve guides opened
+  in Chinese at 390px and in English at 1280px; all retained four body sections,
+  source links and original identities, with no page-level horizontal overflow.
+  Eight Chinese topic sequences clicked individually; empty publication type
+  and reset verified. Native dropdown and pointer pagination worked.
+- All three examples ran in English/desktop and Chinese/320px with the expected
+  outputs: 50/50/51 adjusted prices; pre-revision financial value 100; one aligned
+  event plus one date-only review record. Main example buttons measured 44px high.
+  Light/dark, explicit language persistence, default System selection, native
+  headings/landmarks/status roles, bookmarks, citation-copy and share-copy success
+  were inspected. Browser errors/warnings were empty during these checks.
+- Current build: main app about 476.93 kB / 139.00 kB gzip; React cache chunk
+  193.01 / 60.26; tutorial chunk 19.44 / 6.86, loaded on demand. A same-content
+  comparison without catalogue projection was about 517.08 / 155.74 for the main
+  app. This measures emitted bytes, not network latency or Core Web Vitals.
+
+Screenshots: `/tmp/tradingdatas-depth-qa-j9zYVy/01-featured-mobile-zh.png`,
+`02-topics-mobile-zh.png`, `03-guide-mobile-zh.png`,
+`04-guide-desktop-en-dark.png`, `05-event-demo-en.png`, `06-tutorial-320-zh.png`.
+
+## Remaining verification and release gate
+
+- The browser control focused native buttons but did not produce an observable
+  Enter activation, including on the pre-existing pagination control. Do not call
+  keyboard behavior passed based on focus styling alone. Manual native keyboard
+  acceptance remains open; no speculative custom key handler was added.
+- Clipboard rejection is covered by deterministic helper tests and selectable
+  fallback markup; an actual browser permission-denied run is not verified.
+- Physical touch, real screen-reader speech, text-only zoom and divergent
+  multi-visit scroll history remain unverified. Basic in-tab page/filter return
+  worked; exact scroll comparisons are affected by automated click auto-scrolling.
+- Current main advanced only in backend/tests/operations outside this edit's
+  writing scope. Protected Worker/Sites files, dependencies/lockfile, workflows,
+  registry, accounts, secrets and provider runtimes are unchanged.
+- Await exact-head GitHub CI and the project's independent PM acceptance before
+  merge. `pm-merge` was absent at preflight. Main CI, Cloudflare deploy and public
+  route/asset readback remain separate gates; no production write was made here.
+
+Result: content/build/function checks passed; accessibility/manual acceptance and
+release gates remain explicitly open.
+
+### Final hosting-path follow-up
+
+Cloudflare local runtime (existing Wrangler 4.127.1, `dev --local`, loopback 8788)
+verified all 208 slashless routes redirect to their directory forms and all 208
+directory responses contain the expected static sharing metadata. Canonical and
+copy-link URLs now use those final trailing-slash forms; legacy navigation and
+bookmark IDs are unchanged. This follows the existing Assets
+[HTML handling contract](https://developers.cloudflare.com/workers/static-assets/routing/advanced/html-handling/),
+without changing Worker code or deployment configuration. Vite preview alone
+does not reproduce these slashless redirects.
+
+Rebuilt and reran tests after this correction: **63 passed**. Browser readback of
+the revised Tokenomics page matched its canonical and OG URL, with no overflow.
+Local Wrangler used a default Request.cf placeholder after a certificate failure
+fetching that optional object; no TLS verification was disabled. This is local
+route evidence only, not a Cloudflare edge deployment or production readback.
+
+# Research continuity and offline tutorials — 2026-08-30
+
+Follow-up scope: `docs/design/research-reading-continuity-v5.md`, PR #385.
+This extends the preceding 12-guide baseline; 200 external source identities
+remain unchanged. It is local acceptance evidence, not a publication claim.
+
+## Delivered and verified
+
+- 24 bilingual four-section guides now cover all 24 stations in eight topic
+  journeys. Each of 16 adjacent relationships has an authored bilingual reason;
+  first/middle/last articles show the appropriate next/both/previous links.
+  These are editorial connections, not inferred citations or rankings.
+- Twelve new guides record the primary source and exact reading scope internally.
+  Abstract/introduction/draft access is not described as full-text review.
+  Draft numerical results are not transplanted into final-publication claims.
+- Three tutorials now generate 12 same-origin files: three synthetic JSON inputs,
+  three standalone JavaScript examples, and six localized Python notebooks.
+  Inputs, expected outputs and copyable browser code share maintained sources.
+- `npm run build` passed: 208 static metadata entries plus all 12 download files.
+  `npm run test:sites`: 69 passed, including all 200 records in both languages,
+  journey relationships, history isolation, native hash-navigation detection,
+  notebook execution, JS/Python sample parity and bounded failure cases.
+- `python3 scripts/verify-tutorial-notebooks.py` executed every code cell of all
+  six notebooks in order (four code cells each), with expected-output assertions.
+  This uses standard-library execution, not a Jupyter kernel/UI integration run.
+- Local HTTP readback compared all 12 served downloads byte-for-byte with their
+  generated files: all returned 200 and matched. This does not certify the
+  operating-system download dialog or the production edge's response headers.
+- Browser inspection opened all 24 guides in Chinese at 390px and English/dark
+  at 1280px. Each had six body sections (four editorial plus data and limits),
+  a topic sequence and no horizontal page overflow. Article-to-article navigation
+  focused the destination heading without moving the page below its opening.
+- All three Chinese examples executed at 320px with the expected results;
+  English event alignment also ran at 768px. Localized download targets and
+  48px link heights were checked. Desktop dark and mobile light screenshots were
+  visually inspected; English guide/body and Chinese download copy stayed legible.
+- Browser testing found and fixed route-level scrolling overriding native
+  tutorial anchors. Example/download jumps now position the section about 110px
+  below the viewport top; back navigation to Downloads restored the same margin.
+- Separate in-app list visits retained independent history: page 2 at 3425.5px
+  and page 3 at 791px; returning through the intervening article restored the
+  older page 2 position exactly. Explicit article return also restored the list.
+  Forward traversal restored the later page 3 position at 791px as well.
+  Entry IDs remain distinct after reload; positions themselves are memory-only.
+- Main JS is approximately 283.94 kB / 80.74 kB gzip, research catalog
+  231.33 / 75.12, React 193.01 / 60.26, lazy tutorial 22.58 / 7.78.
+  Catalog chunk separation improves cache isolation, not total initial bytes;
+  these are build sizes, not measured loading latency or Core Web Vitals.
+
+Screenshots: `/tmp/tradingdatas-continuity-qa-1t0Wtr/01-guide-en-dark.png`,
+`02-offline-en-desktop.png`, `03-downloads-320-zh.png`.
+
+## Remaining acceptance / release boundary
+
+- Native keyboard activation is still unverified: the browser-control surface
+  focused controls without observable Enter activation. Real screen-reader
+  speech, physical touch, text-only zoom, actual clipboard-denied runtime and
+  Jupyter UI/kernel integration remain manual acceptance items.
+- Source identity, unit/render tests and synthetic outputs do not demonstrate
+  provider availability, historical completeness, paper replication or returns.
+- No protected Worker/Sites files, lockfile/dependencies, workflows, registry,
+  account authority, credentials or provider runtimes changed. Generated public
+  build and maintained documents accompany the source.
+- Exact-head CI, independent Datas PM review / `pm-merge`, exact-main CI,
+  Cloudflare deployment and public deep-route/download readback are separate
+  gates. No merge or production write is claimed by this record.

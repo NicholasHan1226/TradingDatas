@@ -45,6 +45,91 @@ npm run build
 npm run test:sites
 ```
 
+## Research library
+
+The 2026-08-30 candidate contains 200 distinct external research materials with
+Chinese/English editorial titles, orientations, data requirements and limitations.
+These are attributed reading records, not 200 internally authored papers or
+full-text translations. Bibliographic verification is not a full-text review,
+replication, redistribution licence or production data-availability claim.
+
+`src/researchSeeds.js` holds new editorial notes; `src/researchLegacy.json` preserves
+the original records and stable routes. `src/researchBibliography.json` is generated
+publisher-registered metadata, and `src/researchSourcePages.json` records manually
+checked primary-source exceptions. `src/researchCatalog.js` assembles the library,
+shared preparation checks and three curated reading paths. See
+[`RESEARCH_LIBRARY.md`](../docs/product/RESEARCH_LIBRARY.md) for acceptance rules.
+The reader page keeps internal source-verification and preparation statuses out
+of the public body. Source access, browser-local bookmarks and citation copying
+are first-screen actions; clipboard failures offer selectable citation text.
+`researchReaderNotes.js` holds source-specific editorial additions and internal
+review references, without replacing bibliographic verification. Library filters,
+page and scroll position survive in-tab article navigation. Filters and page also
+survive reload through URL parameters; scroll position does not.
+The confirmed Featured/Topics views share these records and article pages. See
+[`research-dual-view-v3.md`](../docs/design/research-dual-view-v3.md) for behavior
+and [`research-reader-v2.md`](../docs/design/research-reader-v2.md) for reader boundaries.
+
+```bash
+node scripts/verify-research-sources.mjs
+node --test tests/research-catalog.test.mjs
+```
+
+The verifier reuses checked records and queries Crossref serially for missing or
+invalid metadata. It exits nonzero and writes `research-source-review.json` when
+editorial review is required; never auto-accept a fuzzy title or another author's
+same-title digest. It does not download or republish full papers.
+
+Language defaults to the primary system/browser language (`zh-*` -> Chinese,
+otherwise English). Account preferences offer System / 中文 / English; explicit
+choices persist in this browser. System mode responds to `languagechange` and
+does not overwrite an explicit preference. Search indexes both editorial
+languages and original titles regardless of the selected display language.
+The complete library is available in Topics in pages of 12; global search
+still searches all 200 records. Bookmarks and source routes remain language-neutral.
+
+Twenty-four selected records now include four-part bilingual reading guides in
+`src/researchEditorial.js` and `src/researchEditorialExpansion.js`; eight subject
+sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
+Each sequence has three guides, including intentional cross-subject readings.
+Articles show their position and previous/next reading with authored reasons.
+Three preparation tutorials (`preparationTutorials.js`, `tutorialExamples.js`) use
+local synthetic examples, never real requests. Their publication does not change
+the product manifest's underlying data/Feature/Recipe maturity or account grants.
+See [`research-reading-depth-v4.md`](../docs/design/research-reading-depth-v4.md).
+The follow-up contract is
+[`research-reading-continuity-v5.md`](../docs/design/research-reading-continuity-v5.md).
+Library scroll positions are isolated per in-tab history entry; explicit article
+return restores the latest library view. They are neither persisted nor synced.
+
+The normal build also generates twelve offline download artifacts under
+`dist/client/downloads/research/`: three synthetic input/expected-output JSON files,
+three standalone JavaScript examples and six localized Python notebooks. The
+notebooks embed the same fixtures, require Python 3.10+ standard library only for
+computation, and open in an existing Jupyter environment. Source generation lives
+in `scripts/build-tutorial-downloads.mjs` and `scripts/tutorial-python/`. Do not
+edit generated notebooks. They do not fetch real data or embed credentials.
+
+```bash
+npm run build
+python3 scripts/verify-tutorial-notebooks.py
+npm run test:sites
+```
+
+The standard-library validator executes all code cells top-to-bottom and compares
+results with the browser examples. It is not a Jupyter UI/kernel integration test.
+The test suite requires `python3`, or `TD_NOTEBOOK_PYTHON` pointing at Python 3.10+.
+Download URLs are build output: review them with `npm run preview` after building,
+not the source-only Vite dev server. Changing language selects the matching
+notebook without changing any dataset identifier.
+
+The normal build now projects only reader fields into the browser catalogue,
+separates React and research-catalog cache chunks, lazy-loads tutorial execution UI, and generates
+208 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
+these generated `dist/client` entries together with the current hashed assets;
+do not hand-edit them. Static metadata supports link previews, not article-body
+SSR or verified search indexing. Existing Sites packaging and Worker stay intact.
+
 Keep the generated raster assets in `public/assets/`. Do not rebuild the brand
 mark or data-material artwork with CSS, inline SVG, or placeholder elements.
 
