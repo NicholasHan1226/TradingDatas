@@ -2855,6 +2855,46 @@ def test_query_rejects_broken_row_authority_even_with_healthy_latest_receipt(
         _execute(native_harness, _request(filters={"symbol": {"eq": "BROKEN"}}, include_receipt_proofs=include_proofs))
 
 
+def test_default_query_excludes_success_prefix_from_explicitly_failed_cohort(
+    native_harness: dict[str, object], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    valid = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="complete-independent",
+        call_index=0, page_offset=0,
+    )
+    partial = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="explicitly-failed",
+        call_index=0, page_offset=0,
+    )
+    _insert_native_failed_receipt(
+        monkeypatch, conn, dataset, execution_id="explicitly-failed", call_index=1,
+    )
+    _insert_row(
+        conn, row_key="complete-independent", receipt_id=valid,
+        payload={"symbol": "VALID", "trade_date": "20260715"},
+    )
+    _insert_row(
+        conn, row_key="failed-prefix", receipt_id=partial,
+        payload={"symbol": "PARTIAL", "trade_date": "20260715"},
+    )
+    conn.commit()
+    evidence = _proof_evidence((valid,))
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: evidence,
+    )
+
+    response = _execute(
+        native_harness,
+        _request(filters={"symbol": {"in": ["PARTIAL", "VALID"]}}),
+    )
+
+    assert response["data"] == [{"symbol": "VALID", "trade_date": "20260715"}]
+
+
 def test_default_query_keeps_valid_rows_from_independent_executions(
     native_harness: dict[str, object], monkeypatch: pytest.MonkeyPatch,
 ) -> None:

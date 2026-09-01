@@ -271,6 +271,7 @@ class DatasetRuntimeEvidence:
     last_success_provider_config_hashes: tuple[tuple[str, str], ...] = ()
     current_receipt_ids: tuple[str, ...] = ()
     last_success_receipt_ids: tuple[str, ...] = ()
+    failed_cohort_success_receipt_ids: tuple[str, ...] = ()
     as_of_success_receipt_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -312,6 +313,10 @@ class DatasetRuntimeEvidence:
         for name, receipt_ids in (
             ("current_receipt_ids", self.current_receipt_ids),
             ("last_success_receipt_ids", self.last_success_receipt_ids),
+            (
+                "failed_cohort_success_receipt_ids",
+                self.failed_cohort_success_receipt_ids,
+            ),
             ("as_of_success_receipt_ids", self.as_of_success_receipt_ids),
         ):
             if type(receipt_ids) is not tuple or any(
@@ -387,6 +392,14 @@ class ValidatedRowReceiptProof:
     data_through: str | None
     finished_at: datetime
     receipt_proof_sha256: str
+
+
+@dataclass(frozen=True)
+class ValidatedRowReceiptProofSelection:
+    """Validated page proofs plus safely excludable failed-cohort prefixes."""
+
+    proofs: Mapping[str, ValidatedRowReceiptProof]
+    failed_cohort_success_receipt_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -3065,14 +3078,14 @@ def validated_success_receipt_ids(
     )
 
 
-def validated_row_receipt_proofs(
+def classify_row_receipt_proofs(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
     dataset: DatasetDefinition,
     receipt_ids: object,
     *,
     now: datetime,
-) -> Mapping[str, ValidatedRowReceiptProof]:
+) -> ValidatedRowReceiptProofSelection:
     """Join bounded provider row receipt IDs to validated immutable facts.
 
     The helper never reads provider payloads and never selects a latest receipt
@@ -3134,8 +3147,18 @@ def validated_row_receipt_proofs(
         for entry in entries
     }
     result: dict[str, ValidatedRowReceiptProof] = {}
+    failed_cohort_success_receipt_ids: list[str] = []
     for receipt_id in requested:
         entry = by_id.get(receipt_id)
+        if (
+            entry is not None
+            and entry.dataset_id == dataset.dataset_id
+            and entry.status == "success"
+            and entry.cohort_status == "failed"
+            and type(entry.finished_at) is datetime
+        ):
+            failed_cohort_success_receipt_ids.append(receipt_id)
+            continue
         if (
             entry is None
             or entry.dataset_id != dataset.dataset_id
@@ -3158,7 +3181,34 @@ def validated_row_receipt_proofs(
             finished_at=entry.finished_at,
             receipt_proof_sha256=entry.receipt_proof_sha256,
         )
-    return MappingProxyType(dict(sorted(result.items())))
+    return ValidatedRowReceiptProofSelection(
+        proofs=MappingProxyType(dict(sorted(result.items()))),
+        failed_cohort_success_receipt_ids=tuple(
+            sorted(failed_cohort_success_receipt_ids)
+        ),
+    )
+
+
+def validated_row_receipt_proofs(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    receipt_ids: object,
+    *,
+    now: datetime,
+) -> Mapping[str, ValidatedRowReceiptProof]:
+    """Return proofs only when every requested row belongs to a success cohort."""
+
+    selection = classify_row_receipt_proofs(
+        conn,
+        registry,
+        dataset,
+        receipt_ids,
+        now=now,
+    )
+    if selection.failed_cohort_success_receipt_ids:
+        raise RuntimeProjectionError("row receipt proof is unavailable")
+    return selection.proofs
 
 
 def project_dataset_runtime_evidence(
@@ -3536,6 +3586,11 @@ def project_dataset_runtime_evidence(
         last_success_receipt_ids = tuple(
             sorted({receipt.receipt_id for receipt in last_success_execution})
         )
+    failed_execution_ids = {
+        receipt.execution_id
+        for receipt in authority_receipts
+        if receipt.status == "failed"
+    }
     return DatasetRuntimeEvidence(
         projection=projection,
         current_receipt_status=current_status,
@@ -3551,6 +3606,14 @@ def project_dataset_runtime_evidence(
         last_success_provider_config_hashes=last_success_provider_config_hashes,
         current_receipt_ids=current_receipt_ids,
         last_success_receipt_ids=last_success_receipt_ids,
+        failed_cohort_success_receipt_ids=tuple(
+            sorted(
+                receipt.receipt_id
+                for receipt in authority_receipts
+                if receipt.status == "success"
+                and receipt.execution_id in failed_execution_ids
+            )
+        ),
         as_of_success_receipt_ids=(
             ()
             if evidence_as_of is None
