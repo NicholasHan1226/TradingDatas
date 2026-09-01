@@ -150,6 +150,7 @@ The paths below are a design contract, not a claim that they are implemented.
 /features/methodology
 /research
 /research/:paperSlug
+/research/paths/:pathId
 /recipes
 /recipes/:slug
 /pricing

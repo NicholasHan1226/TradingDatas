@@ -47,6 +47,31 @@ npm run test:sites
 
 ## Research library
 
+Maintainer contract: [`docs/product/RESEARCH_LIBRARY.md`](../docs/product/RESEARCH_LIBRARY.md).
+Current Git-merged snapshot (not a production publication claim): 200 works,
+120 guides (119 six-section; Dechow/Dichev four-section), 80 summary-only,
+85 comparison pairs, six synthetic `/recipes/:id` tutorials, 24 generated
+downloads, 211 static HTML entries.
+
+| Task | Command or file |
+| --- | --- |
+| Structural / editorial audit | `npm run audit:research` |
+| Bounded link or Crossref check | `npm run audit:research -- --links` or `--metadata` (read-only) |
+| Source-identity review (may write a report) | `node scripts/verify-research-sources.mjs` |
+| Catalog and site tests | `npm run test:sites` |
+| Project bodies + downloads | `npm run build` |
+| Offline notebook arithmetic | `python3 scripts/verify-tutorial-notebooks.py` |
+| Optional Jupyter kernel | `scripts/verify-tutorial-jupyter.py` in an isolated env |
+
+Guide bodies assemble in `src/researchReaderNotes.js` (later spreads win).
+Discovery rows come from `src/researchCatalog.js`. Production builds replace
+`researchGuideLoader.js` and strip article bodies via
+`scripts/research-public-projection.mjs`; development keeps the in-process
+fallback. Do not hand-edit `dist/client`. Hash restore for lazy tutorials
+cancels after 2s (`researchHistory.restoreLocationHashTarget`).
+
+### Current library contents
+
 The 2026-08-31 candidate contains 200 distinct external research materials with
 Chinese/English editorial titles, orientations, data requirements and limitations.
 These are attributed reading records, not 200 internally authored papers or

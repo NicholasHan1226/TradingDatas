@@ -1,6 +1,8 @@
 # External research library
 
-Last reviewed: 2026-08-31. Scope: the `public-web` PR candidate, not production.
+Last reviewed: 2026-09-01. Scope: the `public-web` Git-merged candidate after
+PR #400, not production publication. Counts below are locked by
+`public-web/tests/research-maintenance.test.mjs` and sibling identity tests.
 
 ## Purpose and acceptance
 
@@ -28,6 +30,123 @@ text/alternative data, macro-finance, Chinese/comparative markets and crypto.
 Foreign-market literature is comparative context, not an expansion of TD's live
 collection scope. The catalogue is not a systematic or exhaustive literature
 review, and inclusion is not endorsement of a conclusion or trading strategy.
+
+Batch-by-batch edition notes remain under Language and discovery. Use the
+snapshot and maintainer map below when editing code.
+
+## Current candidate snapshot
+
+These numbers are Git-merged contract facts. They are not a production
+publication claim, full-text review count, or Recipe/Feature activation.
+
+| Object | Count | Constraint |
+| --- | --- | --- |
+| Distinct works | 200 | Translation, digest, edition link, or path membership is not a new work |
+| Bilingual guides | 120 | 119 six-section; Dechow/Dichev stays four-section / abstract-bounded |
+| Summary-only records | 80 | Review candidates, not automatic defects |
+| Related-material links | 75 linked / 125 empty | Explicit empty object; no topic fallback |
+| Comparison pairs | 85 across 121 works | Symmetric, authored titles; display at most three |
+| Core journeys | 8 × 3 = 24 works | Additional guides do not add a fourth stage |
+| Question routes | 3 | Company topic only; nine existing works |
+| Curated paths | 3 | `/research/paths/{pit-fundamentals,market-microstructure,announcement-events}` |
+| Preparation tutorials | 6 | `/recipes/:id`; synthetic local examples only |
+| Offline downloads | 24 | 6 JSON + 6 JS + 12 notebooks, generated at build |
+| Static HTML entries | 211 | 200 records + 3 paths + 6 tutorials + 2 index routes |
+
+Display subjects in `researchDiscovery.js`: `all`, `asset-pricing`,
+`market-microstructure`, `corporate-fundamentals`, `a-share-market`,
+`alternative-data`, `crypto-markets`, `research-methods` (also stores
+`quant-methods`), `macro-finance`. Pages of 12. Featured and Topics share the
+same 200 identities.
+
+## Maintainer map
+
+Edit the source module that owns the object. Do not hand-edit `dist/client`.
+Later object-spread keys win.
+
+| Change | File | Notes |
+| --- | --- | --- |
+| New work identity | `researchSeeds.js` or `researchLegacy.json` | Needs Crossref or `researchSourcePages.json` before assemble |
+| Guide body | batch module imported by `researchReaderNotes.js` | Key is the canonical English title |
+| Related materials | guide `related`, else `researchGuideMaterials.js`, else `researchSummaryMaterials.js` | `{}` suppresses disclosure |
+| Comparison pair | `researchConnections.js` and its expansion modules | Titles must match catalog identities |
+| Topic journey | `researchJourneys.js` | Three guides each; reasons are bilingual |
+| Question route | `researchQuestionRoutes.js` | Existing titles only; no new routes |
+| Tutorial copy | `preparationTutorials.js` / `preparationTutorialExpansion.js` | Also add `productManifest.js` recipe row |
+| Tutorial code | `tutorialExamples.js` + `scripts/tutorial-python/<id>.py` | Register `pythonFunctionNames` in `build-tutorial-downloads.mjs` |
+| Public catalog projection | `scripts/research-public-projection.mjs` | Build strips bodies, evidence, and QA profiles |
+| Structural audit | `scripts/audit-research-content.mjs` | Read-only; `npm run audit:research` |
+
+Guide merge order in `researchReaderNotes.js`:
+
+```text
+researchEditorial
+-> researchDeepReads
+-> researchGuideDepthExpansion
+-> researchAdditionalGuides
+-> researchFundamentalsMicrostructureGuides
+-> researchMethodsMarketsGuides
+-> researchCorporateGuides
+-> researchFiftyGuides … researchHundredGuides
+-> researchMicrostructure120 / researchCrypto120 / researchMacro120
+```
+
+### Dev versus production build
+
+- Development `researchGuideLoader.js` reads the full catalog and reader notes
+  in-process.
+- `npm run build` replaces that loader with one dynamic import per guide and
+  projects discovery rows without `readingNotes`. `inspectResearchChunks`
+  fails if bodies are merged, missing, or reachable from the entry graph.
+- `ResearchArticle.jsx` loads a body only when `guideSectionCount > 0` and the
+  projected row has no inline notes. Leaving the article marks the observer
+  inactive so a late response cannot overwrite the current paper.
+- Section hashes (`#research-section-N`) restore after the body is ready.
+  Tutorial hash restore (`researchHistory.restoreLocationHashTarget`) waits at
+  most 2s for the lazy `TutorialPage` mount and must cancel on leave.
+
+### Add a guide
+
+1. Confirm the work already exists in the 200-record catalog. Do not invent a
+   new identity to deepen an existing paper.
+2. Add a six-section bilingual record (or keep Dechow/Dichev at four) in the
+   current batch module, keyed by the exact catalog title.
+3. Import and spread it last in `researchReaderNotes.js`.
+4. Add comparisons by catalog title if the work should appear in the 85-pair
+   set. Missing titles fail closed; do not fuzzy-match.
+5. Choose materials explicitly. Prefer `{}` over a convenient topic default.
+6. Run `npm run audit:research`, `npm run test:sites`, and `npm run build`.
+   Browser acceptance remains a separate gate.
+
+### Add a tutorial
+
+1. Add bilingual copy under `preparationTutorials` / expansion.
+2. Implement a deterministic function and fixture in `tutorialExamples.js`.
+3. Add a matching standard-library Python file and `pythonFunctionNames` entry.
+4. Add a `product_definition` row in `productManifest.js`. Publishing the
+   tutorial does not activate the Recipe/Feature product plane.
+5. Rebuild so `dist/client/downloads/research/<id>/` is generated. Do not edit
+   those notebooks by hand.
+6. `python3 scripts/verify-tutorial-notebooks.py` is the default offline check.
+   `scripts/verify-tutorial-jupyter.py` is optional isolated-kernel acceptance
+   and does not rewrite shipped files.
+
+### Pitfalls
+
+- `activation`, HTTP 200, Crossref registration, or a matching PDF
+  `Content-Type` is not full-text review, redistribution rights, or live data.
+- `on_demand` and Recipe publication are not automatic collection.
+- `--refresh` on Crossref is not a routine pass; audit `--metadata` only
+  reports publisher drift.
+- `verify-research-sources.mjs` may write `research-source-review.json` and
+  exit nonzero. The read-only auditor never writes or advances source dates.
+- Download URLs exist only after `npm run build`. The Vite dev server does not
+  serve `dist/client/downloads`.
+- Internal evidence scopes, check dates, and preparation status stay out of
+  public article prose. `internal_note_in_prose` fails the auditor.
+- Do not treat `docs/design/research-reading-depth-v4.md` “twelve guides” or
+  earlier batch counts as current. Current counts live in this page and
+  `docs/design/research-120-guides-v15.md`.
 
 ## Sources and verification
 

@@ -89,6 +89,7 @@ API 只读 SQLite，不同步调用上游，不回退文件、旧数据库或 pr
 - [Agent 一键复制接入提示词合同](docs/AGENT_INTEGRATIONS.md)
 - [公共数据产品与前端视觉设计合同](docs/design/public-data-product-system-v1.md)
 - [公共导航与分类内页合同](docs/product/PUBLIC_SURFACE_MAP.md)
+- [外部研究库维护合同](docs/product/RESEARCH_LIBRARY.md)
 - [当前 Evidence Plane 与目标产品分层](docs/product/PRODUCT_PLANES.md)
 - [路线图](ROADMAP.md)
 - [当前状态](STATUS.md)
