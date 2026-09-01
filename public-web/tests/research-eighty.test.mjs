@@ -15,8 +15,8 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   assert.equal(Object.keys(additions).length, 20);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 160);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 159);
+  assert.equal(Object.keys(researchReaderNotes).length, 180);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 179);
   for (const [title, guide] of Object.entries(additions)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
     assert.equal(researchReaderNotes[title], guide);
@@ -37,7 +37,7 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   }
   const audit = auditContent();
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 40);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 20);
 });
 
 test("measurement, edition and source-access limits survive expansion", () => {
