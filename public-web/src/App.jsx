@@ -29,7 +29,7 @@ import { researchViewReducer } from "./researchReader.js";
 import { researchHref, researchLocation, researchSubjects } from "./researchDiscovery.js";
 import { ResearchHub } from "./ResearchHub.jsx";
 import { ResearchRecord } from "./ResearchRecord.jsx";
-import { createReadingPositions, isInPageNavigation } from "./researchHistory.js";
+import { createReadingPositions, isInPageNavigation, locationHashId } from "./researchHistory.js";
 import { preparationTutorials } from "./preparationTutorials.js";
 import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
 const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
@@ -61,6 +61,32 @@ function getRouteFromPath() {
   const [primary] = candidate.split("/");
   if (primary === "cookbook") return candidate.replace(/^cookbook/, "recipes");
   return productRoutes.includes(primary) ? candidate : "home";
+}
+
+function restoreLocationHashTarget() {
+  const targetId = locationHashId(window.location.hash);
+  if (!targetId) return () => {};
+
+  let observer;
+  let timeoutId;
+  const cleanup = () => {
+    observer?.disconnect();
+    if (timeoutId) window.clearTimeout(timeoutId);
+  };
+  const revealTarget = () => {
+    const target = document.getElementById(targetId);
+    if (!target) return false;
+    target.scrollIntoView({ behavior: "instant" });
+    cleanup();
+    return true;
+  };
+
+  if (!revealTarget()) {
+    observer = new MutationObserver(revealTarget);
+    observer.observe(document.querySelector("main") ?? document.body, { childList: true, subtree: true });
+    timeoutId = window.setTimeout(cleanup, 2000);
+  }
+  return cleanup;
 }
 
 
@@ -857,9 +883,8 @@ export function App() {
       readingLocation.current = window.location.href;
       if (inPage) {
         window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
-        const target = document.getElementById(window.location.hash.slice(1));
-        if (target) target.scrollIntoView({ behavior: "instant" });
-        else if (!window.location.hash) window.scrollTo({ top: 0, behavior: "instant" });
+        if (window.location.hash) restoreLocationHashTarget();
+        else window.scrollTo({ top: 0, behavior: "instant" });
         return;
       }
       if (currentRouteRef.current === "research") readingPositions.current.save(readingEntry.current, window.scrollY);
@@ -889,6 +914,8 @@ export function App() {
       heading?.focus({ preventScroll: true });
     }
   }, [route, navigationRevision]);
+
+  useEffect(() => restoreLocationHashTarget(), [route, navigationRevision]);
 
   useEffect(() => {
     const focusGlobalSearch = (event) => {
