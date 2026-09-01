@@ -55,8 +55,10 @@ contracts:
   # Every documented source is collected independently in an inclusive
   # one-minute publication window.  Source shards may be legally empty, but
   # each returned item must bind a non-null source/time/title identity and
-  # remain within the requested window.  The verified 2000-row source cap is
-  # a fail-closed ceiling, never a completeness assertion for a wider window.
+  # remain within the requested window. Long-form provider-native content may
+  # exceed 64 KiB, so this contract preserves rows up to 128 KiB without
+  # truncation. The verified 2000-row source cap is a fail-closed ceiling,
+  # never a completeness assertion for a wider window.
   - dataset_id: cn.dataset.major_news
     aliases: [tushare.major_news]
     domain: provider_data
@@ -95,7 +97,7 @@ contracts:
     request_window_policy: {required_keys: [start_date, end_date], formats: {start_date: local_datetime_seconds, end_date: local_datetime_seconds}, range_start_key: start_date, range_end_key: end_date, max_span_days: 1}
     response_completeness: {strategy: unique_primary_key_snapshot, fixed_field_matches: {}, reject_at_row_limit: false, dedup_duplicate_keys: true}
     requested_fields: [title, content, pub_time, src]
-    budgets: {max_rows_per_attempt: 2000, max_payload_bytes_per_row: 65536, max_batch_bytes: 67108864, max_nesting_depth: 16}
+    budgets: {max_rows_per_attempt: 2000, max_payload_bytes_per_row: 131072, max_batch_bytes: 67108864, max_nesting_depth: 16}
     reviewed_type_overrides: []
   # Four verified date-partition responses share the existing generic daily
   # contract. Candidate receipts showed non-null unique trade_date/ts_code

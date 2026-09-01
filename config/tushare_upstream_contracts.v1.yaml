@@ -22710,7 +22710,7 @@ contracts:
   budgets:
     max_batch_bytes: 67108864
     max_nesting_depth: 16
-    max_payload_bytes_per_row: 65536
+    max_payload_bytes_per_row: 131072
     max_rows_per_attempt: 2000
   reviewed_type_overrides: []
   probe_state: executable

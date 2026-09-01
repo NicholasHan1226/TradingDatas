@@ -685,6 +685,36 @@ def test_resource_budgets_fail_before_any_write(tmp_path: Path) -> None:
         )
 
 
+def test_major_news_preserves_observed_long_form_payload(tmp_path: Path) -> None:
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    registry = load_dataset_registry(
+        Path(__file__).resolve().parents[1]
+        / "config"
+        / "provider_native_dataset_registry.yaml"
+    )
+    dataset = registry.resolve("cn.dataset.major_news")
+    binding = registry.provider_binding(dataset.dataset_id, "tushare")
+    assert binding.max_payload_bytes_per_row == 131_072
+
+    payload = {
+        "title": "long-form item",
+        "content": "x" * 70_247,
+        "pub_time": "2026-09-01 12:00:00",
+        "src": "新浪财经",
+    }
+    result = ingest_provider_native_rows(
+        db_path,
+        dataset=dataset,
+        binding=binding,
+        rows=[payload],
+        context=_context(dataset, binding),
+    )
+
+    assert result.status == "success"
+    assert json.loads(_fact(db_path)["payload_json"]) == payload
+
+
 def test_fanout_rows_may_exceed_one_provider_call_budget(tmp_path: Path) -> None:
     db_path = tmp_path / "facts.sqlite"
     _db(db_path)

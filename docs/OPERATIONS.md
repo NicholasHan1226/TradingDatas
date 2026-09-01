@@ -181,6 +181,8 @@ WAL 的库提供服务。回退 journal mode 不是默认动作；若必须回�
 超时后仍必须失败并写稳定错误码，禁止跳过事务 readback 或改写已有 receipt。宽字段（超过 256 个声明
 字段）的 transport 敏感信息扫描使用独立 400 万节点硬上限，普通合同继续保持 200 万节点；
 两者仍受 registry 行数、16 MiB provider response、64 MiB batch 和深度上限共同约束。
+`cn.dataset.major_news` 的 provider-native 长正文单行上限为 128 KiB；它继续受每次
+2000 行、64 MiB batch、16 MiB provider response 和深度上限约束，正文不得截断。
 
 ## Activation wave
 
