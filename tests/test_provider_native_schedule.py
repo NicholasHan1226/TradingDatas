@@ -1040,12 +1040,11 @@ def test_api_override_is_specific_and_does_not_widen_global_budgets() -> None:
         ledger.consume(plan("default_api", 1), "default_api")
 
 
-def test_event_wave_budget_leaves_headroom_above_active_fanout() -> None:
-    """The active event wave (tushare + firecrawl) must fit inside the event
-    rate budget with headroom for transient retries, not sit exactly at the
-    limit where the tail of a fanout (major_news) gets resource_budget."""
+def test_event_wave_preserves_breadth_without_same_run_retries() -> None:
+    """One event failure must not consume later fanout partitions' budget."""
     schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
     budget = schedule.rate_budgets["event"]
+    policy = schedule.cadences["event"]
     registry = _active_registry()
 
     total = 0
@@ -1061,10 +1060,12 @@ def test_event_wave_budget_leaves_headroom_above_active_fanout() -> None:
             else:
                 total += 1
 
-    # The budget must exceed the deterministic request count so a transient
-    # provider failure plus its retry does not truncate the fanout tail.
+    # The full deterministic wave fits. Transient failures become eligible on
+    # the next scheduler run instead of spending this run's remaining slots.
     assert total < budget.account_requests_per_run
     assert total < budget.provider_requests_per_run
+    assert policy.failure_retry_seconds == 300
+    assert policy.retry == cadence_planner.RetryPolicy(1, 0, 0, 0)
 
 
 def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
