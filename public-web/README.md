@@ -321,6 +321,23 @@ state instead of a sign-in prompt or cached credentials. Identity outages show a
 retry action, not a false signed-out conclusion; public bookmarks, docs and
 preferences remain accessible from the same workspace.
 
+When changing Login or Account session code, keep these contracts:
+
+- Transport lives in `src/accountSession.js` and `worker/index.js`. Do not add a
+  bearer fallback, persist the raw key, follow upstream redirects, or mint a
+  cookie from HTTP 200 without `portal.tenant_id` and `portal.tier`.
+- `getAccountViewState` is the only presentation mapping: `checking` while
+  identity is in flight, `unavailable` for gateway/timeouts, `signed_out` only
+  for a confirmed absent/invalid session. Usage failures must not sign the user
+  out unless the usage call itself returns `signed_out`.
+- `POST /api/account/session` `401` is `invalid_token` (stay on Login). `GET me`
+  `401` is `signed_out`. Sign-out UI clears only after `DELETE` returns
+  `{signed_out: true}`; otherwise keep Account and retry.
+- Login return is `safeLoginDestination`: `/account` or an allowlisted
+  `/pricing/preview?plan=&period=` path. Arbitrary `next` values are rejected.
+- Regression tests: `tests/account-view-state.test.mjs`, `account-login.test.mjs`,
+  `account-session-lifecycle.test.mjs`, and `account-signout.test.mjs`.
+
 Local synthetic UI verification: `npm run build`, then
 `node scripts/login-qa-server.mjs` and open `http://127.0.0.1:5193/__qa`.
 The harness binds only loopback, is single-reviewer, never calls upstream, and

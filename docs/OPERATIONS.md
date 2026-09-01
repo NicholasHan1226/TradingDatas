@@ -624,6 +624,26 @@ identity_gateway_unavailable`，再按获批范围重新发布上一已验证公
 旧兼容路径风险，不能把降级当成功。不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
 SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke 和审计仍是独立后续发布。
 
+### 登录与会话排障
+
+浏览器会话问题先按展示态与错误码分类，不要从一次 HTTP 200 或页面文案推断已登录。
+契约与错误映射见 [API.md](API.md) Public Account session bridge。
+
+| 现象 | 代码路径 | 常见原因 | 禁止做法 |
+|---|---|---|---|
+| Login 提示密钥无效 | `startAccountSession`：`POST /api/account/session` 的 `401` 映射为 `invalid_token` | 密钥错误、停用或过期 | 当成网关故障，或改走 bearer |
+| Login 提示暂时无法连接 | `5xx`、超时、非 JSON、缺 `tenant_id`/`tier` 的 200 | binding 缺失、上游超时/3xx、畸形投影 | 写回 `localStorage` 或直连 Portal |
+| Account 仍登录，用量可重试 | `GET /api/account/usage` 失败且不是 `signed_out` | Portal usage 故障 | 清会话或显示已退出 |
+| 刷新时出现“前往登录”或旧私有数据 | 未保持 `checking` | `GET /api/account/me` 尚未返回 | 用缓存私有事实填洞 |
+| 点击退出后账户仍在 | `DELETE /api/account/session` 未确认 `{signed_out: true}` | 网络、503 或畸形 JSON | 先清 UI 再重试 |
+| 生产 `503 identity_gateway_unavailable` | Worker 缺 `SESSION_ENCRYPTION_KEY` 或 `ACCOUNT_API_BASE` | 发布未注入密钥 | 降级 direct-bearer |
+
+本地验证：`cd public-web && npm run build && npm run test:sites`（含
+`tests/account-view-state.test.mjs`、`account-login.test.mjs`、
+`account-session-lifecycle.test.mjs`、`account-signout.test.mjs`）。合成 UI 场景见
+`node scripts/login-qa-server.mjs` 的 `http://127.0.0.1:5193/__qa`（仅 loopback，禁止填真实 key）。
+生产是否启用仍以 exact Worker 读回为准，见上一节清单。
+
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
 `PAYLOADS.sha256`，再用独立 sidecar 记录该清单的 SHA-256；交接前必须分别执行
 `sha256sum -c PAYLOADS.sha256` 和 sidecar 校验。若已生成自引用或不自洽清单，保留原件

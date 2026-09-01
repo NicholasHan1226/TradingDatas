@@ -28,6 +28,17 @@ Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具�
 
 公共路由和内部部署路径在实现前由 `docs/design/public-data-product-system-v1.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
 
+浏览器 Account 也不是数据旁路。`tradingdatas.com/login` 与 `/account` 只通过
+`public-web/worker/index.js` 的同站 `/api/account/*` 桥接已有访问密钥：页面脚本拿不到
+bearer，cookie 名为 `td_account_session`，路径限于 `/api/account`，AES-GCM 封装 8 小时。
+Agent 与 catalog/query 仍只使用独立 bearer，不得读取该 cookie。缺少
+`SESSION_ENCRYPTION_KEY` 或 `ACCOUNT_API_BASE` 时认证返回
+`503 identity_gateway_unavailable`，禁止回退到 `localStorage`/`sessionStorage` 或
+direct-bearer。HTTP 200 必须带非空 `portal.tenant_id` 与 `portal.tier` 才可签发会话；
+畸形投影是失败，不是登录成功。前端展示态只有 `checking`、`authenticated`、
+`unavailable`、`signed_out`：验证中不得假装未登录或展示私有事实，用量故障不得冒充登出。
+HTTP 合同见 `docs/API.md`，发布与排障见 `docs/OPERATIONS.md`。
+
 ## 权威顺序
 
 1. dataset registry：数据集身份、provider binding、schema、cadence、entitlement 和 query policy；

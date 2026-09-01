@@ -412,9 +412,34 @@ Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 
 浏览器不再使用 direct-bearer 兼容路径，也不保存原始 key。旧 `localStorage` 与
 `sessionStorage` credential 在启动时移除，旧直连用户需重新登录；服务端 Token 不变。
-前端请求设 12 秒超时，登录单飞，账户变化后的迟到结果不得恢复前一账户/新密钥。
+Cookie 名为 `td_account_session`。前端请求设 12 秒超时，登录单飞，账户变化后的迟到结果不得恢复前一账户/新密钥。
 `me` 验证身份与 `usage` 可用性分离，用量服务故障仅展示可重试提示。页面重新可见时
 验证现有会话；非后台轮询。此桥接仍不等于手机/邮箱身份库或可独立撤销的持久会话。
+
+### Browser presentation and error mapping
+
+`public-web/src/accountSession.js` 把身份请求投影为四种展示态，HTTP 状态不能直接当成 UI 身份：
+
+| View state | Condition | UI constraint |
+|---|---|---|
+| `checking` | identity request in flight | Neutral verification. No sign-in prompt and no cached private Account panels. |
+| `authenticated` | valid account projection present | Show only the current identity's Portal facts. |
+| `unavailable` | error other than `invalid_token` / `signed_out` | Retry. Do not claim the user signed out. |
+| `signed_out` | no account and no error, or `invalid_token` / `signed_out` | Only then offer `/login`. Bookmarks, docs, and preferences stay reachable. |
+
+Frontend error mapping (do not collapse these):
+
+| Source | Frontend `error` | Meaning |
+|---|---|---|
+| `POST /api/account/session` `401` | `invalid_token` | Key invalid, disabled, or expired. Stay on Login. |
+| `GET /api/account/me` `401` | `signed_out` | No session or expired cookie. |
+| `403` | `access_denied` | Credential has no Account access. |
+| `429` | `rate_limited` | Throttled. |
+| 12s timeout / `account_timeout` abort | `account_timeout` | Bounded network timeout. |
+| `5xx`, non-JSON, malformed `200` | `account_unavailable` | Gateway or projection failure, not an invalid key. |
+| `DELETE /api/account/session` without `{signed_out: true}` | `signout_unconfirmed` | Keep the signed-in UI and offer retry. |
+
+`usage` `401`/`signed_out` is an identity failure and may clear the view. Any other usage error keeps the session and shows retry. Login success may return only to `/account` or an allowlisted `/pricing/preview?plan=...&period=...` (exactly those two query params, no fragment); any other `next` falls back to `/account`.
 
 ### Independent email identity candidate
 
