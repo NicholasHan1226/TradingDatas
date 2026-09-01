@@ -147,6 +147,11 @@ failed 终态，或 8 次重选仍不能形成有效页时，仍返回 `503 serv
 `runtime_state`。HTTP 200 不得掩盖 dataset 级 degraded 状态；消费者必须逐数据集读取
 metadata，不能只看 HTTP 状态码。
 
+对 `event` 与 `session_minute` 的 append-only 数据集，最新可信 refresh 若以
+`provider_error` 失败，`runtime_state` 必须立即投影为 `failed`、`degraded=true`，同时
+保留上一份完整成功的 `data_through` 供消费者判断可用历史。低频 append-only 数据集仍可
+在上一成功水位尚新鲜时保留既有读取状态；该低频容错不得用于隐藏高频源的最新失败。
+
 新鲜度按数据时间粒度计算：`YYYYMM` 水印覆盖完整月份，以该月末作为 SLA 参考。
 对于 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute` 与 `postclose_daily`，
 周六/周日读取时分别以最近周五 15:00 和周六 00:00 作为新鲜度时钟，避免已覆盖周五的
