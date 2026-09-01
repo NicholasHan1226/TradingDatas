@@ -23,14 +23,14 @@ TradingDatas has one customer-facing account experience and one restricted admin
 
 The current authenticated backend can truthfully supply account identity, entitlement, expiry, request limits, 30-day usage history, and customer-scoped key management through `/portal/api/me`, `/portal/api/me/usage`, and `/portal/api/me/keys`. Account Overview, Subscription, Usage, API Keys, and Security project only those authenticated facts. The current contract does not project alternative-data add-ons separately, so trial, add-on expiry, and renewal are labeled unavailable rather than inferred from broad category grants. Billing, a same-site passwordless session, and cross-device bookmark sync remain target surfaces until their backend contracts exist.
 
-`/login` is the dedicated customer authentication entry. It verifies an existing TradingDatas access key against the same customer portal contract and sends a verified customer to `/account`. The public Worker now contains a disabled-by-default same-site session bridge: once its production encryption secret and upstream binding are configured, `/login` exchanges the key for an eight-hour encrypted `HttpOnly`, `Secure`, `SameSite=Strict` cookie and all Account reads/mutations stay on `tradingdatas.com/api/account/*`. Until that binding is enabled, the compatibility path keeps the key in `sessionStorage` for the current tab only. It migrates and removes the former `localStorage` value, so a long-lived key is no longer retained as persistent browser state. Signed-out Account actions and the header account icon route to this page. Email, SMS, password-reset, registration, durable cross-device sessions, and session-list/audit flows remain unavailable until the full identity contract exists; the interface must say so rather than simulate them.
+`/login` is the dedicated customer authentication entry. It verifies an existing TradingDatas access key through the same-site session bridge and returns to `/account` or an explicitly allowlisted non-paying purchase preview. With the required bindings configured, the bridge exchanges the key for an eight-hour encrypted `HttpOnly`, `Secure`, `SameSite=Strict` cookie; all Account reads/mutations stay on `tradingdatas.com/api/account/*`. There is no direct-bearer or browser-storage fallback. Startup removes legacy Account credentials from both `localStorage` and `sessionStorage`; users of those retired paths sign in again without changing their server keys or grants. Email, SMS, password-reset, registration, durable cross-device sessions, and session-list/audit flows remain unavailable until the full identity contract exists; the interface must say so rather than simulate them.
 
-The session bridge is a credential-containment migration, not the finished user identity system. Its production switch is deliberately absent from the committed Worker configuration. Enabling it requires a separately reviewed Cloudflare secret named `SESSION_ENCRYPTION_KEY`, a non-secret `ACCOUNT_API_BASE` binding, exact Worker deployment, and login/read/key-mutation/logout readback. Missing bindings return `503 identity_gateway_unavailable`; the current tab-only compatibility path remains available and the Worker never silently invents an account.
+The session bridge is a credential-containment migration, not the finished user identity system. The committed Worker configuration contains the non-secret `ACCOUNT_API_BASE` binding; the deployment workflow injects `SESSION_ENCRYPTION_KEY` from the repository secret using the explicit public Worker configuration. Runtime activation still requires exact Worker deployment and independent readback; successful customer login/read/key-mutation/logout must be verified separately from unauthenticated checks. Missing bindings return `503 identity_gateway_unavailable`, without a fallback credential path or an invented account. Current release evidence belongs in `STATUS.md`, not in this design contract.
 
 Before email or passwordless sign-in may replace the browser access-key entry, the backend contract must provide all of the following as one reviewed identity boundary:
 
 1. A user identity store with a stable, server-owned user-to-tenant binding.
-2. A verified email challenge sender with short-lived one-time challenges, replay protection, attempt limits, and audit evidence.
+2. Verified email and phone challenge senders with short-lived one-time challenges, replay protection, attempt limits, and audit evidence. Both methods belong to one account; credential linking requires fresh verification and must never merge tenants by a typed contact string.
 3. A first-party session exchange that returns an `HttpOnly`, `Secure`, and appropriate `SameSite` cookie without exposing bearer credentials to URLs, prompts, analytics, or persistent browser storage. The current encrypted bridge proves this browser boundary but does not replace the required stable identity store or revocation/audit model.
 4. An explicit browser-origin allowlist and credential-aware CORS policy; the current wildcard bearer API is not a cookie-session contract.
 5. Session list, revoke, expiry, and audit endpoints that remain tenant-scoped.
@@ -55,13 +55,62 @@ The former full `Data pipeline` table is retired from primary navigation. Its da
 
 ## Authentication boundary
 
-The existing `tradingdatas.com/account` surface is the only customer workspace, with `tradingdatas.com/login` as its authentication entry rather than a second portal. It reads the current account through the customer-scoped portal endpoints. When the same-site bridge is enabled, the page holds no readable bearer credential after exchange; the Worker decrypts it only while proxying the current request. The compatibility path is current-tab `sessionStorage`, never persistent `localStorage`. Credentials must not move into URLs, prompts, analytics, or public content. Customer-created keys are same-tenant, cannot inherit administrator scopes, and are shown once. The eventual email/passwordless identity gateway must reuse this same-site boundary without relying on a cross-site third-party cookie.
+The existing `tradingdatas.com/account` surface is the only customer workspace, with `tradingdatas.com/login` as its authentication entry rather than a second portal. It reads the current account through the customer-scoped portal endpoints. The page holds no readable bearer credential after exchange; the Worker decrypts it only while proxying the current request. Neither `sessionStorage` nor `localStorage` may retain Account credentials. Credentials must not move into URLs, prompts, analytics, or public content. Customer-created keys are same-tenant, cannot inherit administrator scopes, and are shown once. The eventual email/phone identity gateway must reuse this same-site boundary without relying on a cross-site third-party cookie.
+
+Email-session logout carries the `user_id` currently displayed by the initiating
+page as an expected-identity comparison. The Worker rejects a stale-tab mismatch
+without revoking the newer cookie identity; the header never selects which user
+or session to revoke. Public Account and the embedded administrator wrapper use
+the same response receipt before clearing their local projection. The legacy
+access-key cookie-clear path remains separate because it has no email identity.
 
 The React application under `static/app/` is administrator-only. Customer-scoped tokens are rejected there and directed to the existing public Account page; the old separate customer workspace is retired rather than redesigned.
 
 The administrator console links out to the public Account instead of rendering an embedded customer preview. This keeps customer session state, customer navigation, and administrator authority visibly separate.
 
+## Owner identity and two workspaces
+
+Owner-confirmed on 2026-08-30: the supplied account email is the intended platform
+administrator identity and must also enter the existing public Account. Its literal
+address belongs only to private provisioning context, not this public repository.
+This is a role requirement, not evidence that the email was verified or that a role
+was already assigned.
+
+- One verified user identity, with the existing Account as the personal/customer
+  workspace and an explicitly labelled administrator-console entry when authorized.
+- No duplicate owner account, no separate customer portal, and no embedded customer
+  impersonation view. Returning to Account shows only that identity's own data.
+- Persist an explicit server-controlled administrator grant against the verified
+  stable user ID. It is not a registration field, query parameter, client setting,
+  email-prefix convention, or automatic grant to the first registrant.
+- Every privileged request must validate the live session, enabled user and current
+  role. Role removal must stop subsequent admin access without waiting for cookie
+  expiry. Public Account access may continue if the identity itself remains enabled.
+- Administrator role and commercial subscription/data grants are separate. Do not
+  infer paid entitlement or attach an existing tenant from an email or token label.
+- Do not expose a shared administrator bearer key to the browser or replace existing
+  keys to implement shared sign-in. The backend trust boundary, admin-origin/session
+  handoff, audit attribution and role-provisioning path require a reviewed contract.
+
+Current gap: the email candidate returns only verified, unsubscribed identities;
+the existing admin frontend still requires its own admin/internal credential.
+Neither a verified sending domain nor a delivered test email closes this gap.
+Keep these facts explicit until real shared-login and privileged-request readback.
+
+Acceptance must cover owner and ordinary-user login, forged role/email rejection,
+unauthorized direct admin requests, immediate role removal, expiry/replay/sign-out,
+and a return to the same Account without a second identity or leaked credentials.
+
 ## Acceptance
+
+Account sign-out has one shared pending/error state across Overview and Security.
+The session path clears account state only after `DELETE /api/account/session`
+returns a successful JSON response with `signed_out: true`. Network failure,
+non-success HTTP, malformed confirmation and a ten-second timeout leave the UI
+in an explicitly unconfirmed state with a retry action; they never claim logout.
+Requests are single-flight and older account reads are invalidated after success.
+There is no tab-only compatibility path. Clearing the cookie does not implement
+server-side revocation of a previously copied session.
 
 - A customer sees `Account`, not a separate “customer portal” product.
 - A signed-out customer enters through `/login`; successful verification restores the existing Account workspace without duplicating its navigation.
@@ -69,4 +118,4 @@ The administrator console links out to the public Account instead of rendering a
 - Public collection status is not copied into another full catalog inside admin.
 - Every displayed live fact comes from authenticated portal/admin endpoints; unavailable capabilities are labeled as target surfaces.
 - Login, Account, and admin visually match the current public TradingDatas language on desktop and mobile.
-- Persistent `localStorage` never contains the Account access key; a configured same-site bridge uses an unreadable secure cookie, while an unconfigured bridge is explicit and falls back only to the current tab.
+- Neither browser storage mechanism retains Account credentials. An unconfigured bridge shows unavailable and never downgrades to a direct-bearer request.

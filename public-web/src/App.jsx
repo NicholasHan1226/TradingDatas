@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
   ArrowSquareOut,
@@ -22,6 +22,10 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { productManifest } from "./productManifest";
+import { buildQueryTemplate, evidenceView } from "./productEvidence";
+import { formatCny, getBasePlanCards, getPlanPrice } from "./pricing";
+import { buildPreviewPath, readPreviewSelection, safeLoginDestination } from "./purchasePreview";
+import { PurchasePreview } from "./PurchasePreview.jsx";
 import { papers, paperSlug, researchTitle, researchYear, readingPaths } from "./researchCatalog.js";
 import { normalizeLanguageChoice, resolveLanguage, browserLanguages } from "./language.js";
 import { researchViewReducer } from "./researchReader.js";
@@ -42,18 +46,21 @@ import {
   sourceCandidates,
 } from "./dataSourceLandscape";
 import { createSearchDocument, getSearchNavigationIndex, isGlobalSearchShortcut, normalizeSearchValue, searchGroups } from "./searchIndex";
+import { accountJson, confirmAccountSignOut, getAccountViewState, readAccountIdentity, requestProfileDeletion, startAccountSession, startEmailSession } from "./accountSession";
+import { LoginPage } from "./LoginPage";
+import { EmailAccountPanel } from "./EmailAccountPanel";
+import { AccountConnection } from "./AccountConnection";
+import { createBookmarkLibrary } from "./bookmarkLibrary";
 
-const agents = ["Claude", "Codex", "OpenClaw", "Hermes", "Other Agent"];
+const AgentDialog = lazy(() => import("./AgentDialog.jsx"));
 const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
-const ACCOUNT_API_BASE = import.meta.env.VITE_ACCOUNT_API_BASE || "https://td-admin-api.tradingagent.cc";
 const LEGACY_ACCOUNT_TOKEN_KEY = "td-account-token";
 const TAB_ACCOUNT_TOKEN_KEY = "td-account-tab-token";
 
-function restoreTabAccountToken() {
-  const legacy = localStorage.getItem(LEGACY_ACCOUNT_TOKEN_KEY) || "";
-  if (legacy) sessionStorage.setItem(TAB_ACCOUNT_TOKEN_KEY, legacy);
-  localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY);
-  return sessionStorage.getItem(TAB_ACCOUNT_TOKEN_KEY) || "";
+function clearLegacyAccountToken() {
+  // Retire the direct bearer bridge. Existing server credentials are untouched.
+  try { localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY); } catch { /* Storage may be disabled. */ }
+  try { sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY); } catch { /* Cookie login remains available. */ }
 }
 
 function getRouteFromPath() {
@@ -222,58 +229,6 @@ function Brand({ onNavigate }) {
   );
 }
 
-function AgentDialog({ open, onClose, copy, locale }) {
-  const [agent, setAgent] = useState("Codex");
-  const [copied, setCopied] = useState(false);
-  const dialogRef = useRef(null);
-  const prompt = useMemo(
-    () => locale === "zh"
-      ? `请为 ${agent} 配置 TradingDatas MCP。使用安全的本地密钥存储，不要把 API Key 写入提示词、URL 或日志。首先调用 GET /v1/catalog 验证连接；只通过 POST /v1/query 请求已授权数据，并遵守游标与限额。`
-      : `Configure TradingDatas MCP for ${agent}. Keep the API key in secure local secret storage; never place it in prompts, URLs, or logs. Test with GET /v1/catalog first. Use POST /v1/query only for authorized data and respect cursors and limits.`,
-    [agent, locale],
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event) => event.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    requestAnimationFrame(() => dialogRef.current?.focus());
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  async function copyPrompt() {
-    await navigator.clipboard.writeText(prompt);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  }
-
-  if (!open) return null;
-  return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="agent-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-dialog-title" tabIndex="-1" ref={dialogRef}>
-        <button className="icon-button dialog-close" type="button" onClick={onClose} aria-label={copy.close}><X size={20} /></button>
-        <span className="mono-kicker">AGENT CONNECTIONS</span>
-        <h2 id="agent-dialog-title">{copy.agentTitle}</h2>
-        <p>{copy.agentCopy}</p>
-        <div className="agent-tabs" role="tablist" aria-label="Agent">
-          {agents.map((name) => (
-            <button key={name} type="button" role="tab" aria-selected={agent === name} className={agent === name ? "is-active" : ""} onClick={() => setAgent(name)}>{name}</button>
-          ))}
-        </div>
-        <div className="endpoint-row"><span>{copy.endpoint} · planned</span><code>https://api.tradingdatas.com</code></div>
-        <div className="prompt-block">
-          <div><span>{copy.setupPrompt}</span><span>catalog + query</span></div>
-          <pre>{prompt}</pre>
-        </div>
-        <button className="primary-button dialog-action" type="button" onClick={copyPrompt}>
-          {copied ? <Check weight="bold" /> : <Copy weight="bold" />}
-          {copied ? copy.copied : copy.copyPrompt}
-        </button>
-      </section>
-    </div>
-  );
-}
-
 function ReceiptProof({ copy }) {
   return (
     <div className="receipt-proof" aria-label="Synthetic receipt example">
@@ -294,6 +249,7 @@ function ReceiptProof({ copy }) {
 function MaturityTag({ status, locale }) {
   const labels = {
     observed_example: locale === "zh" ? "已观测" : "Observed",
+    synthetic: locale === "zh" ? "机制示例" : "Illustration",
     pending_open: locale === "zh" ? "待开放" : "Pending release",
     product_definition: locale === "zh" ? "产品定义" : "Product definition",
     planned: locale === "zh" ? "规划中" : "Planned",
@@ -309,9 +265,10 @@ function SectionNav({ items, active, onNavigate, locale }) {
   );
 }
 
-function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate }) {
+function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate, billingPeriod, setBillingPeriod }) {
   const plan = plans[activeIndex];
   const zh = locale === "zh";
+  const price = getPlanPrice(plan.id, billingPeriod);
   const move = (direction) => onChange((activeIndex + direction + plans.length) % plans.length);
 
   const sharedFacts = zh ? [
@@ -328,19 +285,30 @@ function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate }) 
 
   return <section className="base-plan-showcase" aria-labelledby="base-plan-showcase-title">
     <header className="base-plan-switcher">
-      <div><span className="mono-kicker">{zh ? "3 档基础套餐" : "3 BASE PLANS"}</span><h2 id="base-plan-showcase-title">{zh ? "选择适合的数据范围。" : "Choose the data scope you need."}</h2></div>
+      <div><span className="mono-kicker">{zh ? "3 档基础套餐" : "3 BASE PLANS"}</span><h2 id="base-plan-showcase-title">{zh ? "选择你的请求频率。" : "Choose your request rate."}</h2></div>
       <div className="base-plan-controls">
         <button type="button" className="base-plan-arrow is-prev" onClick={() => move(-1)} aria-label={zh ? "上一档套餐" : "Previous plan"}><ArrowRight /></button>
-        <div role="tablist" aria-label={zh ? "基础套餐" : "Base plans"}>{plans.map((candidate, index) => <button type="button" role="tab" aria-selected={activeIndex === index} className={activeIndex === index ? "is-active" : ""} key={candidate.name} onClick={() => onChange(index)}><span>0{index + 1}</span>{candidate.short}</button>)}</div>
+        <div role="group" aria-label={zh ? "基础套餐" : "Base plans"}>{plans.map((candidate, index) => <button type="button" aria-pressed={activeIndex === index} className={activeIndex === index ? "is-active" : ""} key={candidate.name} onClick={() => onChange(index)}><span>0{index + 1}</span>{candidate.short}</button>)}</div>
         <button type="button" className="base-plan-arrow is-next" onClick={() => move(1)} aria-label={zh ? "下一档套餐" : "Next plan"}><ArrowRight /></button>
       </div>
     </header>
+
+    <div className="base-plan-billing">
+      <div role="group" aria-label={zh ? "付款周期" : "Billing period"}>
+        {["monthly", "annual"].map((period) => <button key={period} type="button" aria-pressed={billingPeriod === period} onClick={() => setBillingPeriod(period)}>{period === "monthly" ? (zh ? "月付" : "Monthly") : (zh ? "年付" : "Annual")}{period === "annual" && <small>{zh ? "9 折" : "Save 10%"}</small>}</button>)}
+      </div>
+      <span>{zh ? "人民币 CNY · 支付暂未开放" : "CNY · Checkout not yet available"}</span>
+    </div>
 
     <article className={`base-plan-product tone-${plan.tone}`} aria-live="polite">
       <div className="base-plan-art" aria-hidden="true"><span /><span /><span /><i /><i /></div>
       <div className="base-plan-identity">
         <span>{plan.label}</span>
         <h3>{plan.name}</h3>
+        <div className="base-plan-price">
+          <div><strong>{formatCny(price.totalMinor, locale)}</strong><span>{billingPeriod === "annual" ? (zh ? "/ 年" : "/ year") : (zh ? "/ 月" : "/ month")}</span></div>
+          <p>{billingPeriod === "annual" ? (zh ? `按年一次支付，折合 ${formatCny(price.monthlyEquivalentMinor, locale)} / 月；每年省 ${formatCny(price.savingsMinor, locale)}。` : `Billed annually. Equivalent to ${formatCny(price.monthlyEquivalentMinor, locale)} / month; save ${formatCny(price.savingsMinor, locale)} per year.`) : (zh ? "按月支付。选择年付可节省 10%。" : "Billed monthly. Save 10% with annual billing.")}</p>
+        </div>
         <p>{plan.audience}</p>
         <div className="base-plan-position"><small>{zh ? "适用范围" : "POSITION"}</small><strong>{plan.position}</strong></div>
       </div>
@@ -352,8 +320,8 @@ function BasePlanShowcase({ locale, plans, activeIndex, onChange, onNavigate }) 
         <div><span>{zh ? "数据覆盖" : "COVERAGE"}</span><strong>{plan.coverage}</strong></div>
         <div><span>{zh ? "历史深度" : "HISTORY"}</span><strong>{plan.history}</strong></div>
         <div><span>{zh ? "请求频率" : "REQUEST RATE"}</span><strong>{plan.runtime}</strong></div>
-        <div><span>{zh ? "价格" : "PRICE"}</span><strong>{zh ? "待正式发布" : "To be announced"}</strong></div>
-        <a href="/pricing/beta" onClick={(event) => onNavigate(event, "/pricing/beta")}>{zh ? "申请这一档" : "Request this plan"}<ArrowRight /></a>
+        <a href={buildPreviewPath(plan.id, billingPeriod)} onClick={(event) => onNavigate(event, buildPreviewPath(plan.id, billingPeriod))}>{zh ? "查看购买预览" : "Preview this plan"}<ArrowRight /></a>
+        <a className="base-plan-access" href={`/login?next=${encodeURIComponent(buildPreviewPath(plan.id, billingPeriod))}`} onClick={(event) => onNavigate(event, `/login?next=${encodeURIComponent(buildPreviewPath(plan.id, billingPeriod))}`)}>{zh ? "已有访问密钥？登录" : "Have an access key? Sign in"}<ArrowRight /></a>
       </div>
       <span className="base-plan-count">0{activeIndex + 1} / 0{plans.length}</span>
     </article>
@@ -372,17 +340,12 @@ function ProductMark({ item, compact = false }) {
 }
 
 function StabilityTrack({ item, locale, compact = false, showStage = true }) {
-  const available = item.stability !== "—";
+  const evidence = evidenceView(item, locale);
   return (
-    <div className={`stability-block ${compact ? "is-compact" : ""} ${available ? "" : "is-unavailable"}`}>
-      {(showStage || available) && <div className="stability-heading">
-        {showStage && <MaturityTag status={item.status} locale={locale} />}
-        {available && <strong>{item.stability}</strong>}
-      </div>}
-      {available ? <div className="stability-dots" aria-label={item.stabilityNote[locale]}>
-        {Array.from({ length: compact ? 18 : 30 }, (_, index) => <span key={index} className={item.delayedDays.includes(index) ? "is-delayed" : ""} />)}
-      </div> : <span className="stability-empty-line" aria-hidden="true" />}
-      {(!compact || !available) && <small>{available ? item.stabilityNote[locale] : (locale === "zh" ? `尚无采集历史 · ${item.cadence}` : `No collection history · ${item.cadence}`)}</small>}
+    <div className={`stability-block ${compact ? "is-compact" : ""} is-unavailable`}>
+      {showStage && <div className="stability-heading"><MaturityTag status={item.status} locale={locale} /></div>}
+      <span className="stability-empty-line" aria-hidden="true" />
+      <small>{compact ? evidence.value : evidence.note}</small>
     </div>
   );
 }
@@ -392,7 +355,7 @@ function DatasetSample({ item, locale, compact = false }) {
     <div className={`dataset-sample ${compact ? "is-compact" : ""}`}>
       <div className="dataset-sample-heading">
         <span>{locale === "zh" ? "数据内容示例" : "Sample data"}</span>
-        <small>{item.fields ? `${item.fields} ${locale === "zh" ? "个字段" : "fields"}` : (locale === "zh" ? "合同预览 · 非真实数据" : "Contract preview · not live data")}</small>
+        <small>{locale === "zh" ? "合成样例 · 非市场数据" : "Synthetic sample · not market data"}</small>
       </div>
       <div className="dataset-sample-scroll">
         <table>
@@ -405,26 +368,24 @@ function DatasetSample({ item, locale, compact = false }) {
 }
 
 function DatasetProductDetail({ item, locale, onNavigate }) {
-  const [queryCopied, setQueryCopied] = useState(false);
+  const [queryCopyState, setQueryCopyState] = useState('idle');
+  const queryCopyGeneration = useRef(0);
+  useEffect(() => { ++queryCopyGeneration.current; setQueryCopyState('idle'); return () => { ++queryCopyGeneration.current; }; }, [item?.id, locale]);
   if (!item) {
     return <section className="object-detail-page"><a className="object-back" href="/data" onClick={(event) => onNavigate(event, "/data")}>← {locale === "zh" ? "返回数据目录" : "Back to Data"}</a><div className="object-detail-hero"><div><h1>{locale === "zh" ? "数据产品未找到" : "Data product not found"}</h1></div></div></section>;
   }
   const sameCategory = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family === item.family);
   const otherCategories = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family !== item.family);
   const related = [...sameCategory, ...otherCategories].slice(0, 3);
-  const queryExample = `POST /v1/query\nAuthorization: Bearer <API_TOKEN>\nContent-Type: application/json\n\n${JSON.stringify({
-    dataset_id: item.id,
-    schema_major: 1,
-    fields: item.sampleColumns,
-    filters: {},
-    as_of: null,
-    limit: 100,
-    cursor: null,
-  }, null, 2)}`;
+  const queryExample = buildQueryTemplate();
+  const evidence = evidenceView(item, locale);
   const copyQueryExample = async () => {
-    await navigator.clipboard.writeText(queryExample);
-    setQueryCopied(true);
-    window.setTimeout(() => setQueryCopied(false), 1600);
+    const current = ++queryCopyGeneration.current;
+    setQueryCopyState('pending');
+    try {
+      await navigator.clipboard.writeText(queryExample);
+      if (current === queryCopyGeneration.current) setQueryCopyState('copied');
+    } catch { if (current === queryCopyGeneration.current) setQueryCopyState('failed'); }
   };
   return (
     <section className="dataset-product-page">
@@ -456,23 +417,24 @@ function DatasetProductDetail({ item, locale, onNavigate }) {
             <div className="dataset-query-inline">
               <div className="dataset-query-heading">
                 <div><span className="mono-kicker">POST /v1/query</span><h2>{locale === "zh" ? "查询示例" : "Query example"}</h2></div>
-                <button type="button" onClick={copyQueryExample}>{queryCopied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{queryCopied ? (locale === "zh" ? "已复制" : "Copied") : (locale === "zh" ? "复制请求" : "Copy request")}</button>
+                <button type="button" disabled={queryCopyState === 'pending'} onClick={copyQueryExample}>{queryCopyState === 'copied' ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{queryCopyState === 'copied' ? (locale === "zh" ? "已复制" : "Copied") : (locale === "zh" ? "复制模板" : "Copy template")}</button>
               </div>
               <pre><code>{queryExample}</code></pre>
-              <p>{locale === "zh" ? "示例不会发起请求。使用前请先通过 GET /v1/catalog 确认正式 dataset_id、schema_major 与账户权限。" : "This example does not send a request. Confirm dataset_id, schema_major, and account access with GET /v1/catalog first."}</p>
+              {queryCopyState === 'failed' && <p role="status">{locale === 'zh' ? '复制未成功，请手动选择模板。' : 'Copy failed. Select the template manually.'}</p>}
+              <p>{locale === "zh" ? "这是不可直接执行的模板。先查询 GET /v1/catalog，再填入正式 dataset_id、整数 schema_major、允许的字段与时间筛选。网页产品 ID 不是 API 数据集 ID。" : "This is a non-executable template. Read GET /v1/catalog first, then supply its dataset_id, integer schema_major, allowed fields and time filters. A product slug is not an API dataset ID."}</p>
             </div>
           </section>
           <DatasetSample item={item} locale={locale} />
           <section className="dataset-history">
-            <div><span className="mono-kicker">90 DAY COLLECTION HISTORY</span><h2>{locale === "zh" ? "公开采集稳定性与缺口" : "Public collection stability and gaps"}</h2></div>
+            <div><span className="mono-kicker">COLLECTION EVIDENCE</span><h2>{locale === "zh" ? "公开采集稳定性与缺口" : "Public collection stability and gaps"}</h2></div>
             <StabilityTrack item={item} locale={locale} showStage={false} />
           </section>
           <dl className="dataset-evidence-rail">
-            <div><dt>{locale === "zh" ? "来源" : "Source"}</dt><dd>{item.source}</dd></div>
-            <div><dt>{locale === "zh" ? "最近成功" : "Last success"}</dt><dd>{item.lastSuccess}</dd></div>
-            <div><dt>{locale === "zh" ? "覆盖" : "Coverage"}</dt><dd>{item.coverage}</dd></div>
-            <div><dt>{locale === "zh" ? "频率" : "Cadence"}</dt><dd>{item.cadence}</dd></div>
-            <div><dt>Receipt</dt><dd>{item.receipt}</dd></div>
+            <div><dt>{locale === "zh" ? "候选来源" : "Intended source"}</dt><dd>{item.source}</dd></div>
+            <div><dt>{locale === "zh" ? "最近成功" : "Last success"}</dt><dd>{evidence.value}</dd></div>
+            <div><dt>{locale === "zh" ? "覆盖" : "Coverage"}</dt><dd>{evidence.value}</dd></div>
+            <div><dt>{locale === "zh" ? "合同频率" : "Contract cadence"}</dt><dd>{item.cadence}</dd></div>
+            <div><dt>Receipt</dt><dd>{evidence.value}</dd></div>
           </dl>
           <div className="collection-disclosure-roadmap"><span>{locale === "zh" ? "形成真实观测后继续披露" : "Disclosed after real observations exist"}</span><div>{(locale === "zh" ? ["成功 / 空响应 / 失败分布", "数据延迟趋势", "入库行数增长", "字段漂移", "修订量"] : ["success / empty / failure mix", "delivery-lag trend", "stored-row growth", "schema drift", "revision volume"]).map((signal) => <small key={signal}>{signal}</small>)}</div></div>
           <p className="catalog-authority-note">{locale === "zh" ? "当前页面展示产品合同与示例证据。真实可用性只来自 Registry、SQLite facts/receipts、认证 Catalog/Query 回读与账户授权。" : "This page presents the product contract and example evidence. Live availability comes only from the Registry, SQLite facts/receipts, authenticated Catalog/Query readback, and account entitlement."}</p>
@@ -531,6 +493,7 @@ function ProductObjectDetail({ type, item, locale, onNavigate }) {
 }
 
 function DataSourceLandscapePage({ locale, onNavigate }) {
+  const [sourcePhase, setSourcePhase] = useState("P1");
   const familyLabels = {
     "china-markets": { zh: "中国市场", en: "China markets" },
     "global-markets": { zh: "全球市场", en: "Global markets" },
@@ -545,6 +508,13 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
   };
   const connected = connectedInterfaceSnapshot.interfaces;
   const activeCount = connected.filter((item) => item.activation === "active").length;
+  const phaseOptions = [
+    ...roadmapPhases.filter((phase) => phase.id !== "P0"),
+    { id: "all", horizon: { zh: "全部", en: "All" }, title: { zh: "全部候选来源", en: "All candidate sources" } },
+  ];
+  const visibleCandidates = sourcePhase === "all"
+    ? sourceCandidates
+    : sourceCandidates.filter((source) => source.phase === sourcePhase);
 
   return (
     <section className="data-source-page">
@@ -556,7 +526,7 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
       <header className="data-source-hero">
         <span className="mono-kicker">SOURCE LANDSCAPE / CONNECTED + CANDIDATE</span>
         <h1>{locale === "zh" ? "把已接入、历史观测与下一步分开看。" : "Separate connected data, historical observations, and what comes next."}</h1>
-        <p>{locale === "zh" ? "这里公开接口合同、候选来源与接入门槛；任何规划都不自动等于已购买、可再分发或正在稳定采集。" : "This view publishes interface contracts, candidate sources, and onboarding gates. A plan never means purchased, redistributable, or stably collected."}</p>
+        <p>{locale === "zh" ? `这是 ${landscapeMeta.reviewedAt} 审阅的合同与来源快照，不是实时运行面。任何规划都不自动等于已购买、可再分发或正在稳定采集。` : `Contract and source snapshot reviewed ${landscapeMeta.reviewedAt}, not a live runtime view. A plan never means purchased, redistributable, or stably collected.`}</p>
         <dl>
           <div><dt>{locale === "zh" ? "合同接口" : "Contract interfaces"}</dt><dd>{connected.length}</dd></div>
           <div><dt>{locale === "zh" ? "配置 active" : "Configured active"}</dt><dd>{activeCount}</dd></div>
@@ -573,8 +543,19 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
         <div className="source-history-list">{collectionHistory.map((event) => <article key={`${event.date}-${event.provider}`}><time>{event.date}</time><ClockCounterClockwise size={17} /><div><strong>{event.title[locale]}</strong><p>{event.detail[locale]}</p><small>{event.provider} · {event.status.replaceAll("_", " ")}</small></div></article>)}</div>
       </section>
       <section className="source-evidence-section">
-        <div className="section-heading compact-heading"><span className="mono-kicker">03 / CANDIDATE SOURCES</span><h2>{locale === "zh" ? "候选来源保持轻量可读。" : "Candidate sources, kept lightweight."}</h2><p>{locale === "zh" ? "不增加第二个搜索框；使用全站搜索发现具体来源。" : "No second search box; use global search to discover a specific source."}</p></div>
-        <div className="source-candidate-list">{sourceCandidates.map((source) => <article key={source.id}><div><span>{familyLabels[source.family]?.[locale] || source.family}</span><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div><p>{source.materials}</p><div><span>{source.stage.replaceAll("_", " ")}</span><small>{source.rights.replaceAll("_", " ")}</small></div><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut /></a></article>)}</div>
+        <div className="source-candidate-heading">
+          <div className="section-heading compact-heading"><span className="mono-kicker">03 / CANDIDATE SOURCES</span><h2>{locale === "zh" ? "候选来源保持轻量可读。" : "Candidate sources, kept lightweight."}</h2><p>{locale === "zh" ? "默认展示当前优先来源；其它阶段可在原位查看。全站搜索仍用于发现具体来源。" : "Start with current priorities; review other phases in place. Global search still finds a specific source."}</p></div>
+          <div className="source-phase-control" role="group" aria-label={locale === "zh" ? "候选来源阶段" : "Candidate source phase"}>
+            {phaseOptions.map((phase) => {
+              const count = phase.id === "all" ? sourceCandidates.length : sourceCandidates.filter((source) => source.phase === phase.id).length;
+              return <button key={phase.id} type="button" className={sourcePhase === phase.id ? "is-selected" : ""} aria-pressed={sourcePhase === phase.id} onClick={() => setSourcePhase(phase.id)}>
+                <span>{phase.id === "all" ? phase.title[locale] : `${phase.id} · ${phase.horizon[locale]}`}</span><small>{count}</small>
+              </button>;
+            })}
+          </div>
+        </div>
+        <p className="source-candidate-count">{locale === "zh" ? `当前显示 ${visibleCandidates.length} 个候选来源。候选不代表已接入、可再分发或可购买。` : `Showing ${visibleCandidates.length} candidate sources. A candidate is not connected, redistributable, or purchasable.`}</p>
+        <div className="source-candidate-list">{visibleCandidates.map((source) => <article key={source.id}><div><span>{familyLabels[source.family]?.[locale] || source.family}</span><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div><p>{source.materials}</p><div><span>{source.stage.replaceAll("_", " ")}</span><small>{source.rights.replaceAll("_", " ")}</small></div><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut /></a></article>)}</div>
       </section>
       <section className="source-evidence-section source-roadmap-section">
         <div className="section-heading compact-heading"><span className="mono-kicker">04 / INTEGRATION ROADMAP</span><h2>{locale === "zh" ? "按证据门槛，而不是接口数量推进。" : "Progress by evidence gates, not interface count."}</h2></div>
@@ -594,11 +575,11 @@ export function App() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [route, setRoute] = useState(getRouteFromPath);
+  const [routeSearch, setRouteSearch] = useState(() => window.location.search);
   const [accountSection, setAccountSection] = useState("overview");
   const [accountDocSlug, setAccountDocSlug] = useState("start-1");
-  const [bookmarks, setBookmarks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("td-bookmarks") || "[]"); } catch { return []; }
-  });
+  const [bookmarkLibrary] = useState(() => createBookmarkLibrary({request:accountJson,storage:{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}}));
+  const library = useSyncExternalStore(bookmarkLibrary.subscribe,bookmarkLibrary.snapshot);
   const [globalQuery, setGlobalQuery] = useState("");
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
@@ -626,191 +607,302 @@ export function App() {
   const [dataFamily, setDataFamily] = useState("all");
   const [dataStage, setDataStage] = useState("all");
   const [docsCategory, setDocsCategory] = useState("all");
-  const [pricingPlanIndex, setPricingPlanIndex] = useState(0);
-  const [accountToken, setAccountToken] = useState(restoreTabAccountToken);
-  const [accountAuthMode, setAccountAuthMode] = useState(() => sessionStorage.getItem(TAB_ACCOUNT_TOKEN_KEY) ? "direct" : "session");
+  const [pricingPlanIndex, setPricingPlanIndex] = useState(() => Math.max(0, getBasePlanCards("en").findIndex((plan) => plan.id === readPreviewSelection(window.location.search)?.plan.id)));
+  const [pricingBillingPeriod, setPricingBillingPeriod] = useState(() => readPreviewSelection(window.location.search)?.period || "monthly");
   const [accountConnectionRevision, setAccountConnectionRevision] = useState(0);
   const [accountTokenInput, setAccountTokenInput] = useState("");
   const [accountData, setAccountData] = useState(null);
   const [accountUsage, setAccountUsage] = useState(null);
   const [accountKeys, setAccountKeys] = useState([]);
+  const [accountKeysLoading, setAccountKeysLoading] = useState(false);
   const [accountKeyLabel, setAccountKeyLabel] = useState("");
   const [accountNewKey, setAccountNewKey] = useState("");
   const [accountKeyLoading, setAccountKeyLoading] = useState(false);
   const [accountKeyError, setAccountKeyError] = useState("");
-  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [accountUsageError, setAccountUsageError] = useState(false);
+  const [accountLoginPending, setAccountLoginPending] = useState(false);
   const [accountError, setAccountError] = useState("");
+  const [accountSignOutPending, setAccountSignOutPending] = useState(false);
+  const [accountSignOutError, setAccountSignOutError] = useState(false);
+  const [accountDeletionReceipt, setAccountDeletionReceipt] = useState(null);
+  const accountSignOutInFlight = useRef(false);
+  const accountLoginInFlight = useRef(false);
+  const accountKeyInFlight = useRef(false);
+  const accountVisibilityRefreshPending = useRef(false);
+  const accountEpoch = useRef(0);
+  const accountReadAbort = useRef(null);
+  const accountViewState = getAccountViewState({ loading: accountLoading, account: accountData, error: accountError });
+  const accountChecking = accountViewState === "checking";
+  const libraryContextMatches = !accountChecking && accountViewState !== "unavailable" && (library.mode === "cloud" ? library.userId === accountData?.user_id : !(accountData?.identity_kind === "email" && accountData.capabilities?.library));
+  const bookmarks = libraryContextMatches ? library.keys : [];
+  useEffect(() => { void bookmarkLibrary.setContext(accountData,accountViewState); }, [bookmarkLibrary,accountViewState,accountData?.user_id,accountData?.capabilities?.library]);
+  const accountPrivateSection = ["overview", "subscription", "usage", "keys", "security", "billing"].includes(accountSection);
+  const accountEntryLabel = accountChecking ? (locale === "zh" ? "正在验证账户…" : "Checking account…") : accountViewState === "unavailable" ? (locale === "zh" ? "重试账户连接" : "Retry account connection") : accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in");
   const copy = messages[locale];
 
-  function accountRequest(endpoint, init = {}) {
-    if (accountAuthMode === "session") {
-      return fetch(`/api/account/${endpoint}`, { ...init, credentials: "same-origin" });
-    }
-    if (!accountToken) return Promise.resolve(new Response(null, { status: 401 }));
-    const portalPath = endpoint === "me" ? "/portal/api/me" : endpoint.startsWith("usage") ? `/portal/api/me/${endpoint}` : `/portal/api/me/${endpoint}`;
-    const headers = new Headers(init.headers || {});
-    headers.set("Authorization", `Bearer ${accountToken}`);
-    return fetch(`${ACCOUNT_API_BASE}${portalPath}`, { ...init, headers });
+  function requestAccountProjectionRefresh() {
+    accountVisibilityRefreshPending.current = false;
+    setAccountConnectionRevision((value) => value + 1);
   }
 
-  useEffect(() => {
-    if (accountAuthMode === "direct" && !accountToken) {
-      setAccountData(null);
-      setAccountUsage(null);
-      setAccountKeys([]);
-      return undefined;
-    }
-    const controller = new AbortController();
-    setAccountLoading(true);
-    setAccountError("");
-    Promise.all([
-      accountRequest("me", { signal: controller.signal }),
-      accountRequest("usage?days=30", { signal: controller.signal }),
-    ]).then(async ([accountResponse, usageResponse]) => {
-      if (accountAuthMode === "session" && !String(accountResponse.headers.get("content-type") || "").includes("application/json")) throw new Error("signed_out");
-      if (!accountResponse.ok) {
-        if (accountResponse.status === 401 || (accountAuthMode === "session" && [404, 503].includes(accountResponse.status))) throw new Error("signed_out");
-        throw new Error("account_unavailable");
-      }
-      if (!usageResponse.ok) throw new Error("usage_unavailable");
-      const [accountPayload, usagePayload] = await Promise.all([accountResponse.json(), usageResponse.json()]);
-      setAccountData(accountPayload.portal);
-      setAccountUsage(usagePayload.portal_usage);
-    }).catch((error) => {
-      if (error.name === "AbortError") return;
-      setAccountData(null);
-      setAccountUsage(null);
-      if (error.message === "signed_out") {
-        setAccountError("");
-        sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
-        setAccountToken("");
-      } else setAccountError(error.message);
-    }).finally(() => {
-      if (!controller.signal.aborted) setAccountLoading(false);
-    });
-    return () => controller.abort();
-  }, [accountToken, accountAuthMode, accountConnectionRevision]);
+  function settleAccountOperation(operation) {
+    operation.current = false;
+    if (!accountVisibilityRefreshPending.current || document.visibilityState !== "visible"
+      || accountLoginInFlight.current || accountSignOutInFlight.current || accountKeyInFlight.current) return;
+    requestAccountProjectionRefresh();
+  }
+
+  function clearAccountView() {
+    bookmarkLibrary.setContext(null,"checking");
+    accountEpoch.current += 1;
+    accountReadAbort.current?.abort();
+    setAccountData(null);
+    setAccountUsage(null);
+    setAccountKeys([]);
+    setAccountKeysLoading(false);
+    setAccountNewKey("");
+    setAccountKeyLabel("");
+    setAccountKeyError("");
+    setAccountUsageError(false);
+    setAccountKeyLoading(false);
+    setAccountLoading(false);
+  }
+
+  function handleAccountIdentityChanged() {
+    clearAccountView();
+    setAccountError("identity_changed");
+    requestAccountProjectionRefresh();
+  }
+
+  async function deleteEmailProfile() {
+    if (accountSignOutInFlight.current || accountLoginInFlight.current) throw new Error("account_unavailable");
+    accountSignOutInFlight.current = true;
+    accountEpoch.current += 1;
+    accountReadAbort.current?.abort();
+    try {
+      const receipt = await requestProfileDeletion(fetch,accountData?.user_id);
+      clearAccountView();
+      setAccountError("");
+      setAccountDeletionReceipt(receipt);
+    } catch (error) {
+      if (error.message === "identity_changed") handleAccountIdentityChanged();
+      throw error;
+    } finally { settleAccountOperation(accountSignOutInFlight); }
+  }
+
+  useEffect(() => { if (accountData) setAccountDeletionReceipt(null); }, [accountData]);
 
   useEffect(() => {
-    if (!accountData || (accountAuthMode === "direct" && !accountToken)) return undefined;
+    clearLegacyAccountToken();
+    // Another tab may have changed the shared session. Invalidate all derived
+    // account state and pending results before checking the current identity.
+    clearAccountView();
     const controller = new AbortController();
-    setAccountKeyError("");
-    accountRequest("keys", {
-      signal: controller.signal,
-    }).then(async (response) => {
-      if (!response.ok) throw new Error("keys_unavailable");
-      const payload = await response.json();
-      setAccountKeys(payload.api_keys || []);
+    accountReadAbort.current = controller;
+    const epoch = accountEpoch.current;
+    const current = () => !controller.signal.aborted && accountEpoch.current === epoch;
+    setAccountLoading(true);
+    setAccountError("");
+    setAccountUsageError(false);
+    readAccountIdentity({ signal: controller.signal }).then(async (account) => {
+      if (!current()) return;
+      setAccountData(account);
+      setAccountLoading(false);
+      if (account.identity_kind === "email" && account.data_access_state !== "connected") { setAccountUsage(null); return; }
+      // Usage availability is not an identity check. Never log out on a 5xx here.
+      try {
+        const usage = await accountJson("usage?days=30", { signal: controller.signal, expectedIdentity: account.user_id });
+        if (!usage?.portal_usage || !Array.isArray(usage.portal_usage.history)) throw new Error("usage_unavailable");
+        if (current()) setAccountUsage(usage.portal_usage);
+      } catch (error) {
+        if (!current()) return;
+        if (error.message === "signed_out") { clearAccountView(); return; }
+        if (error.message === "identity_changed") { handleAccountIdentityChanged(); return; }
+        setAccountUsage(null);
+        setAccountUsageError(true);
+      }
     }).catch((error) => {
-      if (error.name !== "AbortError") setAccountKeyError(error.message);
+      if (!current()) return;
+      clearAccountView();
+      setAccountError(error.message === "signed_out" ? "" : error.message);
+    }).finally(() => {
+      if (current()) setAccountLoading(false);
     });
     return () => controller.abort();
-  }, [accountToken, accountAuthMode, accountData]);
+  }, [accountConnectionRevision]);
+
+  useEffect(() => {
+    if (!accountData || (accountData.identity_kind === "email" && accountData.data_access_state !== "connected")) return undefined;
+    const controller = new AbortController();
+    const epoch = accountEpoch.current;
+    const current = () => !controller.signal.aborted && accountEpoch.current === epoch;
+    setAccountKeyError("");
+    setAccountKeys([]);
+    setAccountKeysLoading(true);
+    accountJson("keys", {
+      signal: controller.signal, expectedIdentity: accountData.user_id,
+    }).then((payload) => {
+      if (current()) setAccountKeys(payload.api_keys || []);
+    }).catch((error) => {
+      if (!current()) return;
+      if (error.message === "signed_out") clearAccountView();
+      else if (error.message === "identity_changed") handleAccountIdentityChanged();
+      else setAccountKeyError(error.message);
+    }).finally(() => { if (current()) setAccountKeysLoading(false); });
+    return () => controller.abort();
+  }, [accountData]);
 
   useEffect(() => {
     if (accountSection !== "keys") setAccountNewKey("");
   }, [accountSection]);
 
   useEffect(() => {
-    if (!accountData || route !== "login") return;
+    if (route !== "login") setAccountTokenInput("");
+  }, [route]);
+
+  useEffect(() => {
+    // Recheck after returning to the page, without a background polling loop.
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (accountLoginInFlight.current || accountSignOutInFlight.current || accountKeyInFlight.current) {
+        accountVisibilityRefreshPending.current = true;
+        return;
+      }
+      requestAccountProjectionRefresh();
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
+
+  useEffect(() => {
+    if (accountViewState !== "authenticated" || route !== "login") return;
     setAccountTokenInput("");
-    window.history.replaceState({}, "", "/account");
-    setRoute("account");
-  }, [accountData, route]);
+    const destination = safeLoginDestination(routeSearch);
+    window.history.replaceState({}, "", destination);
+    setRoute(getRouteFromPath());
+    setRouteSearch(window.location.search);
+  }, [accountViewState, route, routeSearch]);
 
   async function connectAccount(event) {
     event.preventDefault();
     const token = accountTokenInput.trim();
-    if (!token) return;
+    if (!token || accountLoginInFlight.current || accountSignOutInFlight.current || accountLoading) return;
+    accountLoginInFlight.current = true;
+    accountReadAbort.current?.abort();
+    const epoch = ++accountEpoch.current;
+    setAccountLoginPending(true);
     setAccountLoading(true);
     setAccountError("");
     try {
-      const sessionResponse = await fetch("/api/account/session", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_key: token }),
-      });
-      if (sessionResponse.ok) {
-        const payload = await sessionResponse.json();
-        sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
-        setAccountToken("");
-        setAccountAuthMode("session");
-        setAccountData(payload.portal);
-        setAccountConnectionRevision((value) => value + 1);
-        return;
-      }
-      if (![404, 503].includes(sessionResponse.status)) throw new Error(sessionResponse.status === 401 ? "invalid_token" : "account_unavailable");
-
-      const directResponse = await fetch(`${ACCOUNT_API_BASE}/portal/api/me`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!directResponse.ok) throw new Error(directResponse.status === 401 ? "invalid_token" : "account_unavailable");
-      sessionStorage.setItem(TAB_ACCOUNT_TOKEN_KEY, token);
-      setAccountAuthMode("direct");
-      setAccountToken(token);
+      const account = await startAccountSession(token);
+      if (accountEpoch.current !== epoch) return;
+      clearLegacyAccountToken();
+      setAccountData(account);
+      setAccountTokenInput("");
+      requestAccountProjectionRefresh();
     } catch (error) {
-      setAccountError(error.message);
+      if (accountEpoch.current === epoch) setAccountError(error.message);
     } finally {
+      settleAccountOperation(accountLoginInFlight);
+      setAccountLoginPending(false);
       setAccountLoading(false);
     }
   }
 
   async function disconnectAccount() {
-    if (accountAuthMode === "session") {
-      try { await fetch("/api/account/session", { method: "DELETE", credentials: "same-origin" }); } catch { /* The local signed-out state still wins. */ }
+    if (accountSignOutInFlight.current) return;
+    accountSignOutInFlight.current = true;
+    setAccountSignOutPending(true);
+    setAccountSignOutError(false);
+    try {
+      await confirmAccountSignOut(fetch, 10_000, accountData?.user_id || "");
+      clearLegacyAccountToken();
+      clearAccountView();
+      setAccountError("");
+      // Abort older Account reads before they can restore a signed-out UI.
+      requestAccountProjectionRefresh();
+    } catch (error) {
+      if (error.message === "identity_changed") handleAccountIdentityChanged();
+      else setAccountSignOutError(true);
+    } finally {
+      settleAccountOperation(accountSignOutInFlight);
+      setAccountSignOutPending(false);
     }
-    localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY);
-    sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
-    setAccountToken("");
-    setAccountAuthMode("session");
-    setAccountData(null);
-    setAccountUsage(null);
-    setAccountKeys([]);
-    setAccountNewKey("");
-    setAccountError("");
+  }
+
+  async function connectEmailAccount(payload) {
+    if (accountLoginInFlight.current || accountSignOutInFlight.current) throw new Error("account_unavailable");
+    accountLoginInFlight.current = true;
+    accountReadAbort.current?.abort();
+    const epoch = ++accountEpoch.current;
+    setAccountLoginPending(true); setAccountLoading(true); setAccountError("");
+    try {
+      const account = await startEmailSession(payload);
+      if (accountEpoch.current !== epoch) return;
+      clearLegacyAccountToken(); setAccountTokenInput(""); setAccountData(account);
+      setAccountUsage(null); setAccountKeys([]); setAccountNewKey("");
+      requestAccountProjectionRefresh();
+    } finally {
+      settleAccountOperation(accountLoginInFlight);
+      setAccountLoginPending(false); setAccountLoading(false);
+    }
   }
 
   async function createAccountKey(event) {
     event.preventDefault();
     const label = accountKeyLabel.trim();
-    if (!label || (accountAuthMode === "direct" && !accountToken)) return;
+    if (!label || !accountData || accountSignOutInFlight.current || accountKeyInFlight.current) return;
+    accountKeyInFlight.current = true;
+    const epoch = accountEpoch.current;
     setAccountKeyLoading(true);
     setAccountKeyError("");
     setAccountNewKey("");
     try {
-      const response = await accountRequest("keys", {
+      const payload = await accountJson("keys", {
         method: "POST",
+        expectedIdentity: accountData.user_id,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label }),
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "key_create_failed");
+      if (accountEpoch.current !== epoch) return;
       setAccountKeys((current) => [...current, payload.api_key]);
       setAccountNewKey(payload.key);
       setAccountKeyLabel("");
     } catch (error) {
-      setAccountKeyError(error.message);
+      if (accountEpoch.current !== epoch) return;
+      if (error.message === "signed_out") clearAccountView();
+      else if (error.message === "identity_changed") handleAccountIdentityChanged();
+      else setAccountKeyError(error.message);
     } finally {
-      setAccountKeyLoading(false);
+      settleAccountOperation(accountKeyInFlight);
+      if (accountEpoch.current === epoch) setAccountKeyLoading(false);
     }
   }
 
   async function disableAccountKey(key) {
-    if ((accountAuthMode === "direct" && !accountToken) || key.is_current || !window.confirm(locale === "zh" ? `停用“${key.label}”？已使用它的 Agent 将立即失去访问。` : `Disable “${key.label}”? Agents using it will immediately lose access.`)) return;
+    if (!accountData || accountSignOutInFlight.current || accountKeyInFlight.current || key.is_current || !window.confirm(locale === "zh" ? `停用“${key.label}”？已使用它的 Agent 将立即失去访问。` : `Disable “${key.label}”? Agents using it will immediately lose access.`)) return;
+    accountKeyInFlight.current = true;
+    const epoch = accountEpoch.current;
     setAccountKeyLoading(true);
     setAccountKeyError("");
     try {
-      const response = await accountRequest(`keys/${key.key_id}`, {
+      const payload = await accountJson(`keys/${key.key_id}`, {
         method: "PATCH",
+        expectedIdentity: accountData.user_id,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: false }),
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "key_disable_failed");
+      if (accountEpoch.current !== epoch) return;
       setAccountKeys((current) => current.map((item) => item.key_id === key.key_id ? payload.api_key : item));
     } catch (error) {
-      setAccountKeyError(error.message);
+      if (accountEpoch.current !== epoch) return;
+      if (error.message === "signed_out") clearAccountView();
+      else if (error.message === "identity_changed") handleAccountIdentityChanged();
+      else setAccountKeyError(error.message);
     } finally {
-      setAccountKeyLoading(false);
+      settleAccountOperation(accountKeyInFlight);
+      if (accountEpoch.current === epoch) setAccountKeyLoading(false);
     }
   }
 
@@ -835,10 +927,6 @@ export function App() {
   }, [theme, locale]);
 
   useEffect(() => { applyPageMetadata(pageMetadata(route, locale)); }, [route, locale]);
-
-  useEffect(() => {
-    localStorage.setItem("td-bookmarks", JSON.stringify(bookmarks));
-  }, [bookmarks]);
 
   useEffect(() => {
     localStorage.setItem("td-recent-searches", JSON.stringify(recentSearches));
@@ -871,6 +959,7 @@ export function App() {
         updateResearchView({ type: "restore", value: researchLocation(window.location.search, papers) });
       }
       setRoute(nextRoute);
+      setRouteSearch(window.location.search);
       setNavigationRevision((value) => value + 1);
     };
     const stopHashTracking = observeHashLocation(window, (href) => { readingLocation.current = href; });
@@ -882,6 +971,14 @@ export function App() {
       window.history.scrollRestoration = previousRestoration;
     };
   }, []);
+
+  useEffect(() => {
+    if (route !== "pricing") return;
+    const selection = readPreviewSelection(routeSearch);
+    if (!selection) return;
+    setPricingPlanIndex(getBasePlanCards("en").findIndex((plan) => plan.id === selection.plan.id));
+    setPricingBillingPeriod(selection.period);
+  }, [route, routeSearch]);
 
   useEffect(() => {
     currentRouteRef.current = route;
@@ -954,6 +1051,7 @@ export function App() {
       if (!destination.search) window.history.replaceState(window.history.state, "", researchHref(researchView));
     }
     setRoute(pathname === "/" ? "home" : pathname.replace(/^\/+|\/+$/g, ""));
+    setRouteSearch(window.location.search);
     readingLocation.current = window.location.href;
     setNavigationRevision((value) => value + 1);
     setMobileOpen(false);
@@ -969,7 +1067,20 @@ export function App() {
     goTo("/account");
   }
   function toggleBookmark(key) {
-    setBookmarks((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+    if (libraryContextMatches) void bookmarkLibrary.toggle(key);
+  }
+  async function changeDataConnection(method,body) {
+    if (accountLoginInFlight.current || accountSignOutInFlight.current) throw new Error("account_unavailable");
+    accountLoginInFlight.current = true;
+    const epoch=accountEpoch.current;
+    try {
+      const result=await accountJson("connection",{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body),expectedIdentity:accountData?.user_id});
+      if (epoch!==accountEpoch.current || result.user_id!==accountData?.user_id || (method==="POST"?result.connected!==true:result.disconnected!==true)) throw new Error("identity_changed");
+      requestAccountProjectionRefresh();
+    } catch (error) {
+      if (error.message === "identity_changed") handleAccountIdentityChanged();
+      throw error;
+    } finally {settleAccountOperation(accountLoginInFlight);}
   }
   const topicLabels = { ...Object.fromEntries(researchSubjects.map((item) => [item.id, item.label[locale]])), "quant-methods": locale === "zh" ? "研究方法" : "Research methods" };
   const kindLabels = Object.fromEntries(copy.researchKinds);
@@ -1065,15 +1176,7 @@ export function App() {
       { key: "security", label: "Security", description: "Manage sign-in sessions, account security, and access audit." },
     ] },
   ];
-  const packageCards = locale === "zh" ? [
-    { name: "基础版", short: "基础", label: "BASE / 01", audience: "覆盖国内市场研究所需的核心日频、公司、事件与参考数据。", position: "完整的 A 股基础数据入口", coverage: "核心日频与公司数据", history: "日频完整历史", runtime: "200 次 / 分钟", tone: "research", includes: ["A 股日线、复权与交易日历", "公司基础、财务与公司行动", "公告、指数、基金与宏观参考", "每日请求总量不限"] },
-    { name: "专业版", short: "专业", label: "PRO / 02", audience: "在基础版之上加入历史分钟、竞价与更完整的国内交易数据。", position: "面向更高频的数据准备", coverage: "基础版 + 历史分钟", history: "日频与分钟历史", runtime: "600 次 / 分钟", tone: "systematic", includes: ["包含基础版全部数据", "A 股历史分钟与集合竞价", "ETF、指数、期货与期权历史分钟", "每日请求总量不限"] },
-    { name: "旗舰版", short: "旗舰", label: "FLAGSHIP / 03", audience: "覆盖当前最高等级的基础金融数据范围与运行能力。", position: "完整基础数据能力候选", coverage: "专业版 + 实时数据候选", history: "历史数据与盘中候选", runtime: "1,000 次 / 分钟", tone: "trading", includes: ["包含专业版全部数据", "A 股、ETF 与指数实时日线候选", "分钟级实时数据候选", "每日请求总量不限"] },
-  ] : [
-    { name: "Basic", short: "Basic", label: "BASE / 01", audience: "Core daily, company, event, and reference data for China's domestic markets.", position: "The complete A-share data foundation", coverage: "Core daily and company data", history: "Complete daily history", runtime: "200 requests / minute", tone: "research", includes: ["A-share daily, adjusted prices, and calendar", "Company master, financials, and actions", "Announcements, indices, funds, and macro reference", "No daily request cap"] },
-    { name: "Professional", short: "Pro", label: "PRO / 02", audience: "Adds historical minutes, auctions, and broader domestic trading data to Basic.", position: "For higher-frequency data preparation", coverage: "Basic + historical minutes", history: "Daily and minute history", runtime: "600 requests / minute", tone: "systematic", includes: ["Everything in Basic", "A-share historical minutes and auctions", "ETF, index, futures, and options history", "No daily request cap"] },
-    { name: "Flagship", short: "Flagship", label: "FLAGSHIP / 03", audience: "The broadest proposed base financial-data scope and runtime profile.", position: "Full base-data capability candidate", coverage: "Professional + real-time candidates", history: "History plus intraday candidates", runtime: "1,000 requests / minute", tone: "trading", includes: ["Everything in Professional", "Candidate A-share, ETF, and index real-time daily", "Candidate real-time minute data", "No daily request cap"] },
-  ];
+  const packageCards = getBasePlanCards(locale);
   const readingSteps = locale === "zh" ? [
     ["01", "先看研究问题", "这篇内容试图解释、测量或重建什么。"],
     ["02", "再看证据与数据", "需要哪些市场、财务、另类数据和时间窗口。"],
@@ -1090,13 +1193,13 @@ export function App() {
     { key: "data", label: "数据说明", items: [["数据分类与模板", "市场、domain、字段、覆盖、更新时间与 receipt 的统一结构。"], ["另类数据", "来源、再分发边界、试用、加购和授权读回。"], ["数据凭证", "如何阅读 source、quality、freshness、coverage 与 receipt。"]] },
     { key: "api", label: "API 与 Agent", items: [["Catalog", "发现已授权数据集及其结构、覆盖与限制。"], ["Query", "字段、游标、预算、错误和 fail-closed 行为。"], ["Agent 与 MCP", "Claude、Codex、OpenClaw、Hermes 的安全接入说明。"]] },
     { key: "learn", label: "学习与方法", items: [["Research 阅读指南", "如何阅读外部论文、行业研究和案例。"], ["研究方法", "查询、连接、时点对齐、复权、缺失与验证。"]] },
-    { key: "commerce", label: "套餐与账户", items: [["套餐比较", "基础版、专业版与旗舰版的范围、历史深度和目标运行档。"], ["订阅与账单", "有效期、试用、加购、续费、账单和发票。"], ["账户与安全", "用量、密钥、会话、语言、主题与访问审计。"]] },
+    { key: "commerce", label: "套餐与账户", items: [["套餐比较", "相同基础数据，三档请求频率及月付、年付价格；支付尚未开放。"], ["订阅与账单", "有效期、试用、加购、续费、账单和发票。"], ["账户与安全", "用量、密钥、会话、语言、主题与访问审计。"]] },
   ] : [
     { key: "start", label: "Get started", items: [["Platform overview", "How Data, Research, Pricing, site search, and Account fit together."], ["First connection", "Create an account, choose a package, generate a key, and make the first Catalog request."]] },
     { key: "data", label: "Data guide", items: [["Classification & template", "The shared market, domain, field, coverage, update, and receipt structure."], ["Alternative data", "Source, redistribution boundary, trial, add-on, and entitlement readback."], ["Data receipts", "How to read source, quality, freshness, coverage, and receipt evidence."]] },
     { key: "api", label: "API & Agents", items: [["Catalog", "Discover authorized datasets, schemas, coverage, and limitations."], ["Query", "Fields, cursors, budgets, errors, and fail-closed behavior."], ["Agents & MCP", "Safe setup for Claude, Codex, OpenClaw, Hermes, and other Agents."]] },
     { key: "learn", label: "Learning & methods", items: [["Research reading guide", "How to read external papers, industry research, and cases."], ["Research methods", "Querying, joins, point-in-time alignment, adjustment, missingness, and validation."]] },
-    { key: "commerce", label: "Plans & account", items: [["Compare packages", "Scope, history depth, and target runtime for Basic, Professional, and Flagship."], ["Subscription & billing", "Expiry, trials, add-ons, renewal, billing, and invoices."], ["Account & security", "Usage, keys, sessions, language, appearance, and access audit."]] },
+    { key: "commerce", label: "Plans & account", items: [["Compare packages", "The same base data, three request rates, and monthly/annual prices; checkout is not yet available."], ["Subscription & billing", "Expiry, trials, add-ons, renewal, billing, and invoices."], ["Account & security", "Usage, keys, sessions, language, appearance, and access audit."]] },
   ];
   const allDocs = docsCategories.flatMap((category) => category.items.map(([title, description], index) => ({ category: category.key, categoryLabel: category.label, title, description, slug: `${category.key}-${index + 1}` })));
   const visibleDocs = allDocs.filter((entry) => {
@@ -1108,11 +1211,11 @@ export function App() {
   const activeAccountDoc = allDocs.find((entry) => entry.slug === accountDocSlug) || allDocs[0];
   const accountPlanLabels = locale === "zh" ? { basic: "基础版", standard: "专业版", flagship: "旗舰版", free: "免费版", starter: "入门版", research: "研究版", pro: "专业版", enterprise: "企业版", internal: "内部账户" } : { basic: "Basic", standard: "Professional", flagship: "Flagship", free: "Free", starter: "Starter", research: "Research", pro: "Pro", enterprise: "Enterprise", internal: "Internal" };
   const accountCategoryLabels = locale === "zh" ? { a_share: "A 股基础数据", crypto: "加密资产", news: "新闻与事件" } : { a_share: "A-share base data", crypto: "Crypto", news: "News & events" };
-  const accountPlanLabel = accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
+  const isEmailAccount = accountData?.identity_kind === "email";
+  const accountPlanLabel = isEmailAccount && accountData.data_access_state !== "connected" ? (locale === "zh" ? "未连接数据权限" : "No data access connected") : accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
   const accountCategories = accountData ? (accountData.data_categories || []).map((category) => accountCategoryLabels[category] || category) : [];
   const accountUsageHistory = accountUsage?.history || [];
   const accountUsagePeak = Math.max(1, ...accountUsageHistory.map((entry) => Number(entry.total) || 0));
-  const accountCurrentKey = accountKeys.find((key) => key.is_current);
 
   const globalIndex = [
     ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
@@ -1266,9 +1369,9 @@ export function App() {
         <div className="header-actions">
           <button className="icon-button bookmark-header-button" type="button" aria-label={locale === "zh" ? `已收藏 ${bookmarks.length} 项` : `${bookmarks.length} bookmarks`} onClick={() => openAccountSection("bookmarks")}><BookmarkSimple size={23} weight={bookmarks.length ? "fill" : "regular"} />{bookmarks.length > 0 && <span>{bookmarks.length}</span>}</button>
           <div className="popover-wrap account-wrap">
-            <button className="icon-button account-button" type="button" aria-label={copy.account} aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
-            {accountMenuOpen && <div className="account-menu-popover">
-              <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? accountData.tenant_id : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountData.tier} 套餐 · 已连接` : `${accountData.tier} plan · connected`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
+            <button className="icon-button account-button" type="button" disabled={accountChecking} aria-busy={accountChecking} aria-label={accountChecking ? accountEntryLabel : accountData ? copy.account : accountViewState === "unavailable" ? copy.account : (locale === "zh" ? "账户与设置" : "Account and settings")} aria-expanded={!accountChecking ? accountMenuOpen : false} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
+            {accountMenuOpen && !accountChecking && <div className="account-menu-popover">
+              <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? (accountData.email || accountData.tenant_id) : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountPlanLabel} · 已登录` : `${accountPlanLabel} · signed in`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
               {!accountData && <section><button type="button" onClick={() => { setAccountMenuOpen(false); goTo("/login"); }}>{locale === "zh" ? "登录账户" : "Sign in"}<ArrowRight /></button></section>}
               {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
             </div>}
@@ -1278,6 +1381,7 @@ export function App() {
         {mobileOpen && <nav className="mobile-nav" aria-label="Mobile navigation">{renderGlobalSearch("mobile-global-search")}{copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])}>{label}<ArrowRight /></a>)}</nav>}
       </header>
 
+      {library.error && (primaryRoute !== "account" || accountSection !== "bookmarks") && <aside className="library-feedback" role="alert">{locale === "zh"?"未能确认收藏结果。请到收藏页刷新；不会自动重新上传。":"Saved state could not be confirmed. Refresh your library; uploads are not retried automatically."}<button type="button" onClick={()=>openAccountSection("bookmarks")}>{locale === "zh"?"查看收藏状态":"Review library status"}</button></aside>}
       <main>
         {primaryRoute === "home" && <section className="hero" aria-labelledby="hero-title">
           <picture className="hero-art" aria-hidden="true">
@@ -1292,7 +1396,7 @@ export function App() {
             </div>
           </div>
           <div className="hero-verification mono-text" aria-hidden="true">
-            <span>2026-08-26T18:04:00Z</span>
+            <span>illustration · not live evidence</span>
             <span>batch_7f9c2a1e</span>
           </div>
           <div className="hero-hash mono-text" aria-hidden="true">
@@ -1320,7 +1424,7 @@ export function App() {
           </section>
 
           {showDataDirectory ? <section className="data-category-directory" aria-label={locale === "zh" ? "数据分类目录" : "Data category directory"}>
-            <div className="data-directory-summary"><span>{locale === "zh" ? "9 个分类 · 41 个数据产品" : "9 categories · 41 data products"}</span><span>{locale === "zh" ? "选择分类后查看完整产品与接入计划" : "Choose a category for complete products and onboarding plans"}</span></div>
+            <div className="data-directory-summary"><span>{locale === "zh" ? `${dataCategories.length} 个分类 · ${productManifest.objects.datasets.length} 个产品定义` : `${dataCategories.length} categories · ${productManifest.objects.datasets.length} product definitions`}</span><span>{locale === "zh" ? "产品规划，不是实时可用目录" : "Product plans, not a live availability catalog"}</span></div>
             {dataCategories.map((category, categoryIndex) => {
               const products = productManifest.objects.datasets.filter((item) => item.family === category.family);
               return <article className="data-category-shelf" key={category.family}>
@@ -1346,7 +1450,7 @@ export function App() {
             </div>
             <section className="data-product-list" aria-live="polite">
               {visibleDataProducts.map((item) => {
-                const hasCollectionHistory = item.stability !== "—";
+                const hasCollectionHistory = evidenceView(item, locale).hasHistory;
                 return <article className={`data-product-row ${hasCollectionHistory ? "" : "is-unobserved"}`} key={item.id}>
                 <ProductMark item={item} />
                 <div className="data-product-copy">
@@ -1386,7 +1490,7 @@ export function App() {
 
         {primaryRoute === "data" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / PRODUCT CATEGORY</span><h1>{locale === "zh" ? "另类数据是分类，每一种指数都是独立产品。" : "Alternative data is a category; every index is its own product."}</h1><p>{locale === "zh" ? "从 Pizza 指数到客流、招聘、应用关注、航运、卫星和消费价格，每个产品分别披露来源、许可、覆盖和接入计划。" : "From Pizza Index to foot traffic, hiring, app attention, shipping, satellite, and consumer prices, every product discloses its own source, license, coverage, and onboarding plan."}</p></div><MaturityTag status="planned" locale={locale} /></div><AlternativeProductList locale={locale} onNavigate={navigate} /><section className="object-boundary"><h2>{locale === "zh" ? "购买前必须可见" : "Visible before purchase"}</h2><p>{locale === "zh" ? "来源、许可与再分发边界、样例字段、历史覆盖、更新频率、试用期限、价格、到期与续费选择。" : "Source, license and redistribution boundary, sample fields, history, cadence, trial term, price, expiry, and renewal choice."}</p><a className="primary-button" href="/pricing/alternative" onClick={(event) => navigate(event, "/pricing/alternative")}>{locale === "zh" ? "查看加购逻辑" : "Review add-on logic"}<ArrowRight /></a></section></section>}
 
-        {primaryRoute === "data" && routeSlug === "receipts" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/receipts" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">DATA WITH RECEIPTS</span><h1>{locale === "zh" ? "每个可用性声明，都回到证据。" : "Every availability claim returns to evidence."}</h1><p>{locale === "zh" ? "Registry 定义身份，事实与 receipt 记录观测，API 只投影同一权威链。" : "Registry defines identity, facts and receipts record observations, and the API projects the same authority chain."}</p></div><MaturityTag status="observed_example" locale={locale} /></div><ReceiptProof copy={copy} /><section className="object-boundary"><h2>{locale === "zh" ? "Receipt 能证明什么，也不能证明什么" : "What a receipt proves—and what it does not"}</h2><p>{locale === "zh" ? "它证明一次来源绑定的采集、验证与落库事务；单次成功不等于连续健康、历史完整或时点一致。" : "It proves one source-bound collection, validation, and storage transaction. One success is not continuous health, complete history, or point-in-time correctness."}</p></section></section>}
+        {primaryRoute === "data" && routeSlug === "receipts" && <section className="object-detail-page"><SectionNav locale={locale} active="/data/receipts" onNavigate={navigate} items={locale === "zh" ? [{ path: "/data", label: "全部数据" }, { path: "/data/alternative", label: "另类数据" }, { path: "/data/receipts", label: "凭证与覆盖" }] : [{ path: "/data", label: "All data" }, { path: "/data/alternative", label: "Alternative data" }, { path: "/data/receipts", label: "Receipts & coverage" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">DATA WITH RECEIPTS</span><h1>{locale === "zh" ? "每个可用性声明，都回到证据。" : "Every availability claim returns to evidence."}</h1><p>{locale === "zh" ? "Registry 定义身份，事实与 receipt 记录观测，API 只投影同一权威链。" : "Registry defines identity, facts and receipts record observations, and the API projects the same authority chain."}</p></div><MaturityTag status="synthetic" locale={locale} /></div><ReceiptProof copy={copy} /><section className="object-boundary"><h2>{locale === "zh" ? "Receipt 能证明什么，也不能证明什么" : "What a receipt proves—and what it does not"}</h2><p>{locale === "zh" ? "它证明一次来源绑定的采集、验证与落库事务；单次成功不等于连续健康、历史完整或时点一致。" : "It proves one source-bound collection, validation, and storage transaction. One success is not continuous health, complete history, or point-in-time correctness."}</p></section></section>}
 
         {primaryRoute === "features" && !routeSlug && <section className="object-index-page">
           <SectionNav locale={locale} active="/features" onNavigate={navigate} items={locale === "zh" ? [{ path: "/features", label: "特征目录" }, { path: "/features/methodology", label: "方法与版本" }] : [{ path: "/features", label: "Feature index" }, { path: "/features/methodology", label: "Method & versions" }]} />
@@ -1431,15 +1535,19 @@ export function App() {
           <header className="pricing-intro">
             <span className="mono-kicker">BASE DATA / THREE PLANS</span>
             <h1>{locale === "zh" ? "三档基础套餐。" : "Three base-data plans."}</h1>
-            <p>{locale === "zh" ? "基础版、专业版、旗舰版。数据范围、历史深度与运行能力逐档扩展；本页套餐均不包含另类数据。" : "Basic, Professional, and Flagship. Data scope, history, and runtime expand by tier. Alternative data is not included here."}</p>
+            <p>{locale === "zh" ? "相同基础数据，200 / 600 / 1,000 次每分钟。没有每日额度限制，另类数据独立加购。" : "The same base data, at 200 / 600 / 1,000 requests per minute. No daily quota. Alternative data is a separate add-on."}</p>
           </header>
-          <BasePlanShowcase locale={locale} plans={packageCards} activeIndex={pricingPlanIndex} onChange={setPricingPlanIndex} onNavigate={navigate} />
-          <p className="commercial-disclaimer">{locale === "zh" ? "本页固定三档基础套餐结构。价格、实时数据开放范围和最终授权仍以正式商业合同及账户读回为准。" : "This page fixes the three-tier base-plan structure. Price, real-time scope, and final grants remain subject to the commercial contract and authenticated account readback."}</p>
+          <BasePlanShowcase locale={locale} plans={packageCards} activeIndex={pricingPlanIndex} onChange={setPricingPlanIndex} onNavigate={navigate} billingPeriod={pricingBillingPeriod} setBillingPeriod={setPricingBillingPeriod} />
+          <p className="commercial-disclaimer">{locale === "zh" ? "价格已确定，在线订阅与支付尚未开放。年付为月价 × 12 × 90%，按年一次支付，不代表已启用自动续费。具体数据开放范围、历史覆盖和有效权限以数据产品说明及账户读回为准。" : "Prices are set; online subscriptions and checkout are not yet available. Annual billing is monthly price × 12 × 90%, paid yearly; automatic renewal is not enabled. Available data, historical coverage, and effective access remain subject to product disclosures and authenticated account readback."}</p>
         </section>}
 
         {primaryRoute === "pricing" && routeSlug === "alternative" && <section className="object-detail-page"><SectionNav locale={locale} active="/pricing/alternative" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "套餐比较" }, { path: "/pricing/alternative", label: "另类数据加购" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Compare plans" }, { path: "/pricing/alternative", label: "Alternative add-ons" }, { path: "/pricing/beta", label: "Request beta" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">ALTERNATIVE DATA / OPTIONAL PRODUCTS</span><h1>{locale === "zh" ? "按具体产品试用，再明确选择是否加购。" : "Trial a specific product, then explicitly choose whether to add it."}</h1><p>{locale === "zh" ? "Pizza 指数、客流、招聘、应用关注等分别展示来源、授权范围和未来价格，不把整个另类数据分类打成一个模糊套餐。" : "Pizza Index, foot traffic, hiring, app attention, and other products show source, entitlement, and future price separately—not as one vague alternative-data bundle."}</p></div><MaturityTag status="planned" locale={locale} /></div><AlternativeProductList locale={locale} onNavigate={navigate} /><p className="commercial-disclaimer">{locale === "zh" ? "试用期限、价格、支付、续费和可购买范围等待 commerce backend 合同。" : "Trial term, price, payment, renewal, and purchasable scope await the commerce backend contract."}</p></section>}
 
-        {primaryRoute === "pricing" && routeSlug === "beta" && <section className="object-detail-page"><SectionNav locale={locale} active="/pricing/beta" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "基础套餐" }, { path: "/pricing/beta", label: "申请内测" }] : [{ path: "/pricing", label: "Base plans" }, { path: "/pricing/beta", label: "Request beta" }]} /><div className="object-detail-hero"><div><span className="mono-kicker">PRIVATE BETA / HONEST CONVERSION</span><h1>{locale === "zh" ? "告诉我们你的数据工作流。" : "Tell us about your data workflow."}</h1><p>{locale === "zh" ? "在价格、支付和自动授权完成前，申请内测是唯一真实的商业入口。" : "Before pricing, payment, and automatic entitlement are implemented, private-beta access is the only honest commercial entry."}</p></div><MaturityTag status="product_definition" locale={locale} /></div><div className="beta-intake"><label>{locale === "zh" ? "主要用途" : "Primary use"}<select><option>{locale === "zh" ? "基本面与行业研究" : "Fundamental and industry research"}</option><option>{locale === "zh" ? "量化数据准备" : "Systematic data preparation"}</option><option>{locale === "zh" ? "交易系统数据" : "Trading-system data"}</option></select></label><label>{locale === "zh" ? "最需要的数据" : "Most-needed data"}<input placeholder={locale === "zh" ? "例如：时点一致财务、分钟、公告" : "e.g. PIT fundamentals, minutes, announcements"} /></label><button className="primary-button" type="button" disabled>{locale === "zh" ? "提交功能待接后端" : "Submission awaits backend"}</button></div></section>}
+        {primaryRoute === "pricing" && routeSlug === "beta" && <section className="object-detail-page">
+          <SectionNav locale={locale} active="/pricing/beta" onNavigate={navigate} items={locale === "zh" ? [{ path: "/pricing", label: "基础套餐" }, { path: "/pricing/beta", label: "内测说明" }] : [{ path: "/pricing", label: "Base plans" }, { path: "/pricing/beta", label: "Beta information" }]} />
+          <div className="object-detail-hero"><div><span className="mono-kicker">PRIVATE BETA / NOT OPEN</span><h1>{locale === "zh" ? "内测申请暂未开放。" : "Beta applications are not open yet."}</h1><p>{locale === "zh" ? "你可以先浏览数据、研究资料与套餐价格。目前不会收集申请信息、加入候补名单或开通数据权限。" : "Explore the data, research library, and plan prices first. We are not collecting applications, adding people to a waitlist, or granting data access here."}</p></div></div>
+          <div className="detail-actions"><a className="primary-button" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐与购买预览" : "View plans and purchase preview"}<ArrowRight /></a><a className="text-link" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "浏览数据目录" : "Browse the data catalog"}<ArrowRight /></a></div>
+        </section>}
 
         {primaryRoute === "docs" && !routeSlug && <section className="docs-hub" id="docs">
           <SectionNav locale={locale} active="/docs" onNavigate={navigate} items={locale === "zh" ? [{ path: "/docs", label: "文档首页" }, { path: "/docs/data-1", label: "数据模型" }, { path: "/docs/api-1", label: "Catalog" }, { path: "/docs/commerce-1", label: "套餐" }] : [{ path: "/docs", label: "Docs home" }, { path: "/docs/data-1", label: "Data model" }, { path: "/docs/api-1", label: "Catalog" }, { path: "/docs/commerce-1", label: "Plans" }]} />
@@ -1461,39 +1569,10 @@ export function App() {
 
         {primaryRoute === "docs" && routeSlug && <section className="object-detail-page docs-article"><a className="object-back" href="/docs" onClick={(event) => navigate(event, "/docs")}>← {locale === "zh" ? "返回文档" : "Back to Docs"}</a><div className="object-detail-hero"><div><span className="mono-kicker">{selectedDoc?.categoryLabel?.toUpperCase() || "DOCUMENTATION"}</span><h1>{selectedDoc?.title || (locale === "zh" ? "说明未找到" : "Guide not found")}</h1><p>{selectedDoc?.description}</p></div><span className="maturity-tag">{locale === "zh" ? "版本化说明" : "Versioned guide"}</span></div>{selectedDoc && <div className="docs-article-body"><aside><span>{locale === "zh" ? "本文回答" : "THIS GUIDE ANSWERS"}</span><p>{selectedDoc.description}</p><span>{locale === "zh" ? "权威来源" : "AUTHORITY"}</span><p>{selectedDoc.category === "api" ? "docs/API.md + authenticated runtime" : selectedDoc.category === "data" ? "registry + facts/receipts + docs/PRODUCT.md" : "docs/PRODUCT.md + backend contract"}</p></aside><article><h2>{locale === "zh" ? "说明结构" : "Guide structure"}</h2><p>{locale === "zh" ? "每篇文档会明确当前能力、目标能力、使用步骤、限制、错误状态、相关对象与下一步。它不会把产品提案写成生产事实。" : "Every guide identifies current capability, target capability, steps, limits, error states, related objects, and next action. It never turns a product proposal into a production fact."}</p><h2>{locale === "zh" ? "相关入口" : "Related entries"}</h2><div className="detail-actions"><a className="text-link" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "数据目录" : "Data catalog"}<ArrowRight /></a><a className="text-link" href="/recipes" onClick={(event) => navigate(event, "/recipes")}>Recipes<ArrowRight /></a></div></article></div>}</section>}
 
+        {primaryRoute === "pricing" && routeSlug === "preview" && <PurchasePreview locale={locale} selection={readPreviewSelection(routeSearch)} accountState={accountViewState} navigate={navigate} onRetry={() => setAccountConnectionRevision((value) => value + 1)} onAccount={() => openAccountSection("subscription")} />}
+
         {primaryRoute === "login" && (
-          <section className="login-page" aria-labelledby="login-title">
-            <div className="login-intro">
-              <a href="/" onClick={(event) => navigate(event, "/")}>← {locale === "zh" ? "返回首页" : "Back home"}</a>
-              <div>
-                <span className="mono-kicker">ACCOUNT ACCESS / VERIFIED SESSION</span>
-                <h1 id="login-title">{locale === "zh" ? "进入你的数据工作区。" : "Enter your data workspace."}</h1>
-                <p>{locale === "zh" ? "查看真实套餐、有效期、数据授权和用量；登录后继续管理 Agent 与 API 密钥。" : "See your effective plan, expiry, data grants, and usage, then manage Agent and API keys."}</p>
-              </div>
-              <dl className="login-boundaries">
-                <div><dt>01</dt><dd><strong>{locale === "zh" ? "仅当前账户" : "Current account only"}</strong><span>{locale === "zh" ? "服务端只返回当前租户的数据。" : "The service returns data for the current tenant only."}</span></dd></div>
-                <div><dt>02</dt><dd><strong>{locale === "zh" ? "仅此浏览器" : "This browser only"}</strong><span>{locale === "zh" ? "密钥不进入网址、提示词或长期浏览器存储。" : "The key never enters URLs, prompts, or persistent browser storage."}</span></dd></div>
-              </dl>
-            </div>
-            <form className="login-panel" onSubmit={connectAccount}>
-              <div className="login-panel-head">
-                <span><ShieldCheck weight="duotone" /> {locale === "zh" ? "安全连接" : "Secure connection"}</span>
-                <small>{locale === "zh" ? "真实账户验证" : "LIVE ACCOUNT VERIFICATION"}</small>
-              </div>
-              <div className="login-panel-copy">
-                <h2>{locale === "zh" ? "使用访问密钥登录" : "Sign in with an access key"}</h2>
-                <p>{locale === "zh" ? "当前版本使用 TradingDatas 访问密钥建立网页会话，并优先通过同站安全网关封装密钥。邮箱与短信登录尚未开放。" : "The current version starts a web session with a TradingDatas access key and prefers the same-site secure gateway. Email and SMS sign-in are not available yet."}</p>
-              </div>
-              <label htmlFor="login-token">{locale === "zh" ? "访问密钥" : "Access key"}</label>
-              <input id="login-token" type="password" value={accountTokenInput} onChange={(event) => { setAccountTokenInput(event.target.value); setAccountError(""); }} placeholder={locale === "zh" ? "粘贴你的访问密钥" : "Paste your access key"} autoComplete="off" />
-              {accountError && <div className="login-error" role="alert">{accountError === "invalid_token" ? (locale === "zh" ? "访问密钥无效、已停用或已过期。" : "The access key is invalid, disabled, or expired.") : (locale === "zh" ? "暂时无法读取账户，请稍后重试。" : "The account is temporarily unavailable. Try again later.")}</div>}
-              <button className="primary-button login-submit" type="submit" disabled={!accountTokenInput.trim() || accountLoading}>{accountLoading ? (locale === "zh" ? "正在验证账户…" : "Verifying account…") : (locale === "zh" ? "登录账户" : "Sign in")}<ArrowRight /></button>
-              <div className="login-help">
-                <span>{locale === "zh" ? "还没有访问密钥？" : "No access key yet?"}</span>
-                <a href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐与获取方式" : "View plans and access options"}<ArrowRight /></a>
-              </div>
-            </form>
-          </section>
+          <LoginPage locale={locale} theme={theme} returnPath={safeLoginDestination(routeSearch)} token={accountTokenInput} onTokenChange={(value) => { setAccountTokenInput(value); setAccountError(""); }} onSubmit={connectAccount} onEmailVerify={connectEmailAccount} loading={accountLoading} submitting={accountLoginPending} error={accountError} navigate={navigate} />
         )}
 
         {primaryRoute === "account" && (
@@ -1503,7 +1582,7 @@ export function App() {
               <h1>{locale === "zh" ? "你的 TradingDatas 工作区。" : "Your TradingDatas workspace."}</h1>
               <p>{locale === "zh" ? "在一个安静的工作区管理已收藏内容、数据访问、文档、Agent 接入、账单和个人设置。" : "A quiet workspace for saved materials, data access, documentation, Agent connections, billing, and preferences."}</p>
               <div className="account-entry-actions">
-                <button className="primary-button" type="button" onClick={() => accountData ? setAccountSection("overview") : goTo("/login")}>{accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in")}<ArrowRight /></button>
+                <button className="primary-button" type="button" disabled={accountChecking} aria-busy={accountChecking} onClick={() => accountViewState === "unavailable" ? setAccountConnectionRevision((value) => value + 1) : accountData ? setAccountSection("overview") : goTo("/login")}>{accountEntryLabel}<ArrowRight /></button>
                 <small>{locale === "zh" ? "登录后仅显示当前账户的订阅、授权和用量。" : "After sign-in, only the current account's plan, access, and usage are shown."}</small>
               </div>
             </div>
@@ -1522,10 +1601,22 @@ export function App() {
                   <h2>{activeAccountItem.label}</h2>
                   <p>{activeAccountItem.description}</p>
                 </div>
-                {accountSection === "overview" ? (
+                {accountDeletionReceipt && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "注销请求已受理，账户已停用，邮箱会话已撤销。账户库资料将在以下日期前清理：" : "Deletion accepted. The account is disabled and email sessions are revoked. Profile data in the account store will be removed by: "}{new Date(accountDeletionReceipt.delete_by).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US")}</p></div>}
+                {(accountSignOutError || accountSignOutPending) && <div className="account-signout-feedback" role={accountSignOutError ? "alert" : "status"} aria-atomic="true">
+                  <p>{accountSignOutPending ? (locale === "zh" ? "正在安全退出，请稍候…" : "Signing out securely. Please wait…") : (locale === "zh" ? "未能确认退出，会话可能仍然有效。请重试，确认退出前不要离开共享设备。" : "Sign-out could not be confirmed. Your session may still be active. Retry before leaving a shared device.")}</p>
+                  {accountSignOutError && <button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{locale === "zh" ? "重试退出" : "Retry sign-out"}<ArrowRight size={16} /></button>}
+                </div>}
+                {accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
+                {accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
+                {isEmailAccount && !accountChecking && ["overview","security"].includes(accountSection) && <AccountConnection key={accountData.user_id} account={accountData} locale={locale} onChange={changeDataConnection} disabled={accountSignOutPending} />}
+                {accountPrivateSection && accountChecking ? (
+                  <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
+                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountPrivateSection && isEmailAccount && (accountData.data_access_state !== "connected" || ["security","billing"].includes(accountSection)) ? (
+                  <EmailAccountPanel key={`${accountData.user_id}:${accountSection}`} account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} onDelete={deleteEmailProfile} />
+                ) : accountSection === "overview" ? (
                   accountData ? (
                     <div className="account-live-overview">
-                      <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount}>{locale === "zh" ? "断开连接" : "Disconnect"}</button></div>
+                      <div className="account-live-status"><span className={accountData.enabled ? "is-active" : "is-paused"} /> <strong>{accountData.enabled ? (locale === "zh" ? "账户可用" : "Account active") : (locale === "zh" ? "账户已暂停" : "Account paused")}</strong><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "断开连接" : "Disconnect")}</button></div>
                       <dl className="account-facts account-live-facts">
                         <div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountPlanLabel}</dd></div>
                         <div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div>
@@ -1550,7 +1641,7 @@ export function App() {
                         <div><span>{locale === "zh" ? "授权模式" : "GRANT MODE"}</span><strong>{accountData.data_category_mode === "all" ? (locale === "zh" ? "全部已登记分类" : "All registered categories") : (locale === "zh" ? "按分类授权" : "Category allowlist")}</strong></div>
                       </section>
                       <div className="account-boundary-note"><ShieldCheck /> <div><strong>{locale === "zh" ? "另类数据加购尚未单独投影" : "Alternative-data add-ons are not projected separately yet"}</strong><p>{locale === "zh" ? "当前接口只返回有效数据分类授权。待加购合同上线后，这里再显示试用、单独有效期和续费状态。" : "The current contract returns effective category grants only. Trials, separate expiry, and renewal will appear after the add-on contract is live."}</p></div></div>
-                      <a className="account-inline-action" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐" : "View plans"}<ArrowRight /></a>
+                      <a className="account-inline-action" href={packageCards.some((plan) => plan.id === accountData.tier) ? buildPreviewPath(accountData.tier, "monthly") : "/pricing"} onClick={(event) => navigate(event, packageCards.some((plan) => plan.id === accountData.tier) ? buildPreviewPath(accountData.tier, "monthly") : "/pricing")}>{locale === "zh" ? "预览购买与续费 · 暂未开放支付" : "Preview purchase & renewal · payment unavailable"}<ArrowRight /></a>
                     </div>
                   ) : (
                     <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后查看套餐与授权" : "Sign in to view plan and access"}</strong><p>{locale === "zh" ? "这里只显示当前租户的真实套餐、有效期和分类授权。" : "Only the current tenant's live plan, expiry, and category grants appear here."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
@@ -1583,7 +1674,7 @@ export function App() {
                       {accountKeyError && <div className="account-key-error" role="alert">{locale === "zh" ? "密钥操作暂时无法完成，请稍后重试。" : "The key action could not be completed. Try again later."}</div>}
                       <div className="account-key-list">
                         {accountKeys.map((key) => <article key={key.key_id} className={!key.enabled ? "is-disabled" : ""}><div><span>{key.is_current ? (locale === "zh" ? "当前连接" : "CURRENT CONNECTION") : key.enabled ? (locale === "zh" ? "可用" : "ACTIVE") : (locale === "zh" ? "已停用" : "DISABLED")}</span><strong>{key.label}</strong><small>{key.fingerprint}{key.created_at ? ` · ${key.created_at.slice(0, 10)}` : ""}</small></div>{key.is_current ? <em>{locale === "zh" ? "不可在当前会话停用" : "Protected in this session"}</em> : key.enabled ? <button type="button" disabled={accountKeyLoading} onClick={() => disableAccountKey(key)}>{locale === "zh" ? "停用" : "Disable"}</button> : <em>{locale === "zh" ? "已停用" : "Disabled"}</em>}</article>)}
-                        {!accountKeys.length && !accountKeyError && <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在读取密钥" : "Loading keys"}</strong></div>}
+                        {!accountKeys.length && !accountKeyError && <div className="account-empty-state"><ShieldCheck size={28} /><strong>{accountKeysLoading ? (locale === "zh" ? "正在读取密钥" : "Loading keys") : (locale === "zh" ? "暂无 API 密钥" : "No API keys yet")}</strong></div>}
                       </div>
                     </div>
                   ) : (
@@ -1591,8 +1682,11 @@ export function App() {
                   )
                 ) : accountSection === "bookmarks" ? (
                   <div className="account-bookmarks">
-                    <div className="account-local-note"><BookmarkSimple />{locale === "zh" ? "当前收藏保存在此浏览器。登录账户同步功能尚未连接。" : "Bookmarks currently stay in this browser. Account sync is not connected yet."}</div>
-                    {savedItems.length ? savedItems.map((item) => <div className="account-bookmark-row" key={item.key}><a href={item.path} onClick={(event) => openSearchItem(event, item)}><span>{item.type}</span><strong>{item.label}</strong><small>{item.description}</small></a><button type="button" onClick={() => toggleBookmark(item.key)} aria-label={locale === "zh" ? "取消收藏" : "Remove bookmark"}><BookmarkSimple weight="fill" /></button></div>) : <div className="account-empty-state"><BookmarkSimple size={28} /><strong>{locale === "zh" ? "还没有收藏内容" : "Nothing saved yet"}</strong><p>{locale === "zh" ? "可从全站搜索或研究库收藏数据产品、论文、方法和文档。" : "Save datasets, papers, methods, and docs from site search or the Research library."}</p></div>}
+                    <div className="account-local-note"><BookmarkSimple />{!libraryContextMatches?(locale === "zh"?"正在确认账户，暂不显示收藏。":"Verifying the account; saved items are hidden."):library.mode==="cloud"?(locale === "zh"?`账户收藏 · ${accountData.email}`:`Account library · ${accountData.email}`):(locale === "zh"?"本机收藏 · 仅保存在此浏览器。":"Local library · saved only in this browser.")}</div>
+                    {libraryContextMatches && library.mode==="cloud" && <div className="account-library-controls"><p>{locale === "zh"?"登录后可跨设备读取账户收藏。本机收藏不会自动上传。":"Account bookmarks are available across devices after sign-in. Local bookmarks are never uploaded automatically."}</p><button type="button" className="account-inline-action" disabled={library.status==="loading"} onClick={()=>bookmarkLibrary.refresh()}>{locale === "zh"?"刷新账户收藏":"Refresh account library"}</button>{bookmarkLibrary.importCount()>0 && <button type="button" className="account-inline-action" disabled={library.status!=="ready"} onClick={()=>bookmarkLibrary.importLocal()}>{locale === "zh"?`将 ${Math.min(100,bookmarkLibrary.importCount())} 项本机收藏导入此账户`:`Import ${Math.min(100,bookmarkLibrary.importCount())} local bookmarks into this account`}</button>}</div>}
+                    {library.status==="loading" && <p role="status">{locale === "zh"?"正在确认收藏…":"Checking saved items…"}</p>}
+                    {library.error && <p className="account-key-error" role="alert">{library.error==="library_full"?(locale === "zh"?"账户收藏已达 500 项，请先移除部分内容。":"The 500-item library limit has been reached. Remove some items first."):(locale === "zh"?"未能确认收藏结果，请刷新账户收藏。不会自动重试上传。":"Saved state could not be confirmed. Refresh the library; uploads are not retried automatically.")}</p>}
+                    {savedItems.length ? savedItems.map((item) => <div className="account-bookmark-row" key={item.key}><a href={item.path} onClick={(event) => openSearchItem(event, item)}><span>{item.type}</span><strong>{item.label}</strong><small>{item.description}</small></a><button type="button" disabled={library.status!=="ready"} onClick={() => toggleBookmark(item.key)} aria-label={locale === "zh" ? "取消收藏" : "Remove bookmark"}><BookmarkSimple weight="fill" /></button></div>) : libraryContextMatches && library.status==="ready" && <div className="account-empty-state"><BookmarkSimple size={28} /><strong>{locale === "zh" ? "还没有收藏内容" : "Nothing saved yet"}</strong><p>{locale === "zh" ? "可从全站搜索或研究库收藏数据产品、论文、方法和文档。" : "Save datasets, papers, methods, and docs from site search or the Research library."}</p></div>}
                   </div>
                 ) : accountSection === "docs" ? (
                   <div className="account-docs-browser">
@@ -1626,19 +1720,19 @@ export function App() {
                   </div>
                 ) : accountSection === "billing" ? (
                   <div className="account-billing-panel">
-                    <div><span className="mono-kicker">COMMERCE BOUNDARY</span><h3>{locale === "zh" ? "账单记录尚未接入。" : "Billing records are not connected yet."}</h3><p>{locale === "zh" ? "当前账户页不展示模拟订单、支付或发票。商业合同上线后，才会按当前租户返回真实记录。" : "This account page does not show simulated orders, payments, or invoices. Records will appear per tenant only after the commerce contract is live."}</p></div>
+                    <div><span className="mono-kicker">BILLING / NOT YET AVAILABLE</span><h3>{locale === "zh" ? "支付与账单暂未开放。" : "Payments and billing are not open yet."}</h3><p>{locale === "zh" ? "购买预览不会生成订单或账单，也不会改变现有权限。正式接通后，这里会分别展示订单、支付结果和开通状态；现在不展示模拟记录。续费需主动购买，不自动扣款。" : "A purchase preview creates no order or bill and never changes existing access. Once connected, this space will distinguish orders, payment results, and activation. No simulated records are shown. Renewals require an active purchase, with no automatic debit."}</p></div>
                     {accountData && <dl><div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountPlanLabel}</dd></div><div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div></dl>}
                     <a className="account-inline-action" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看公开套餐" : "View public plans"}<ArrowRight /></a>
                   </div>
                 ) : accountSection === "security" ? (
                   accountData ? (
                     <div className="account-security-panel">
-                      <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{accountAuthMode === "session" ? (locale === "zh" ? "安全网页会话" : "Secure web session") : accountCurrentKey?.label || (locale === "zh" ? "访问密钥会话" : "Access-key session")}</h3><p>{accountAuthMode === "session" ? (locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read.") : accountCurrentKey?.fingerprint || (locale === "zh" ? "密钥仅保留在当前标签页会话。" : "The key is kept only for this tab session.")}</p></div><button type="button" onClick={disconnectAccount}>{locale === "zh" ? "退出此浏览器" : "Sign out here"}</button></section>
-                      <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{accountAuthMode === "session" ? (locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session") : (locale === "zh" ? "当前标签页中的 TradingDatas 访问密钥" : "TradingDatas access key in this tab")}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
-                      <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "邮箱、短信和跨设备会话尚未开放" : "Email, SMS, and cross-device sessions are not available"}</strong><p>{locale === "zh" ? "在身份库、一次性验证、防重放、HttpOnly 会话和撤销审计合同上线前，不提供模拟入口。" : "No simulated entry will be offered before identity storage, one-time verification, replay protection, HttpOnly sessions, and revocation audit are live."}</p></div></div>
+                      <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{locale === "zh" ? "安全网页会话" : "Secure web session"}</h3><p>{locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read."}</p></div><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "退出此浏览器" : "Sign out here")}</button></section>
+                      <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session"}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
+                      <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "凭证绑定与跨设备会话列表尚未开放" : "Credential linking and cross-device session lists are not available"}</strong><p>{locale === "zh" ? "访问密钥与邮箱账户不会自动绑定；短信服务暂未接入。可用登录方式以登录页的服务状态为准。" : "Access keys are not automatically linked to email accounts. SMS is not connected. Available sign-in methods are shown on the login page."}</p></div></div>
                     </div>
                   ) : (
-                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后管理当前连接" : "Sign in to manage this connection"}</strong><p>{locale === "zh" ? "当前版本通过访问密钥建立浏览器连接。" : "The current version connects this browser with an access key."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
+                    <div className="account-empty-state"><ShieldCheck size={28} /><strong>{locale === "zh" ? "登录后管理当前连接" : "Sign in to manage this connection"}</strong><p>{locale === "zh" ? "前往登录页查看可用的登录方式。网页登录不会自动开通数据权限。" : "Visit sign-in to see available methods. A web login does not automatically grant data access."}</p><button className="primary-button" type="button" onClick={() => goTo("/login")}>{locale === "zh" ? "前往登录" : "Go to sign in"}</button></div>
                   )
                 ) : (
                   <dl className="account-facts">
@@ -1654,7 +1748,7 @@ export function App() {
       </main>
 
       <footer><Brand onNavigate={navigate} /><p>Raw materials for financial research.</p><span>© 2026 TradingDatas</span></footer>
-      <AgentDialog open={agentOpen} onClose={() => setAgentOpen(false)} copy={copy} locale={locale} />
+      <Suspense fallback={null}>{agentOpen && <AgentDialog onClose={() => setAgentOpen(false)} copy={copy} locale={locale} />}</Suspense>
     </div>
   );
 }

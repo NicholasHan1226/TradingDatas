@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { papers } from "../src/researchCatalog.js";
 import { researchJourneys, journeyStages, readingJourney } from "../src/researchJourneys.js";
 import { researchSubjects, researchMatches } from "../src/researchDiscovery.js";
@@ -44,4 +45,9 @@ test("featured shelf has a bounded recent guide shelf and covers every core jour
     assert.ok(guides.some((paper) => paper.title === step.title), step.title);
   }
   for (const subject of researchSubjects.slice(1)) assert.ok(guides.some((paper) => researchMatches(paper, subject.id, "all")), subject.id);
+});
+
+test("curated research begins with three core question-led paths", async () => {
+  const source = await readFile(new URL("../src/ResearchHub.jsx", import.meta.url), "utf8");
+  assert.match(source, /\[0, 1, 2\]\.map/);
 });

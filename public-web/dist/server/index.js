@@ -1,7 +1,11 @@
+import { handleEmailIdentity } from "./email-identity.js";
+import { runIdentityMaintenance } from "./identity-retention.js";
+
 const SESSION_COOKIE = "td_account_session";
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
 const SESSION_AAD = new TextEncoder().encode("tradingdatas-account-session-v1");
 const MAX_SESSION_BODY_BYTES = 16 * 1024;
+const MAX_ACCOUNT_BODY_BYTES = 512 * 1024;
 
 function jsonResponse(payload, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
@@ -88,12 +92,25 @@ function identityConfigured(env) {
   return Boolean(env.SESSION_ENCRYPTION_KEY && env.ACCOUNT_API_BASE);
 }
 
-async function readJsonBody(request) {
-  const length = Number(request.headers.get("content-length") || 0);
-  if (length > MAX_SESSION_BODY_BYTES) throw new Error("body_too_large");
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_SESSION_BODY_BYTES) throw new Error("body_too_large");
-  return JSON.parse(text || "{}");
+async function boundedText(message, limit) {
+  if (Number(message.headers.get("content-length") || 0) > limit) throw new Error("body_too_large");
+  if (!message.body) return "";
+  const reader = message.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return text + decoder.decode();
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new Error("body_too_large");
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally { reader.releaseLock(); }
 }
 
 async function upstreamRequest(env, path, accessKey, init = {}) {
@@ -101,7 +118,12 @@ async function upstreamRequest(env, path, accessKey, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set("authorization", `Bearer ${accessKey}`);
   headers.set("accept", "application/json");
-  const response = await fetch(target, { ...init, headers });
+  // Never forward a bearer credential through an upstream redirect.
+  const response = await fetch(target, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(8_000) });
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new Error("account_upstream_redirect_rejected");
+  }
   const responseHeaders = { "content-type": response.headers.get("content-type") || "application/json; charset=utf-8" };
   return new Response(response.body, { status: response.status, headers: { ...responseHeaders, "cache-control": "no-store" } });
 }
@@ -115,24 +137,35 @@ function accountUpstreamPath(url) {
 }
 
 async function handleAccountApi(request, env) {
-  if (!identityConfigured(env)) return jsonResponse({ error: "identity_gateway_unavailable" }, 503);
   const url = new URL(request.url);
+  const identityResponse = await handleEmailIdentity(request, env);
+  if (identityResponse) return identityResponse;
+  // Clearing a browser cookie must work even during an upstream/config outage.
+  if (url.pathname === "/api/account/session" && request.method === "DELETE") {
+    if (!sameOriginMutation(request)) return jsonResponse({ error: "origin_not_allowed" }, 403);
+    return jsonResponse({ signed_out: true }, 200, { "set-cookie": sessionCookie("", 0) });
+  }
+  if (!identityConfigured(env)) return jsonResponse({ error: "identity_gateway_unavailable" }, 503);
 
   if (url.pathname === "/api/account/session" && request.method === "POST") {
     if (!sameOriginMutation(request)) return jsonResponse({ error: "origin_not_allowed" }, 403);
     let payload;
     try {
-      payload = await readJsonBody(request);
+      payload = JSON.parse(await boundedText(request, MAX_SESSION_BODY_BYTES));
     } catch {
       return jsonResponse({ error: "invalid_request" }, 400);
     }
-    const accessKey = typeof payload.access_key === "string" ? payload.access_key.trim() : "";
+    const accessKey = typeof payload?.access_key === "string" ? payload.access_key.trim() : "";
     if (!accessKey || accessKey.length > 1024) return jsonResponse({ error: "invalid_request" }, 400);
     const upstream = await upstreamRequest(env, "/portal/api/me", accessKey);
     if (!upstream.ok) return upstream;
-    const body = await upstream.text();
+    let account;
+    try {
+      account = JSON.parse(await boundedText(upstream, MAX_ACCOUNT_BODY_BYTES));
+    } catch { return jsonResponse({ error: "invalid_account_projection" }, 502); }
+    if (typeof account?.portal?.tenant_id !== "string" || !account.portal.tenant_id.trim() || typeof account.portal.tier !== "string" || !account.portal.tier.trim()) return jsonResponse({ error: "invalid_account_projection" }, 502);
     const sealed = await sealSession(accessKey, env.SESSION_ENCRYPTION_KEY);
-    return new Response(body, {
+    return new Response(JSON.stringify(account), {
       status: 200,
       headers: {
         "content-type": "application/json; charset=utf-8",
@@ -142,14 +175,10 @@ async function handleAccountApi(request, env) {
     });
   }
 
-  if (url.pathname === "/api/account/session" && request.method === "DELETE") {
-    if (!sameOriginMutation(request)) return jsonResponse({ error: "origin_not_allowed" }, 403);
-    return jsonResponse({ signed_out: true }, 200, { "set-cookie": sessionCookie("", 0) });
-  }
-
   const upstreamPath = accountUpstreamPath(url);
   if (!upstreamPath) return jsonResponse({ error: "not_found" }, 404);
-  if (!["GET", "POST", "PATCH"].includes(request.method)) return jsonResponse({ error: "method_not_allowed" }, 405);
+  const methods = url.pathname === "/api/account/keys" ? ["GET", "POST"] : url.pathname.startsWith("/api/account/keys/") ? ["PATCH"] : ["GET"];
+  if (!methods.includes(request.method)) return jsonResponse({ error: "method_not_allowed" }, 405);
   if (request.method !== "GET" && !sameOriginMutation(request)) return jsonResponse({ error: "origin_not_allowed" }, 403);
 
   const session = await openSession(readCookie(request, SESSION_COOKIE), env.SESSION_ENCRYPTION_KEY);
@@ -158,17 +187,44 @@ async function handleAccountApi(request, env) {
   let body;
   if (request.method !== "GET") {
     headers.set("content-type", "application/json");
-    body = await request.text();
-    if (new TextEncoder().encode(body).byteLength > MAX_SESSION_BODY_BYTES) return jsonResponse({ error: "invalid_request" }, 400);
+    try { body = await boundedText(request, MAX_SESSION_BODY_BYTES); }
+    catch { return jsonResponse({ error: "invalid_request" }, 400); }
   }
-  return upstreamRequest(env, upstreamPath, session.token, { method: request.method, headers, body });
+  const response = await upstreamRequest(env, upstreamPath, session.token, { method: request.method, headers, body });
+  if (response.status === 401) response.headers.set("set-cookie", sessionCookie("", 0));
+  return response;
 }
 
 export default {
+  async scheduled(_controller, env) {
+    try {
+      const result = await runIdentityMaintenance(env);
+      console.log(JSON.stringify({ event: "identity_retention", ...result }));
+      if (result.state === "backlog") throw new Error("identity_retention_backlog");
+    } catch {
+      // Do not log database errors that could contain PII or SQL parameters.
+      throw new Error("identity_retention_incomplete");
+    }
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+      if (env.ACCOUNT_ADMIN_ENABLED !== "true" || !["GET", "HEAD"].includes(request.method)) return jsonResponse({ error: "not_found" }, 404);
+      // Static Assets canonicalizes directory indexes to the trailing-slash
+      // path. Fetch that canonical path internally so /admin never returns the
+      // platform's /app/index.html -> /app/ redirect to the browser.
+      const shell = new URL("/app/", url.origin);
+      return env.ASSETS.fetch(new Request(shell, request));
+    }
+    // The public site reuses the versioned admin assets for /admin, but the
+    // standalone bearer shell belongs only on the separate admin origin.
+    // Keep hashed /app/assets/* readable so the gated /admin shell can load.
+    if (["/app", "/app/", "/app/index.html"].includes(url.pathname)) {
+      return jsonResponse({ error: "not_found" }, 404);
+    }
     if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {
-      return handleAccountApi(request, env);
+      try { return await handleAccountApi(request, env); }
+      catch (error) { return jsonResponse({ error: "account_upstream_unavailable" }, error.name === "TimeoutError" ? 504 : 502); }
     }
     const response = await env.ASSETS.fetch(request);
     const normalizedPath = url.pathname.replace(/\/+$/, "") || "/";

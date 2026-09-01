@@ -82,7 +82,7 @@ Marketing, content, and client-side state are never runtime evidence.
    reorganized by TradingDatas' format/topic taxonomies with source attribution,
    a reading guide, related data materials, and progressively disclosed
    preparation methods;
-3. **Pricing** — three progressively broader base-data plans; alternative-data
+3. **Pricing** — three request-rate tiers sharing the same base data; alternative-data
    commerce is a later independent surface and is not part of the main page.
 
 The header is a compact floating rounded surface containing the three primary
@@ -135,6 +135,12 @@ external-literature database. It must not imply that TradingDatas authored or
 endorsed a paper's conclusions. Do not use `Benchmark` as a primary navigation
 item or independently rank TradingDatas' own product.
 
+The curated Research home begins with three durable, question-led paths:
+point-in-time fundamentals, A-share microstructure, and announcements/events.
+Each path links the question to external readings and raw-material categories;
+it is an orientation aid, not a research conclusion, backtest, or product
+availability claim.
+
 ### 4.2 Proposed route map
 
 The paths below are a design contract, not a claim that they are implemented.
@@ -153,6 +159,7 @@ The paths below are a design contract, not a claim that they are implemented.
 /recipes
 /recipes/:slug
 /pricing
+/pricing/preview          display-only selection; payment disabled
 /pricing/alternative
 /pricing/beta
 /docs
@@ -177,8 +184,9 @@ continue to use `GET /v1/catalog` and `POST /v1/query`.
 - supported locales: `zh-CN` and `en`;
 - first visit follows `navigator.languages`/system locale; Chinese locales map
   to `zh-CN`, all others to `en`;
-- the header exposes an accessible language switch in signed-in and signed-out
-  states;
+- language and appearance controls live inside Account and remain accessible in
+  signed-out states; the global header keeps only the compact discovery and
+  personal-action controls;
 - a manual choice overrides system detection and persists locally; signed-in
   accounts may additionally persist it server-side;
 - localize navigation, product copy, dates, numbers, currency, validation and
@@ -254,9 +262,18 @@ becoming additional ambiguous catalog badges.
 - group by data family rather than upstream vendor;
 - provide a clearly labelled `Alternative Data` category and filter, then list
   individual products such as `Pizza Index` beneath it;
+- on the dedicated Sources & roadmap route, begin candidate-source reading with
+  the current P1 priority lane; P2, P3, P4 and all candidates remain selectable
+  in place through a compact phase control. That control changes only reading
+  density: it is not a second keyword search and never implies connection,
+  rights, runtime activation, redistribution, or purchase availability;
 - show concise coverage/cadence/lineage facts from catalog;
 - distinguish `available`, `degraded`, `paused`, and `unobserved` without
   marketing euphemisms;
+- on narrow screens, a product's collection-evidence heading and its evidence
+  note must form one linear reading sequence before the evidence facts; never
+  retain a compressed desktop two-column treatment merely to save vertical
+  space;
 - make package/add-on requirements readable but never client-authoritative;
 - preserve forward-only cursor behavior for actual sample data.
 
@@ -295,7 +312,7 @@ receipt window, cadence, and empty-history explanation follow beneath the
 stage. Compact category shelves may place the stage at the bottom of the
 preview because no evidence column is present.
 
-The current public design-contract catalog plans 40 product objects across nine
+The current public design-contract catalog plans 41 product objects across nine
 categories. This is a roadmap projection, not runtime authority:
 
 | Category | Planned product objects |
@@ -310,9 +327,10 @@ categories. This is a roadmap projection, not runtime authority:
 | Global markets | Hong Kong equity daily; US equity daily; SEC filings/XBRL; global macro indicators |
 | Crypto assets | Binance spot 5-minute bars; Binance funding/open interest; Coinbase spot market |
 
-The current prototype projection contains one explicitly bounded observed
-example, six pending-release candidates, and 34 planned products. These labels
-must be replaced by authenticated catalog/receipt/account evidence before any
+The current prototype projection contains 34 planned products and seven
+pending-release candidates; it deliberately shows no public observed count.
+These labels are product-definition content, not runtime evidence, and must be
+replaced by authenticated catalog/receipt/account evidence before any
 production or commercial claim.
 
 The catalog uses progressive disclosure to keep this heavy material readable.
@@ -402,19 +420,19 @@ Disallowed effect evidence:
 
 ### 5.5 Pricing and add-ons
 
-Pricing introduces a few complete packages organized by workload. It does not
+Pricing introduces three complete packages differentiated by request rate. It does not
 recreate a provider permission matrix or per-dataset shopping cart.
 
-Until the commerce contract is implemented, names, price, included grants,
-trial, renewal, tax, invoice, and payment copy are proposal-only. The current
+Owner-confirmed prices are display decisions, not live offers. Until the commerce
+contract is implemented, grants, trial, renewal, tax, invoice, and payment remain
+unverified. The current
 backend tiers remain `basic`, `standard`, and `flagship`; any public naming layer
 must map on the server.
 
 The customer-facing base-plan names are **Basic / 基础版**,
-**Professional / 专业版**, and **Flagship / 旗舰版**. Basic covers the core
-domestic daily, company, event, and reference foundation. Professional adds
-historical minutes, auctions, and broader domestic trading history. Flagship
-adds the proposed real-time candidates and highest request-frequency profile.
+**Professional / 专业版**, and **Flagship / 旗舰版**. All three share the same
+base-data scope and history policy; no tier adds promised minute/realtime data.
+Dataset availability and history remain separately evidenced by each product.
 The customer-facing contract uses rolling per-minute limits of 200/600/1000,
 with no commercial daily quota or concurrency limit. The target server mapping
 remains `basic`, `standard`, and `flagship`, respectively. The backend contract
@@ -424,8 +442,13 @@ authenticated Account readback.
 
 The main Pricing page currently contains only these three base plans. It shows
 one plan as a focused product at a time, with direct tier tabs and previous/next
-controls. Scope, history, target runtime, included data, and the proposal-only
-price state remain visible without comparing three equal-weight SaaS cards.
+controls. Scope, history, request rate and price remain visible without comparing
+three equal-weight SaaS cards. A monthly/annual switch defaults to monthly and
+preserves its choice when switching tiers or language. Monthly prices are
+99/299/499; annual prices are 1,069.20/3,229.20/5,389.20 (12 months × 90%).
+The domestic-first display assumes CNY, subject to settlement confirmation.
+Lead with actual period total and put monthly equivalent and savings beneath it.
+Checkout is visibly unavailable; a separate access-key login link remains usable.
 Alternative data is absent from this page; it is neither preselected nor
 summarized beside the base plan. The page has no needs quiz, workload
 configurator, granularity slider, upstream-provider matrix, per-dataset cart,
@@ -461,6 +484,28 @@ API quickstart remains a prominent module inside Docs, while full product-area
 guidance remains equally discoverable.
 
 ### 5.7 Account and Agent Connections
+
+`/login` is an entry to the existing Account, not a second customer console.
+Use a quiet two-column editorial composition: short orientation and existing
+theme-matched data-material artwork on the left, one focused login panel on the
+right. On mobile, drop the decorative intro and put the login panel first.
+Keep the floating shared navigation, brand, search and Account layout intact.
+Reuse existing surface/ink/muted/blue/aqua tokens, 48px inputs, visible keyboard
+focus and restrained shadows. Primary form text is 13–16px, not microcopy-sized.
+
+The panel distinguishes available access-key login from the confirmed future
+Phone/Email identity methods. The latter show explicit unavailable states,
+never a fake send-code form or unverified success. No automatic direct-bearer
+fallback; a new session is only established through the same-site gateway.
+Loading, invalid/expired key, denied access, throttling, timeout and service
+outage are distinct feedback states. Usage failure is independent of sign-in.
+After successful login, replace the route with `/account`; leaving Login clears
+the raw input. See `API.md` for the session/security contract.
+On initial load or foreground revalidation, the Account entry and private panels
+show a neutral checking state, not a signed-out prompt or stale credentials.
+Connection failures offer retry without claiming the user signed out. Only a
+confirmed absent/invalid session offers sign-in; bookmarks, learning content and
+preferences stay accessible independently of authentication.
 
 The account workspace is grouped by customer task:
 
@@ -522,9 +567,11 @@ prove DNS, HTTPS, deployment, or `api.tradingdatas.com` runtime availability.
 
 ### 6.2 Typography
 
-- UI and Chinese body: `Inter`, `PingFang SC`, `Noto Sans SC`, system sans;
-- editorial display: `Source Serif 4`, `Noto Serif SC`, used only for selected
-  hero/method headings;
+- UI and Chinese body: platform-first `SF Pro Display` / `SF Pro Text`,
+  `PingFang SC`, `Noto Sans SC`, system sans. The public shell must not depend
+  on a remote font request for its baseline hierarchy;
+- editorial display: `Songti SC`, `Noto Serif CJK SC`, `STSong`, `Georgia`,
+  used only for selected Research reading headings;
 - code and identifiers: `IBM Plex Mono`, system monospace;
 - scale: 12 / 14 / 16 / 20 / 24 / 32 / 48 / 64;
 - body baseline: 16px public content, 14px dense catalog, minimum 1.5 line-height;
@@ -533,14 +580,14 @@ prove DNS, HTTPS, deployment, or `api.tradingdatas.com` runtime availability.
 ### 6.3 Colour tokens
 
 ```text
---td-public-bg:        #F7F7F2  warm editorial canvas
---td-public-surface:   #FFFFFF  interactive/document surfaces
---td-public-ink:       #171916  primary text
---td-public-muted:     #626760  supporting text
---td-public-line:      #DADDD6  structural separation
---td-brand-aqua:       #65D5C3  brand emphasis, never health
---td-brand-blue:       #4B61E8  primary action and focus
---td-brand-yellow:     #F3D562  instructional highlight
+--td-public-bg:        #F8F6F2  warm editorial canvas
+--td-public-surface:   #FFFEFA  interactive/document surfaces
+--td-public-ink:       #121513  primary text
+--td-public-muted:     #636966  supporting text
+--td-public-line:      rgba(62,77,73,.16) structural separation
+--td-brand-aqua:       #15B8B4  verified/evidence emphasis, never health
+--td-brand-blue:       #075CFF  primary action and focus
+--td-brand-yellow:     #EEB72E  receipt-verification accent
 --td-state-success:    #1D8A5B  verified healthy state only
 --td-state-warning:    #A86B12  delayed/degraded state only
 --td-state-danger:     #B54545  failure/destructive state only
@@ -554,8 +601,9 @@ method, and emphasis; they do not encode price movement or runtime health.
 - 12-column desktop grid with intentional asymmetry and 4/8px spacing rhythm;
 - editorial whitespace before borders; dividers before cards; shadows last;
 - one dominant visualization or data sample per viewport;
-- radii: 4px compact, 8px controls/surfaces, 14px only for large editorial
-  figures;
+- radii: 8px compact controls, 12px grouped surfaces, 18px large editorial
+  figures; a full pill is reserved for global navigation, compact filters and
+  state controls;
 - charts, field samples, timelines, and code are the imagery; do not invent
   decorative finance illustrations;
 - charts use labels and annotation, not unexplained dashboard decoration;
@@ -619,12 +667,18 @@ method, and emphasis; they do not encode price movement or runtime health.
   and invoice facts.
 - **BasePlanShowcase**: one focused Basic, Professional, or Flagship product at
   a time with direct tier tabs, previous/next controls, included scope, history,
-  request frequency, proposal-only price state, and a shared data-trust foundation.
+  request frequency, confirmed price display with unavailable checkout, and a shared data-trust foundation.
   Client selection is orientation only and never implies access or payment.
 - **AddonTrial**: included families, exact dates, post-trial behavior, current
   entitlement, and explicit action.
 - **CheckoutSummary**: package/add-on, billing period, tax/invoice, amount due,
   renewal, terms, and final confirmation; only after commerce exists.
+- **PurchasePreview**: existing approved base plan/period and indicative period
+  total, manual-renewal notice, account verification state and disabled payment.
+  Lives under Pricing, uses existing tokens, and preserves selection through a
+  strict same-site login return. No order ID, payment or grant is created; this
+  is not CheckoutSummary or evidence of commercial activation. See
+  [flow preparation](payment-flow-preparation-v1.md).
 
 Every interactive component implements default, hover, focus-visible, active,
 disabled, loading, empty, error, and relevant expired/trial-ended states.
