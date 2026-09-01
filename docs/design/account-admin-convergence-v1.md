@@ -57,6 +57,13 @@ The former full `Data pipeline` table is retired from primary navigation. Its da
 
 The existing `tradingdatas.com/account` surface is the only customer workspace, with `tradingdatas.com/login` as its authentication entry rather than a second portal. It reads the current account through the customer-scoped portal endpoints. The page holds no readable bearer credential after exchange; the Worker decrypts it only while proxying the current request. Neither `sessionStorage` nor `localStorage` may retain Account credentials. Credentials must not move into URLs, prompts, analytics, or public content. Customer-created keys are same-tenant, cannot inherit administrator scopes, and are shown once. The eventual email/phone identity gateway must reuse this same-site boundary without relying on a cross-site third-party cookie.
 
+Email-session logout carries the `user_id` currently displayed by the initiating
+page as an expected-identity comparison. The Worker rejects a stale-tab mismatch
+without revoking the newer cookie identity; the header never selects which user
+or session to revoke. Public Account and the embedded administrator wrapper use
+the same response receipt before clearing their local projection. The legacy
+access-key cookie-clear path remains separate because it has no email identity.
+
 The React application under `static/app/` is administrator-only. Customer-scoped tokens are rejected there and directed to the existing public Account page; the old separate customer workspace is retired rather than redesigned.
 
 The administrator console links out to the public Account instead of rendering an embedded customer preview. This keeps customer session state, customer navigation, and administrator authority visibly separate.

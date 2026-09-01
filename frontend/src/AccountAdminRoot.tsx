@@ -51,11 +51,15 @@ export default function AccountAdminRoot() {
     return () => { document.removeEventListener('visibilitychange', visibility); window.removeEventListener('hashchange', syncRoute) }
   }, [])
   async function signOut() {
-    if (leaving) return
+    if (leaving || !session) return
     setLeaving(true); setError('')
     try {
-      const response = await fetch('/api/account/session', { method: 'DELETE', credentials: 'same-origin', signal: AbortSignal.timeout(12000) })
-      if (!response.ok || (await response.json()).signed_out !== true) throw new Error('unconfirmed')
+      const response = await fetch('/api/account/session', {
+        method: 'DELETE', credentials: 'same-origin', signal: AbortSignal.timeout(12000),
+        headers: { 'X-TD-Identity': session.userId },
+      })
+      const receipt = await response.json().catch(() => null)
+      if (!response.ok || receipt?.signed_out !== true || receipt?.user_id !== session.userId) throw new Error('unconfirmed')
       clientRef.current?.dispose(); ++epoch.current; setSession(null); window.location.assign('/account')
     } catch { setError('signout') }
     finally { setLeaving(false) }

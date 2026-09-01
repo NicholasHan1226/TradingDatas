@@ -67,7 +67,10 @@ See [contract and acceptance gates](../docs/design/account-library-v1.md).
 When admin source changes, first run `npm ci && npm run build` in `../frontend`.
 Its versioned `../static/app` output is copied into the public build's `/app/`
 asset directory; the Worker serves that shell at the gated `/admin/` route.
-Standalone Pages `/app/` remains its existing bearer-only admin fallback.
+The public Worker rejects direct `/app`, `/app/`, and `/app/index.html` shell
+requests while retaining `/app/assets/**` for the gated `/admin/` page. The
+bearer-only `/app/` fallback exists only on the separate administrator Pages
+origin, never on `tradingdatas.com`.
 
 Purchase preparation: `/pricing` opens the non-paying
 `/pricing/preview?plan=basic&period=monthly`. Six combinations share `src/pricing.js`;
@@ -146,6 +149,12 @@ were not changed. See the [private provisioning checkpoint](../docs/reports/2026
 for the exact version and release gates. Do not deploy that old-code preparation
 version as the email implementation or assume its secrets survive a later upload.
 SMS and payments stay unavailable.
+
+New email challenge/verification readiness also requires
+`IDENTITY_RETENTION_ENABLED="true"`. Existing verified sessions, revocation,
+logout, and scheduled cleanup remain usable when new email login is rolled back;
+the coupled readiness check does not replace migration, cron, backlog, or runtime
+readback gates.
 
 Account deletion stays inside the existing Account → Security panel. It requires
 fresh email verification and explicit `DELETE` confirmation; success means the

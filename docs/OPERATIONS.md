@@ -862,7 +862,9 @@ See [account/library contract](design/account-library-v1.md). This slice adds no
 data-plane service, provider request, collection timer, subscription or payment.
 All three new switches remain false: `ACCOUNT_CONNECTION_ENABLED`,
 `ACCOUNT_LIBRARY_ENABLED`, `ACCOUNT_ADMIN_ENABLED`. Email and retention release
-gates remain independent. Do not deploy the old-code secret-preparation version
+evidence remain separately verified, but new email login is fail-closed unless
+retention is also enabled. Disabling new email login must not disable cleanup,
+existing-session revocation, or logout. Do not deploy the old-code secret-preparation version
 `2b64f7d6-5b47-41c7-b704-b156abcc5a05` as the new application.
 
 After review, apply `public-web/worker/account-library-schema.sql` only to the
@@ -875,7 +877,10 @@ remotely in this work. No account identity or existing key is automatically link
 Build `frontend` before `public-web`; commit generated `static/app` and public
 artifacts together. Public packaging copies that same admin asset tree to `/app/`;
 only `/admin/` uses the email-session gateway, and only when its flag is true.
-The standalone legacy Pages console remains a bearer-only fallback. The backend's
+On the public Worker, direct `/app`, `/app/`, and `/app/index.html` requests are
+404 while `/app/assets/**` remains available to the gated `/admin/` shell. The
+standalone legacy Pages console remains a bearer-only fallback only on the
+separate administrator Pages origin. The backend's
 wildcard-CORS interface never receives identity cookies.
 
 Before activation: exact-head CI, independent review, PM go-ahead, explicit D1 and

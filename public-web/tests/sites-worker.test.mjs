@@ -18,6 +18,40 @@ test("serves existing static assets without a fallback", async () => {
   assert.deepEqual(calls, ["/assets/app.js"]);
 });
 
+test("public site blocks the standalone admin shell but keeps gated admin assets usable", async () => {
+  const assetFetch = async (request) => {
+    const path = new URL(request.url).pathname;
+    if (path === "/app/index.html") {
+      return new Response(null, { status: 307, headers: { location: "/app/" } });
+    }
+    return new Response(path === "/app/" ? "admin-shell" : "admin-asset", { status: 200 });
+  };
+  for (const path of ["/app", "/app/", "/app/index.html"]) {
+    let calls = 0;
+    const response = await worker.fetch(new Request(`https://example.test${path}`), {
+      ACCOUNT_ADMIN_ENABLED: "true",
+      ASSETS: { fetch: async (request) => { calls += 1; return assetFetch(request); } },
+    });
+    assert.equal(response.status, 404);
+    assert.equal(calls, 0);
+  }
+  const denied = await worker.fetch(new Request("https://example.test/admin"), {
+    ACCOUNT_ADMIN_ENABLED: "false", ASSETS: { fetch: assetFetch },
+  });
+  assert.equal(denied.status, 404);
+  const allowed = await worker.fetch(new Request("https://example.test/admin"), {
+    ACCOUNT_ADMIN_ENABLED: "true", ASSETS: { fetch: assetFetch },
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.headers.get("location"), null);
+  assert.equal(await allowed.text(), "admin-shell");
+  const asset = await worker.fetch(new Request("https://example.test/app/assets/admin.js"), {
+    ACCOUNT_ADMIN_ENABLED: "true", ASSETS: { fetch: assetFetch },
+  });
+  assert.equal(asset.status, 200);
+  assert.equal(await asset.text(), "admin-asset");
+});
+
 test("falls back to the root app shell for extensionless GET and HEAD routes without redirecting", async () => {
   for (const request of [
     new Request("https://example.test/account/"),

@@ -33,13 +33,28 @@ test("uses a lightweight responsive account presentation", () => {
 test("all logout entry points share a guarded confirmation and visible retry state", () => {
   const handler = appSource.slice(appSource.indexOf("async function disconnectAccount()"), appSource.indexOf("async function createAccountKey("));
   assert.match(handler, /if \(accountSignOutInFlight\.current\) return/);
-  assert.ok(handler.indexOf("await confirmAccountSignOut()") < handler.indexOf("clearAccountView()"));
-  assert.match(handler, /catch \{\s+setAccountSignOutError\(true\);\s+\} finally/);
-  assert.match(handler, /setAccountConnectionRevision/);
+  assert.ok(handler.indexOf("await confirmAccountSignOut(fetch, 10_000, accountData?.user_id || \"\")") < handler.indexOf("clearAccountView()"));
+  assert.match(handler, /error\.message === "identity_changed"/);
+  assert.match(handler, /requestAccountProjectionRefresh/);
   assert.equal((appSource.match(/onClick=\{disconnectAccount\} disabled=\{accountSignOutPending\}/g) || []).length, 3);
   assert.match(appSource, /role=\{accountSignOutError \? "alert" : "status"\}/);
   assert.match(appSource, /未能确认退出，会话可能仍然有效/);
   assert.match(appSource, /Sign-out could not be confirmed/);
+});
+
+test("a visibility refresh deferred by account work is drained after the last operation", () => {
+  assert.match(appSource, /const accountVisibilityRefreshPending = useRef\(false\)/);
+  const settle = appSource.slice(appSource.indexOf("function settleAccountOperation("), appSource.indexOf("function clearAccountView()"));
+  assert.match(settle, /operation\.current = false/);
+  assert.match(settle, /accountLoginInFlight\.current \|\| accountSignOutInFlight\.current \|\| accountKeyInFlight\.current/);
+  assert.match(settle, /requestAccountProjectionRefresh\(\)/);
+  const visibility = appSource.slice(appSource.indexOf("// Recheck after returning to the page"), appSource.indexOf("  }, []);", appSource.indexOf("// Recheck after returning to the page")));
+  assert.match(visibility, /accountVisibilityRefreshPending\.current = true/);
+  assert.match(visibility, /requestAccountProjectionRefresh\(\)/);
+  assert.equal((appSource.match(/settleAccountOperation\(accountLoginInFlight\)/g) || []).length, 3);
+  assert.equal((appSource.match(/settleAccountOperation\(accountSignOutInFlight\)/g) || []).length, 2);
+  assert.equal((appSource.match(/settleAccountOperation\(accountKeyInFlight\)/g) || []).length, 2);
+  assert.match(appSource, /function handleAccountIdentityChanged\(\)[\s\S]*clearAccountView\(\)[\s\S]*requestAccountProjectionRefresh\(\)/);
 });
 
 test("late reads and key mutations cannot restore a previous account", () => {

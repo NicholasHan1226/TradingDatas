@@ -116,9 +116,13 @@ implementation is not proof of a live scheduler or a deletion SLA.
 
 ## Configuration, release and rollback gates
 
-New logins require all of `EMAIL_LOGIN_ENABLED="true"`, dedicated `IDENTITY_DB`,
-server-secret `IDENTITY_PEPPER` (at least 32 characters, securely generated) and
-least-privilege `RESEND_API_KEY`. Sender is fixed to
+New logins require all of `EMAIL_LOGIN_ENABLED="true"`,
+`IDENTITY_RETENTION_ENABLED="true"`, dedicated `IDENTITY_DB`, server-secret
+`IDENTITY_PEPPER` (at least 32 characters, securely generated) and least-privilege
+`RESEND_API_KEY`. This shared runtime readiness gate prevents new identity data
+from being collected while scheduled retention is intentionally disabled; it
+does not prove the migration, cron, latest maintenance receipt or backlog health.
+Sender is fixed to
 `TradingDatas <login@account.tradingdatas.com>`. The candidate Worker configuration
 declares the dedicated D1 binding and explicit false email/retention flags; it
 contains no secrets. The UI therefore stays unavailable after configuration-only
@@ -132,6 +136,11 @@ staging sender verification to an explicitly approved recipient; check actual
 inbox delivery, expiry/replay, session isolation, both legacy and email login,
 logout and desktop/mobile rendering. Then separately authorize an exact-source
 production deployment and verify runtime routes. Payments/SMS stay off.
+
+The shared attempt budget is a broad service-protection reservation. A request
+rejected by the narrower per-IP admission control refunds that reservation in the
+same fixed window; malformed requests and failed OTP/provider outcomes that pass
+the narrow admission continue to consume the applicable budgets.
 
 Rollback new sign-ups first by setting the email enable flag false. Retain D1
 binding and compatible session read/revoke code until existing sessions expire

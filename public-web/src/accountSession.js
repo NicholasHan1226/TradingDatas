@@ -92,18 +92,25 @@ export async function startAccountSession(accessKey, fetchImpl = fetch) {
 }
 
 // UI state must not claim logout until the same-site cookie clear is confirmed.
-export async function confirmAccountSignOut(fetchImpl = fetch, timeoutMs = 10_000) {
+export async function confirmAccountSignOut(fetchImpl = fetch, timeoutMs = 10_000, expectedIdentity = "") {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers = new Headers();
+    if (expectedIdentity) headers.set("X-TD-Identity", expectedIdentity);
     const response = await fetchImpl("/api/account/session", {
       method: "DELETE",
+      headers,
       credentials: "same-origin",
       signal: controller.signal,
     });
+    if (response.status === 409) {
+      const failure = await response.json().catch(() => null);
+      if (failure?.error === "identity_changed") throw new Error("identity_changed");
+    }
     if (!response.ok) throw new Error("signout_unconfirmed");
     const payload = await response.json();
-    if (payload?.signed_out !== true) throw new Error("signout_unconfirmed");
+    if (payload?.signed_out !== true || (expectedIdentity && payload.user_id !== expectedIdentity)) throw new Error("signout_unconfirmed");
   } finally {
     clearTimeout(timeout);
   }

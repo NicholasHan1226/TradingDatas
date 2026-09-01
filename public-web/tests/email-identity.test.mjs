@@ -29,7 +29,7 @@ test('provisioned account binding does not enable email or use the data-plane st
 function fixture(options = {}) {
   let now = 1_800_000_000;
   const sent = [];
-  const env = { EMAIL_LOGIN_ENABLED: 'true', IDENTITY_DB: identityDb(), IDENTITY_PEPPER: 'test-only-identity-pepper-not-a-real-secret-0123456789', RESEND_API_KEY: 'test-only-not-a-real-key' };
+  const env = { EMAIL_LOGIN_ENABLED: 'true', IDENTITY_RETENTION_ENABLED: 'true', IDENTITY_DB: identityDb(), IDENTITY_PEPPER: 'test-only-identity-pepper-not-a-real-secret-0123456789', RESEND_API_KEY: 'test-only-not-a-real-key' };
   const handle = createEmailIdentityHandler({ now: () => now, fetchImpl: async (url, init) => {
     assert.equal(url, 'https://api.resend.com/emails');
     assert.equal(init.redirect, 'manual');
@@ -52,6 +52,7 @@ test('profile deletion requires fresh verified session, exact confirmation and e
   const f=fixture(); const c=await f.challenge(); const verified=await f.verify(c);
   const cookie=verified.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
   const expected={'x-td-identity':(await verified.json()).identity.user_id};
+  f.env.IDENTITY_RETENTION_ENABLED='false';
   assert.equal((await f.call('profile/deletion', {confirmation:'DELETE'},cookie)).status,503);
   f.env.IDENTITY_RETENTION_ENABLED='true';
   assert.equal(await f.call('profile/deletion',{confirmation:'DELETE'}),null);
@@ -95,6 +96,13 @@ test('email remains disabled without complete configuration, with no outbound ca
   assert.deepEqual(await (await f.call('auth-methods')).json(), {email:false, phone:false});
   assert.equal((await f.call('email/challenge',{email:'reader@example.com'})).status,503);
   assert.equal(f.sent.length,0);
+});
+test('email readiness fails closed when retention maintenance is disabled', async () => {
+  const f=fixture(); f.env.IDENTITY_RETENTION_ENABLED='false';
+  assert.deepEqual(await (await f.call('auth-methods')).json(), {email:false, phone:false});
+  assert.equal((await f.call('email/challenge',{email:'reader@example.com'})).status,503);
+  assert.equal(f.sent.length,0);
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare('SELECT count(*) n FROM identity_challenges').get().n,0);
 });
 test('the actual sender uses the shared localized HTML and text template with the challenge expiry', async () => {
   for (const locale of ['zh', 'en']) {
@@ -188,9 +196,10 @@ test('same-site origin, content type and payload size are enforced before sendin
 });
 test('logout revokes stored session, replay and expiry do not fall back to legacy keys',async()=>{
   const f=fixture(); const response=await f.verify(await f.challenge());
+  const identity=(await response.json()).identity;
   const cookie=response.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
-  const logout=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie}}),f.env);
-  assert.equal(logout.status,200); assert.equal((await f.call('me',undefined,cookie)).status,401);
+  const logout=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie,'x-td-identity':identity.user_id}}),f.env);
+  assert.equal(logout.status,200); assert.equal((await logout.json()).user_id,identity.user_id); assert.equal((await f.call('me',undefined,cookie)).status,401);
   f.advance(61); const next=await f.verify(await f.challenge());
   const nextCookie=next.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
   f.advance(8*3600+1); assert.equal((await f.call('me',undefined,nextCookie)).status,401);
@@ -200,7 +209,7 @@ test('database outage cannot be reported as signed out, and error details stay p
   const cookie=response.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
   f.env.IDENTITY_DB={prepare(){throw new Error('private database details');}};
   const me=await f.call('me',undefined,cookie); assert.equal(me.status,503); assert.ok(!(await me.text()).includes('private'));
-  const logout=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie}}),f.env);
+  const logout=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie,'x-td-identity':'identity-unavailable'}}),f.env);
   assert.equal(logout.status,503); assert.equal((await logout.json()).signed_out,undefined);
 });
 
@@ -229,12 +238,13 @@ test('disabled users cannot sign in or retain a session',async()=>{
 });
 test('disabling new email login retains revocation; email sessions never inherit a key session',async()=>{
   const f=fixture();const response=await f.verify(await f.challenge());
+  const identity=(await response.json()).identity;
   const cookie=response.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0]+'; td_account_session=old-key-session';
   assert.equal((await f.call('session',{access_key:'unrelated'},cookie)).status,409);
   f.env.EMAIL_LOGIN_ENABLED='false';
   assert.equal((await f.call('email/challenge',{email:'reader@example.com'})).status,503);
   assert.equal((await f.call('me',undefined,cookie)).status,200);
-  const logout=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie}}),f.env);
+  const logout=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie,'x-td-identity':identity.user_id}}),f.env);
   assert.equal(logout.status,200);assert.equal(logout.headers.getSetCookie().length,2);
   assert.equal((await f.call('me',undefined,cookie)).status,401);
 });
@@ -247,4 +257,31 @@ test('email/IP/global send caps are enforced across challenges and restart-safe 
   assert.equal((await f.challenge('other@example.com')).response.status,429);
   assert.equal(f.sent.length,5);
   assert.equal((await f.call('email/challenge',{email:'x@example.com'},'',{'cf-connecting-ip':''})).status,503);
+});
+test('narrow IP rejections refund their shared OTP reservation',async()=>{
+  const verify=fixture();
+  const invalid={email:'attacker@example.com',challenge_id:'00000000-0000-0000-0000-000000000000',code:'00000000'};
+  for(let i=0;i<1000;i++) await verify.call('email/verify',invalid,'',{'cf-connecting-ip':'192.0.2.9'});
+  assert.equal(verify.env.IDENTITY_DB.sqlite.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").get().hits,40);
+  assert.equal((await verify.call('email/challenge',{email:'reader@example.com',locale:'en'},'',{'cf-connecting-ip':'198.51.100.7'})).status,202);
+  assert.equal(verify.sent.length,1);
+
+  const challenge=fixture();
+  for(let i=0;i<10;i++) assert.equal((await challenge.call('email/challenge',{email:`reader-${i}@example.com`,locale:'en'})).status,202);
+  assert.equal((await challenge.call('email/challenge',{email:'blocked@example.com',locale:'en'})).status,429);
+  assert.equal(challenge.env.IDENTITY_DB.sqlite.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").get().hits,10);
+  assert.equal((await challenge.call('email/challenge',{email:'other-ip@example.com',locale:'en'},'',{'cf-connecting-ip':'198.51.100.8'})).status,202);
+});
+test('stale logout intent cannot revoke the newer cookie identity',async()=>{
+  const f=fixture();
+  const a=await f.verify(await f.challenge('a@example.com')); const aIdentity=(await a.json()).identity;
+  const aCookie=a.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
+  const b=await f.verify(await f.challenge('b@example.com')); const bIdentity=(await b.json()).identity;
+  const bCookie=b.headers.getSetCookie().find(v=>v.startsWith('td_identity_session=')).split(';')[0];
+  const stale=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie:bCookie,'x-td-identity':aIdentity.user_id}}),f.env);
+  assert.equal(stale.status,409); assert.deepEqual(await stale.json(),{error:'identity_changed'});
+  assert.equal((await f.call('me',undefined,bCookie)).status,200);
+  const current=await f.handle(new Request('https://tradingdatas.test/api/account/session',{method:'DELETE',headers:{origin:'https://tradingdatas.test',cookie:bCookie,'x-td-identity':bIdentity.user_id}}),f.env);
+  assert.equal(current.status,200); assert.equal((await f.call('me',undefined,bCookie)).status,401);
+  assert.equal((await f.call('me',undefined,aCookie)).status,200);
 });

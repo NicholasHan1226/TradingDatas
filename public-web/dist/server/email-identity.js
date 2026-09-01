@@ -18,7 +18,8 @@ function readCookie(request, name) {
   return (request.headers.get('cookie') || '').split(';').map(v=>v.trim()).find(v=>v.startsWith(`${name}=`))?.slice(name.length+1) || '';
 }
 export function emailConfigured(env) {
-  return env.EMAIL_LOGIN_ENABLED === 'true' && Boolean(env.IDENTITY_DB && typeof env.IDENTITY_PEPPER === 'string' && env.IDENTITY_PEPPER.length >= 32 && env.RESEND_API_KEY);
+  return env.EMAIL_LOGIN_ENABLED === 'true' && env.IDENTITY_RETENTION_ENABLED === 'true'
+    && Boolean(env.IDENTITY_DB && typeof env.IDENTITY_PEPPER === 'string' && env.IDENTITY_PEPPER.length >= 32 && env.RESEND_API_KEY);
 }
 function canonicalEmail(value) {
   if (typeof value !== 'string' || value.length > 254) return null;
@@ -58,6 +59,11 @@ async function takeRate(db,key,now,limit,window=3600) {
     ON CONFLICT(bucket_key) DO UPDATE SET hits=hits+1 WHERE hits<? RETURNING hits`)
     .bind(`${key}:${start}`,start+window,limit).first());
 }
+async function refundRate(db,key,now,window=3600) {
+  const start=Math.floor(now/window)*window;
+  await db.prepare('UPDATE identity_rate_buckets SET hits=hits-1 WHERE bucket_key=? AND expires_at=? AND hits>0')
+    .bind(`${key}:${start}`,start+window).run();
+}
 async function pruneExpired(db, now) {
   // Bounded opportunistic cleanup complements the separately gated hourly job.
   await db.batch([
@@ -95,8 +101,11 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
       const db=env.IDENTITY_DB;
       if(token && path==='/api/account/session' && request.method==='DELETE') {
         if(!db) return json({error:'identity_unavailable'},503);
+        const session=await readSession(db,token,now());
+        if(!session) return json({error:'unauthenticated'},401,[cookie('',0),clearLegacy]);
+        if(request.headers.get('x-td-identity')!==session.id) return json({error:'identity_changed'},409);
         await db.prepare('UPDATE identity_sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL').bind(now(),await digest(token)).run();
-        return json({signed_out:true},200,[cookie('',0),clearLegacy]);
+        return json({signed_out:true,user_id:session.id},200,[cookie('',0),clearLegacy]);
       }
       if(emailRoute) {
         if(!['/api/account/email/challenge','/api/account/email/verify'].includes(path)) return json({error:'not_found'},404);
@@ -115,7 +124,11 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
         // Bound attacker-controlled bucket cardinality before per-IP/email rows.
         if(!await takeRate(db,'identity-attempt-global',time,1000,600)) return json({error:'rate_limited'},429);
         if(path.endsWith('/challenge')) {
-          if(!await takeRate(db,`send-ip:${ipHash}`,time,10) || !await takeRate(db,`send-email:${emailHash}`,time,5) || !await takeRate(db,'send-global',time,100)) return json({error:'rate_limited'},429);
+          if(!await takeRate(db,`send-ip:${ipHash}`,time,10)) {
+            await refundRate(db,'identity-attempt-global',time,600);
+            return json({error:'rate_limited'},429);
+          }
+          if(!await takeRate(db,`send-email:${emailHash}`,time,5) || !await takeRate(db,'send-global',time,100)) return json({error:'rate_limited'},429);
           const cooldown=await db.prepare(`INSERT INTO identity_send_cooldowns(email_hash,next_send_at) VALUES (?,?)
             ON CONFLICT(email_hash) DO UPDATE SET next_send_at=excluded.next_send_at WHERE next_send_at<=? RETURNING email_hash`).bind(emailHash,time+60,time).first();
           if(!cooldown) return json({error:'rate_limited'},429);
@@ -140,7 +153,10 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
           // Provider acceptance is not mailbox delivery; no known-user lookup here.
           return json({challenge_id:id,delivery:'accepted',expires_in:CHALLENGE_TTL,retry_after:60},202);
         }
-        if(!await takeRate(db,`verify-ip:${ipHash}`,time,40,600)) return json({error:'rate_limited'},429);
+        if(!await takeRate(db,`verify-ip:${ipHash}`,time,40,600)) {
+          await refundRate(db,'identity-attempt-global',time,600);
+          return json({error:'rate_limited'},429);
+        }
         if(typeof payload.challenge_id!=='string' || !/^[a-f0-9-]{36}$/.test(payload.challenge_id) || typeof payload.code!=='string' || !/^\d{8}$/.test(payload.code)) return json({error:'invalid_code'},400);
         const row=await db.prepare(`UPDATE identity_challenges SET attempts=attempts+1 WHERE id=? AND email_hash=? AND expires_at>? AND accepted=1
           AND consumed_at IS NULL AND attempts<5 RETURNING email,code_hash`).bind(payload.challenge_id,emailHash,time).first();

@@ -210,8 +210,17 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
       if (env.ACCOUNT_ADMIN_ENABLED !== "true" || !["GET", "HEAD"].includes(request.method)) return jsonResponse({ error: "not_found" }, 404);
-      const shell = new URL("/app/index.html", url.origin);
+      // Static Assets canonicalizes directory indexes to the trailing-slash
+      // path. Fetch that canonical path internally so /admin never returns the
+      // platform's /app/index.html -> /app/ redirect to the browser.
+      const shell = new URL("/app/", url.origin);
       return env.ASSETS.fetch(new Request(shell, request));
+    }
+    // The public site reuses the versioned admin assets for /admin, but the
+    // standalone bearer shell belongs only on the separate admin origin.
+    // Keep hashed /app/assets/* readable so the gated /admin shell can load.
+    if (["/app", "/app/", "/app/index.html"].includes(url.pathname)) {
+      return jsonResponse({ error: "not_found" }, 404);
     }
     if (url.pathname === "/api/account" || url.pathname.startsWith("/api/account/")) {
       try { return await handleAccountApi(request, env); }

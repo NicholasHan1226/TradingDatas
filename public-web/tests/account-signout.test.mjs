@@ -5,14 +5,23 @@ import { confirmAccountSignOut } from "../src/accountSession.js";
 test("confirms same-site logout only from an explicit successful response", async () => {
   const calls = [];
   await confirmAccountSignOut(async (url, init) => {
-    calls.push({ url, method: init.method, credentials: init.credentials, signal: init.signal });
-    return Response.json({ signed_out: true });
-  });
+    calls.push({ url, method: init.method, identity: init.headers.get("X-TD-Identity"), credentials: init.credentials, signal: init.signal });
+    return Response.json({ signed_out: true, user_id: "user-a" });
+  }, 10_000, "user-a");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "/api/account/session");
   assert.equal(calls[0].method, "DELETE");
+  assert.equal(calls[0].identity, "user-a");
   assert.equal(calls[0].credentials, "same-origin");
   assert.ok(calls[0].signal instanceof AbortSignal);
+});
+
+test("identity-bound logout rejects a stale tab without treating it as success", async () => {
+  await assert.rejects(confirmAccountSignOut(async (_url, init) => {
+    assert.equal(init.headers.get("X-TD-Identity"), "user-a");
+    return Response.json({ error: "identity_changed" }, { status: 409 });
+  }, 10_000, "user-a"), { message: "identity_changed" });
+  await assert.rejects(confirmAccountSignOut(async () => Response.json({ signed_out: true, user_id: "user-b" }), 10_000, "user-a"));
 });
 
 test("network errors, non-success codes and malformed confirmations cannot report logout", async () => {

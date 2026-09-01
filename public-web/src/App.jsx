@@ -821,6 +821,7 @@ export function App() {
   const accountSignOutInFlight = useRef(false);
   const accountLoginInFlight = useRef(false);
   const accountKeyInFlight = useRef(false);
+  const accountVisibilityRefreshPending = useRef(false);
   const accountEpoch = useRef(0);
   const accountReadAbort = useRef(null);
   const accountViewState = getAccountViewState({ loading: accountLoading, account: accountData, error: accountError });
@@ -831,6 +832,18 @@ export function App() {
   const accountPrivateSection = ["overview", "subscription", "usage", "keys", "security", "billing"].includes(accountSection);
   const accountEntryLabel = accountChecking ? (locale === "zh" ? "正在验证账户…" : "Checking account…") : accountViewState === "unavailable" ? (locale === "zh" ? "重试账户连接" : "Retry account connection") : accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in");
   const copy = messages[locale];
+
+  function requestAccountProjectionRefresh() {
+    accountVisibilityRefreshPending.current = false;
+    setAccountConnectionRevision((value) => value + 1);
+  }
+
+  function settleAccountOperation(operation) {
+    operation.current = false;
+    if (!accountVisibilityRefreshPending.current || document.visibilityState !== "visible"
+      || accountLoginInFlight.current || accountSignOutInFlight.current || accountKeyInFlight.current) return;
+    requestAccountProjectionRefresh();
+  }
 
   function clearAccountView() {
     bookmarkLibrary.setContext(null,"checking");
@@ -848,6 +861,12 @@ export function App() {
     setAccountLoading(false);
   }
 
+  function handleAccountIdentityChanged() {
+    clearAccountView();
+    setAccountError("identity_changed");
+    requestAccountProjectionRefresh();
+  }
+
   async function deleteEmailProfile() {
     if (accountSignOutInFlight.current || accountLoginInFlight.current) throw new Error("account_unavailable");
     accountSignOutInFlight.current = true;
@@ -858,7 +877,10 @@ export function App() {
       clearAccountView();
       setAccountError("");
       setAccountDeletionReceipt(receipt);
-    } finally { accountSignOutInFlight.current = false; }
+    } catch (error) {
+      if (error.message === "identity_changed") handleAccountIdentityChanged();
+      throw error;
+    } finally { settleAccountOperation(accountSignOutInFlight); }
   }
 
   useEffect(() => { if (accountData) setAccountDeletionReceipt(null); }, [accountData]);
@@ -888,6 +910,7 @@ export function App() {
       } catch (error) {
         if (!current()) return;
         if (error.message === "signed_out") { clearAccountView(); return; }
+        if (error.message === "identity_changed") { handleAccountIdentityChanged(); return; }
         setAccountUsage(null);
         setAccountUsageError(true);
       }
@@ -916,6 +939,7 @@ export function App() {
     }).catch((error) => {
       if (!current()) return;
       if (error.message === "signed_out") clearAccountView();
+      else if (error.message === "identity_changed") handleAccountIdentityChanged();
       else setAccountKeyError(error.message);
     }).finally(() => { if (current()) setAccountKeysLoading(false); });
     return () => controller.abort();
@@ -932,8 +956,12 @@ export function App() {
   useEffect(() => {
     // Recheck after returning to the page, without a background polling loop.
     const refresh = () => {
-      if (document.visibilityState !== "visible" || accountLoginInFlight.current || accountSignOutInFlight.current || accountKeyInFlight.current) return;
-      setAccountConnectionRevision((value) => value + 1);
+      if (document.visibilityState !== "visible") return;
+      if (accountLoginInFlight.current || accountSignOutInFlight.current || accountKeyInFlight.current) {
+        accountVisibilityRefreshPending.current = true;
+        return;
+      }
+      requestAccountProjectionRefresh();
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);
@@ -964,11 +992,11 @@ export function App() {
       clearLegacyAccountToken();
       setAccountData(account);
       setAccountTokenInput("");
-      setAccountConnectionRevision((value) => value + 1);
+      requestAccountProjectionRefresh();
     } catch (error) {
       if (accountEpoch.current === epoch) setAccountError(error.message);
     } finally {
-      accountLoginInFlight.current = false;
+      settleAccountOperation(accountLoginInFlight);
       setAccountLoginPending(false);
       setAccountLoading(false);
     }
@@ -980,16 +1008,17 @@ export function App() {
     setAccountSignOutPending(true);
     setAccountSignOutError(false);
     try {
-      await confirmAccountSignOut();
+      await confirmAccountSignOut(fetch, 10_000, accountData?.user_id || "");
       clearLegacyAccountToken();
       clearAccountView();
       setAccountError("");
       // Abort older Account reads before they can restore a signed-out UI.
-      setAccountConnectionRevision((value) => value + 1);
-    } catch {
-      setAccountSignOutError(true);
+      requestAccountProjectionRefresh();
+    } catch (error) {
+      if (error.message === "identity_changed") handleAccountIdentityChanged();
+      else setAccountSignOutError(true);
     } finally {
-      accountSignOutInFlight.current = false;
+      settleAccountOperation(accountSignOutInFlight);
       setAccountSignOutPending(false);
     }
   }
@@ -1005,9 +1034,9 @@ export function App() {
       if (accountEpoch.current !== epoch) return;
       clearLegacyAccountToken(); setAccountTokenInput(""); setAccountData(account);
       setAccountUsage(null); setAccountKeys([]); setAccountNewKey("");
-      setAccountConnectionRevision(value => value + 1);
+      requestAccountProjectionRefresh();
     } finally {
-      accountLoginInFlight.current = false;
+      settleAccountOperation(accountLoginInFlight);
       setAccountLoginPending(false); setAccountLoading(false);
     }
   }
@@ -1035,9 +1064,10 @@ export function App() {
     } catch (error) {
       if (accountEpoch.current !== epoch) return;
       if (error.message === "signed_out") clearAccountView();
+      else if (error.message === "identity_changed") handleAccountIdentityChanged();
       else setAccountKeyError(error.message);
     } finally {
-      accountKeyInFlight.current = false;
+      settleAccountOperation(accountKeyInFlight);
       if (accountEpoch.current === epoch) setAccountKeyLoading(false);
     }
   }
@@ -1060,9 +1090,10 @@ export function App() {
     } catch (error) {
       if (accountEpoch.current !== epoch) return;
       if (error.message === "signed_out") clearAccountView();
+      else if (error.message === "identity_changed") handleAccountIdentityChanged();
       else setAccountKeyError(error.message);
     } finally {
-      accountKeyInFlight.current = false;
+      settleAccountOperation(accountKeyInFlight);
       if (accountEpoch.current === epoch) setAccountKeyLoading(false);
     }
   }
@@ -1163,8 +1194,11 @@ export function App() {
     try {
       const result=await accountJson("connection",{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body),expectedIdentity:accountData?.user_id});
       if (epoch!==accountEpoch.current || result.user_id!==accountData?.user_id || (method==="POST"?result.connected!==true:result.disconnected!==true)) throw new Error("identity_changed");
-      setAccountConnectionRevision(value=>value+1);
-    } finally {accountLoginInFlight.current=false;}
+      requestAccountProjectionRefresh();
+    } catch (error) {
+      if (error.message === "identity_changed") handleAccountIdentityChanged();
+      throw error;
+    } finally {settleAccountOperation(accountLoginInFlight);}
   }
   const topicLabels = Object.fromEntries(copy.researchTopics);
   const kindLabels = Object.fromEntries(copy.researchKinds);
