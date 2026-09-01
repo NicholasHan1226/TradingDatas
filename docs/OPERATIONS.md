@@ -595,6 +595,8 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
    Worker vars 或运行报告。禁止
    恢复“先 `secret put`、后 deploy”的两版本顺序，因为未部署 latest version 会使 secret
    edit 失败并阻断发布；
+   发布后的公开路由必须轮询到该 exact-main 构建的精确资产；Cloudflare 自定义域名在
+   Worker 版本切换后可能短暂返回上一版本，单次读回不作为失败或成功结论；
 3. 确认 `public-web/wrangler.jsonc` 中的非密钥 Worker binding 为
    `ACCOUNT_API_BASE=https://td-admin-api.tradingagent.cc`，并确认该 origin 的无凭据 Portal
    readback 仍为 `401`；
