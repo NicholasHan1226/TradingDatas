@@ -390,6 +390,14 @@ class ValidatedRowReceiptProof:
 
 
 @dataclass(frozen=True)
+class ValidatedRowReceiptProofSelection:
+    """Validated page proofs plus safely excludable failed-cohort prefixes."""
+
+    proofs: Mapping[str, ValidatedRowReceiptProof]
+    failed_cohort_success_receipt_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ReceiptJournalEntry:
     """Secret-free provenance for one persisted receipt row.
 
@@ -3065,14 +3073,14 @@ def validated_success_receipt_ids(
     )
 
 
-def validated_row_receipt_proofs(
+def classify_row_receipt_proofs(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
     dataset: DatasetDefinition,
     receipt_ids: object,
     *,
     now: datetime,
-) -> Mapping[str, ValidatedRowReceiptProof]:
+) -> ValidatedRowReceiptProofSelection:
     """Join bounded provider row receipt IDs to validated immutable facts.
 
     The helper never reads provider payloads and never selects a latest receipt
@@ -3134,8 +3142,18 @@ def validated_row_receipt_proofs(
         for entry in entries
     }
     result: dict[str, ValidatedRowReceiptProof] = {}
+    failed_cohort_success_receipt_ids: list[str] = []
     for receipt_id in requested:
         entry = by_id.get(receipt_id)
+        if (
+            entry is not None
+            and entry.dataset_id == dataset.dataset_id
+            and entry.status == "success"
+            and entry.cohort_status == "failed"
+            and type(entry.finished_at) is datetime
+        ):
+            failed_cohort_success_receipt_ids.append(receipt_id)
+            continue
         if (
             entry is None
             or entry.dataset_id != dataset.dataset_id
@@ -3158,7 +3176,34 @@ def validated_row_receipt_proofs(
             finished_at=entry.finished_at,
             receipt_proof_sha256=entry.receipt_proof_sha256,
         )
-    return MappingProxyType(dict(sorted(result.items())))
+    return ValidatedRowReceiptProofSelection(
+        proofs=MappingProxyType(dict(sorted(result.items()))),
+        failed_cohort_success_receipt_ids=tuple(
+            sorted(failed_cohort_success_receipt_ids)
+        ),
+    )
+
+
+def validated_row_receipt_proofs(
+    conn: sqlite3.Connection,
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    receipt_ids: object,
+    *,
+    now: datetime,
+) -> Mapping[str, ValidatedRowReceiptProof]:
+    """Return proofs only when every requested row belongs to a success cohort."""
+
+    selection = classify_row_receipt_proofs(
+        conn,
+        registry,
+        dataset,
+        receipt_ids,
+        now=now,
+    )
+    if selection.failed_cohort_success_receipt_ids:
+        raise RuntimeProjectionError("row receipt proof is unavailable")
+    return selection.proofs
 
 
 def project_dataset_runtime_evidence(

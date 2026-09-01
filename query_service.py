@@ -50,11 +50,11 @@ from storage.receipt_projection import (
     DatasetRuntimeEvidence,
     RuntimeProjectionError,
     ValidatedRowReceiptProof,
+    ValidatedRowReceiptProofSelection,
+    classify_row_receipt_proofs,
     open_verified_read_model_snapshot,
     project_dataset_runtime_evidence,
     validated_receipt_history_for_dataset,
-    validated_receipt_histories_by_dataset,
-    validated_row_receipt_proofs,
 )
 
 
@@ -91,6 +91,7 @@ _PROVIDER_LOCAL_SNAPSHOT_TIMESTAMP_RE = re.compile(
 )
 _RESPONSE_COMPLETENESS_UNVERIFIED = "response_completeness_unverified"
 _FRESHNESS_WATERMARK_UNVERIFIED = "freshness_watermark_unverified"
+_MAX_FAILED_COHORT_FILTER_PASSES = 8
 
 
 @dataclass(frozen=True)
@@ -824,29 +825,36 @@ def _row_receipt_proof_semantic_key(
     )
 
 
-def _validated_page_receipt_proofs(
+def _classified_page_receipt_proofs(
     conn: sqlite3.Connection,
     registry: DatasetRegistry,
     dataset: DatasetDefinition,
     rows: tuple[tuple[object, ...], ...],
     *,
     now: datetime,
-) -> Mapping[str, ValidatedRowReceiptProof]:
+) -> ValidatedRowReceiptProofSelection:
     """Validate every returned row's own authority, including default queries."""
 
     if not rows:
-        return {}
+        return ValidatedRowReceiptProofSelection(
+            proofs={},
+            failed_cohort_success_receipt_ids=(),
+        )
     receipt_ids = tuple(dict.fromkeys(row[5] for row in rows))
     if any(type(receipt_id) is not str or not receipt_id for receipt_id in receipt_ids):
         raise QueryServiceUnavailable("query service is unavailable")
-    proofs = validated_row_receipt_proofs(
+    selection = classify_row_receipt_proofs(
         conn,
         registry,
         dataset,
         receipt_ids,
         now=now,
     )
+    proofs = selection.proofs
+    excluded = frozenset(selection.failed_cohort_success_receipt_ids)
     for row in rows:
+        if row[5] in excluded:
+            continue
         proof = proofs.get(row[5])
         if (
             proof is None
@@ -856,7 +864,7 @@ def _validated_page_receipt_proofs(
             or proof.status != "success"
         ):
             raise QueryServiceUnavailable("query service is unavailable")
-    return proofs
+    return selection
 
 
 def _row_receipt_proof_metadata(
@@ -2514,6 +2522,7 @@ class QueryService:
                     # selection to the independently validated historical slot.
                     allow_rows = True
                 rows: list[tuple[object, ...]] = []
+                row_proofs: Mapping[str, ValidatedRowReceiptProof] = {}
                 if allow_rows and not (
                     validated_options.latest_partition and resolved_partition is None
                 ):
@@ -2550,14 +2559,50 @@ class QueryService:
                         + ", ".join(order_sql)
                         + " LIMIT ?"
                     )
-                    row_cursor = conn.execute(
-                        row_sql,
-                        [*params, validated_request.limit + 1],
-                    )
-                    rows = [
-                        tuple(row)
-                        for row in row_cursor.fetchmany(validated_request.limit + 1)
-                    ]
+                    for _ in range(_MAX_FAILED_COHORT_FILTER_PASSES):
+                        row_cursor = conn.execute(
+                            row_sql,
+                            [*params, validated_request.limit + 1],
+                        )
+                        rows = [
+                            tuple(row)
+                            for row in row_cursor.fetchmany(
+                                validated_request.limit + 1
+                            )
+                        ]
+                        selected_rows = rows[: validated_request.limit]
+                        proof_selection = _classified_page_receipt_proofs(
+                            conn,
+                            self._registry,
+                            dataset,
+                            tuple(selected_rows),
+                            now=validated_now,
+                        )
+                        excluded_receipt_ids = (
+                            proof_selection.failed_cohort_success_receipt_ids
+                        )
+                        if not excluded_receipt_ids:
+                            row_proofs = proof_selection.proofs
+                            break
+                        excluded_predicate, excluded_params = (
+                            _provider_native_receipt_predicate(
+                                excluded_receipt_ids
+                            )
+                        )
+                        assert excluded_predicate is not None
+                        predicates.append(f"NOT ({excluded_predicate})")
+                        params.extend(excluded_params)
+                        row_sql = (
+                            f"SELECT {', '.join(select_parts)} "
+                            f"FROM {_provider_native_query_table(dataset, validated_request)}"
+                            f"{_where_clause(predicates)} ORDER BY "
+                            + ", ".join(order_sql)
+                            + " LIMIT ?"
+                        )
+                    else:
+                        raise QueryServiceUnavailable(
+                            "query service is unavailable"
+                        )
 
                 has_more = len(rows) > validated_request.limit
                 selected_rows = rows[: validated_request.limit]
@@ -2630,13 +2675,6 @@ class QueryService:
                         flat_key.extend((provider, row_key))
                         sort_keys.append(tuple(flat_key))
 
-                row_proofs = _validated_page_receipt_proofs(
-                    conn,
-                    self._registry,
-                    dataset,
-                    tuple(selected_rows),
-                    now=validated_now,
-                )
                 _merge_provider_native_quality(
                     metadata,
                     dataset_degraded=provider_native_dataset_degraded,
