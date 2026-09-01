@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 160 guides: 159 have six bilingual sections with source locators;
+library has 180 guides: 179 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,7 +113,7 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 160 full-text reviews; 40 works
+This does not certify 200 full-length guides or 180 full-text reviews; 20 works
 remain summary-only.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
@@ -171,6 +171,14 @@ Daily high/low and illiquidity guides link to daily data rather than minute bars
 text guides link to document versioning. No available order-book, governance,
 token-adoption or general model-fitting tutorial is implied. Related materials
 remain further exploration, not original samples or a replication bundle.
+The next public-web-only continuation in `researchBatchThree180.js` converts twenty
+existing identities covering market microstructure, corporate fundamentals and
+governance, China/Hong Kong institutions, alternative data, and asset pricing.
+The guide text is bounded to primary source descriptions and registered metadata;
+where public abstracts are unavailable, it describes only the title-defined object,
+required inputs, and non-extrapolation boundary. Selection and acceptance targets
+are recorded in `docs/design/research-180-guides-v17.md`; no runtime, dataset, or
+production claim is added.
 
 System language is the default; Account holds the System/中文/English override.
 Reader titles, summaries, data requirements and authored limitations change
@@ -192,7 +200,7 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 160 expanded guides below the lead story.
+counts. Featured also exposes the 180 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides do not invent a fourth stage or change original sequence membership.
 `researchConnections.js` supplies 85 explicit, symmetric editorial comparison

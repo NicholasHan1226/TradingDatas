@@ -6,9 +6,9 @@ import { researchReaderNotes } from "../src/researchReaderNotes.js";
 import { researchSummaryMaterials } from "../src/researchSummaryMaterials.js";
 import { auditContent } from "../scripts/audit-research-content.mjs";
 
-test("20 primary-source orientations expand the reader library from 140 to 160 guides", () => {
+test("the prior 20 primary-source orientations remain intact within 180 guides", () => {
   assert.equal(Object.keys(researchBatchTwo160).length, 20);
-  assert.equal(Object.keys(researchReaderNotes).length, 160);
+  assert.equal(Object.keys(researchReaderNotes).length, 180);
   for (const [title, guide] of Object.entries(researchBatchTwo160)) {
     assert.equal(researchReaderNotes[title], guide);
     assert.equal(papers.filter(paper => paper.title === title).length, 1, title);
@@ -24,6 +24,6 @@ test("20 primary-source orientations expand the reader library from 140 to 160 g
   }
   const report = auditContent({ today: "2026-09-01" });
   assert.deepEqual(report.errors, []);
-  assert.equal(report.review.filter(item => item.code === "summary_only").length, 40);
+  assert.equal(report.review.filter(item => item.code === "summary_only").length, 20);
   assert.deepEqual(report.review.filter(item => Object.hasOwn(researchBatchTwo160, item.id)), []);
 });
