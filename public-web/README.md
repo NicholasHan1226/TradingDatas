@@ -70,7 +70,7 @@ alternative-data records. They retain the earlier three preparation links and
 seventeen intentional empty selections (75 linked records / 125 empty overall).
 `src/researchComparisonExpansion.js` adds 36 explicit comparisons after the earlier
 29, preserving their priority. Every guide has a comparison even after core-path
-neighbors are excluded. The v14 packet separates executable checks, blocked real
+neighbors are excluded. The v15 packet separates executable checks, blocked real
 browser acceptance, independent Datas PM approval and production release.
 
 Production discovery retains both languages, stable IDs and `guideSectionCount`

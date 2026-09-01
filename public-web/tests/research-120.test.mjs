@@ -47,6 +47,9 @@ test("edition-specific definitions cannot silently become generic current claims
   assert.match(prose("The Macroeconomy and the Yield Curve: A Dynamic Latent Factor Approach"), /short minus long/);
   assert.match(prose("Blockchain Economics"), /full transferability/);
   assert.match(prose("High-Frequency Trading and Price Discovery"), /counterfactual/);
+  assert.match(prose("Limit Order Book as a Market for Liquidity"), /before the next trade/);
+  assert.match(prose("SoK: Decentralized Finance (DeFi)"), /keepers.*oracles/);
+  assert.match(prose("The Stock Market's Reaction to Unemployment News: Why Bad News Is Usually Good for Stocks"), /expansions and contractions/);
   assert.match(additions["Taming Wildcat Stablecoins"].limits.en, /2023.*2021/);
   assert.match(additions["Optimal Execution of Portfolio Transactions"].limits.en, /1999.*2001/);
 });
