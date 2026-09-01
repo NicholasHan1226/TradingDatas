@@ -112,6 +112,26 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
+### 查询页的 failed-cohort 前缀
+
+旧 collector 可能在同一 execution 后续调用失败前，已经提交前缀 success 行。认证
+`POST /v1/query` 不会把这些行当成成功事实：它用该行自身回执和同 execution 的已验证
+failed 终态识别前缀，最多重选 8 次。Git 合入或 HTTP 200 都不能证明生产已切换；是否
+生效仍看目标 release 的认证 query readback。
+
+诊断时先分清三种结果，不要删 SQLite facts/receipts 或改写 `runtime_state`：
+
+- **HTTP 200 且缺了预期行**：该行 `receipt_id` 为 success，但同一 `execution_id` 已有
+  明确 failed 终态。这是查询过滤。同页其它独立 success execution 仍应返回。
+- **HTTP 200 且包含曾经失败过的行**：同一逻辑请求在失败 attempt 之后有成功重试，
+  cohort 为 success。这是合法事实，不是漏过滤。
+- **HTTP 503 `service_unavailable`**：回执缺失/畸形、provider 不匹配、调用序列只有断档
+  而没有明确 failed 终态，或 8 次重选后候选页仍被 distinct failed-cohort 前缀占满。
+  `retryable: true` 不表示重试会补回前缀或修复缺失回执。大量互不相同的失败前缀若排在
+  合法行之前，可以耗尽 8 次预算；这与单次缺失回执是不同根因。
+
+公共合同见 [API 查询行权威](API.md#post-v1query)。
+
 分批续采读取历史时复用 `validated_receipt_history_for_dataset`，仅扫描当前 dataset 的
 完整回执历史；不能在每个分批任务中重复调用全目录 history loader。两者使用同一
 authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用缓存、截断历史、跳过

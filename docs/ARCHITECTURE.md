@@ -175,6 +175,15 @@ release 的固定 schedule policy：配置开窗前或非配置工作日，以�
 
 catalog 和 query 只读 SQLite。缺数据库、缺表、缺 receipt、损坏或 metadata 不一致时 fail closed；不得同步调用 provider 或回退旧文件/旧数据库。
 
+Query 的行权威是两层，且都在同一只读快照内完成，不能互相替代：
+
+1. **Dataset envelope**：runtime 投影给出当前 run / watermark / as-of 允许的 success receipt 集合；
+2. **Page row authority**：每一页返回行必须通过自身 `receipt_id` 的 dataset/provider、`status=success` 与完整采集序列校验。缺失、畸形、provider 不匹配或序列断档（没有明确 failed 终态）返回 `503 service_unavailable`，不得用最新 dataset 回执顶替该行。
+
+已知例外是 **explicit failed-cohort success prefix**：同一 execution 里前缀调用已提交 success 行，后续调用已留下已验证 failed 终态，因此该行 `status=success` 但 `cohort_status=failed`。Query 在排序与分页前把这些 receipt ID 从候选页排除，并最多重选 8 次以填满剩余合法行；它们不是可返回事实，也不删除 SQLite 中的 prefix rows。独立完整 success execution 的行可以同页保留。同一逻辑请求在失败 attempt 之后的成功重试使 cohort 为 success，必须返回，不能因为 execution 里曾经有过 failed receipt 就整组丢弃。
+
+`classify_row_receipt_proofs` 把上述前缀标成可排除集合；严格 helper `validated_row_receipt_proofs` 仍会因这些 ID fail closed。Query 默认路径使用分类结果做有界过滤，`include_receipt_proofs` 只格式化过滤后的证明。8 次重选仍无法形成不含该前缀的有效页时，同样 503。该过滤不改写 facts、receipt 或 dataset `runtime_state`。
+
 API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。
 
 ## 运行面隔离与未来扩展

@@ -46,7 +46,7 @@ Required workflow for every data task:
 3. Call `POST /v1/query` with a bounded request using only catalog-supported fields and filters. Start with the smallest useful field set, date/window, and limit; never exceed the documented limit.
 4. Follow `next_cursor` for pagination. Do not invent offsets or reuse a cursor with changed query parameters.
 5. Before treating data as usable, inspect `metadata.state`, `runtime_state`, `degraded`, `freshness`, `quality`, `lineage`, `receipt_id`, `data_through`, `observed_at`, and `reasons`.
-6. Treat missing receipt/lineage, `partial`, `degraded`, `stale`, `paused`, `failed`, `unobserved`, schema mismatch, authentication failure, and rate-limit responses as explicit limitations. Do not silently substitute another dataset, provider route, cached file, or external source.
+6. Treat missing receipt/lineage, `partial`, `degraded`, `stale`, `paused`, `failed`, `unobserved`, schema mismatch, authentication failure, rate-limit responses, and HTTP 503 `service_unavailable` as explicit limitations. A 503 may be marked `retryable: true`; that does not mean a retry reconstructs missing receipts or rows omitted from an explicitly failed collection sequence. Query may return HTTP 200 while omitting those failed-sequence prefix rows; do not invent the omitted rows, and do not silently substitute another dataset, provider route, cached file, or external source.
 7. Preserve dataset IDs, field names, timestamps, units, provider lineage, and revision/as-of caveats in downstream work.
 8. TradingData supplies raw material. Do not describe its data as a TradingData strategy, signal, forecast, recommendation, or guaranteed research result.
 

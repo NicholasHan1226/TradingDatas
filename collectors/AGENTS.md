@@ -49,7 +49,7 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 1. **新增普通 Tushare dataset**：只改 registry/config；不得新增 Python collector、table、route、专用 fixture 或专用 query 分支。zero-code onboarding 失败即架构 FAIL。
 2. **新增 provider**：只有 transport/auth/pagination 与现有 adapter 真正不同才允许新增 provider-level adapter；必须先冻结 provider-neutral 输出、资源预算、凭证防泄漏和回滚合同。
 3. **无损输出**：provider 返回的全部 key/value 原样保存在 `payload_json`；未知字段和类型漂移只标记 quality/degraded，除硬 admission failure 外不得丢行或改值。
-4. **事务事实**：数据和 success receipt 同 SQLite transaction；empty/failed 写 terminal receipt；provider failure 不能伪装为 empty。
+4. **事务事实**：数据和 success receipt 同 SQLite transaction；empty/failed 写 terminal receipt；provider failure 不能伪装为 empty。同一 execution 后续调用失败时，不得回滚已经提交的前缀 success 行；query 会在存在已验证 failed 终态时排除这些前缀，adapter 不得为此删除 facts 或另开修复路径。同一逻辑请求的成功重试仍是可查询事实。
 5. **数据不分析**：不产生 feature、factor、alpha、候选、预测、资金、持仓、风险、订单或建议；事实型资金/持仓排名仍只是 provider payload。
 6. **API 隔离**：外部消费者只能经 `GET /v1/catalog` 和 `POST /v1/query`；不得直连 provider、collector、SQLite 或 staging 文件。
 7. **首期市场**：只激活中国境内且当前账户确有权限的数据集；根层合同明确批准的 Binance 公共现货与 USDⓈ-M 永续公共只读 canary 例外，必须保持独立 release、SQLite、loopback API 和 timer。预测市场、港股和美股保持 paused/excluded。
