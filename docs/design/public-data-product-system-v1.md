@@ -178,8 +178,9 @@ continue to use `GET /v1/catalog` and `POST /v1/query`.
 - supported locales: `zh-CN` and `en`;
 - first visit follows `navigator.languages`/system locale; Chinese locales map
   to `zh-CN`, all others to `en`;
-- the header exposes an accessible language switch in signed-in and signed-out
-  states;
+- language and appearance controls live inside Account and remain accessible in
+  signed-out states; the global header keeps only the compact discovery and
+  personal-action controls;
 - a manual choice overrides system detection and persists locally; signed-in
   accounts may additionally persist it server-side;
 - localize navigation, product copy, dates, numbers, currency, validation and
@@ -296,7 +297,7 @@ receipt window, cadence, and empty-history explanation follow beneath the
 stage. Compact category shelves may place the stage at the bottom of the
 preview because no evidence column is present.
 
-The current public design-contract catalog plans 40 product objects across nine
+The current public design-contract catalog plans 41 product objects across nine
 categories. This is a roadmap projection, not runtime authority:
 
 | Category | Planned product objects |
@@ -311,9 +312,10 @@ categories. This is a roadmap projection, not runtime authority:
 | Global markets | Hong Kong equity daily; US equity daily; SEC filings/XBRL; global macro indicators |
 | Crypto assets | Binance spot 5-minute bars; Binance funding/open interest; Coinbase spot market |
 
-The current prototype projection contains one explicitly bounded observed
-example, six pending-release candidates, and 34 planned products. These labels
-must be replaced by authenticated catalog/receipt/account evidence before any
+The current prototype projection contains 34 planned products and seven
+pending-release candidates; it deliberately shows no public observed count.
+These labels are product-definition content, not runtime evidence, and must be
+replaced by authenticated catalog/receipt/account evidence before any
 production or commercial claim.
 
 The catalog uses progressive disclosure to keep this heavy material readable.
@@ -551,8 +553,8 @@ prove DNS, HTTPS, deployment, or `api.tradingdatas.com` runtime availability.
 ### 6.2 Typography
 
 - UI and Chinese body: `Inter`, `PingFang SC`, `Noto Sans SC`, system sans;
-- editorial display: `Source Serif 4`, `Noto Serif SC`, used only for selected
-  hero/method headings;
+- editorial display: `Songti SC`, `Noto Serif CJK SC`, `STSong`, `Georgia`,
+  used only for selected Research reading headings;
 - code and identifiers: `IBM Plex Mono`, system monospace;
 - scale: 12 / 14 / 16 / 20 / 24 / 32 / 48 / 64;
 - body baseline: 16px public content, 14px dense catalog, minimum 1.5 line-height;
@@ -561,14 +563,14 @@ prove DNS, HTTPS, deployment, or `api.tradingdatas.com` runtime availability.
 ### 6.3 Colour tokens
 
 ```text
---td-public-bg:        #F7F7F2  warm editorial canvas
---td-public-surface:   #FFFFFF  interactive/document surfaces
---td-public-ink:       #171916  primary text
---td-public-muted:     #626760  supporting text
---td-public-line:      #DADDD6  structural separation
---td-brand-aqua:       #65D5C3  brand emphasis, never health
---td-brand-blue:       #4B61E8  primary action and focus
---td-brand-yellow:     #F3D562  instructional highlight
+--td-public-bg:        #F8F6F2  warm editorial canvas
+--td-public-surface:   #FFFEFA  interactive/document surfaces
+--td-public-ink:       #121513  primary text
+--td-public-muted:     #636966  supporting text
+--td-public-line:      rgba(62,77,73,.16) structural separation
+--td-brand-aqua:       #15B8B4  verified/evidence emphasis, never health
+--td-brand-blue:       #075CFF  primary action and focus
+--td-brand-yellow:     #EEB72E  receipt-verification accent
 --td-state-success:    #1D8A5B  verified healthy state only
 --td-state-warning:    #A86B12  delayed/degraded state only
 --td-state-danger:     #B54545  failure/destructive state only
@@ -582,8 +584,9 @@ method, and emphasis; they do not encode price movement or runtime health.
 - 12-column desktop grid with intentional asymmetry and 4/8px spacing rhythm;
 - editorial whitespace before borders; dividers before cards; shadows last;
 - one dominant visualization or data sample per viewport;
-- radii: 4px compact, 8px controls/surfaces, 14px only for large editorial
-  figures;
+- radii: 8px compact controls, 12px grouped surfaces, 18px large editorial
+  figures; a full pill is reserved for global navigation, compact filters and
+  state controls;
 - charts, field samples, timelines, and code are the imagery; do not invent
   decorative finance illustrations;
 - charts use labels and annotation, not unexplained dashboard decoration;
