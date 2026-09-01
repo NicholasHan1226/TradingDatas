@@ -10,16 +10,19 @@
 
 ## 邮箱身份本地候选（2026-08-30）
 
-### 2026-08-31 公开证据与 Agent 接入跟进（未发布）
+### 2026-09-01 公开证据与 Agent 接入（Git 已合入，生产未启用）
 
-- 在 PR #408 候选之上修正静态产品健康误示，保留本页未核验状态与合成样例标识；
-  查询模板从真实 catalog 合同取值，五类 Agent 的中英文说明统一由文档派生。
-- 本轮 143/143 前端测试、构建与本地 workerd/D1 回归通过；独立复核无剩余
-  已确认 P0/P1。真实内部 A 股 catalog → 单条 query → receipt 投影回读通过，
-  仅证明受控内部路径，不等于公共用户、全量历史或连续稳定验收。
-- 公共 API 域名本轮未解析；线上邮箱 auth-methods 返回 404。未发真实邮件，
-  未部署或修改远端配置；支付、短信与账户新功能生产开关保持原状。
-  后续仍需精确候选 CI、PM 接受及分层发布验收，详见
+- PR [#410](https://github.com/NicholasHan1226/TradingDatas/pull/410) 已合入
+  `main`（merge `927c667e`）。这是代码与文档合入，不是邮箱登录、公共 API
+  路由或采集证据投影的生产启用。
+- 静态产品健康误示已从公开页移除；未绑定页保留“本页未核验”，合成样例就地
+  标注。查询模板使用 catalog 占位符。五类 Agent 的中英文说明由
+  `docs/AGENT_INTEGRATIONS.md` 编译；提示词标题是解析键，中英文必须各自含
+  `queryability.queryable === true` 等合同用语。
+- OTP 入场为共享次数与每 IP 预算的同一条 D1 语句；429/503 诊断见
+  [OPERATIONS.md](docs/OPERATIONS.md#email-otp-admission-diagnosis)。
+  `EMAIL_LOGIN_ENABLED` 与 `IDENTITY_RETENTION_ENABLED` 仍为 false。
+- 合入前的候选验收记录仍适用，且不等于当前生产 readback：
   [本轮验收记录](docs/reports/2026-08-31-public-evidence-readiness.md)。
 
 ### 2026-08-31 账户连续性跟进候选（未发布）

@@ -709,6 +709,51 @@ not an OTP/session test or administrator grant. Preserve all existing deployment
 credentials, customer keys and unrelated Resend resources; do not send further
 mail or open email login before the remaining gates pass.
 
+### Email OTP admission diagnosis
+
+Email login remains gated (`EMAIL_LOGIN_ENABLED` and
+`IDENTITY_RETENTION_ENABLED` stay false until a separate activation). Use this
+section for local workerd/D1 checks and, later, enabled-runtime 429/503
+triage. Policy: [Email identity v1](design/email-identity-v1.md).
+Implementation: `public-web/worker/email-identity.js` (`takeCoupledRates`).
+
+`POST /api/account/email/challenge` and `.../verify` admit the shared attempt
+budget and the applicable per-IP budget in **one** D1 statement. If either
+limit is full, neither counter changes. A saturated global limit therefore
+cannot insert a new attacker-controlled IP bucket. Storage abort or an
+inconsistent `RETURNING` set becomes `503 identity_unavailable` and rolls
+both counters back. After a successful admission, later send-email,
+send-global, cooldown, invalid verify payloads, failed OTP compares, and
+provider send failures still consume the admitted budgets.
+
+| Limit | Key prefix | Window |
+| --- | --- | --- |
+| 1000 identity attempts | `identity-attempt-global` | 10 minutes |
+| 10 challenge sends / IP | `send-ip:` (HMAC of `CF-Connecting-IP`) | 1 hour |
+| 40 verify attempts / IP | `verify-ip:` | 10 minutes |
+| 5 sends / email, 100 sends global | `send-email:`, `send-global` | 1 hour |
+| 60s resend cooldown | `identity_send_cooldowns` | per email hash |
+
+Do not treat `429` as a mail-provider outage, and do not treat `503
+delivery_unavailable` as a rate-limit. Empty or missing `CF-Connecting-IP`
+is `503 identity_unavailable`; never fall back to `X-Forwarded-For`.
+`Retry-After` on 429 is 60 seconds. Fixed D1 windows can allow two
+adjacent-window bursts; they are not rolling commercial API limits.
+
+Local checks (loopback, intercepted outbound mail, no production D1):
+
+```bash
+cd public-web
+node --test tests/email-identity.test.mjs
+node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js
+```
+
+The Node tests cover saturated global/per-IP admission, no new IP bucket on
+a full global cap, and storage-failure rollback. The Miniflare script is
+optional workerd/D1 acceptance, not an enablement or send-real-mail command.
+Do not query `identity_rate_buckets` as a user table or apply identity SQL
+to financial SQLite.
+
 ### Account-only retention candidate
 
 The approved active-store retention and rollback contract is

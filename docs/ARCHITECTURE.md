@@ -26,6 +26,13 @@ Recipe 是版本化准备合同，不是当前运行时 pipeline。它可以组�
 
 Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具和限制的透明衍生数据。它不能是 alpha、信号、排名或建议。Feature Plane 目前未实现，详情页与 manifest 只能标记为 target/product definition/planned。完整分层见 `docs/product/PRODUCT_PLANES.md`。
 
+公开站 Account 邮箱 OTP 与会话是独立的 Cloudflare Worker 控制面
+（`public-web/worker/email-identity.js` + 专用 D1），不是 SQLite facts、receipt
+或 `catalog/query` 的一部分。Git 合入、静态页发布或配置绑定都不等于
+`EMAIL_LOGIN_ENABLED`。Agent 接入提示词由 `docs/AGENT_INTEGRATIONS.md` 编译，
+不新增数据路由。身份 429/503 诊断见 `docs/OPERATIONS.md`；公开页不得把
+`productManifest` 写成采集健康。
+
 公共路由和内部部署路径在实现前由 `docs/design/public-data-product-system-v1.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
 
 ## 权威顺序

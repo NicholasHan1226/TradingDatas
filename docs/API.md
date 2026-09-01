@@ -431,8 +431,22 @@ no tenant, data grant, usage or API key access. This does not change catalog/que
 or existing Portal authentication. Configured readiness is not delivery evidence;
 missing configuration keeps email login unavailable. Detailed request/response,
 limits, failure and release contracts: [Email identity v1](design/email-identity-v1.md).
+Operator diagnosis of 429/503: [OPERATIONS.md](OPERATIONS.md#email-otp-admission-diagnosis).
 No production storage migration, secret provisioning or email activation is
 asserted by this API description.
+
+Challenge and verify share one admission gate, then apply narrower send/verify
+caps. Status values below are the Worker JSON `error` field. They are not
+catalog/query codes and do not grant data access.
+
+| HTTP | `error` | When |
+| --- | --- | --- |
+| 202 | (none) | Challenge accepted by the mail provider; not inbox delivery. |
+| 400 | `invalid_request` / `invalid_code` | Malformed email, or verify payload/code failed. Invalid email is rejected **before** admission. Invalid verify payloads after admission still consume that attempt. |
+| 429 | `rate_limited` | Coupled global+per-IP admission denied, or a later send-email / send-global / 60s cooldown cap. `Retry-After: 60`. A full global budget must not create a new per-IP bucket. |
+| 503 | `email_login_unavailable` | Enable flags, D1, pepper, or Resend key incomplete. |
+| 503 | `identity_unavailable` | Missing Cloudflare `CF-Connecting-IP`, D1/storage throw, or inconsistent admission rows. Do not trust `X-Forwarded-For`. |
+| 503 | `delivery_unavailable` | Provider send failed after admission; an unaccepted challenge row is deleted. |
 
 The local candidate also adds `POST /api/account/profile/deletion`: same-origin
 JSON `{confirmation: "DELETE"}`, `X-TD-Identity` matching the current email identity,

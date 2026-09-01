@@ -40,6 +40,23 @@ Configuration is not connection verification or proof of a deployed MCP server.
 The dialog never transmits a data request or reads a credential.
 See [evidence and Agent readiness](../docs/design/public-evidence-readiness-v1.md).
 
+Developer pitfalls for this slice:
+
+- Prompt headings in `docs/AGENT_INTEGRATIONS.md` are parser keys. English
+  concatenates the Agent prefix, canonical prompt and first-query checklist;
+  Chinese uses only the Chinese canonical block. Required terms must appear
+  in both languages or `tests/agent-prompts.test.mjs` fails. Do not embed a
+  second full prompt in `src/AgentDialog.jsx`.
+- `src/productEvidence.js` is the only public evidence view until a reviewed
+  authenticated projection exists. Do not restore percentages, 90-day charts,
+  `observed_example`, or a product slug as `dataset_id`.
+  `tests/public-evidence.test.mjs` fail-closes on those substitutions.
+- OTP admission is one atomic D1 statement (global + per-IP). Local checks:
+  `node --test tests/email-identity.test.mjs`. Optional workerd/D1:
+  `node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js`.
+  Diagnose 429 vs 503 with [OPERATIONS.md](../docs/OPERATIONS.md#email-otp-admission-diagnosis);
+  flags remain false.
+
 The candidate landscape is maintained research, not an exhaustive list of every
 global API. Technical reachability, redistribution rights, runtime activation,
 receipt-backed availability and sellable package eligibility remain separate
