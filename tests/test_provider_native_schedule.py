@@ -2200,8 +2200,14 @@ def test_failed_dataset_does_not_hide_later_terminal_results(tmp_path: Path) -> 
     )
 
     priority_rank = {"current": 0, "backfill": 1, "correction": 2}
+    cadence_rank = {"session_minute": 0, "event": 1}
     planner_order = [
-        (priority_rank[plan.priority], plan.dataset_id, index)
+        (
+            priority_rank[plan.priority],
+            cadence_rank.get(plan.cadence_class, 2),
+            plan.dataset_id,
+            index,
+        )
         for index, plan in enumerate(result.plans)
     ]
     assert planner_order == sorted(planner_order)
@@ -3614,6 +3620,33 @@ def test_session_minute_current_plan_precedes_other_current_plans(
         "cn.dataset.rt_min",
         "cn.dataset.adj_factor",
     ]
+
+
+def test_event_current_plan_precedes_low_frequency_current_plan() -> None:
+    plans = (
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.balancesheet",
+            provider="tushare",
+            provider_api="balancesheet",
+            cadence_class="quarterly_reporting",
+            request_window={},
+        ),
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.cn_schedule",
+            provider="tushare",
+            provider_api="cn_schedule",
+            cadence_class="event",
+            request_window={},
+        ),
+    )
+
+    assert [
+        plan.dataset_id
+        for _, plan in sorted(
+            enumerate(plans),
+            key=lambda item: (*cadence_planner._execution_order(item[1]), item[0]),
+        )
+    ] == ["cn.dataset.cn_schedule", "cn.dataset.balancesheet"]
 
 
 def test_cadence_class_selection_is_generic_and_excludes_other_cadences(
