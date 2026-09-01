@@ -588,13 +588,10 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 
 1. 确认目标 Worker 是 `tradingdatas`、目标 route 是 `tradingdatas.com`，且现有静态资源
    回退可回滚；
-2. 将高熵 `SESSION_ENCRYPTION_KEY` 保存为 GitHub Actions repository secret；发布工作流
-   在 `public-web` 工作目录内用权限受限的临时 JSON 和显式
-   `--config wrangler.jsonc --secrets-file`，将 secret 与同一 exact-main Worker 版本原子
-   发布。临时文件必须由 trap 清理；密钥不能进入 shell history、仓库、Actions 输出、
-   Worker vars 或运行报告。禁止
-   恢复“先 `secret put`、后 deploy”的两版本顺序，因为未部署 latest version 会使 secret
-   edit 失败并阻断发布；
+2. 将高熵 `SESSION_ENCRYPTION_KEY` 保存为 GitHub Actions repository secret；只允许通过
+   下一节的单次 `wrangler deploy --secrets-file` 把它打进同一 exact-main Worker 版本，
+   不得先 `secret put` 再 deploy，也不得用 dashboard / `wrangler-action` `secrets:` 单独写
+   secret；
 3. 确认 `public-web/wrangler.jsonc` 中的非密钥 Worker binding 为
    `ACCOUNT_API_BASE=https://td-admin-api.tradingagent.cc`，并确认该 origin 的无凭据 Portal
    readback 仍为 `401`；
@@ -608,6 +605,57 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 identity_gateway_unavailable`，再重新发布上一已验证公开站 SHA。前端只会回退为当前标签页
 `sessionStorage` 的兼容连接；不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
 SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke 和审计仍是独立后续发布。
+
+### 公开站 Worker 原子发布
+
+`.github/workflows/deploy.yml` 把 Cloudflare 发布拆成两个独立 job，不能互相代替：
+
+| Job | 目标 | 工具 | 是否携带会话密钥 |
+| --- | --- | --- | --- |
+| `deploy-admin` | Pages `tradingdatas-admin`（`static/`） | `cloudflare/wrangler-action@v3` `pages deploy` | 否 |
+| `deploy-public` | Worker `tradingdatas`（`public-web/`） | `npx wrangler@4.127.1 deploy --config wrangler.jsonc --secrets-file` | 是，与代码同一版本 |
+
+公开站必须走 pinned wrangler 的单次 `deploy`，把 committed `ACCOUNT_API_BASE` 与
+GitHub secret `SESSION_ENCRYPTION_KEY` 写入同一 Worker 版本。`wrangler secret put`
+会留下未部署 latest version，随后的 secret edit 失败并阻断发布；`wrangler-action`
+的 `secrets:` YAML 同样把密钥写成独立步骤，合同测试禁止两者。
+
+密钥只允许按 CI 现写方式进入临时文件，不能进入 argv、shell history、仓库、
+`wrangler.jsonc` vars、Actions 输出或运行报告：
+
+```bash
+umask 077
+test -n "$SESSION_ENCRYPTION_KEY"
+secrets_file="$(mktemp)"
+trap 'rm -f "$secrets_file"' EXIT
+jq -n '{SESSION_ENCRYPTION_KEY: env.SESSION_ENCRYPTION_KEY}' > "$secrets_file"
+npx --yes wrangler@4.127.1 deploy --config wrangler.jsonc \
+  --secrets-file "$secrets_file"
+```
+
+`tests/test_ci_contract.py::test_static_deploy_has_a_published_route_readback`
+锁住上述步骤、`umask`/`trap`/`jq` env 注入、`--secrets-file`，并拒绝
+`secret put SESSION_ENCRYPTION_KEY` 与 wrangler-action 的 `secrets:` YAML 块。
+`test_public_worker_commits_only_the_non_secret_account_upstream` 禁止把会话密钥写进
+`public-web/wrangler.jsonc`。
+
+静态路由读回（`/`、`/account/`、`/data/`、`/research/`、`/pricing/` 返回 200、保留
+requested URL、并含该 checkout 的精确 JS asset）只证明公开站静态面已切到该 SHA。
+它不能代替步骤 4–5 的桥接认证与 cookie readback，也不能证明会话密钥已对浏览器生效。
+
+### 公开站发布失败诊断
+
+- CI 卡在 secret 写入或报 latest version 未部署：不要重跑 `secret put`，也不要在
+  Cloudflare dashboard 单独改 `SESSION_ENCRYPTION_KEY`。对同一 exact-main checkout
+  再执行一次带 `--secrets-file` 的 `wrangler deploy`，才能同时提交代码与密钥。
+- 步骤在 `test -n "$SESSION_ENCRYPTION_KEY"` 失败：GitHub Actions repository secret
+  缺失或为空。不得用空 JSON、占位符或本地密钥文件继续发布。
+- 路由读回通过，但 `/api/account/*` 返回 `503 {"error":"identity_gateway_unavailable"}`：
+  静态 Worker 已发布，桥接仍未同时具备密钥与 `ACCOUNT_API_BASE`。按上文回退到
+  `sessionStorage` 兼容路径；不得据此改客户 key、管理 API 或数据面。
+- 本地或手工 `wrangler secret put` / dashboard secret 编辑会重建两版本状态，禁止对
+  生产 `tradingdatas` Worker 使用。
+- 管理台 Pages job 成功不能代替公开站 Worker job；两个 job 必须各自读回。
 
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
 `PAYLOADS.sha256`，再用独立 sidecar 记录该清单的 SHA-256；交接前必须分别执行

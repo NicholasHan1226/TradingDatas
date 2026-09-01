@@ -147,18 +147,33 @@ fail-closed `404`s.
 
 The Worker also contains the same-site Account session bridge under
 `/api/account/*`. `ACCOUNT_API_BASE` is committed as the non-secret production
-binding, while the deployment workflow writes `SESSION_ENCRYPTION_KEY` from the
-GitHub repository secret of the same name using the explicit public Worker
-configuration. If either is missing, the bridge
-returns `503 identity_gateway_unavailable`; in that state the UI uses a
-current-tab-only `sessionStorage` compatibility connection and removes the
-former persistent `localStorage` credential. See `docs/API.md` and
-`docs/OPERATIONS.md`; a code deploy alone is not evidence that the secure session
+binding. `SESSION_ENCRYPTION_KEY` stays in the GitHub Actions repository secret
+of the same name and is published only with that Worker version: the
+`deploy-public` job in `.github/workflows/deploy.yml` writes a `umask 077`
+temporary JSON via `jq` env interpolation, then runs a single
+
+```bash
+npx --yes wrangler@4.127.1 deploy --config wrangler.jsonc \
+  --secrets-file "$secrets_file"
+```
+
+Do not restore `wrangler secret put` followed by a second deploy, and do not use
+`wrangler-action` `secrets:` YAML. `secret put` leaves an undeployed latest
+Worker version, so the next secret edit fails and blocks publish. The secret
+must not appear in process arguments, `wrangler.jsonc` vars, the repo, Actions
+logs, or run reports. If either binding is missing, `/api/account/*` returns
+`503 identity_gateway_unavailable`; the UI then uses a current-tab-only
+`sessionStorage` compatibility connection and removes the former persistent
+`localStorage` credential. See `docs/API.md` and `docs/OPERATIONS.md`. A code
+deploy or static-route readback alone is not evidence that the secure session
 path is active.
 
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
-workflow. The workflow checks out the immutable source SHA, deploys the Worker,
+workflow. Admin Pages (`static/` → `tradingdatas-admin`) is a separate
+`wrangler-action` job and does not carry the session secret. The public job
+checks out the immutable source SHA, deploys Worker plus secret atomically,
 then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to return
 HTTP `200`, retain the requested effective URL, and contain the exact JavaScript
 asset referenced by that checkout. A local build or a successful upload alone is
-not production evidence.
+not production evidence. The CI contract is
+`tests/test_ci_contract.py::test_static_deploy_has_a_published_route_readback`.
