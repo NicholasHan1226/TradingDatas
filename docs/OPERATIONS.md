@@ -164,6 +164,12 @@ dataset 与 interface 投影共用扩展后的收据集合；本规则不补写�
 的已验证快照在检测到 `-wal`/`-shm` sidecar 时只使用 `mode=ro`，不再附加 `immutable=1`
 （SQLite `immutable=1` 会跳过 WAL，可能读到未 checkpoint 的陈旧主文件）。connect timeout
 仍为 180 秒，与 authority lock 等待上限一致，不另设 synchronous 或其它耐久性 pragma。
+隔离 Crypto 面的 OI / premium-index dump 判定已入库日时也走同一
+`open_verified_read_model_snapshot`（共享 authority lock 等待 10 秒，sidecar 瞬时不一致最多重试 5 次），
+不是 `collect.lock`，也不是裸 `mode=ro`。stdout JSON 出现
+`daily-dump fact authority is unavailable` 表示快照或 authority 打不开，不是“库里没有那天”；
+不要用普通 `sqlite3` 只读连接核对 dump 覆盖。先读 journal 的 `error` 字段，等写事务结束后
+重跑同一 unit。合同见 `docs/CRYPTO_BINANCE_USDM_CANARY.md`。
 本仓库变更只把该行为写进代码与测试，**不**通过 SSH、deploy script 或 `current` 切换去改
 广州生产库的 journal mode。
 

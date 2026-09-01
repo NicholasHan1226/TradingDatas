@@ -90,6 +90,33 @@ absorbed the same day. Like the USDM pair, this timer may run only as an
 isolated, budget-bounded observation collector; it neither proves
 `observed`/`stable` nor authorizes any non-data action.
 
+### Dump gap-read snapshot
+
+Lookback and the one-shot backfill decide "already ingested" in
+`_ingested_days` (reused by the premium-index runner). The join of
+`provider_dataset_rows` to `validated_success_receipt_ids` runs inside
+`open_verified_read_model_snapshot` — the same sidecar-bound, epoch-verified
+read transaction as catalog/query — not a bare `mode=ro` URI.
+
+Constraints:
+
+- A plain read-only connection can bind a transient WAL epoch between
+  per-symbol writes and surface `database disk image is malformed` even when
+  the canonical snapshot and integrity checks pass.
+- Snapshot, sidecar, schema, or authority-lock failure is wrapped as
+  `ValueError: daily-dump fact authority is unavailable` and fails the run
+  closed. It is never treated as an empty coverage set.
+- The snapshot reader takes the shared SQLite authority lock with the same
+  10s timeout and up to five sidecar-retry attempts as catalog/query
+  (`storage/receipt_projection.py`). That lock is not
+  `/opt/investment-data/tradingdatas-crypto/collect.lock` (writer
+  serialisation; lookback waits up to 480s).
+- Do not diagnose dump coverage by opening the production SQLite with
+  `sqlite3` or another unverified `mode=ro` connection.
+- Both dump runners print one JSON line with `state=failed` and
+  `error="<ExceptionType>: <message>"` on stdout. Journal the `error` field;
+  a bare failed state is not a provider-outage diagnosis.
+
 Bounded historical backfill is a separate one-shot operation approved by the
 owner to align open interest with the bar history: `--backfill-days 198` (any
 other value is rejected) walks the frozen horizon day by day, oldest first —
@@ -145,14 +172,18 @@ provider, symbol, field, or registry path input and reuses the
 open-interest dump runner's shared implementation verbatim: closed-UTC-day
 window, bounded seven-day lookback with per-symbol newest-missing-day-first
 selection, the HEAD publication probe (`probe_premium_index_published`) with
-`pending_publication` semantics, receipt-validated store-derived coverage,
-honest failure on contract drift or multi-day outage, and the frozen one-shot
+`pending_publication` semantics, receipt-validated store-derived coverage
+through the same verified snapshot as catalog/query (not a bare `mode=ro`
+URI), honest failure on contract drift, snapshot/authority unavailability, or
+multi-day outage, and the frozen one-shot
 `--backfill-days 198` horizon (same 2026-01-30 alignment as open interest)
 with per-day batches that release the shared
 `/opt/investment-data/tradingdatas-crypto/collect.lock` between days; per
 (day, symbol) an unpublished zip is skipped without a receipt and a provider
 error after a positive probe is recorded without aborting the horizon, while
-non-provider failures still stop the run fail closed.  The unit pair
+non-provider failures still stop the run fail closed.  `main()` prints the
+same stdout JSON `error` field as the open-interest runner when the process
+fails.  The unit pair
 `tradingdatas-crypto-binance-premium-dump-collect.{service,timer}` fires every
 two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`), staggered off both
 the five-minute timers and the `00/2:37:00` open-interest dump timer. Like the

@@ -156,7 +156,7 @@ Tushare 官方接口说明给出的积分门槛、单次行数、分钟频次和
 
 所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。对 `current_snapshot`，上游再次返回相同 payload 时，事实的 payload 与数据 revision 不变，但同一事务会把其 provenance 绑定到新的 success receipt；因此当前合同只能依赖本轮重新验证的事实，不能借用旧合同 receipt，也不会因 SQLite 的 payload 去重而丢失 scheduler authority。
 
-可写 ingest/collect 连接在 `BEGIN IMMEDIATE` 之前请求 `PRAGMA journal_mode=WAL`，busy timeout 仍为既有 180 秒。catalog/query 的已验证只读快照在存在 WAL sidecar 时使用 `mode=ro` 而不带 `immutable=1`；无 sidecar 的 rollback-journal 库仍可使用 `immutable=1`。WAL sidecar 不是业务表，不改变两对象规则。生产 journal 切换仍是停写窗口内的后续运维步骤，不是代码合入即切库。
+可写 ingest/collect 连接在 `BEGIN IMMEDIATE` 之前请求 `PRAGMA journal_mode=WAL`，busy timeout 仍为既有 180 秒。catalog/query 的已验证只读快照在存在 WAL sidecar 时使用 `mode=ro` 而不带 `immutable=1`；无 sidecar 的 rollback-journal 库仍可使用 `immutable=1`。WAL sidecar 不是业务表，不改变两对象规则。生产 journal 切换仍是停写窗口内的后续运维步骤，不是代码合入即切库。隔离 Crypto 面的日度 dump 缺口判定（`tools/run_binance_oi_dump_canary.py` 的 `_ingested_days`，premium-index runner 原样复用）必须走同一 `open_verified_read_model_snapshot`，不得另开裸 `mode=ro` 连接；裸只读连接可能绑到写入间隙的瞬时 WAL epoch，误报 `database disk image is malformed`。快照、sidecar、schema 或 authority lock 失败时 fail closed（`daily-dump fact authority is unavailable`），不能把连接错误当成零覆盖。合同与诊断见 `docs/CRYPTO_BINANCE_USDM_CANARY.md`。
 
 empty、failed、permission denied、rate limited、validation failed 和 storage failed 必须分开记录。未知字段保留并标记 schema drift，不能静默删除。
 
