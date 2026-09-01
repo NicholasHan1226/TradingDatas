@@ -23,16 +23,15 @@ rate_budgets:
     provider_requests_per_run: 16
     api_requests_per_run: 4
   event:
-    # The event wave now spans fifteen active datasets (tushare anns_d,
-    # cctv_news, cn_schedule, irm_qa x2, news, research_report,
-    # stk_holdernumber, suspend_d, major_news, disclosure_date, share_float,
-    # forecast, plus firecrawl cn.news.flash and global.news.flash) needing
-    # 27 deterministic provider calls per sweep.  The 2026-08-18..24
+    # The active event wave currently needs 34 deterministic provider calls
+    # per full sweep, including major_news's nine sources and the two
+    # three-source firecrawl datasets.  The 2026-08-18..24
     # trusted-empty incident showed ann_date-partitioned announcements need
     # this wave's re-observation semantics instead of the 00:30 daily sweep.
-    # 36 keeps the sweep inside one run with retry headroom while staying
-    # below the probed per-interface tolerance (60/min); daily call volume
-    # remains trivial (~2k/day).
+    # 36 keeps the deterministic sweep inside one run while staying below the
+    # probed per-interface tolerance (60/min); daily call volume remains
+    # trivial (~2k/day).  Event failures retry on the next five-minute run,
+    # rather than consuming this sweep's remaining breadth budget.
     account_requests_per_run: 36
     provider_requests_per_run: 36
     api_requests_per_run: 4
@@ -232,10 +231,13 @@ cadences:
     max_backfill_chunks_per_run: 2
     rate_budget_class: event
     retry:
-      max_attempts: 3
-      base_delay_seconds: 30
-      max_delay_seconds: 300
-      jitter_seconds: 30
+      # A same-run retry storm can spend the shared account/provider budget
+      # before later fanout partitions run. Preserve breadth: one attempt per
+      # partition now, then use failure_retry_seconds for the bounded retry.
+      max_attempts: 1
+      base_delay_seconds: 0
+      max_delay_seconds: 0
+      jitter_seconds: 0
   on_demand:
     automatic: false
     availability_after_local: null
