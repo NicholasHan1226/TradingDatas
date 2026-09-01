@@ -1,3 +1,4 @@
+import { preparationTutorialExpansion } from "./preparationTutorialExpansion.js";
 const bilingual = (zh, en) => ({ zh, en });
 const step = (zh, en, bodyZh, bodyEn) => ({ title: bilingual(zh, en), body: bilingual(bodyZh, bodyEn) });
 
@@ -53,4 +54,5 @@ export const preparationTutorials = {
     sources: [{ label: bilingual("MacKinlay：事件研究方法", "MacKinlay: event-study methods"), url: "https://www.jstor.org/stable/2729691" }, { label: bilingual("Tushare：证券身份与上市状态", "Tushare: security identity and listing status"), url: "https://tushare.pro/document/2?doc_id=25" }],
     research: ["Event Studies in Economics and Finance", "Giving Content to Investor Sentiment: The Role of Media in the Stock Market"],
   },
+  ...preparationTutorialExpansion,
 };

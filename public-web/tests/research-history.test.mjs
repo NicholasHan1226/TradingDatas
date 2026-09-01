@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createReadingPositions, isInPageNavigation, locationHashId, observeHashLocation, restoreLocationHashTarget } from "../src/researchHistory.js";
+import { createReadingPositions, isInPageNavigation, locationHashId, observeHashLocation, researchSectionTarget, restoreLocationHashTarget } from "../src/researchHistory.js";
 
+test("article entry honors only valid research-section fragments", () => {
+  assert.equal(researchSectionTarget("research/detecting-earnings-management", "#research-section-3"), "research-section-3");
+  for (const route of ["research", "research/paths/example", "recipes/example", "account"]) assert.equal(researchSectionTarget(route, "#research-section-3"), null);
+  for (const hash of ["", "#research-section-0", "#research-section--1", "#research-section-3 extra", "#other"]) assert.equal(researchSectionTarget("research/example", hash), null);
+});
 test("native section links and their back navigation do not reset page scrolling", () => {
   const base = "https://tradingdatas.com/recipes/adjusted-price-series/";
   assert.equal(isInPageNavigation(base, `${base}#tutorial-example`), true);

@@ -2,6 +2,10 @@
 import { researchEditorialExpansion } from "./researchEditorialExpansion.js";
 const section = (zh, en, bodyZh, bodyEn) => ({ title: { zh, en }, body: { zh: bodyZh, en: bodyEn } });
 const guide = (evidenceUrl, evidenceScope, sections, zh, en) => ({ reviewedAt: "2026-08-30", evidenceUrl, evidenceScope, sections, limits: { zh, en } });
+const accrualAbstract = {
+  url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=277231",
+  label: { zh: "来源：2001年7月作者工作论文摘要", en: "Source: July 2001 author working-paper abstract" },
+};
 
 export const researchEditorial = {
   ...researchEditorialExpansion,
@@ -24,10 +28,10 @@ export const researchEditorial = {
   "The Quality of Accruals and Earnings: The Role of Accrual Estimation Errors": guide(
     "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=277231", "Author-deposited July 2001 working-paper abstract; final 2002 identity retained. Guide avoids unverified tables/sample estimates.", [
       section("应计不是现金流的反面", "Why accruals can be useful", "应计可以把不同时间收到或支付的现金，调整到更能表达经营活动的期间。Dechow与Dichev提出的问题是：这种时间匹配依赖估计，而估计错误会怎样影响盈利质量？因此，应计并不是天然有问题，关键在于估计是否与后来实现的现金流相符。", "Accruals can improve the timing match between cash flows and operating activity. Dechow and Dichev ask how errors in the estimates required for that matching affect earnings quality. Accrual accounting is not inherently defective; the quality of its estimates matters."),
-      section("用现金流解释营运资本变化", "Relating working capital to cash flows", "作者提出把营运资本变化与过去、当期及未来的经营现金流联系起来，用不能被解释的部分刻画估计误差。这不是简单比较利润与现金流的大小，而是考察跨期匹配关系。", "The proposed measure relates working-capital changes to past, present and future operating cash flows. Unexplained variation is used to characterize estimation noise. This examines matching across periods, rather than merely comparing the level of earnings with cash flow."),
+      section("在公司内部考察跨期匹配", "Estimate matching within each firm", "作者摘要提出按公司分别回归，将营运资本变化与过去、当期及未来的经营现金流联系起来，用残差刻画估计噪声。它不是只拿某一年的利润减现金流，也不能未经说明就换成同一年度不同公司的横截面回归。这个指标只衡量盈利质量的一个方面。", "The authors' abstract proposes firm-specific regressions relating working-capital changes to past, present and future operating cash flows, with residuals representing estimation noise. This is not a one-year earnings-minus-cash-flow calculation or an interchangeable annual cross-sectional regression. The measure addresses one aspect of earnings quality, not an overall company rating."),
       section("“未来现金流”带来的关键边界", "The future-cash-flow boundary", "作者摘要报告应计质量与盈利持续性正相关。阅读中尤其要注意，衡量质量时用到了未来现金流。本期资料即使已经披露，也不代表这个完整质量指标在当时已经可以算出。", "The authors report a positive relation between accrual quality and earnings persistence. Crucially, the measure uses future cash-flow realizations. Availability of current statements does not mean that the complete quality measure was available at that same date."),
       section("如何放进时点一致研究？", "Using it in point-in-time work", "本站建议分别保存“事后研究标签”和“当时可用输入”。如果把指标放入按时间回看的研究，必须延迟到所有所需报表均已披露，或另行定义只使用历史信息的代理变量；后一种做法不能直接沿用原指标名称而不说明变化。", "Keep ex-post research labels separate from contemporaneously available inputs. A historical information-set analysis must wait until all required reports are available, or define a distinct historical-only proxy. Such a proxy should not silently inherit the original measure's name or interpretation."),
-    ], "此导读依据作者工作论文摘要讨论核心方法；期刊版本的具体设定请以原文为准。残差也可能包含模型遗漏，不能被直接解释为舞弊。", "This guide explains the core method from the authors' working-paper abstract; consult the journal edition for exact specifications. Residuals may also reflect model omissions, not misconduct."),
+    ].map((item, index) => index < 3 ? { ...item, reference: accrualAbstract } : item), "此导读依据作者工作论文摘要讨论核心方法；期刊版本的具体设定请以原文为准。残差也可能包含模型遗漏，不能被直接解释为舞弊。", "This guide explains the core method from the authors' working-paper abstract; consult the journal edition for exact specifications. Residuals may also reflect model omissions, not misconduct."),
 
   "Continuous Auctions and Insider Trading": guide(
     "https://www.econometricsociety.org/publications/econometrica/1985/11/01/continuous-auctions-and-insider-trading", "Publisher abstract; theoretical mechanism only, no unreviewed derivation or empirical claim.", [

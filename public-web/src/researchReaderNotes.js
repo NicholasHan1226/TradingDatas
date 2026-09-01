@@ -1,6 +1,21 @@
 import { researchEditorial } from "./researchEditorial.js";
+import { researchDeepReads } from "./researchDeepReads.js";
+import { researchGuideDepthExpansion } from "./researchGuideDepthExpansion.js";
+import { researchAdditionalGuides } from "./researchAdditionalGuides.js";
+import { researchFundamentalsMicrostructureGuides } from "./researchFundamentalsMicrostructureGuides.js";
+import { researchMethodsMarketsGuides } from "./researchMethodsMarketsGuides.js";
+import { researchCorporateGuides } from "./researchCorporateGuides.js";
+import { researchFiftyGuides } from "./researchFiftyGuides.js";
+import { researchSixtyGuides } from "./researchSixtyGuides.js";
+import { researchSeventyGuides } from "./researchSeventyGuides.js";
+import { researchEightyGuides } from "./researchEightyGuides.js";
+import { researchNinetyGuides } from "./researchNinetyGuides.js";
+import { researchHundredGuides } from "./researchHundredGuides.js";
+import { researchMicrostructure120 } from "./researchMicrostructure120.js";
+import { researchCrypto120 } from "./researchCrypto120.js";
+import { researchMacro120 } from "./researchMacro120.js";
 // Source-backed editorial notes, separate from internal preparation/QA profiles.
-export const researchReaderNotes = researchEditorial;
+export const researchReaderNotes = { ...researchEditorial, ...researchDeepReads, ...researchGuideDepthExpansion, ...researchAdditionalGuides, ...researchFundamentalsMicrostructureGuides, ...researchMethodsMarketsGuides, ...researchCorporateGuides, ...researchFiftyGuides, ...researchSixtyGuides, ...researchSeventyGuides, ...researchEightyGuides, ...researchNinetyGuides, ...researchHundredGuides, ...researchMicrostructure120, ...researchCrypto120, ...researchMacro120 };
 
 export const sourceSpecificReaderLimits = {
   "Modeling and Forecasting Realized Volatility": { en: "Sampling frequency, trading sessions, and microstructure noise affect realized-volatility measurement.", zh: "采样频率、交易时段与微观结构噪声会影响已实现波动率的测量。" },

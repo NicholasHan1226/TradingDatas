@@ -13,7 +13,7 @@ before(async () => {
 });
 after(async () => { await server?.close(); });
 
-test("three tutorials render in both languages with safe examples, anchors, sources and no maturity panels", () => {
+test("six tutorials render in both languages with safe examples, anchors, sources and no maturity panels", () => {
   for (const [id, tutorial] of Object.entries(preparationTutorials)) for (const locale of ["zh", "en"]) {
     const html = renderToStaticMarkup(createElement(TutorialPage, { id, locale, saved: false, onNavigate() {}, onToggleBookmark() {} }));
     assert.ok(html.includes(tutorial.title[locale]));

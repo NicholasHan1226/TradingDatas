@@ -3,6 +3,8 @@ import { ArrowRight, ArrowSquareOut, BookmarkSimple } from "@phosphor-icons/reac
 import { papers, readingPaths, researchTitle, researchYear } from "./researchCatalog.js";
 import { researchSubjects, researchMatches, researchHref, researchPageSize } from "./researchDiscovery.js";
 import { researchJourneys, journeyStages } from "./researchJourneys.js";
+import { researchQuestionRoutes } from "./researchQuestionRoutes.js";
+import { ResearchQuestionRoutes } from "./ResearchQuestionRoutes.jsx";
 import "./researchHub.css";
 
 export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kindLabels, methods, bookmarks, onToggleBookmark, onNavigate }) {
@@ -29,7 +31,7 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
   const page = Math.min(view.page, pageCount - 1);
   const visible = matches.slice(page * researchPageSize, (page + 1) * researchPageSize);
   const featuredHref = `/research/${featuredPaper.id}`;
-  const guides = papers.filter((paper) => paper.readingNotes?.length >= 4);
+  const guides = papers.filter((paper) => paper.guideSectionCount >= 4);
   const journey = researchJourneys[subject.id];
   function change(event, action, scroll = false) {
     if (event?.metaKey || event?.ctrlKey || event?.shiftKey || event?.altKey) return;
@@ -79,6 +81,7 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
             return <li key={step.title}><span>{String(index + 1).padStart(2, "0")} · {journeyStages[index][locale]}</span><div><a href={`/research/${paper.id}`} onClick={(event) => onNavigate(event, `/research/${paper.id}`)}>{researchTitle(paper, locale)}<ArrowRight /></a><p>{step.reason[locale]}</p></div></li>;
           })}</ol></section>}
           <p className="research-result-status" role="status">{zh ? `${matches.length} 条文献` : `${matches.length} materials`}{view.kind !== "all" && <button type="button" onClick={() => onChange({ type: "kind", value: "all" })}>{zh ? "清除类型筛选" : "Clear type filter"}</button>}</p>
+          {view.kind === "all" && page === 0 && <ResearchQuestionRoutes locale={locale} routes={researchQuestionRoutes.filter(route => route.topic === subject.id)} onNavigate={onNavigate} />}
           <div className="research-bibliographic-list">{visible.map((paper) => {
             const href = `/research/${paper.id}`;
             const title = researchTitle(paper, locale);

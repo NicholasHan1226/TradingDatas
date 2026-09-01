@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "preview:email": "node scripts/preview-email-templates.mjs",
     "test:search": "node --test tests/search-index.test.mjs",
-    "test:sites": "node --test tests/*.test.mjs"
+    "test:sites": "node --test tests/*.test.mjs",
+    "audit:research": "node scripts/audit-research-content.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
