@@ -9,7 +9,7 @@ import { auditContent } from "../scripts/audit-research-content.mjs";
 test("six located fundamentals guides coexist with forty guides without altering core journeys", () => {
   assert.equal(Object.keys(batch).length, 6);
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 160);
+  assert.equal(Object.keys(researchReaderNotes).length, 180);
   assert.equal(new Set(Object.values(researchJourneys).flat().map(s => s.title)).size, 24);
   const paragraphs = new Set();
   for (const [title, guide] of Object.entries(batch)) {
@@ -35,7 +35,7 @@ test("six located fundamentals guides coexist with forty guides without altering
   }
   const audit = auditContent({today: "2026-09-01"});
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 40);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 20);
 });
 
 test("edition, measurement direction and timing caveats survive public projection", () => {

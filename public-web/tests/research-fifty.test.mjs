@@ -7,7 +7,7 @@ import { auditContent } from "../scripts/audit-research-content.mjs";
 
 const titles = ["CoVaR", "Liquidity and Leverage", "Text as Data", "Measuring Geopolitical Risk", "Random Forests", "The Chinese Warrants Bubble", "DeFi Risks and the Decentralisation Illusion"];
 
-test("all 160 guides have deliberate material selections, including intentional empty sets", () => {
+test("all 180 guides have deliberate material selections, including intentional empty sets", () => {
   assert.equal(Object.keys(researchGuideMaterials).length, 43);
   for (const title of Object.keys(researchGuideMaterials)) assert.ok(researchReaderNotes[title], title);
   for (const [title, guide] of Object.entries(researchReaderNotes)) {
@@ -24,7 +24,7 @@ test("all 160 guides have deliberate material selections, including intentional 
 
 test("seven existing identities gain bilingual guides without expanding the bibliography", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 160);
+  assert.equal(Object.keys(researchReaderNotes).length, 180);
   for (const title of titles) {
     const guide = researchReaderNotes[title];
     assert.equal(guide.sections.length, 6, title);
@@ -40,7 +40,7 @@ test("seven existing identities gain bilingual guides without expanding the bibl
     }
   }
   assert.deepEqual(auditContent().errors, []);
-  assert.equal(auditContent().review.filter(r => r.code === "summary_only").length, 40);
+  assert.equal(auditContent().review.filter(r => r.code === "summary_only").length, 20);
 });
 
 test("new guides keep measurement distinctions and historical edition limits", () => {
