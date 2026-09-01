@@ -1,4 +1,4 @@
-import{r as p,j as t,e as v,f as x,b as w}from"./index-C_lXy4in.js";import"./react-vendor-CXZBankB.js";import"./research-catalog-dD0X8RNi.js";const P=`# TradingDatas Agent integration contract
+import{r as p,j as t,e as v,f as x,b as w}from"./index-BGWaOtP6.js";import"./react-vendor-CXZBankB.js";import"./research-catalog-dD0X8RNi.js";const P=`# TradingDatas Agent integration contract
 
 Prompt version: \`2026-08-31.1\`. The public dialog reads this Markdown as its
 canonical source; \`public-web/src/agentPrompts.js\` extracts the authored blocks

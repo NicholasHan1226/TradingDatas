@@ -321,6 +321,13 @@ state instead of a sign-in prompt or cached credentials. Identity outages show a
 retry action, not a false signed-out conclusion; public bookmarks, docs and
 preferences remain accessible from the same workspace.
 
+Anonymous public pages do not probe `/api/account/me` during their initial
+render. The browser resolves an existing same-site session only after a visitor
+enters Account or Login (including a direct visit to either route), or following
+an authenticated login handoff. This keeps ordinary reading paths free of
+expected unauthenticated account responses without weakening deliberate Account
+access.
+
 Local synthetic UI verification: `npm run build`, then
 `node scripts/login-qa-server.mjs` and open `http://127.0.0.1:5193/__qa`.
 The harness binds only loopback, is single-reviewer, never calls upstream, and
