@@ -23,6 +23,13 @@ test("keeps unimplemented identity and commerce capabilities explicit", () => {
   assert.doesNotMatch(appSource, /模拟订单号|mock invoice|verification code sent/i);
 });
 
+test("defers anonymous session resolution until an Account intent", () => {
+  assert.match(appSource, /const \[accountSessionRequested, setAccountSessionRequested\] = useState\(\(\) => \["account", "login"\]\.includes\(route\)\)/);
+  assert.match(appSource, /if \(!accountSessionRequested\) \{[\s\S]*clearAccountView\(\)[\s\S]*return undefined/);
+  assert.match(appSource, /if \(\["account", "login"\]\.includes\(route\)\) setAccountSessionRequested\(true\)/);
+  assert.match(appSource, /\}, \[accountConnectionRevision, accountSessionRequested\]\);/);
+});
+
 test("uses a lightweight responsive account presentation", () => {
   assert.match(styleSource, /\.account-plan-hero \{/);
   assert.match(styleSource, /\.account-usage-chart \{/);
@@ -67,7 +74,7 @@ test("late reads and key mutations cannot restore a previous account", () => {
 });
 
 test("identity refresh clears sensitive projections before adopting a shared session", () => {
-  const refresh = appSource.slice(appSource.indexOf("    clearLegacyAccountToken();\n"), appSource.indexOf("  }, [accountConnectionRevision]);"));
+  const refresh = appSource.slice(appSource.indexOf("    clearLegacyAccountToken();\n"), appSource.indexOf("  }, [accountConnectionRevision, accountSessionRequested]);"));
   const clear = appSource.slice(appSource.indexOf("  function clearAccountView()"), appSource.indexOf("  async function deleteEmailProfile()"));
   assert.ok(refresh.indexOf("clearAccountView()") < refresh.indexOf("const epoch = accountEpoch.current"));
   assert.ok(refresh.indexOf("clearAccountView()") < refresh.indexOf("readAccountIdentity("));
