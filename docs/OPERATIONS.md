@@ -107,12 +107,14 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 窗口、receipt、SLA 与账号/provider/API 预算不变。该值必须为非 bool 整数，且
 `0 <= lead < minimum_interval_seconds`；其它 cadence 不允许非零值。提前量用于为 timer
 触发与排队留余量，不代表 provider 更新更频繁。启用前须核验实际新增调用量、当前账号
-每日额度与完整一轮运行时间；仅维持 per-run 上限不证明每日成本不增加。默认 0 保留旧行为。
+每日额度与完整一轮运行时间；仅维持 per-run 上限不证明每日成本不增加。正常 success/empty
+从 receipt 的请求开始时间计算重观测间隔，使冻结的请求窗口与 freshness 时钟一致；failed
+仍从完成时间计算重试间隔，避免慢失败刚结束就立即重试。
 
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
-planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；failed 仍只按 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
+planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；该间隔从请求开始时间计算，failed 仍只按完成时间后的 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
