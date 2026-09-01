@@ -59,10 +59,32 @@ async function takeRate(db,key,now,limit,window=3600) {
     ON CONFLICT(bucket_key) DO UPDATE SET hits=hits+1 WHERE hits<? RETURNING hits`)
     .bind(`${key}:${start}`,start+window,limit).first());
 }
-async function refundRate(db,key,now,window=3600) {
+function rateBucket(key,now,limit,window) {
   const start=Math.floor(now/window)*window;
-  await db.prepare('UPDATE identity_rate_buckets SET hits=hits-1 WHERE bucket_key=? AND expires_at=? AND hits>0')
-    .bind(`${key}:${start}`,start+window).run();
+  return {key:`${key}:${start}`,expiresAt:start+window,limit};
+}
+async function takeCoupledRates(db,now,broad,narrow) {
+  const first=rateBucket(broad.key,now,broad.limit,broad.window);
+  const second=rateBucket(narrow.key,now,narrow.limit,narrow.window);
+  // One SQLite/D1 statement commits both counters or neither. The predicates
+  // run before either requested row is written, so a saturated broad limit also
+  // prevents an attacker from creating a new per-IP bucket.
+  const result=await db.prepare(`INSERT INTO identity_rate_buckets(bucket_key,hits,expires_at)
+    SELECT requested.bucket_key,1,requested.expires_at FROM (
+      SELECT ? AS bucket_key,? AS expires_at
+      UNION ALL SELECT ?,?
+    ) AS requested
+    WHERE COALESCE((SELECT hits FROM identity_rate_buckets WHERE bucket_key=?),0)<?
+      AND COALESCE((SELECT hits FROM identity_rate_buckets WHERE bucket_key=?),0)<?
+    ON CONFLICT(bucket_key) DO UPDATE SET hits=hits+1
+    RETURNING bucket_key`)
+    .bind(first.key,first.expiresAt,second.key,second.expiresAt,first.key,first.limit,second.key,second.limit).all();
+  const rows=result?.results || [];
+  if(rows.length===0) return false;
+  if(rows.length!==2 || !rows.some(row=>row.bucket_key===first.key) || !rows.some(row=>row.bucket_key===second.key)) {
+    throw new Error('rate_admission_inconsistent');
+  }
+  return true;
 }
 async function pruneExpired(db, now) {
   // Bounded opportunistic cleanup complements the separately gated hourly job.
@@ -121,13 +143,10 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
         const ip=request.headers.get('cf-connecting-ip');
         if(!ip) return json({error:'identity_unavailable'},503);
         const ipHash=await mac(key,`ip:${ip}`);
-        // Bound attacker-controlled bucket cardinality before per-IP/email rows.
-        if(!await takeRate(db,'identity-attempt-global',time,1000,600)) return json({error:'rate_limited'},429);
         if(path.endsWith('/challenge')) {
-          if(!await takeRate(db,`send-ip:${ipHash}`,time,10)) {
-            await refundRate(db,'identity-attempt-global',time,600);
-            return json({error:'rate_limited'},429);
-          }
+          if(!await takeCoupledRates(db,time,
+            {key:'identity-attempt-global',limit:1000,window:600},
+            {key:`send-ip:${ipHash}`,limit:10,window:3600})) return json({error:'rate_limited'},429);
           if(!await takeRate(db,`send-email:${emailHash}`,time,5) || !await takeRate(db,'send-global',time,100)) return json({error:'rate_limited'},429);
           const cooldown=await db.prepare(`INSERT INTO identity_send_cooldowns(email_hash,next_send_at) VALUES (?,?)
             ON CONFLICT(email_hash) DO UPDATE SET next_send_at=excluded.next_send_at WHERE next_send_at<=? RETURNING email_hash`).bind(emailHash,time+60,time).first();
@@ -153,10 +172,9 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
           // Provider acceptance is not mailbox delivery; no known-user lookup here.
           return json({challenge_id:id,delivery:'accepted',expires_in:CHALLENGE_TTL,retry_after:60},202);
         }
-        if(!await takeRate(db,`verify-ip:${ipHash}`,time,40,600)) {
-          await refundRate(db,'identity-attempt-global',time,600);
-          return json({error:'rate_limited'},429);
-        }
+        if(!await takeCoupledRates(db,time,
+          {key:'identity-attempt-global',limit:1000,window:600},
+          {key:`verify-ip:${ipHash}`,limit:40,window:600})) return json({error:'rate_limited'},429);
         if(typeof payload.challenge_id!=='string' || !/^[a-f0-9-]{36}$/.test(payload.challenge_id) || typeof payload.code!=='string' || !/^\d{8}$/.test(payload.code)) return json({error:'invalid_code'},400);
         const row=await db.prepare(`UPDATE identity_challenges SET attempts=attempts+1 WHERE id=? AND email_hash=? AND expires_at>? AND accepted=1
           AND consumed_at IS NULL AND attempts<5 RETURNING email,code_hash`).bind(payload.challenge_id,emailHash,time).first();

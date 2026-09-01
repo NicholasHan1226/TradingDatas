@@ -37,8 +37,8 @@ try {
   const continuitySchema=await readFile(new URL('../worker/account-library-schema.sql',import.meta.url),'utf8');
   await db.exec(continuitySchema.replace(/^\s*--.*$/gm,'').replace(/\s+/g,' '));
   let identity='';
-  const call = (route, body, cookie = '', method = body === undefined ? 'GET' : 'POST') => runtime.dispatchFetch(`https://tradingdatas.test/api/account/${route}`, {
-    method, headers: { origin: 'https://tradingdatas.test', 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.1', cookie,'x-td-identity':identity },
+  const call = (route, body, cookie = '', method = body === undefined ? 'GET' : 'POST', clientIp = '192.0.2.1') => runtime.dispatchFetch(`https://tradingdatas.test/api/account/${route}`, {
+    method, headers: { origin: 'https://tradingdatas.test', 'content-type': 'application/json', 'cf-connecting-ip': clientIp, cookie,'x-td-identity':identity },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   assert.deepEqual(await (await call('auth-methods')).json(), { email: true, phone: false });
@@ -83,8 +83,32 @@ try {
   assert.equal((await db.prepare('SELECT count(*) n FROM identity_users').first()).n, 0);
   assert.equal((await db.prepare('SELECT count(*) n FROM identity_deletion_requests').first()).n, 0);
   assert.equal((await db.prepare('SELECT count(*) n FROM account_bookmarks').first()).n,0);
-  assert.equal((await call('session', undefined, cookie, 'DELETE')).status, 200);
+  assert.equal((await call('session', undefined, cookie, 'DELETE')).status, 401);
   assert.equal((await call('me', undefined, cookie)).status, 401);
-  assert.equal(mail.length, 1);
-  console.log('PASS: local workerd + D1 email, library import, encrypted connection, admin rejection, deletion/revocation, cascaded purge and legacy redirect rejection. No email sent.');
+  // Coupled global/per-IP admission is one D1 statement: a narrow rejection
+  // cannot expose a provisional global count or mint another IP bucket.
+  await db.prepare('DELETE FROM identity_rate_buckets').run();
+  const invalid={email:'rate@example.com',challenge_id:'00000000-0000-0000-0000-000000000000',code:'00000000'};
+  assert.equal((await call('email/verify',invalid,'','POST','192.0.2.90')).status,400);
+  await db.prepare("UPDATE identity_rate_buckets SET hits=40 WHERE bucket_key LIKE 'verify-ip:%'").run();
+  await db.prepare("UPDATE identity_rate_buckets SET hits=999 WHERE bucket_key LIKE 'identity-attempt-global:%'").run();
+  assert.equal((await call('email/verify',invalid,'','POST','192.0.2.90')).status,429);
+  assert.equal((await db.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").first()).hits,999);
+  assert.equal((await call('email/challenge',{email:'rate-legitimate@example.com',locale:'en'},'','POST','198.51.100.90')).status,202);
+  assert.equal((await db.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").first()).hits,1000);
+  const sendIpCount=(await db.prepare("SELECT count(*) n FROM identity_rate_buckets WHERE bucket_key LIKE 'send-ip:%'").first()).n;
+  assert.equal((await call('email/challenge',{email:'rate-blocked@example.com',locale:'en'},'','POST','198.51.100.91')).status,429);
+  assert.equal((await db.prepare("SELECT count(*) n FROM identity_rate_buckets WHERE bucket_key LIKE 'send-ip:%'").first()).n,sendIpCount);
+  await db.prepare('DELETE FROM identity_rate_buckets').run();
+  assert.equal((await call('email/verify',invalid,'','POST','192.0.2.92')).status,400);
+  await db.prepare("UPDATE identity_rate_buckets SET hits=999 WHERE bucket_key LIKE 'identity-attempt-global:%'").run();
+  const concurrent=await Promise.all([
+    call('email/challenge',{email:'rate-a@example.com',locale:'en'},'','POST','198.51.100.92'),
+    call('email/challenge',{email:'rate-b@example.com',locale:'en'},'','POST','198.51.100.93'),
+  ]);
+  assert.deepEqual(concurrent.map(response=>response.status).sort(),[202,429]);
+  assert.equal((await db.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").first()).hits,1000);
+  assert.equal((await db.prepare("SELECT count(*) n FROM identity_rate_buckets WHERE bucket_key LIKE 'send-ip:%'").first()).n,1);
+  assert.equal(mail.length, 3);
+  console.log('PASS: local workerd + D1 email, atomic OTP admission, library import, encrypted connection, admin rejection, deletion/revocation, cascaded purge and legacy redirect rejection. No email sent.');
 } finally { await runtime.dispose(); }

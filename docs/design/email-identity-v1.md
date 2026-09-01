@@ -137,10 +137,11 @@ inbox delivery, expiry/replay, session isolation, both legacy and email login,
 logout and desktop/mobile rendering. Then separately authorize an exact-source
 production deployment and verify runtime routes. Payments/SMS stay off.
 
-The shared attempt budget is a broad service-protection reservation. A request
-rejected by the narrower per-IP admission control refunds that reservation in the
-same fixed window; malformed requests and failed OTP/provider outcomes that pass
-the narrow admission continue to consume the applicable budgets.
+The shared attempt budget and the applicable per-IP budget are admitted in one
+atomic D1 statement. If either limit is full, neither counter changes and a full
+shared budget cannot create a new attacker-controlled IP bucket. Malformed
+requests and failed OTP/provider outcomes that pass this coupled admission
+continue to consume the applicable budgets.
 
 Rollback new sign-ups first by setting the email enable flag false. Retain D1
 binding and compatible session read/revoke code until existing sessions expire

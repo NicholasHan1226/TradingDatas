@@ -258,19 +258,43 @@ test('email/IP/global send caps are enforced across challenges and restart-safe 
   assert.equal(f.sent.length,5);
   assert.equal((await f.call('email/challenge',{email:'x@example.com'},'',{'cf-connecting-ip':''})).status,503);
 });
-test('narrow IP rejections refund their shared OTP reservation',async()=>{
-  const verify=fixture();
-  const invalid={email:'attacker@example.com',challenge_id:'00000000-0000-0000-0000-000000000000',code:'00000000'};
-  for(let i=0;i<1000;i++) await verify.call('email/verify',invalid,'',{'cf-connecting-ip':'192.0.2.9'});
-  assert.equal(verify.env.IDENTITY_DB.sqlite.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").get().hits,40);
-  assert.equal((await verify.call('email/challenge',{email:'reader@example.com',locale:'en'},'',{'cf-connecting-ip':'198.51.100.7'})).status,202);
-  assert.equal(verify.sent.length,1);
+test('global and per-IP OTP admission is atomic at both narrow limits',async()=>{
+  for(const kind of ['challenge','verify']) {
+    const f=fixture();
+    const attackerIp=kind==='challenge'?'192.0.2.9':'192.0.2.10';
+    const request=kind==='challenge'
+      ?()=>f.call('email/challenge',{email:'attacker@example.com',locale:'en'},'',{'cf-connecting-ip':attackerIp})
+      :()=>f.call('email/verify',{email:'attacker@example.com',challenge_id:'00000000-0000-0000-0000-000000000000',code:'00000000'},'',{'cf-connecting-ip':attackerIp});
+    assert.equal((await request()).status,kind==='challenge'?202:400);
+    const narrowPrefix=kind==='challenge'?'send-ip:':'verify-ip:';
+    const narrowLimit=kind==='challenge'?10:40;
+    f.env.IDENTITY_DB.sqlite.prepare("UPDATE identity_rate_buckets SET hits=? WHERE bucket_key LIKE ?").run(narrowLimit,`${narrowPrefix}%`);
+    f.env.IDENTITY_DB.sqlite.prepare("UPDATE identity_rate_buckets SET hits=999 WHERE bucket_key LIKE 'identity-attempt-global:%'").run();
 
-  const challenge=fixture();
-  for(let i=0;i<10;i++) assert.equal((await challenge.call('email/challenge',{email:`reader-${i}@example.com`,locale:'en'})).status,202);
-  assert.equal((await challenge.call('email/challenge',{email:'blocked@example.com',locale:'en'})).status,429);
-  assert.equal(challenge.env.IDENTITY_DB.sqlite.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").get().hits,10);
-  assert.equal((await challenge.call('email/challenge',{email:'other-ip@example.com',locale:'en'},'',{'cf-connecting-ip':'198.51.100.8'})).status,202);
+    assert.equal((await request()).status,429);
+    assert.equal(f.env.IDENTITY_DB.sqlite.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").get().hits,999);
+    assert.equal((await f.call('email/challenge',{email:'legitimate@example.com',locale:'en'},'',{'cf-connecting-ip':'198.51.100.8'})).status,202);
+    assert.equal(f.env.IDENTITY_DB.sqlite.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").get().hits,1000);
+  }
+});
+test('a saturated global OTP limit cannot create attacker-controlled IP buckets',async()=>{
+  const f=fixture();
+  const invalid={email:'seed@example.com',challenge_id:'00000000-0000-0000-0000-000000000000',code:'00000000'};
+  assert.equal((await f.call('email/verify',invalid,'',{'cf-connecting-ip':'192.0.2.20'})).status,400);
+  f.env.IDENTITY_DB.sqlite.prepare("UPDATE identity_rate_buckets SET hits=1000 WHERE bucket_key LIKE 'identity-attempt-global:%'").run();
+  const before=f.env.IDENTITY_DB.sqlite.prepare("SELECT count(*) n FROM identity_rate_buckets WHERE bucket_key LIKE 'send-ip:%'").get().n;
+  assert.equal((await f.call('email/challenge',{email:'blocked@example.com',locale:'en'},'',{'cf-connecting-ip':'198.51.100.20'})).status,429);
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare("SELECT count(*) n FROM identity_rate_buckets WHERE bucket_key LIKE 'send-ip:%'").get().n,before);
+});
+test('OTP admission storage failures roll back both counters and fail closed',async()=>{
+  const f=fixture();
+  const invalid={email:'seed@example.com',challenge_id:'00000000-0000-0000-0000-000000000000',code:'00000000'};
+  assert.equal((await f.call('email/verify',invalid,'',{'cf-connecting-ip':'192.0.2.30'})).status,400);
+  f.env.IDENTITY_DB.sqlite.prepare("UPDATE identity_rate_buckets SET hits=999 WHERE bucket_key LIKE 'identity-attempt-global:%'").run();
+  f.env.IDENTITY_DB.sqlite.exec("CREATE TRIGGER fail_atomic_admission BEFORE INSERT ON identity_rate_buckets WHEN NEW.bucket_key LIKE 'send-ip:%' BEGIN SELECT RAISE(ABORT,'fixture'); END;");
+  assert.equal((await f.call('email/challenge',{email:'storage@example.com',locale:'en'},'',{'cf-connecting-ip':'198.51.100.30'})).status,503);
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare("SELECT hits FROM identity_rate_buckets WHERE bucket_key LIKE 'identity-attempt-global:%'").get().hits,999);
+  assert.equal(f.env.IDENTITY_DB.sqlite.prepare("SELECT count(*) n FROM identity_rate_buckets WHERE bucket_key LIKE 'send-ip:%'").get().n,0);
 });
 test('stale logout intent cannot revoke the newer cookie identity',async()=>{
   const f=fixture();
