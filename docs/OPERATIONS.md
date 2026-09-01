@@ -108,7 +108,7 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
-planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
+planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；failed 仍只按 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
@@ -688,6 +688,10 @@ QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界�
   全部 key 耗尽且暂无新 key 时，把 `config/firecrawl_upstream_contracts.v1.yaml` 中
   `cn.news.flash` 的 `activation.activation_state` 改回 `paused`（registry/config 改动），
   管线形态不变，恢复新 key 后按同一路径改回 `active` 并重编 registry。
+- `cn.news.flash` 当前保持 `paused`。它是已有 Tushare 快讯主干的 Firecrawl 冗余源；间歇性
+  `provider_error` 或串行抽取耗时不得触发共享 event 扫描的连续重跑。恢复 `active` 前先做
+  仓外有界复验，证明三个声明源连续成功、整轮可留出消费者读窗口，并完成认证 query 回读。
+  `global.news.flash` 的 activation 独立判断，不随该境内冗余源联动暂停。
 - 生产采集单元的环境变量 `FIRECRAWL_API_KEY_FILE` 由
   `/etc/systemd/system/tradingdatas-provider-native-collect.service.d/20-firecrawl.conf`
   提供；修改凭证文件路径时必须同步该 drop-in，并 `systemctl daemon-reload`。

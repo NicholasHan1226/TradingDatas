@@ -2052,7 +2052,7 @@ def test_cli_writes_external_registry_and_preserves_release_files(
             dataset.provider_bindings[0].activation_state == "active"
             for dataset in loaded.datasets
         )
-        == len(active_evidence) + 2
+        == len(active_evidence) + 1
     )
     # The checked-in target is already the current compiled registry.  The
     # external preactivation compile must be reproducible rather than mutate

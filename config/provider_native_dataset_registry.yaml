@@ -36870,7 +36870,7 @@ datasets:
     adapter_version: firecrawl-web-extraction.v1
     read_discriminator_value: firecrawl_scrape_page
     entitlement_state: active
-    activation_state: active
+    activation_state: paused
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
