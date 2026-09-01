@@ -88,21 +88,26 @@ _ACTIVATION_WAVE_KEYS = frozenset({"dataset_ids"})
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
-def _execution_order(plan: "ScheduledRun") -> tuple[int, int, str]:
+def _execution_order(plan: "ScheduledRun") -> tuple[int, int, int, str]:
     """Order freshness-sensitive cadences before other equal-priority work.
 
     This remains cadence-driven: any dataset declared as ``session_minute`` gets
     the first provider slot and ``event`` gets the second slot in its
-    current/backfill/correction tier.  It avoids an alphabetically earlier
-    low-frequency request delaying a completed bar or an event observation
-    beyond its freshness SLA while preserving the existing priority and
-    deterministic dataset ordering.
+    current/backfill/correction tier. Event plans with a shorter registry
+    freshness SLA run before longer-SLA event plans. It avoids an
+    alphabetically earlier low-frequency or long-SLA request delaying a
+    completed bar or short-SLA event observation while preserving deterministic
+    dataset ordering for equal contracts.
     """
 
     cadence_rank = {"session_minute": 0, "event": 1}.get(plan.cadence_class, 2)
+    freshness_rank = (
+        plan.freshness_sla_seconds if plan.cadence_class == "event" else 0
+    )
     return (
         _PRIORITY[plan.priority],
         cadence_rank,
+        freshness_rank,
         plan.dataset_id,
     )
 
@@ -172,6 +177,7 @@ class ScheduledRun:
     provider_api: str
     cadence_class: str
     request_window: Mapping[str, str]
+    freshness_sla_seconds: int = 2**31 - 1
     priority: str = "current"
     request_variants: tuple[Mapping[str, RequestScalar], ...] = field(
         default_factory=lambda: (MappingProxyType({}),)
@@ -1006,6 +1012,23 @@ def _latest(
     )
 
 
+def _minimum_interval_reference(
+    dataset: DatasetDefinition,
+    receipt: _ReceiptCohort,
+) -> datetime:
+    """Align successful event eligibility with its observed coverage window.
+
+    Event request windows are frozen when the scheduler run starts. Measuring
+    the next interval from a later completion creates a guaranteed stale gap
+    equal to provider and ingest latency. Failed attempts still back off from
+    completion so a slow failure cannot trigger an immediate retry.
+    """
+
+    if dataset.cadence_class == "event" and receipt.status != "failed":
+        return receipt.started_at
+    return receipt.finished_at
+
+
 def _expected_resumable_batches(
     registry: DatasetRegistry,
     state: PlannerState,
@@ -1288,6 +1311,7 @@ def _runs(
             provider_api=binding.api_name,
             cadence_class=dataset.cadence_class,
             request_window=window,
+            freshness_sla_seconds=dataset.freshness_sla_seconds,
             priority=priority,
             request_variants=tuple(binding.request_variants),
             rate_budget_class=policy.rate_budget_class,
@@ -1430,7 +1454,9 @@ def _dataset_plans(
             }
         latest = _latest(current.receipts, window)
         if latest is not None:
-            age = (now_utc - latest.finished_at).total_seconds()
+            age = (
+                now_utc - _minimum_interval_reference(dataset, latest)
+            ).total_seconds()
             healthy = latest.status == "empty" or any(
                 fact.receipt_id in latest.success_receipt_ids
                 for fact in current.facts
@@ -1449,7 +1475,9 @@ def _dataset_plans(
     if binding.request_window_policy is None:
         latest = _latest(current.receipts, {})
         if latest is not None:
-            age = (now_utc - latest.finished_at).total_seconds()
+            age = (
+                now_utc - _minimum_interval_reference(dataset, latest)
+            ).total_seconds()
             healthy = latest.status == "empty" or any(
                 fact.receipt_id in latest.success_receipt_ids
                 for fact in current.facts
@@ -1556,7 +1584,9 @@ def _dataset_plans(
             day in missing for day in _window_dates(binding, request_window)
         )
         if prior is not None:
-            age = (now_utc - prior.finished_at).total_seconds()
+            age = (
+                now_utc - _minimum_interval_reference(dataset, prior)
+            ).total_seconds()
             healthy = (
                 prior.status == "empty"
                 or (dataset.point_in_time == "append_only" and prior.status == "success")
