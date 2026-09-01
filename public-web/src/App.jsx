@@ -609,6 +609,7 @@ export function App() {
   const [docsCategory, setDocsCategory] = useState("all");
   const [pricingPlanIndex, setPricingPlanIndex] = useState(() => Math.max(0, getBasePlanCards("en").findIndex((plan) => plan.id === readPreviewSelection(window.location.search)?.plan.id)));
   const [pricingBillingPeriod, setPricingBillingPeriod] = useState(() => readPreviewSelection(window.location.search)?.period || "monthly");
+  const [accountSessionRequested, setAccountSessionRequested] = useState(() => ["account", "login"].includes(route));
   const [accountConnectionRevision, setAccountConnectionRevision] = useState(0);
   const [accountTokenInput, setAccountTokenInput] = useState("");
   const [accountData, setAccountData] = useState(null);
@@ -619,7 +620,7 @@ export function App() {
   const [accountNewKey, setAccountNewKey] = useState("");
   const [accountKeyLoading, setAccountKeyLoading] = useState(false);
   const [accountKeyError, setAccountKeyError] = useState("");
-  const [accountLoading, setAccountLoading] = useState(true);
+  const [accountLoading, setAccountLoading] = useState(() => ["account", "login"].includes(route));
   const [accountUsageError, setAccountUsageError] = useState(false);
   const [accountLoginPending, setAccountLoginPending] = useState(false);
   const [accountError, setAccountError] = useState("");
@@ -694,6 +695,15 @@ export function App() {
   useEffect(() => { if (accountData) setAccountDeletionReceipt(null); }, [accountData]);
 
   useEffect(() => {
+    if (["account", "login"].includes(route)) setAccountSessionRequested(true);
+  }, [route]);
+
+  useEffect(() => {
+    if (!accountSessionRequested) {
+      clearAccountView();
+      setAccountError("");
+      return undefined;
+    }
     clearLegacyAccountToken();
     // Another tab may have changed the shared session. Invalidate all derived
     // account state and pending results before checking the current identity.
@@ -730,7 +740,7 @@ export function App() {
       if (current()) setAccountLoading(false);
     });
     return () => controller.abort();
-  }, [accountConnectionRevision]);
+  }, [accountConnectionRevision, accountSessionRequested]);
 
   useEffect(() => {
     if (!accountData || (accountData.identity_kind === "email" && accountData.data_access_state !== "connected")) return undefined;
