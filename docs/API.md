@@ -69,6 +69,8 @@ dataset/provider、成功状态与完整采集序列校验。缺失或无效的�
 `lineage.complete=true` 后继续返回该行。校验限于当前页引用的去重回执及其
 采集序列，不遍历其它数据集，也不访问 provider；定位序列成员的 SQL 仍可能
 检查当前数据集的历史回执，因此页大小有界不等于历史规模对耗时完全无影响。
+打开该只读快照时，epoch 身份是文件、SQLite pragma 与 append-only 最新
+`market_ingest_runs` 行，不是对收据全表做聚合。
 
 `include_receipt_proofs` 只控制是否输出逐行证明及其既有的单一采集序列限制，
 不控制上述基础校验是否执行。默认查询继续允许同页包含来自多个有效历史

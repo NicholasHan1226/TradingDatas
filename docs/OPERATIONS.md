@@ -108,7 +108,16 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
-planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；failed 仍只按 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
+planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。
+
+`event` 的当前日窗口会被五分钟 timer 反复看到。完整 success 或 empty 之后必须等待
+`minimum_interval_seconds`（当前 900 秒）才会再规划，skip 状态为 `not_due`；failed
+仍只按 `failure_retry_seconds`（当前 300 秒）重试。健康间隔证据是下列之一：最近同窗
+receipt 为 `empty`；该 dataset 为 `append_only` 且最近同窗 receipt 为 `success`；或现有
+facts 的 `receipt_id` 仍落在该 receipt 的 success 成员中。不要用“facts 未改绑到最新
+receipt”判断还需要立刻重采：append-only 在字节相同的后一次 success 里保留原
+provenance，否则会把 15 分钟下限打回每 5 分钟一轮。其它 cadence 的 interval 仍只作用
+于 correction overlap。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
@@ -169,8 +178,17 @@ dataset 与 interface 投影共用扩展后的收据集合；本规则不补写�
 的已验证快照在检测到 `-wal`/`-shm` sidecar 时只使用 `mode=ro`，不再附加 `immutable=1`
 （SQLite `immutable=1` 会跳过 WAL，可能读到未 checkpoint 的陈旧主文件）。connect timeout
 仍为 180 秒，与 authority lock 等待上限一致，不另设 synchronous 或其它耐久性 pragma。
-本仓库变更只把该行为写进代码与测试，**不**通过 SSH、deploy script 或 `current` 切换去改
-广州生产库的 journal mode。
+打开该快照时，共享 authority lock 内对主连接与核验连接比较同一 epoch 证据：文件身份、
+`schema_version` / `user_version` / `application_id` / `page_count` / `freelist_count`，以及
+`market_ingest_runs` 按 `rowid DESC LIMIT 1` 的最新一行。收据是 append-only，且 facts 与
+success receipt 同事务提交，因此最新 `rowid` 标识可见 ingest epoch；lock 阻止核对期间
+writer 推进该行。禁止对完整收据历史做 `COUNT`/`MIN`/`MAX`/`SUM`：那会让每次
+catalog/query 对历史 O(n) 扫描两次，采集高峰期耗尽消费者截止时间。空库（尚无 receipt）
+只比较 pragma，不得因此 fail closed。双连接证据不一致仍视为瞬时 epoch 偏移，最多重试
+5 次、共享锁等待 10 秒，最终 503 fail-closed。采集期间目录变慢，应先核对是否仍在做全量
+收据聚合，不能把该延迟当成 WAL 健康或需要放宽 snapshot retry。该核对与按 dataset 做的
+页内 receipt 序列校验是两笔成本。本仓库变更只把该行为写进代码与测试，**不**通过 SSH、
+deploy script 或 `current` 切换去改广州生产库的 journal mode。
 
 生产文件在独立的 write-pause + exact-main release 步骤完成前仍可能是 rollback-journal。
 该运维步骤不属于本代码 PR：停采集 timer、切到含 WAL 请求的 immutable release、重启
@@ -267,8 +285,10 @@ future-empty 响应必须按既有完整性合同诚实处理，不能把其它�
 
 最多 32 项，`dataset_id` 必须 canonical、唯一且排序；每项只能使用该 registry 已声明的
 window keys。plan 模式会先校验整批所有 item，失败时不会构造 provider client 或打开
-SQLite；execute 模式随后串行调用相同的通用 adapter，每个 dataset 保持自己的
-facts + receipt transaction。manifest 不得含 token、provider API name、fields、路径或
+SQLite；`activation`/`entitlement` 不是 active 的 binding（例如已暂停的
+`cn.news.flash`）在此阶段以 `invalid_request` / `validation` fail closed，不能靠 plan
+模式假装仍会生成非零计划。execute 模式随后串行调用相同的通用 adapter，每个 dataset
+保持自己的 facts + receipt transaction。manifest 不得含 token、provider API name、fields、路径或
 业务逻辑，也不进入仓库。`on_demand` 仍不会被 scheduler 自动计划：只有已验证的
 window 被明确放进该 manifest，才会采集。
 
@@ -689,8 +709,10 @@ QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界�
   `cn.news.flash` 的 `activation.activation_state` 改回 `paused`（registry/config 改动），
   管线形态不变，恢复新 key 后按同一路径改回 `active` 并重编 registry。
 - `cn.news.flash` 当前保持 `paused`。它是已有 Tushare 快讯主干的 Firecrawl 冗余源；间歇性
-  `provider_error` 或串行抽取耗时不得触发共享 event 扫描的连续重跑。恢复 `active` 前先做
-  仓外有界复验，证明三个声明源连续成功、整轮可留出消费者读窗口，并完成认证 query 回读。
+  `provider_error` 或串行抽取耗时不得触发共享 event 扫描的连续重跑。通用
+  `collect_provider_dataset.py` 的 plan/execute 对该 paused binding 返回
+  `invalid_request` / `validation`，不会生成非零计划。恢复 `active` 前先做仓外有界复验，
+  证明三个声明源连续成功、整轮可留出消费者读窗口，并完成认证 query 回读。
   `global.news.flash` 的 activation 独立判断，不随该境内冗余源联动暂停。
 - 生产采集单元的环境变量 `FIRECRAWL_API_KEY_FILE` 由
   `/etc/systemd/system/tradingdatas-provider-native-collect.service.d/20-firecrawl.conf`

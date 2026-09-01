@@ -40,7 +40,7 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 |------|------|--------|----------|
 | `tushare/` | 首期境内金融事实数据 | Tushare API | `collector.py`, `provider_native_ingest.py` |
 | `binance/` | 冻结的 Crypto spot canary 与 USDⓈ-M 永续公共只读切片 | Binance public market data | `collector.py`, `usdm_collector.py`, `oi_dump_collector.py` |
-| `firecrawl/` | 境内新闻/公告/客观舆情（合同冻结，未激活） | Firecrawl web scrape/search API | `collector.py` |
+| `firecrawl/` | 境内 `cn.news.flash` 现为 paused 冗余源；海外 `global.news.flash` 独立 active | Firecrawl web scrape/search API | `collector.py` |
 
 预测市场、港股、美股及其历史 collector/cron 不在新代码树中。Crypto 仅允许根层合同已批准的 Binance 公共现货与同一冻结标的的 USDⓈ-M 永续 funding rate / open interest 隔离运行面；不得扩展为账户、订单、执行或共享 A 股运行面。未来新闻、公告或舆情来源按新的 provider adapter 接入，不恢复旧 RSS/MarketGraph fallback。
 

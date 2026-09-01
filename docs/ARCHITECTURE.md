@@ -123,9 +123,11 @@ registry/config（literal_values 源 URL、extraction_schema、prompt），adapt
 `cn.news.flash` 保留已观测的 `entitlement_state: active`，但当前
 `activation_state: paused`：Tushare 的 `news`/`major_news` 已承担境内快讯主干，而该
 Firecrawl 冗余源的单页结构化抽取存在间歇性上游失败和较长串行耗时，不能继续占用共享
-event 扫描周期。它仍保留合同、历史 facts/receipts 与手工有界复验入口；恢复自动采集前必须
-重新完成连续成功、周期预算及认证 readback。`global.news.flash` 是独立合同和独立运行状态，
-不因境内冗余源暂停而降级。402/429 只降级对应 dataset，不阻塞其它 provider。
+event 扫描周期。合同、历史 facts/receipts 仍保留；通用 collector 的 plan/execute 对
+paused binding 在打开 SQLite 或调用上游前 fail closed（`invalid_request`）。恢复
+`active` 前必须在仓外有界复验三个声明源连续成功、整轮留出消费者读窗口，并完成认证
+readback。`global.news.flash` 是独立合同和独立运行状态，不因境内冗余源暂停而降级。
+402/429 只降级对应 dataset，不阻塞其它 provider。
 
 生产 `current` 只承担进程入口的原子版本选择。入口脚本用 `Path(__file__).resolve()`
 绑定一个物理 immutable release，registry 和 schedule 必须从该物理 release 内读取；
@@ -156,6 +158,8 @@ Tushare 官方接口说明给出的积分门槛、单次行数、分钟频次和
 ## 通用存储
 
 所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。对 `current_snapshot`，上游再次返回相同 payload 时，事实的 payload 与数据 revision 不变，但同一事务会把其 provenance 绑定到新的 success receipt；因此当前合同只能依赖本轮重新验证的事实，不能借用旧合同 receipt，也不会因 SQLite 的 payload 去重而丢失 scheduler authority。
+
+`append_only` 相反：相同 payload 的后一次 success 仍写入新 receipt，但事实行保留首次写入时的 `receipt_id`。event 当前窗口因此不能只靠“facts 是否绑定本轮 receipt”判断是否仍在 `minimum_interval_seconds` 内。空观测、append-only 的 success，或 facts 仍指向该窗口既有 success receipt，都是健康间隔证据；否则字节相同的重观测会被当成缺口，五分钟 timer 会连续重跑。
 
 可写 ingest/collect 连接在 `BEGIN IMMEDIATE` 之前请求 `PRAGMA journal_mode=WAL`，busy timeout 仍为既有 180 秒。catalog/query 的已验证只读快照在存在 WAL sidecar 时使用 `mode=ro` 而不带 `immutable=1`；无 sidecar 的 rollback-journal 库仍可使用 `immutable=1`。WAL sidecar 不是业务表，不改变两对象规则。快照在共享 authority lock 内以文件身份、SQLite pragma 与 append-only receipt 最新行做双连接 epoch 核对；不得按请求对完整 receipt 历史做聚合扫描。生产 journal 切换仍是停写窗口内的后续运维步骤，不是代码合入即切库。
 
