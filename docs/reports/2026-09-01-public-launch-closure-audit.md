@@ -33,6 +33,11 @@ and `IDENTITY_RETENTION_ENABLED` remained `false`, as did the optional account
 connection, library, and admin flags. No values, mail, D1 data, settings, or
 Worker version were changed during this observation.
 
+The follow-up source candidate changes only the paired email-login/retention
+flags to `true`; it keeps the other three account capabilities disabled. That
+candidate does not alter the dashboard until its exact commit has passed review,
+been deployed, and been read back.
+
 ## Checks performed
 
 - Baseline `npm run test:sites` and `npm run test:search` passed on Node

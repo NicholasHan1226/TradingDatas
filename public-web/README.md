@@ -351,12 +351,13 @@ Optional
 local workerd/D1 verification and the production approval gates are documented in
 [Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
 harness are not public assets. The dedicated remote account DB has been initialized;
-the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
-`EMAIL_LOGIN_ENABLED="false"`. A September 1 dashboard readback confirmed the live
-binding plus encrypted identity, Resend and session-key secret names; it did not
-inspect secret values or enable any account capability. Do not use that presence as
-delivery proof or assume a later upload preserves settings without an exact-head
-readback. SMS and payments stay unavailable.
+the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` and enables the paired
+email-login/retention flags while keeping connection, library and admin flags off.
+A September 1 dashboard readback confirmed the live binding plus encrypted identity,
+Resend and session-key secret names; at that readback all runtime capability flags
+were still false. Do not use secret presence as delivery proof or assume a later
+upload preserves settings without an exact-head deployment and readback. SMS and
+payments stay unavailable.
 
 New email challenge/verification readiness also requires
 `IDENTITY_RETENTION_ENABLED="true"`. Existing verified sessions, revocation,
@@ -371,10 +372,11 @@ has already finished. Legacy API keys, financial data and browser-local bookmark
 are outside this account-only action. The owner-approved active-store maxima are
 24 hours for expired OTP records, seven days for invalid sessions, and 30 days
 after a profile deletion request. See [retention contract](../docs/design/identity-retention-v1.md).
-The new hourly maintenance job is gated by `IDENTITY_RETENTION_ENABLED="false"`;
-both it and email login remain off. `worker/identity-retention-schema.sql` is an
-additive migration for the dedicated account DB only, applied and read back on
-August 31 with zero users/sessions/deletion requests and no foreign-key violations.
+The new hourly maintenance job is gated by `IDENTITY_RETENTION_ENABLED="true"` in
+the candidate, so an exact deployed version must be read back before email login is
+called active. `worker/identity-retention-schema.sql` is an additive migration for
+the dedicated account DB only, applied and read back on August 31 with zero
+users/sessions/deletion requests and no foreign-key violations.
 Tests/harnesses apply it after `worker/identity-schema.sql` to disposable stores.
 No change here deploys a timer, deletes real users, or enables linked-account deletion.
 

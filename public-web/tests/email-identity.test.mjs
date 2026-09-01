@@ -5,10 +5,11 @@ import { identityDb } from './helpers/identity-db.mjs';
 import { createEmailIdentityHandler } from '../worker/email-identity.js';
 import { getSystemEmailLocale } from '../src/systemEmailLocale.js';
 
-test('provisioned account binding does not enable email or use the data-plane store', async () => {
+test('candidate enables email only with the dedicated identity binding and secrets', async () => {
   const config = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
   assert.equal(config.name, 'tradingdatas');
-  assert.equal(config.vars.EMAIL_LOGIN_ENABLED, 'false');
+  assert.equal(config.vars.EMAIL_LOGIN_ENABLED, 'true');
+  assert.equal(config.vars.IDENTITY_RETENTION_ENABLED, 'true');
   assert.deepEqual(config.d1_databases, [{
     binding: 'IDENTITY_DB', database_name: 'tradingdatas-identity-v1',
     database_id: 'bb5e8d90-090f-40a5-9aa1-b91b33af7199',
@@ -17,8 +18,15 @@ test('provisioned account binding does not enable email or use the data-plane st
   assert.equal(config.vars.RESEND_API_KEY, undefined);
   const f = fixture();
   Object.assign(f.env, config.vars);
+  // The fixture normally provides safe synthetic secrets for behavioral tests.
+  // Remove them here so this committed config check proves that flags alone do
+  // not make the public endpoint available.
+  delete f.env.IDENTITY_PEPPER;
+  delete f.env.RESEND_API_KEY;
   const methods = await f.call('auth-methods');
   const readiness = await methods.json();
+  // The committed config never contains real secrets. A deployment must supply
+  // them through the encrypted Worker settings before this capability is true.
   assert.equal(readiness.email, false);
   assert.equal(readiness.phone, false);
   assert.equal((await f.challenge()).response.status, 503);
