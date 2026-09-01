@@ -11,13 +11,13 @@ import { comparisonReadings } from "../src/researchConnections.js";
 import { projectResearchIndex } from "../scripts/research-public-projection.mjs";
 const additions = { ...researchMicrostructure120, ...researchCrypto120, ...researchMacro120 };
 
-test("160 bilingual guides keep the 200 identities and the honest accrual source gap", () => {
+test("180 bilingual guides keep the 200 identities and the honest accrual source gap", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 160);
+  assert.equal(Object.keys(researchReaderNotes).length, 180);
   assert.equal(Object.keys(additions).length, 20);
   assert.deepEqual([researchMicrostructure120, researchCrypto120, researchMacro120].map(x => Object.keys(x).length), [7, 7, 6]);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 159);
-  assert.equal(auditContent().review.filter(x => x.code === "summary_only").length, 40);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 179);
+  assert.equal(auditContent().review.filter(x => x.code === "summary_only").length, 20);
   assert.deepEqual(auditContent().errors, []);
 });
 

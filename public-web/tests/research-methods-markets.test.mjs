@@ -6,9 +6,9 @@ import { papers } from "../src/researchCatalog.js";
 import { researchJourneys } from "../src/researchJourneys.js";
 import { auditContent, sourceUrls } from "../scripts/audit-research-content.mjs";
 
-test("eight source-located guides remain within 160 without inflating the bibliography", () => {
+test("eight source-located guides remain within 180 without inflating the bibliography", () => {
   assert.equal(Object.keys(batch).length, 9); // Eight new guides plus a deeper existing China guide.
-  assert.equal(Object.keys(researchReaderNotes).length, 160);
+  assert.equal(Object.keys(researchReaderNotes).length, 180);
   assert.equal(papers.length, 200);
   assert.equal(new Set(Object.values(researchJourneys).flat().map(s => s.title)).size, 24);
   const paragraphs = new Set();
@@ -32,7 +32,7 @@ test("eight source-located guides remain within 160 without inflating the biblio
   }
   const audit = auditContent({today: "2026-09-01"});
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 40);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 20);
 });
 
 test("measurement, draft editions and source migration stay explicit", () => {
