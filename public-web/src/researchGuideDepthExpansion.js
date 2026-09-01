@@ -72,7 +72,7 @@ const additions = {
   },
   "A Simple Way to Estimate Bid-Ask Spreads from Daily High and Low Prices": {
     evidenceUrl: urls.spreadProgram,
-    evidenceScope: "2012 author-issued sample-program description read completely; internet appendix contents and explanatory captions on data adjustments inspected. Publisher abstract retained for conceptual interpretation. Main-paper derivation and empirical tables not reviewed.",
+    evidenceScope: "2012 author-issued sample-program description read completely; internet appendix contents and explanatory captions on data adjustments inspected. Publisher abstract retained for conceptual interpretation, with no claim beyond that abstract. Main-paper derivation and empirical tables not reviewed.",
     limits: bi("高低价法是依赖清洗约定的价差代理。本导读结合作者配套说明，不复现主文推导；它不能替代真实报价、订单簿或成交成本。", "The proxy depends on cleaning conventions. This guide uses the authors' companion instructions, not a replication of the derivation; it does not replace quotes, an order book or execution costs."),
     replacements: {
       2: { body: bi("论文比较低频价差估计与高频有效价差，作者配套材料还区分逐月横截面和逐股时间序列的比较。两类比较回答的问题不同；即使总体误差较小，单日、单股的估计仍不等于可成交成本，数量、冲击和费用也需另行考虑。", "The paper compares low-frequency estimates with high-frequency effective spreads. Its companion material separates monthly cross-sectional and stock-level time-series comparisons. Those answer different questions: aggregate accuracy does not make a daily estimate executable, and size, impact and fees remain separate.") },
@@ -118,7 +118,7 @@ const additions = {
   },
   "Intraday Information Efficiency on the Chinese Equity Market": {
     evidenceUrl: urls.intraday,
-    evidenceScope: "Final publisher abstract, introduction and previews of Market structure, Intraday trading costs and Unbiasedness regressions. No access to complete regression specification or numerical table audit.",
+    evidenceScope: "Final publisher abstract, introduction and previews of Market structure, Intraday trading costs and Unbiasedness regressions. No claim extends beyond the accessible abstract and previews; no access to complete regression specification or numerical table audit.",
     sections: [
       section("历史交易阶段是样本的一部分", "Historical session phases are part of the sample",
         "原文市场结构段落区分早盘开盘集合竞价、上午连续交易、午间休市和下午交易。编辑建议：为2004—2005年样本保留当时的阶段标签，不把午休当作随机缺失，也不要直接套用今日制度。相同钟点在不同交易阶段，可能代表不同的信息环境。",
@@ -153,7 +153,7 @@ const additions = {
   },
   "Bitcoin: Economics, Technology, and Governance": {
     evidenceUrl: urls.bitcoin,
-    evidenceScope: "Author-hosted July 15, 2014 draft: Enabling Technologies, The Role of Cryptography and Incentives for Participation. Final 2015 publisher abstract checked for identity/conceptual scope. Historical statistics, current security and current legal claims excluded.",
+    evidenceScope: "Author-hosted July 15, 2014 draft: Enabling Technologies, The Role of Cryptography and Incentives for Participation. Final 2015 publisher abstract checked for identity/conceptual scope, with no claim beyond that abstract or the named draft sections. Historical statistics, current security and current legal claims excluded.",
     limits: bi("导读结合2014年作者草稿与2015年综述摘要，仅解释历史设计思路，不提供当前协议、安全、监管或投资判断。", "The guide combines the 2014 author draft with the 2015 overview abstract to explain historical design ideas, not current protocol, security, regulatory or investment conditions."),
     sections: [
       section("签名解决授权，账本解决记录", "Signatures authorize; the ledger records",

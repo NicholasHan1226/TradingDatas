@@ -132,7 +132,7 @@ export const researchSixtyGuides = {
   "Presidential Address: Discount Rates": guide(
     "https://www.nber.org/system/files/working_papers/w16972/w16972.pdf",
     bi("2011年4月NBER版", "April 2011 NBER edition"),
-    "NBER Working Paper 16972, Discount Rates, April 2011: cover, abstract, introduction and sections I–II.B opening, PDF pp. 1–6, read for expected-return variation, dividend-price ratios, present-value decomposition and time-series versus cross-sectional questions. PDF p. 5 visually checked. Journal tables and empirical decompositions not reproduced.",
+    "NBER Working Paper 16972, Discount Rates, April 2011: cover, abstract, introduction and sections I–II.B opening, PDF pp. 1–6, read for expected-return variation, dividend-price ratios, present-value decomposition and time-series versus cross-sectional questions. PDF p. 5 visually checked. No claim extends beyond the abstract and inspected pages; journal tables and empirical decompositions not reproduced.",
     bi("导读使用2011年NBER工作论文，保留期刊文章引用。预期收益随时间变化与可执行的样本外预测不是同一命题，现值关系也不能单独识别经济机制。", "This guide uses the 2011 NBER paper, separately from the journal citation. Time-varying expected returns and feasible out-of-sample forecasting are different claims. A present-value relation alone does not identify an economic mechanism."), {}, [
       ["§I; §II.A–B", "价格变化不只来自现金流消息", "Price variation need not come only from cash-flow news",
         "Cochrane以折现率变化重新组织资产定价中的若干问题。价格相对现金流发生变化，可以关联到未来现金流预期，也可以关联到要求收益的变化。这个框架帮助区分解释方向，但不意味着每次价格下跌都已经找到了唯一原因。",

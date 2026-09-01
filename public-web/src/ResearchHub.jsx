@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ArrowRight, ArrowSquareOut, BookmarkSimple } from "@phosphor-icons/react";
 import { papers, readingPaths, researchTitle, researchYear } from "./researchCatalog.js";
-import { researchSubjects, researchMatches, researchHref, researchPageSize } from "./researchDiscovery.js";
+import { researchSubjects, researchMatches, researchHref, researchOrder, researchPageSize } from "./researchDiscovery.js";
 import { researchJourneys, journeyStages } from "./researchJourneys.js";
 import { researchQuestionRoutes } from "./researchQuestionRoutes.js";
 import { ResearchQuestionRoutes } from "./ResearchQuestionRoutes.jsx";
@@ -26,12 +26,12 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
     return () => observer.disconnect();
   }, [view.open, view.topic, locale]);
   const subject = researchSubjects.find((item) => item.id === view.topic) || researchSubjects[0];
-  const matches = papers.filter((paper) => researchMatches(paper, subject.id, view.kind));
+  const matches = researchOrder(papers.filter((paper) => researchMatches(paper, subject.id, view.kind, view.depth, view.materials)), view.sort);
   const pageCount = Math.max(1, Math.ceil(matches.length / researchPageSize));
   const page = Math.min(view.page, pageCount - 1);
   const visible = matches.slice(page * researchPageSize, (page + 1) * researchPageSize);
   const featuredHref = `/research/${featuredPaper.id}`;
-  const guides = papers.filter((paper) => paper.guideSectionCount >= 4);
+  const guides = researchOrder(papers.filter((paper) => paper.guideSectionCount >= 4), "recent").slice(0, 8);
   const journey = researchJourneys[subject.id];
   function change(event, action, scroll = false) {
     if (event?.metaKey || event?.ctrlKey || event?.shiftKey || event?.altKey) return;
@@ -73,15 +73,15 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
     </div> : <div className="research-topic-view">
       <header className="research-topic-heading"><h1>{zh ? "研究文献" : "Research library"}</h1><p>{zh ? "按主题找到下一篇值得读的论文。" : "Find your next worthwhile read, by topic."}</p></header>
       <div className="research-subject-layout">
-        <nav className="research-subject-index" ref={subjectsRef} aria-label={zh ? "研究主题" : "Research topics"}>{researchSubjects.map((item) => <a key={item.id} href={researchHref({ ...view, open: true, topic: item.id, kind: "all", page: 0 })} aria-current={subject.id === item.id ? "true" : undefined} onClick={(event) => change(event, { type: "open", topic: item.id })}><span>{item.label[locale]}</span><span>{papers.filter((paper) => researchMatches(paper, item.id, "all")).length}</span></a>)}</nav>
+        <nav className="research-subject-index" ref={subjectsRef} aria-label={zh ? "研究主题" : "Research topics"}>{researchSubjects.map((item) => <a key={item.id} href={researchHref({ ...view, open: true, topic: item.id, kind: "all", depth: "all", materials: "all", sort: "relevance", page: 0 })} aria-current={subject.id === item.id ? "true" : undefined} onClick={(event) => change(event, { type: "open", topic: item.id })}><span>{item.label[locale]}</span><span>{papers.filter((paper) => researchMatches(paper, item.id, "all")).length}</span></a>)}</nav>
         <section className="research-subject-results" ref={resultsRef} tabIndex={-1} aria-labelledby="research-subject-title">
-          <header className="research-subject-heading"><div><h2 id="research-subject-title">{subject.label[locale]}</h2><p>{subject.description[locale]}</p></div><select aria-label={zh ? "文献类型" : "Publication type"} value={view.kind} onChange={(event) => change(null, { type: "kind", value: event.target.value })}>{Object.entries(kindLabels).map(([id, label]) => <option key={id} value={id}>{id === "all" ? (zh ? "全部类型" : "All types") : label}</option>)}</select></header>
-          {journey && view.kind === "all" && page === 0 && <section className="research-journey" aria-label={zh ? "建议阅读顺序" : "Suggested reading order"}><h3>{zh ? "从这里开始" : "A reading route"}</h3><ol>{journey.map((step, index) => {
+          <header className="research-subject-heading"><div><h2 id="research-subject-title">{subject.label[locale]}</h2><p>{subject.description[locale]}</p></div><div className="research-library-filters"><select aria-label={zh ? "文献类型" : "Publication type"} value={view.kind} onChange={(event) => change(null, { type: "kind", value: event.target.value })}>{Object.entries(kindLabels).map(([id, label]) => <option key={id} value={id}>{id === "all" ? (zh ? "全部类型" : "All types") : label}</option>)}</select><select aria-label={zh ? "阅读深度" : "Reading depth"} value={view.depth} onChange={(event) => change(null, { type: "depth", value: event.target.value })}><option value="all">{zh ? "全部深度" : "All depth"}</option><option value="guide">{zh ? "仅完整导读" : "Full guides only"}</option></select><select aria-label={zh ? "数据准备材料" : "Data preparation materials"} value={view.materials} onChange={(event) => change(null, { type: "materials", value: event.target.value })}><option value="all">{zh ? "全部材料" : "All materials"}</option><option value="prepared">{zh ? "含数据准备" : "With data preparation"}</option></select><select aria-label={zh ? "排序方式" : "Sort order"} value={view.sort} onChange={(event) => change(null, { type: "sort", value: event.target.value })}><option value="relevance">{zh ? "编目顺序" : "Library order"}</option><option value="recent">{zh ? "最近补充导读" : "Recently guided"}</option></select></div></header>
+          {journey && view.kind === "all" && view.depth === "all" && view.materials === "all" && page === 0 && <section className="research-journey" aria-label={zh ? "建议阅读顺序" : "Suggested reading order"}><h3>{zh ? "从这里开始" : "A reading route"}</h3><ol>{journey.map((step, index) => {
             const paper = papers.find((item) => item.title === step.title || item.sourceTitle === step.title);
             return <li key={step.title}><span>{String(index + 1).padStart(2, "0")} · {journeyStages[index][locale]}</span><div><a href={`/research/${paper.id}`} onClick={(event) => onNavigate(event, `/research/${paper.id}`)}>{researchTitle(paper, locale)}<ArrowRight /></a><p>{step.reason[locale]}</p></div></li>;
           })}</ol></section>}
-          <p className="research-result-status" role="status">{zh ? `${matches.length} 条文献` : `${matches.length} materials`}{view.kind !== "all" && <button type="button" onClick={() => onChange({ type: "kind", value: "all" })}>{zh ? "清除类型筛选" : "Clear type filter"}</button>}</p>
-          {view.kind === "all" && page === 0 && <ResearchQuestionRoutes locale={locale} routes={researchQuestionRoutes.filter(route => route.topic === subject.id)} onNavigate={onNavigate} />}
+          <p className="research-result-status" role="status">{zh ? `${matches.length} 条文献` : `${matches.length} materials`}{(view.kind !== "all" || view.depth !== "all" || view.materials !== "all" || view.sort !== "relevance") && <button type="button" onClick={() => onChange({ type: "restore", value: { ...view, kind: "all", depth: "all", materials: "all", sort: "relevance", page: 0 } })}>{zh ? "清除筛选" : "Clear filters"}</button>}</p>
+          {view.kind === "all" && view.depth === "all" && view.materials === "all" && page === 0 && <ResearchQuestionRoutes locale={locale} routes={researchQuestionRoutes.filter(route => route.topic === subject.id)} onNavigate={onNavigate} />}
           <div className="research-bibliographic-list">{visible.map((paper) => {
             const href = `/research/${paper.id}`;
             const title = researchTitle(paper, locale);

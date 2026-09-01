@@ -130,6 +130,7 @@ function assemble(seed, legacyIndex) {
     readingNotes: researchReaderNotes[seed.title]?.sections,
     guideSectionCount: researchReaderNotes[seed.title]?.sections.length ?? 0,
     readerLimits: researchReaderNotes[seed.title]?.limits || sourceSpecificReaderLimits[seed.title],
+    readerReviewedAt: researchReaderNotes[seed.title]?.reviewedAt,
     // An orientation estimate for this concise record, never the full source.
     orientationMinutes: 3,
   };
