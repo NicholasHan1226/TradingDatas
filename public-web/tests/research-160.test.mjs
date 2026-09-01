@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { papers } from "../src/researchCatalog.js";
-import { researchBatchTwo160 } from "../src/researchBatchTwo160.js";
+import { researchBatchTwo160, researchBatchTwo160English } from "../src/researchBatchTwo160.js";
 import { researchReaderNotes } from "../src/researchReaderNotes.js";
 import { researchSummaryMaterials } from "../src/researchSummaryMaterials.js";
 import { auditContent } from "../scripts/audit-research-content.mjs";
@@ -16,9 +16,10 @@ test("20 primary-source orientations expand the reader library from 140 to 160 g
     assert.ok(guide.evidenceScope.length > 150, title);
     assert.deepEqual(guide.related, researchSummaryMaterials[title] ?? {});
     assert.equal(guide.sections.length, 6, title);
-    for (const section of guide.sections) {
+    for (const [index, section] of guide.sections.entries()) {
       assert.equal(section.reference.url, guide.evidenceUrl);
       for (const locale of ["zh", "en"]) assert.ok(section.body[locale].length >= (locale === "zh" ? 60 : 120), `${title}:${locale}`);
+      assert.ok(section.body.en.includes(Object.values(researchBatchTwo160English[title])[index]), `${title}: English section ${index} must retain source-specific content`);
     }
   }
   const report = auditContent({ today: "2026-09-01" });
