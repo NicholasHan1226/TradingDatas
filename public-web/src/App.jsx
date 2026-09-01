@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
   ArrowSquareOut,
@@ -27,6 +27,16 @@ import { buildQueryTemplate, evidenceView } from "./productEvidence";
 import { formatCny, getBasePlanCards, getPlanPrice } from "./pricing";
 import { buildPreviewPath, readPreviewSelection, safeLoginDestination } from "./purchasePreview";
 import { PurchasePreview } from "./PurchasePreview.jsx";
+import { papers, paperSlug, researchTitle, researchYear, readingPaths } from "./researchCatalog.js";
+import { normalizeLanguageChoice, resolveLanguage, browserLanguages } from "./language.js";
+import { researchViewReducer } from "./researchReader.js";
+import { researchHref, researchLocation, researchSubjects } from "./researchDiscovery.js";
+import { ResearchHub } from "./ResearchHub.jsx";
+import { ResearchRecord } from "./ResearchRecord.jsx";
+import { createReadingPositions, isInPageNavigation, observeHashLocation, restoreLocationHashTarget } from "./researchHistory.js";
+import { preparationTutorials } from "./preparationTutorials.js";
+import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
+const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
 import connectedInterfaceSnapshot from "./connectedInterfaceSnapshot.json";
 import {
   collectionHistory,
@@ -60,166 +70,22 @@ function getRouteFromPath() {
   return productRoutes.includes(primary) ? candidate : "home";
 }
 
-const papers = [
-  {
-    title: "Common risk factors in the returns on stocks and bonds",
-    authors: "Eugene F. Fama · Kenneth R. French",
-    venue: "Journal of Financial Economics",
-    year: "1993",
-    kind: "paper",
-    topic: "asset-pricing",
-    data: "returns · fundamentals · portfolios",
-    summary: {
-      en: "Examines how market, size, value, term, and default factors relate to stock and bond returns.",
-      zh: "研究市场、规模、价值、期限与违约等因素如何与股票及债券收益相关。",
-    },
-  },
-  {
-    title: "Returns to Buying Winners and Selling Losers: Implications for Stock Market Efficiency",
-    authors: "Narasimhan Jegadeesh · Sheridan Titman",
-    venue: "The Journal of Finance",
-    year: "1993",
-    kind: "paper",
-    topic: "quant-methods",
-    data: "daily prices · adjusted returns",
-    summary: {
-      en: "Studies return persistence through portfolios formed from prior winners and losers.",
-      zh: "通过历史赢家与输家组合，研究收益的延续性及其市场效率含义。",
-    },
-  },
-  {
-    title: "Continuous Auctions and Insider Trading",
-    authors: "Albert S. Kyle",
-    venue: "Econometrica",
-    year: "1985",
-    kind: "paper",
-    topic: "market-microstructure",
-    data: "trades · quotes · volume",
-    summary: {
-      en: "Models how private information, order flow, and market-maker pricing interact in continuous auctions.",
-      zh: "建模分析连续竞价中私人信息、订单流与做市定价之间的关系。",
-    },
-  },
-  {
-    title: "Optimal Execution of Portfolio Transactions",
-    authors: "Robert Almgren · Neil Chriss",
-    venue: "Journal of Risk",
-    year: "2001",
-    kind: "paper",
-    topic: "market-microstructure",
-    data: "intraday prices · volume · spread",
-    summary: {
-      en: "Frames execution as a balance between market impact, timing risk, and trading horizon.",
-      zh: "从市场冲击、时间风险与交易周期之间的权衡来刻画执行问题。",
-    },
-  },
-  {
-    title: "Price Momentum and Trading Volume",
-    authors: "Charles M. C. Lee · Bhaskaran Swaminathan",
-    venue: "The Journal of Finance",
-    year: "2000",
-    kind: "paper",
-    topic: "quant-methods",
-    data: "returns · turnover · portfolios",
-    summary: {
-      en: "Examines how trading volume can help interpret the persistence and reversal of price momentum.",
-      zh: "研究交易量如何帮助理解价格动量的延续与反转。",
-    },
-  },
-  {
-    title: "The Cross-Section of Expected Stock Returns",
-    authors: "Eugene F. Fama · Kenneth R. French",
-    venue: "The Journal of Finance",
-    year: "1992",
-    kind: "paper",
-    topic: "corporate-fundamentals",
-    data: "prices · market cap · financials",
-    summary: {
-      en: "Studies how firm size, book-to-market, leverage, and earnings-to-price relate to expected returns.",
-      zh: "研究公司规模、账面市值比、杠杆及盈价比与预期收益的关系。",
-    },
-  },
-  {
-    title: "China's Stock Market: A Marriage of Capitalism and State Control",
-    authors: "Jennifer N. Carpenter · Fangzhou Lu · Robert F. Whitelaw",
-    venue: "The Review of Financial Studies",
-    year: "2021",
-    kind: "paper",
-    topic: "a-share-market",
-    data: "A-share prices · ownership · fundamentals",
-    summary: {
-      en: "Reviews the ownership, institutional structure, and market development of China's stock market.",
-      zh: "梳理中国股票市场的所有权、制度结构与市场发展特征。",
-    },
-  },
-  {
-    title: "Media Coverage and the Cross-section of Stock Returns",
-    authors: "Lily Fang · Joel Peress",
-    venue: "The Journal of Finance",
-    year: "2009",
-    kind: "paper",
-    topic: "alternative-data",
-    data: "news coverage · returns · firm characteristics",
-    summary: {
-      en: "Examines how differences in media coverage relate to the cross-section of stock returns.",
-      zh: "研究媒体覆盖差异如何与股票横截面收益表现相关。",
-    },
-  },
-  {
-    title: "CSI 300 Index Methodology",
-    authors: "China Securities Index Company",
-    venue: "Index methodology",
-    year: "2025",
-    kind: "industry-research",
-    topic: "a-share-market",
-    data: "constituents · free-float market cap · corporate actions",
-    summary: {
-      en: "Explains the index universe, selection, weighting, review, and adjustment methodology.",
-      zh: "说明指数样本空间、选样、加权、定期审核与调整方法。",
-    },
-  },
-  {
-    title: "SSE Statistical Yearbook",
-    authors: "Shanghai Stock Exchange",
-    venue: "Market statistics",
-    year: "2025",
-    kind: "industry-research",
-    topic: "a-share-market",
-    data: "market statistics · listings · turnover · financing",
-    summary: {
-      en: "Provides a structured reference for market scale, listings, trading activity, and financing statistics.",
-      zh: "提供市场规模、上市公司、交易活动与融资统计的结构化年度参考。",
-    },
-  },
-  {
-    title: "Findings Regarding the Market Events of May 6, 2010",
-    authors: "U.S. SEC · CFTC",
-    venue: "Joint staff report",
-    year: "2010",
-    kind: "case",
-    topic: "market-microstructure",
-    data: "trades · quotes · order flow · futures",
-    summary: {
-      en: "Reconstructs a market-structure event using synchronized order, trade, quote, and futures evidence.",
-      zh: "使用同步的订单、成交、报价与期货证据重建一次市场结构事件。",
-    },
-  },
-  {
-    title: "Staff Report on Equity and Options Market Structure Conditions in Early 2021",
-    authors: "U.S. Securities and Exchange Commission",
-    venue: "Staff report",
-    year: "2021",
-    kind: "case",
-    topic: "alternative-data",
-    data: "prices · options · short interest · account activity",
-    summary: {
-      en: "Organizes market, options, short-interest, and participation evidence around a high-attention trading episode.",
-      zh: "围绕一次高关注交易事件，整理市场、期权、卖空与参与者活动证据。",
-    },
-  },
-];
+const researchObjectGroups = {
+  datasets: { collection: "datasets", route: "datasets", label: { en: "Data product", zh: "数据产品" } },
+  features: { collection: "features", route: "features", label: { en: "Feature", zh: "Feature" } },
+  recipes: { collection: "recipes", route: "recipes", label: { en: "Preparation method", zh: "准备方法" } },
+};
 
-const paperSlug = (paper) => paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+function getResearchRelatedObjects(paper, locale) {
+  return Object.entries(paper.related || {}).flatMap(([group, ids]) => {
+    const definition = researchObjectGroups[group];
+    if (!definition) return [];
+    return ids.flatMap((id) => {
+      const item = productManifest.objects[definition.collection].find((candidate) => candidate.id === id);
+      return item ? [{ id, href: `/${definition.route}/${id}`, label: definition.label[locale], title: item.title[locale] }] : [];
+    });
+  });
+}
 
 const messages = {
   en: {
@@ -254,10 +120,10 @@ const messages = {
     researchTopics: [
       ["all", "All"], ["asset-pricing", "Asset pricing"], ["market-microstructure", "Market microstructure"],
       ["corporate-fundamentals", "Corporate fundamentals"], ["alternative-data", "Alternative data"],
-      ["quant-methods", "Quant methods"], ["a-share-market", "A-share market"],
+      ["quant-methods", "Quant methods"], ["a-share-market", "China & comparative markets"], ["crypto-markets", "Crypto markets"], ["research-methods", "Research & statistics"], ["macro-finance", "Macro & fixed income"],
     ],
-    researchKinds: [["all", "All formats"], ["paper", "Papers"], ["industry-research", "Industry research"], ["case", "Cases"]],
-    researchResults: "items in this curated sample",
+    researchKinds: [["all", "All formats"], ["paper", "Papers"], ["working-paper", "Working papers"], ["book", "Books & chapters"], ["industry-research", "Industry research"], ["case", "Cases"], ["primary-source", "Primary sources"]],
+    researchResults: "curated materials",
     researchEmpty: "No research items match these filters.",
     requiredData: "DATA MATERIALS",
     sourcePaper: "Open source record",
@@ -317,10 +183,10 @@ const messages = {
     researchTopics: [
       ["all", "全部"], ["asset-pricing", "资产定价"], ["market-microstructure", "市场微观结构"],
       ["corporate-fundamentals", "公司基本面"], ["alternative-data", "另类数据"],
-      ["quant-methods", "量化方法"], ["a-share-market", "A 股市场"],
+      ["quant-methods", "量化方法"], ["a-share-market", "中国与比较市场"], ["crypto-markets", "加密市场"], ["research-methods", "研究与统计方法"], ["macro-finance", "宏观与固定收益"],
     ],
-    researchKinds: [["all", "全部形式"], ["paper", "论文"], ["industry-research", "行业研究"], ["case", "案例"]],
-    researchResults: "条内容收录于当前示例",
+    researchKinds: [["all", "全部形式"], ["paper", "论文"], ["working-paper", "工作论文"], ["book", "书籍与章节"], ["industry-research", "行业研究"], ["case", "案例"], ["primary-source", "原始资料"]],
+    researchResults: "条精选研究材料",
     researchEmpty: "没有匹配的研究内容。",
     requiredData: "所需数据材料",
     sourcePaper: "打开来源记录",
@@ -349,10 +215,6 @@ const messages = {
     menu: "打开导航",
   },
 };
-
-function getSystemLocale() {
-  return typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
-}
 
 function getSystemTheme() {
   return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -630,91 +492,6 @@ function ProductObjectDetail({ type, item, locale, onNavigate }) {
   );
 }
 
-function ResearchAtlasPage({
-  locale,
-  theme,
-  copy,
-  atlas,
-  featuredPaper,
-  visiblePapers,
-  researchTopic,
-  setResearchTopic,
-  researchKind,
-  setResearchKind,
-  browseOpen,
-  setBrowseOpen,
-  libraryRef,
-  onShowLibrary,
-  onNavigate,
-  topicLabels,
-  kindLabels,
-  methods,
-  bookmarks,
-  onToggleBookmark,
-}) {
-  return <div className="research-page research-atlas" id="research">
-    <section className="research-atlas-shell">
-      <div className="research-atlas-hero">
-        <div className="research-atlas-copy">
-          <span className="mono-kicker">{atlas.eyebrow}</span>
-          <h1>{atlas.title}</h1>
-          <p>{atlas.copy}</p>
-        </div>
-        <div className="research-question-prompts">
-          <span>{locale === "zh" ? "从一个问题开始" : "START WITH A QUESTION"}</span>
-          <div>{atlas.suggestions.map((prompt) => <button key={prompt.label} type="button" onClick={() => onShowLibrary({ topic: prompt.topic })}>{prompt.label}<ArrowRight /></button>)}</div>
-        </div>
-      </div>
-
-      <section className="research-paths" aria-labelledby="research-paths-title">
-        <header><div><h2 id="research-paths-title">{atlas.pathsTitle}</h2><p>{atlas.pathsCopy}</p></div><button type="button" onClick={() => onShowLibrary({ topic: "all" })}>{atlas.browse}<ArrowRight /></button></header>
-        <div className="research-path-grid">{atlas.paths.map((path) => {
-          const linkedPaper = papers.find((paper) => paper.title === path.paperTitle);
-          const href = linkedPaper ? `/research/${paperSlug(linkedPaper)}` : "/research";
-          return <a className="research-path-card" key={path.label} href={href} onClick={(event) => onNavigate(event, href)}>
-            <img src={theme === "dark" ? path.image : path.imageLight} alt="" />
-            <div><span>{path.label}</span><h3>{path.question}</h3><div className="research-path-meta"><small><Clock />{path.time}</small><small><FileText />{path.count}</small></div><strong>{locale === "zh" ? "所需数据材料" : "Raw data materials"}</strong><p>{path.data}</p></div>
-          </a>;
-        })}</div>
-      </section>
-
-      {featuredPaper && <section className="research-featured" aria-labelledby="featured-paper-title">
-        <header><div><h2>{atlas.featured}</h2><p>{atlas.featuredCopy}</p></div><button type="button" onClick={() => onShowLibrary({ topic: "all" })}>{atlas.browse}<ArrowRight /></button></header>
-        <div className="research-featured-grid">
-          <img className="research-paper-cover" src={theme === "dark" ? "/assets/research/featured-china-stock-market.png" : "/assets/research/featured-china-stock-market-light-v2.png"} alt="China's Stock Market — Capitalism and State Control cover" />
-          <div className="research-featured-identity"><span>{locale === "zh" ? "推荐" : "FEATURED"}</span><h3 id="featured-paper-title">{featuredPaper.title}</h3><p>{featuredPaper.authors}</p><small>{featuredPaper.venue} · {featuredPaper.year}</small><div className="research-reading-actions"><span><i />{atlas.notStarted}</span><a href={`/research/${paperSlug(featuredPaper)}`} onClick={(event) => onNavigate(event, `/research/${paperSlug(featuredPaper)}`)}><BookOpenText />{atlas.overview}</a></div></div>
-          <div className="research-featured-why"><strong>{atlas.why}</strong><p>{atlas.whyCopy}</p></div>
-          <div className="research-featured-links"><strong>{atlas.linked}</strong><a href="/data" onClick={(event) => onNavigate(event, "/data")}><Database /><span>{locale === "zh" ? "数据产品" : "Datasets"}<small>{locale === "zh" ? "行情、基础参考、公司与财务" : "market, reference, company, fundamentals"}</small></span><ArrowRight /></a><a href="#research-methods"><BookOpenText /><span>{locale === "zh" ? "研究方法" : "Methods"}<small>{locale === "zh" ? "时点对齐、事件时间线、验证" : "point-in-time, event timeline, validation"}</small></span><ArrowRight /></a></div>
-        </div>
-      </section>}
-
-      <section className="research-methods" id="research-methods" aria-labelledby="research-methods-title">
-        <header>
-          <div><span className="mono-kicker">METHODS / FOR REPRODUCIBLE PREPARATION</span><h2 id="research-methods-title">{locale === "zh" ? "从阅读进入数据准备。" : "Move from reading to data preparation."}</h2></div>
-          <p>{locale === "zh" ? "原 Cookbook 收拢为研究方法：解释如何查询、对齐、连接和验证原始数据，但不替用户完成研究结论。" : "Cookbook is now progressively disclosed as research methods: query, align, join, and validate raw data without supplying the conclusion."}</p>
-        </header>
-        <div className="research-method-list">{methods.slice(0, 3).map((method, index) => <a key={method.id} href={`/recipes/${method.id}`} onClick={(event) => onNavigate(event, `/recipes/${method.id}`)}><span>{String(index + 1).padStart(2, "0")}</span><div><small>{locale === "zh" ? "可复现方法" : "REPRODUCIBLE METHOD"}</small><h3>{method.title[locale]}</h3><p>{method.detail}</p></div><ArrowRight /></a>)}</div>
-      </section>
-
-      <div className="research-atlas-notice"><span><GraduationCap weight="duotone" />{atlas.external}</span><span>{locale === "zh" ? "更新于 2026-08-27" : "Updated Aug 27, 2026"}</span></div>
-
-      <section className={`research-library-drawer ${browseOpen ? "is-open" : ""}`} ref={libraryRef} aria-hidden={!browseOpen}>
-        <header><div><span className="mono-kicker">RESEARCH LIBRARY / EXTERNAL SOURCES</span><h2>{locale === "zh" ? "完整研究库" : "Full research library"}</h2></div><button type="button" onClick={() => setBrowseOpen(false)}>{locale === "zh" ? "收起" : "Close"}<X /></button></header>
-        <div className="research-library-controls">
-          <div><span className="filter-label">{locale === "zh" ? "内容形式" : "FORMAT"}</span><div className="research-topics research-kinds" aria-label="Research formats">{copy.researchKinds.map(([kind, label]) => <button key={kind} type="button" className={researchKind === kind ? "is-active" : ""} onClick={() => setResearchKind(kind)}>{label}</button>)}</div></div>
-          <div><span className="filter-label">{locale === "zh" ? "研究主题" : "TOPIC"}</span><div className="research-topics" aria-label="Research topics">{copy.researchTopics.map(([topic, label]) => <button key={topic} type="button" className={researchTopic === topic ? "is-active" : ""} onClick={() => setResearchTopic(topic)}>{label}</button>)}</div></div>
-        </div>
-        <div className="research-count"><span>{String(visiblePapers.length).padStart(2, "0")}</span>{copy.researchResults}</div>
-        <div className="paper-list">{visiblePapers.length ? visiblePapers.map((paper, index) => {
-          const bookmarkKey = `research:${paperSlug(paper)}`;
-          const isSaved = bookmarks.includes(bookmarkKey);
-          return <article className="paper-row" key={paper.title}><span className="paper-index">{String(index + 1).padStart(2, "0")}</span><div className="paper-main"><div className="paper-meta"><span>{kindLabels[paper.kind]}</span><span>{topicLabels[paper.topic]}</span><span>{paper.year}</span><span>{paper.venue}</span></div><h3>{paper.title}</h3><p>{paper.authors}</p><p className="paper-summary">{paper.summary[locale]}</p><div className="paper-data"><span>{copy.requiredData}</span><code>{paper.data}</code></div></div><div className="paper-actions"><button type="button" className={isSaved ? "is-saved" : ""} onClick={() => onToggleBookmark(bookmarkKey)} aria-label={isSaved ? (locale === "zh" ? "取消收藏" : "Remove bookmark") : (locale === "zh" ? "收藏" : "Bookmark")}><BookmarkSimple weight={isSaved ? "fill" : "regular"} /></button><a href={`/research/${paperSlug(paper)}`} onClick={(event) => onNavigate(event, `/research/${paperSlug(paper)}`)} aria-label={`${locale === "zh" ? "阅读 TradingDatas 整理页" : "Read TradingDatas record"}: ${paper.title}`}><ArrowRight /></a></div></article>;
-        }) : <div className="research-empty">{copy.researchEmpty}</div>}</div>
-      </section>
-    </section>
-  </div>;
-}
-
 function DataSourceLandscapePage({ locale, onNavigate }) {
   const familyLabels = {
     "china-markets": { zh: "中国市场", en: "China markets" },
@@ -771,7 +548,8 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
 }
 
 export function App() {
-  const [locale, setLocale] = useState(() => localStorage.getItem("td-locale") || getSystemLocale());
+  const [localeChoice, setLocaleChoice] = useState(() => normalizeLanguageChoice(localStorage.getItem("td-locale")));
+  const [locale, setLocale] = useState(() => resolveLanguage(localeChoice, browserLanguages()));
   const [themeChoice, setThemeChoice] = useState(() => localStorage.getItem("td-theme") || "system");
   const [theme, setTheme] = useState(() => themeChoice === "system" ? getSystemTheme() : themeChoice);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -790,10 +568,21 @@ export function App() {
   const [recentSearches, setRecentSearches] = useState(() => {
     try { return JSON.parse(localStorage.getItem("td-recent-searches") || "[]"); } catch { return []; }
   });
-  const [researchTopic, setResearchTopic] = useState("all");
-  const [researchKind, setResearchKind] = useState("all");
-  const [researchBrowseOpen, setResearchBrowseOpen] = useState(false);
-  const researchLibraryRef = useRef(null);
+  const [researchView, updateResearchView] = useReducer(researchViewReducer, null, () => researchLocation(window.location.search, papers));
+  const researchScrollRef = useRef(0);
+  const readingPositions = useRef(createReadingPositions());
+  const [initialReadingEntry] = useState(() => window.history.state?.tdReadingEntry ?? crypto.randomUUID());
+  const readingEntry = useRef(initialReadingEntry);
+  const readingLocation = useRef(window.location.href);
+  const hashTargetCleanup = useRef(() => {});
+  const [navigationRevision, setNavigationRevision] = useState(0);
+  const currentRouteRef = useRef(route);
+  function changeResearchView(action) {
+    const next = researchViewReducer(researchView, action);
+    updateResearchView(action);
+    window.history.replaceState(window.history.state, "", researchHref(next));
+    readingLocation.current = window.location.href;
+  }
   const desktopSearchInputRef = useRef(null);
   const mobileSearchInputRef = useRef(null);
   const [dataFamily, setDataFamily] = useState("all");
@@ -1099,6 +888,13 @@ export function App() {
   }
 
   useEffect(() => {
+    const syncLanguage = () => setLocale(resolveLanguage(localeChoice, browserLanguages()));
+    syncLanguage();
+    window.addEventListener("languagechange", syncLanguage);
+    return () => window.removeEventListener("languagechange", syncLanguage);
+  }, [localeChoice]);
+
+  useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const sync = () => setTheme(themeChoice === "system" ? (media.matches ? "dark" : "light") : themeChoice);
     sync();
@@ -1111,6 +907,8 @@ export function App() {
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
   }, [theme, locale]);
 
+  useEffect(() => { applyPageMetadata(pageMetadata(route, locale)); }, [route, locale]);
+
   useEffect(() => {
     localStorage.setItem("td-recent-searches", JSON.stringify(recentSearches));
   }, [recentSearches]);
@@ -1120,9 +918,39 @@ export function App() {
   }, [globalQuery]);
 
   useEffect(() => {
-    const syncRoute = () => { setRoute(getRouteFromPath()); setRouteSearch(window.location.search); };
+    const previousRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
+    const syncRoute = (event) => {
+      const inPage = isInPageNavigation(readingLocation.current, window.location.href);
+      readingLocation.current = window.location.href;
+      if (inPage) {
+        window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
+        hashTargetCleanup.current();
+        hashTargetCleanup.current = window.location.hash ? restoreLocationHashTarget() : () => {};
+        if (!window.location.hash) window.scrollTo({ top: 0, behavior: "instant" });
+        return;
+      }
+      if (currentRouteRef.current === "research") readingPositions.current.save(readingEntry.current, window.scrollY);
+      readingEntry.current = event.state?.tdReadingEntry ?? crypto.randomUUID();
+      if (event.state?.tdReadingEntry == null) window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
+      const nextRoute = getRouteFromPath();
+      if (nextRoute === "research") {
+        researchScrollRef.current = readingPositions.current.restore(readingEntry.current);
+        updateResearchView({ type: "restore", value: researchLocation(window.location.search, papers) });
+      }
+      setRoute(nextRoute);
+      setRouteSearch(window.location.search);
+      setNavigationRevision((value) => value + 1);
+    };
+    const stopHashTracking = observeHashLocation(window, (href) => { readingLocation.current = href; });
     window.addEventListener("popstate", syncRoute);
-    return () => window.removeEventListener("popstate", syncRoute);
+    return () => {
+      hashTargetCleanup.current();
+      stopHashTracking();
+      window.removeEventListener("popstate", syncRoute);
+      window.history.scrollRestoration = previousRestoration;
+    };
   }, []);
 
   useEffect(() => {
@@ -1134,8 +962,21 @@ export function App() {
   }, [route, routeSearch]);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [route]);
+    currentRouteRef.current = route;
+    window.scrollTo({ top: route === "research" ? researchScrollRef.current : 0, behavior: "instant" });
+    if (navigationRevision > 0 && (route.startsWith("research/") || route.startsWith("recipes/"))) {
+      const heading = document.querySelector("main h1");
+      heading?.setAttribute("tabindex", "-1");
+      heading?.focus({ preventScroll: true });
+    }
+  }, [route, navigationRevision]);
+
+  useEffect(() => {
+    hashTargetCleanup.current();
+    const cleanup = restoreLocationHashTarget();
+    hashTargetCleanup.current = cleanup;
+    return cleanup;
+  }, [route, navigationRevision]);
 
   useEffect(() => {
     const focusGlobalSearch = (event) => {
@@ -1154,8 +995,10 @@ export function App() {
   }, []);
 
   function chooseLocale(next) {
-    setLocale(next);
-    localStorage.setItem("td-locale", next);
+    const choice = normalizeLanguageChoice(next);
+    setLocaleChoice(choice);
+    setLocale(resolveLanguage(choice, browserLanguages()));
+    localStorage.setItem("td-locale", choice);
   }
 
   function chooseTheme(next) {
@@ -1168,10 +1011,23 @@ export function App() {
   const sections = ["data", "research", "pricing"];
   const navPaths = sections.map((section) => `/${section}`);
   function goTo(path) {
-    window.history.pushState({}, "", path);
-    const pathname = new URL(path, window.location.origin).pathname;
+    if (route === "research") {
+      researchScrollRef.current = window.scrollY;
+      readingPositions.current.save(readingEntry.current, window.scrollY);
+    }
+    readingEntry.current = crypto.randomUUID();
+    window.history.pushState({ tdReadingEntry: readingEntry.current }, "", path);
+    const destination = new URL(path, window.location.origin);
+    const pathname = destination.pathname;
+    if (pathname.replace(/\/$/, "") === "/research") {
+      if (destination.search && destination.search !== new URL(researchHref(researchView), window.location.origin).search) researchScrollRef.current = 0;
+      updateResearchView({ type: "restore", value: destination.search ? researchLocation(destination.search, papers) : researchView });
+      if (!destination.search) window.history.replaceState(window.history.state, "", researchHref(researchView));
+    }
     setRoute(pathname === "/" ? "home" : pathname.replace(/^\/+|\/+$/g, ""));
     setRouteSearch(window.location.search);
+    readingLocation.current = window.location.href;
+    setNavigationRevision((value) => value + 1);
     setMobileOpen(false);
     setAccountMenuOpen(false);
   }
@@ -1200,14 +1056,9 @@ export function App() {
       throw error;
     } finally {settleAccountOperation(accountLoginInFlight);}
   }
-  const topicLabels = Object.fromEntries(copy.researchTopics);
+  const topicLabels = { ...Object.fromEntries(researchSubjects.map((item) => [item.id, item.label[locale]])), "quant-methods": locale === "zh" ? "研究方法" : "Research methods" };
   const kindLabels = Object.fromEntries(copy.researchKinds);
-  const visiblePapers = papers.filter((paper) => {
-    const matchesTopic = researchTopic === "all" || paper.topic === researchTopic;
-    const matchesKind = researchKind === "all" || paper.kind === researchKind;
-    return matchesTopic && matchesKind;
-  });
-  const featuredPaper = papers.find((paper) => paper.title === "China's Stock Market: A Marriage of Capitalism and State Control");
+  const featuredPaper = papers.find((paper) => paper.id === "china-s-stock-market-a-marriage-of-capitalism-and-state-control");
   const researchAtlas = locale === "zh" ? {
     eyebrow: "研究地图",
     title: "问题驱动的研究地图。",
@@ -1217,6 +1068,7 @@ export function App() {
       { label: "财务数据如何避免未来信息？", topic: "corporate-fundamentals" },
       { label: "价格、成交量与流动性如何关联？", topic: "market-microstructure" },
       { label: "公告应按哪个时点进入研究？", topic: "alternative-data" },
+      { label: "资金费率与持仓量能说明什么？", topic: "crypto-markets" },
     ],
     pathsTitle: "精选研究路径",
     pathsCopy: "三个经过整理的起点，把问题连接到论文和所需的数据材料。",
@@ -1227,7 +1079,7 @@ export function App() {
       { label: "公告与事件", question: "公告应按哪个时点进入研究？", time: "31 分钟", count: "3 篇资料", data: "公告 · 新闻 · 公司事件 · 价格", image: "/assets/research/path-announcement-events-cover-v2.png", imageLight: "/assets/research/path-announcement-events-cover-light-v3.png", paperTitle: "Media Coverage and the Cross-section of Stock Returns" },
     ],
     featured: "推荐阅读",
-    featuredCopy: "一篇值得先花十分钟理解的高信息密度资料。",
+    featuredCopy: "先用三分钟导读定位问题，再进入原文。",
     why: "为什么值得读",
     whyCopy: "这篇论文从所有权、制度结构和市场演进理解中国股票市场，为后续研究数据的范围、可得性和市场语境提供基础。",
     linked: "关联到 TradingDatas",
@@ -1243,6 +1095,7 @@ export function App() {
       { label: "How do fundamentals avoid look-ahead?", topic: "corporate-fundamentals" },
       { label: "How do price, volume, and liquidity interact?", topic: "market-microstructure" },
       { label: "When should an announcement enter a study?", topic: "alternative-data" },
+      { label: "What do funding and open interest describe?", topic: "crypto-markets" },
     ],
     pathsTitle: "Curated research paths",
     pathsCopy: "Three prepared starting points connect a question to papers and the raw data that matter.",
@@ -1253,7 +1106,7 @@ export function App() {
       { label: "ANNOUNCEMENTS & EVENTS", question: "When should an announcement enter a study?", time: "31 min", count: "3 readings", data: "announcements · news · events · prices", image: "/assets/research/path-announcement-events-cover-v2.png", imageLight: "/assets/research/path-announcement-events-cover-light-v3.png", paperTitle: "Media Coverage and the Cross-section of Stock Returns" },
     ],
     featured: "Featured paper",
-    featuredCopy: "One high-signal paper worth ten minutes of orientation.",
+    featuredCopy: "Start with a three-minute orientation, then read the original source.",
     why: "Why it matters",
     whyCopy: "This paper uses ownership, institutions, and market development to frame China's stock market—useful context for data scope, availability, and interpretation.",
     linked: "Linked in TradingDatas",
@@ -1262,11 +1115,6 @@ export function App() {
     external: "External literature · TradingDatas does not publish the conclusions",
   };
 
-  function showResearchLibrary({ topic = researchTopic } = {}) {
-    setResearchTopic(topic);
-    setResearchBrowseOpen(true);
-    window.setTimeout(() => researchLibraryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
-  }
   const accountGroups = locale === "zh" ? [
     { label: "你的资料库", items: [{ key: "bookmarks", label: "已收藏", description: "集中查看保存的数据产品、研究内容、方法和文档。" }] },
     { label: "账户", items: [{ key: "overview", label: "账户概览", description: "查看订阅、用量、密钥和另类数据状态的统一摘要。" }] },
@@ -1345,8 +1193,8 @@ export function App() {
 
   const globalIndex = [
     ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
-    ...papers.map((paper) => ({ key: `research:${paperSlug(paper)}`, id: paperSlug(paper), group: "research", type: locale === "zh" ? "研究" : "Research", label: paper.title, description: `${paper.authors} · ${paper.year}`, aliases: [paper.venue, paper.kind, paper.topic, paper.data, paper.summary.en, paper.summary.zh], path: `/research/${paperSlug(paper)}` })),
-    ...productManifest.objects.recipes.map((item) => ({ key: `method:${item.id}`, id: item.id, group: "methods", type: locale === "zh" ? "研究方法" : "Method", label: item.title[locale], description: item.detail, aliases: [item.title.en, item.title.zh, item.status], path: `/recipes/${item.id}` })),
+    ...papers.map((paper) => ({ key: `research:${paper.id}`, id: paper.id, group: "research", type: locale === "zh" ? "研究" : "Research", label: researchTitle(paper, locale), description: `${paper.authors} · ${researchYear(paper, locale)}`, aliases: [paper.title, paper.sourceTitle, paper.titleZh, paper.venue, paper.kind, paper.topic, paper.data, paper.dataZh, paper.summary.en, paper.summary.zh, ...(paper.sources || []).map((source) => source.label)], path: `/research/${paper.id}` })),
+    ...productManifest.objects.recipes.map((item) => ({ key: `method:${item.id}`, id: item.id, group: "methods", type: locale === "zh" ? "数据准备教程" : "Data preparation tutorial", label: item.title[locale], description: preparationTutorials[item.id]?.summary[locale] || item.detail, aliases: [item.title.en, item.title.zh], path: `/recipes/${item.id}` })),
     ...allDocs.map((entry) => ({ key: `doc:${entry.slug}`, id: entry.slug, group: "docs", type: locale === "zh" ? "文档" : "Docs", label: entry.title, description: entry.description, aliases: [entry.category, entry.categoryLabel], path: "/account", accountSection: "docs", docSlug: entry.slug })),
   ].map((item) => ({ ...item, searchDocument: createSearchDocument([item.id, item.type, item.label, item.description, item.aliases]) }));
   const savedItems = globalIndex.filter((item) => bookmarks.includes(item.key));
@@ -1370,7 +1218,7 @@ export function App() {
     { label: "连接与学习", items: [{ key: "agents", label: "Agent 与 MCP" }, { key: "docs", label: "文档" }] },
   ] : [
     { label: "Your library", items: [{ key: "bookmarks", label: `Bookmarks · ${bookmarks.length}` }] },
-    { label: "Account", items: [{ key: "overview", label: "Overview" }, { key: "subscription", label: "Access & plan" }, { key: "preferences", label: "Appearance" }] },
+    { label: "Account", items: [{ key: "overview", label: "Overview" }, { key: "subscription", label: "Access & plan" }, { key: "preferences", label: "Language & appearance" }] },
     { label: "Connect & learn", items: [{ key: "agents", label: "Agent connections" }, { key: "docs", label: "Documentation" }] },
   ];
   function openSearchItem(event, item) {
@@ -1456,8 +1304,8 @@ export function App() {
 
   const selectedDataset = productManifest.objects.datasets.find((item) => item.id === routeSlug);
   const selectedFeature = productManifest.objects.features.find((item) => item.id === routeSlug);
-  const selectedRecipe = productManifest.objects.recipes.find((item) => item.id === routeSlug);
-  const selectedPaper = routeSlug ? papers.find((paper) => paper.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") === routeSlug) : null;
+  const selectedPaper = routeSlug ? papers.find((paper) => paper.id === routeSlug) : null;
+  const selectedReadingPath = readingPaths.find((path) => routeSlug === `paths/${path.id}`);
   const dataCategories = locale === "zh" ? [
     { family: "market", label: "行情", description: "价格、交易状态与市场基础参考" },
     { family: "fundamentals", label: "公司与财务", description: "公司身份、财务披露与所有权结构" },
@@ -1500,9 +1348,10 @@ export function App() {
         <div className="header-actions">
           <button className="icon-button bookmark-header-button" type="button" aria-label={locale === "zh" ? `已收藏 ${bookmarks.length} 项` : `${bookmarks.length} bookmarks`} onClick={() => openAccountSection("bookmarks")}><BookmarkSimple size={23} weight={bookmarks.length ? "fill" : "regular"} />{bookmarks.length > 0 && <span>{bookmarks.length}</span>}</button>
           <div className="popover-wrap account-wrap">
-            <button className="icon-button account-button" type="button" disabled={accountChecking} aria-busy={accountChecking} aria-label={accountChecking ? accountEntryLabel : accountData ? copy.account : accountViewState === "unavailable" ? copy.account : (locale === "zh" ? "登录账户" : "Sign in")} aria-expanded={accountData && !accountChecking ? accountMenuOpen : false} onClick={() => accountData ? setAccountMenuOpen((value) => !value) : goTo(accountViewState === "unavailable" ? "/account" : "/login")}><UserCircle size={30} weight="thin" /></button>
-            {accountMenuOpen && accountData && !accountChecking && <div className="account-menu-popover">
+            <button className="icon-button account-button" type="button" disabled={accountChecking} aria-busy={accountChecking} aria-label={accountChecking ? accountEntryLabel : accountData ? copy.account : accountViewState === "unavailable" ? copy.account : (locale === "zh" ? "账户与设置" : "Account and settings")} aria-expanded={!accountChecking ? accountMenuOpen : false} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
+            {accountMenuOpen && !accountChecking && <div className="account-menu-popover">
               <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? (accountData.email || accountData.tenant_id) : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountPlanLabel} · 已登录` : `${accountPlanLabel} · signed in`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
+              {!accountData && <section><button type="button" onClick={() => { setAccountMenuOpen(false); goTo("/login"); }}>{locale === "zh" ? "登录账户" : "Sign in"}<ArrowRight /></button></section>}
               {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
             </div>}
           </div>
@@ -1634,13 +1483,22 @@ export function App() {
         {primaryRoute === "recipes" && !routeSlug && <section className="object-index-page">
           <SectionNav locale={locale} active="/recipes" onNavigate={navigate} items={locale === "zh" ? [{ path: "/recipes", label: "全部 Recipes" }, { path: "/recipes/adjusted-price-series", label: "价格准备" }, { path: "/recipes/pit-fundamentals-panel", label: "财务对齐" }] : [{ path: "/recipes", label: "All recipes" }, { path: "/recipes/adjusted-price-series", label: "Price preparation" }, { path: "/recipes/pit-fundamentals-panel", label: "Fundamental alignment" }]} />
           <div className="object-index-hero"><span className="mono-kicker">DATA RECIPES / EXECUTABLE METHODS</span><h1>{locale === "zh" ? "教你正确组合数据，不替你完成研究。" : "Combine data correctly without outsourcing the research."}</h1><p>{locale === "zh" ? "每个 Recipe 都声明问题、输入、时间对齐、输出结构、验证与局限；结果判断仍属于用户。" : "Every Recipe declares the task, inputs, time alignment, output schema, validation, and limits. Conclusions remain the user's."}</p></div>
-          <div className="object-list large">{productManifest.objects.recipes.map((item) => <a key={item.id} href={`/recipes/${item.id}`} onClick={(event) => navigate(event, `/recipes/${item.id}`)}><div><MaturityTag status={item.status} locale={locale} /><h2>{item.title[locale]}</h2><p>{item.detail}</p></div><ArrowRight /></a>)}</div>
+          <div className="object-list large">{Object.entries(preparationTutorials).map(([id, item]) => <a key={id} href={`/recipes/${id}`} onClick={(event) => navigate(event, `/recipes/${id}`)}><div><span className="mono-kicker">{locale === "zh" ? "教程 · 含可运行示例" : "TUTORIAL · RUNNABLE EXAMPLE"}</span><h2>{item.title[locale]}</h2><p>{item.summary[locale]}</p></div><ArrowRight /></a>)}</div>
         </section>}
-        {primaryRoute === "recipes" && routeSlug && <ProductObjectDetail type="recipes" item={selectedRecipe} locale={locale} onNavigate={navigate} />}
+        {primaryRoute === "recipes" && routeSlug && <Suspense fallback={<p role="status">{locale === "zh" ? "正在载入教程…" : "Loading tutorial…"}</p>}><TutorialPage key={routeSlug} id={routeSlug} locale={locale} onNavigate={navigate} saved={bookmarks.includes(`method:${routeSlug}`)} onToggleBookmark={() => toggleBookmark(`method:${routeSlug}`)} /></Suspense>}
 
-        {primaryRoute === "research" && !routeSlug && <ResearchAtlasPage locale={locale} theme={theme} copy={copy} atlas={researchAtlas} featuredPaper={featuredPaper} visiblePapers={visiblePapers} researchTopic={researchTopic} setResearchTopic={setResearchTopic} researchKind={researchKind} setResearchKind={setResearchKind} browseOpen={researchBrowseOpen} setBrowseOpen={setResearchBrowseOpen} libraryRef={researchLibraryRef} onShowLibrary={showResearchLibrary} onNavigate={navigate} topicLabels={topicLabels} kindLabels={kindLabels} methods={productManifest.objects.recipes} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} />}
+        {primaryRoute === "research" && !routeSlug && <ResearchHub locale={locale} view={researchView} onChange={changeResearchView} featuredPaper={featuredPaper} atlas={researchAtlas} kindLabels={kindLabels} methods={productManifest.objects.recipes} bookmarks={bookmarks} onToggleBookmark={toggleBookmark} onNavigate={navigate} />}
 
-        {primaryRoute === "research" && routeSlug && <section className="object-detail-page research-record"><a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a><div className="object-detail-hero"><div><span className="mono-kicker">EXTERNAL RESEARCH / CURATED RECORD</span><h1>{selectedPaper?.title || (locale === "zh" ? "研究记录未找到" : "Research record not found")}</h1><p>{selectedPaper ? `${selectedPaper.authors} · ${selectedPaper.venue} · ${selectedPaper.year}` : ""}</p></div><span className="maturity-tag">{locale === "zh" ? "外部来源" : "External source"}</span></div>{selectedPaper && <><div className="research-record-grid"><article><span>01 / QUESTION</span><h2>{locale === "zh" ? "研究问题" : "Research question"}</h2><p>{selectedPaper.summary[locale]}</p></article><article><span>02 / EVIDENCE</span><h2>{locale === "zh" ? "所需数据材料" : "Required data"}</h2><p>{selectedPaper.data}</p></article><article><span>03 / LIMITS</span><h2>{locale === "zh" ? "方法与限制" : "Method & limits"}</h2><p>{locale === "zh" ? "先核对样本、时间范围、可得时点、修订、幸存者偏差与市场适用性，再决定能否复现或迁移。" : "Check sample, time range, point-in-time availability, revisions, survivorship, and market applicability before replication or transfer."}</p></article></div><section className="object-boundary"><h2>{locale === "zh" ? "从阅读进入数据准备" : "Continue from reading to data preparation"}</h2><p>{locale === "zh" ? "下一步是检查对应 Dataset、透明 Feature 与 Recipe；TradingDatas 不发表或验证论文结论。" : "Next inspect the related Dataset, transparent Feature, and Recipe. TradingDatas neither publishes nor validates the paper's conclusions."}</p><div className="detail-actions"><a className="primary-button" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "查看数据" : "View data"}<ArrowRight /></a><a className="text-link" href={`https://scholar.google.com/scholar?q=${encodeURIComponent(selectedPaper.title)}`} target="_blank" rel="noreferrer">{copy.sourcePaper}<ArrowRight /></a></div></section></>}</section>}
+        {primaryRoute === "research" && selectedReadingPath && <section className="object-detail-page research-path-detail">
+          <a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究" : "Back to Research"}</a>
+          <div className="object-detail-hero"><div><span className="mono-kicker">{locale === "zh" ? "精选阅读路径" : "CURATED READING PATH"}</span><h1>{selectedReadingPath.title[locale]}</h1><p>{locale === "zh" ? "按顺序阅读概念、证据与方法限制。约12分钟为导读时间估计，原文阅读时间另计。" : "Follow the sequence from concepts to evidence and methodological limits. Twelve minutes estimates orientation time, not full-paper reading."}</p></div></div>
+          <ol className="research-reading-sequence">{selectedReadingPath.titles.map((title, index) => papers.find((paper) => paper.title === title)).filter(Boolean).map((paper, index) => <li key={paper.id}><span>{String(index + 1).padStart(2, "0")}</span><div><h2><a href={`/research/${paper.id}`} onClick={(event) => navigate(event, `/research/${paper.id}`)}>{researchTitle(paper, locale)}</a></h2><p>{paper.summary[locale]}</p><small>{paper.authors} · {researchYear(paper, locale)}</small></div><ArrowRight /></li>)}</ol>
+        </section>}
+
+        {primaryRoute === "research" && routeSlug && !selectedReadingPath && (selectedPaper ?
+          <ResearchRecord backHref={researchHref(researchView)} key={selectedPaper.id} paper={selectedPaper} locale={locale} topicLabel={topicLabels[selectedPaper.topic]} kindLabel={kindLabels[selectedPaper.kind]} related={getResearchRelatedObjects(selectedPaper, locale)} furtherReading={papers.filter((paper) => paper.topic === selectedPaper.topic && paper.id !== selectedPaper.id).slice(0, 3)} saved={bookmarks.includes(`research:${selectedPaper.id}`)} onToggleBookmark={() => toggleBookmark(`research:${selectedPaper.id}`)} onNavigate={navigate} /> :
+          <section className="object-detail-page"><a className="object-back" href="/research" onClick={(event) => navigate(event, "/research")}>← {locale === "zh" ? "返回研究库" : "Back to Research"}</a><h1>{locale === "zh" ? "研究记录未找到" : "Research record not found"}</h1></section>
+        )}
 
         {primaryRoute === "cookbook" && <section className="cookbook-section" id="cookbook">
           <div className="cookbook-visual" aria-hidden="true" />
@@ -1819,8 +1677,9 @@ export function App() {
                     <section>
                       <span className="popover-title">{copy.language}</span>
                       <div className="segmented">
-                        <button type="button" className={locale === "zh" ? "is-active" : ""} onClick={() => chooseLocale("zh")}>中文</button>
-                        <button type="button" className={locale === "en" ? "is-active" : ""} onClick={() => chooseLocale("en")}>English</button>
+                        <button type="button" className={localeChoice === "system" ? "is-active" : ""} aria-pressed={localeChoice === "system"} onClick={() => chooseLocale("system")}>{copy.system}</button>
+                        <button type="button" className={localeChoice === "zh" ? "is-active" : ""} aria-pressed={localeChoice === "zh"} onClick={() => chooseLocale("zh")}>中文</button>
+                        <button type="button" className={localeChoice === "en" ? "is-active" : ""} aria-pressed={localeChoice === "en"} onClick={() => chooseLocale("en")}>English</button>
                       </div>
                     </section>
                     <section>

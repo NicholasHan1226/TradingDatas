@@ -1,0 +1,399 @@
+[
+  {
+    "title": "Common risk factors in the returns on stocks and bonds",
+    "authors": "Eugene F. Fama · Kenneth R. French",
+    "venue": "Journal of Financial Economics",
+    "year": "1993",
+    "kind": "paper",
+    "topic": "asset-pricing",
+    "data": "returns · fundamentals · portfolios",
+    "summary": {
+      "en": "Examines how market, size, value, term, and default factors relate to stock and bond returns.",
+      "zh": "研究市场、规模、价值、期限与违约等因素如何与股票及债券收益相关。"
+    }
+  },
+  {
+    "title": "Returns to Buying Winners and Selling Losers: Implications for Stock Market Efficiency",
+    "authors": "Narasimhan Jegadeesh · Sheridan Titman",
+    "venue": "The Journal of Finance",
+    "year": "1993",
+    "kind": "paper",
+    "topic": "quant-methods",
+    "data": "daily prices · adjusted returns",
+    "summary": {
+      "en": "Studies return persistence through portfolios formed from prior winners and losers.",
+      "zh": "通过历史赢家与输家组合，研究收益的延续性及其市场效率含义。"
+    }
+  },
+  {
+    "title": "Continuous Auctions and Insider Trading",
+    "authors": "Albert S. Kyle",
+    "venue": "Econometrica",
+    "year": "1985",
+    "kind": "paper",
+    "topic": "market-microstructure",
+    "data": "trades · quotes · volume",
+    "summary": {
+      "en": "Models how private information, order flow, and market-maker pricing interact in continuous auctions.",
+      "zh": "建模分析连续竞价中私人信息、订单流与做市定价之间的关系。"
+    }
+  },
+  {
+    "title": "Optimal Execution of Portfolio Transactions",
+    "authors": "Robert Almgren · Neil Chriss",
+    "venue": "Journal of Risk",
+    "year": "2001",
+    "kind": "paper",
+    "topic": "market-microstructure",
+    "data": "intraday prices · volume · spread",
+    "summary": {
+      "en": "Frames execution as a balance between market impact, timing risk, and trading horizon.",
+      "zh": "从市场冲击、时间风险与交易周期之间的权衡来刻画执行问题。"
+    }
+  },
+  {
+    "title": "Price Momentum and Trading Volume",
+    "authors": "Charles M. C. Lee · Bhaskaran Swaminathan",
+    "venue": "The Journal of Finance",
+    "year": "2000",
+    "kind": "paper",
+    "topic": "quant-methods",
+    "data": "returns · turnover · portfolios",
+    "summary": {
+      "en": "Examines how trading volume can help interpret the persistence and reversal of price momentum.",
+      "zh": "研究交易量如何帮助理解价格动量的延续与反转。"
+    }
+  },
+  {
+    "title": "The Cross-Section of Expected Stock Returns",
+    "authors": "Eugene F. Fama · Kenneth R. French",
+    "venue": "The Journal of Finance",
+    "year": "1992",
+    "kind": "paper",
+    "topic": "corporate-fundamentals",
+    "data": "prices · market cap · financials",
+    "summary": {
+      "en": "Studies how firm size, book-to-market, leverage, and earnings-to-price relate to expected returns.",
+      "zh": "研究公司规模、账面市值比、杠杆及盈价比与预期收益的关系。"
+    }
+  },
+  {
+    "id": "china-s-stock-market-a-marriage-of-capitalism-and-state-control",
+    "title": "The Development of China's Stock Market and Stakes for the Global Economy",
+    "authors": "Jennifer N. Carpenter · Robert F. Whitelaw",
+    "venue": "Annual Review of Financial Economics",
+    "year": "2017",
+    "kind": "paper",
+    "topic": "a-share-market",
+    "data": "A-share prices · ownership · fundamentals",
+    "summary": {
+      "en": "Reviews the ownership, institutional structure, and market development of China's stock market.",
+      "zh": "梳理中国股票市场的所有权、制度结构与市场发展特征。"
+    }
+  },
+  {
+    "title": "Media Coverage and the Cross-section of Stock Returns",
+    "authors": "Lily Fang · Joel Peress",
+    "venue": "The Journal of Finance",
+    "year": "2009",
+    "kind": "paper",
+    "topic": "alternative-data",
+    "data": "news coverage · returns · firm characteristics",
+    "summary": {
+      "en": "Examines how differences in media coverage relate to the cross-section of stock returns.",
+      "zh": "研究媒体覆盖差异如何与股票横截面收益表现相关。"
+    }
+  },
+  {
+    "title": "CSI 300 Index Methodology",
+    "authors": "China Securities Index Company",
+    "venue": "Index methodology",
+    "year": "2025",
+    "kind": "industry-research",
+    "topic": "a-share-market",
+    "data": "constituents · free-float market cap · corporate actions",
+    "sources": [
+      {
+        "label": "CSI 300 Index Methodology (official PDF)",
+        "url": "https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/indices/detail/files/en/000300_Index_Methodology_en.pdf"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "orientation_only",
+    "related": {
+      "datasets": [
+        "cn-index-constituents"
+      ]
+    },
+    "summary": {
+      "en": "Explains the index universe, selection, weighting, review, and adjustment methodology.",
+      "zh": "说明指数样本空间、选样、加权、定期审核与调整方法。"
+    }
+  },
+  {
+    "title": "SSE Statistical Yearbook",
+    "authors": "Shanghai Stock Exchange",
+    "venue": "Market statistics",
+    "year": "2024 · rev. 2025",
+    "kind": "industry-research",
+    "topic": "a-share-market",
+    "data": "market statistics · listings · turnover · financing",
+    "summary": {
+      "en": "Provides a structured reference for market scale, listings, trading activity, and financing statistics.",
+      "zh": "提供市场规模、上市公司、交易活动与融资统计的结构化年度参考。"
+    }
+  },
+  {
+    "title": "Findings Regarding the Market Events of May 6, 2010",
+    "authors": "U.S. SEC · CFTC",
+    "venue": "Joint staff report",
+    "year": "2010",
+    "kind": "case",
+    "topic": "market-microstructure",
+    "data": "trades · quotes · order flow · futures",
+    "summary": {
+      "en": "Reconstructs a market-structure event using synchronized order, trade, quote, and futures evidence.",
+      "zh": "使用同步的订单、成交、报价与期货证据重建一次市场结构事件。"
+    }
+  },
+  {
+    "title": "Staff Report on Equity and Options Market Structure Conditions in Early 2021",
+    "authors": "U.S. Securities and Exchange Commission",
+    "venue": "Staff report",
+    "year": "2021",
+    "kind": "case",
+    "topic": "alternative-data",
+    "data": "prices · options · short interest · account activity",
+    "summary": {
+      "en": "Organizes market, options, short-interest, and participation evidence around a high-attention trading episode.",
+      "zh": "围绕一次高关注交易事件，整理市场、期权、卖空与参与者活动证据。"
+    }
+  },
+  {
+    "title": "Modeling and Forecasting Realized Volatility",
+    "authors": "Torben G. Andersen · Tim Bollerslev · Francis X. Diebold · Paul Labys",
+    "venue": "NBER Working Paper 8160",
+    "year": "2001",
+    "kind": "paper",
+    "topic": "market-microstructure",
+    "data": "minute returns · sampling interval · session boundaries · missingness",
+    "sources": [
+      {
+        "label": "NBER Working Paper 8160",
+        "url": "https://www.nber.org/papers/w8160"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "preparation_blueprint",
+    "related": {
+      "datasets": [
+        "cn-equity-minute"
+      ],
+      "features": [
+        "realized-volatility"
+      ],
+      "recipes": [
+        "adjusted-price-series"
+      ]
+    },
+    "summary": {
+      "en": "Shows how high-frequency returns can be aggregated into realized-volatility measures for lower-frequency analysis.",
+      "zh": "说明如何将高频收益聚合为已实现波动率，用于更低频的分析。"
+    },
+    "limits": {
+      "en": "A measurement reference, not a volatility forecast or trading signal. Sampling, sessions, and microstructure noise must be specified before applying it to a dataset.",
+      "zh": "这是度量参考，不是波动率预测或交易信号。应用到具体数据前，必须明确采样、交易时段与微观结构噪声处理。"
+    }
+  },
+  {
+    "title": "Intraday Information Efficiency on the Chinese Equity Market",
+    "authors": "Tao Chen · Jun Cai · Richard Y. K. Ho",
+    "venue": "China Economic Review",
+    "year": "2009",
+    "kind": "paper",
+    "topic": "a-share-market",
+    "data": "tick trades · quotes · bid-ask spread · volume",
+    "sources": [
+      {
+        "label": "Journal source record",
+        "url": "https://doi.org/10.1016/j.chieco.2009.03.007"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "missing_required_data",
+    "related": {
+      "datasets": [
+        "cn-equity-minute"
+      ],
+      "features": [
+        "liquidity-measures"
+      ]
+    },
+    "summary": {
+      "en": "Uses tick-by-tick Shanghai evidence to examine intraday spreads and price discovery across more and less liquid stocks.",
+      "zh": "使用上交所逐笔数据，研究不同流动性股票的日内价差与价格发现。"
+    },
+    "limits": {
+      "en": "The study depends on trades and quotes. Minute OHLCV alone cannot reproduce its spread or price-discovery tests; treat it as a Level-2 data requirement, not a current capability.",
+      "zh": "研究依赖逐笔成交和报价。仅有分钟 OHLCV 无法复现价差或价格发现检验；应标为 Level-2 数据要求，而非当前能力。"
+    }
+  },
+  {
+    "title": "Giving Content to Investor Sentiment: The Role of Media in the Stock Market",
+    "authors": "Paul C. Tetlock",
+    "venue": "The Journal of Finance",
+    "year": "2007",
+    "kind": "paper",
+    "topic": "alternative-data",
+    "data": "news text · publisher time · entity mapping · returns · volume",
+    "sources": [
+      {
+        "label": "Publisher DOI record",
+        "url": "https://doi.org/10.1111/j.1540-6261.2007.01232.x"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "missing_required_data",
+    "related": {
+      "datasets": [
+        "cn-news-flashes",
+        "cn-announcements"
+      ],
+      "recipes": [
+        "company-event-timeline"
+      ]
+    },
+    "summary": {
+      "en": "Studies how the tone of financial media relates to market prices and trading volume.",
+      "zh": "研究财经媒体语气如何与市场价格和交易量相关。"
+    },
+    "limits": {
+      "en": "News timestamp, publisher rights, source lineage, and entity mapping are prerequisites. The paper does not turn sentiment text into a recommendation or a licensed dataset.",
+      "zh": "新闻时间戳、发布方权利、来源血缘与实体映射是前提。该论文不把情绪文本变成投资建议或已获授权的数据集。"
+    }
+  },
+  {
+    "title": "Trading and Arbitrage in Cryptocurrency Markets",
+    "authors": "Igor Makarov · Antoinette Schoar",
+    "venue": "Journal of Financial Economics",
+    "year": "2020",
+    "kind": "paper",
+    "topic": "crypto-markets",
+    "data": "multi-exchange prices · signed volume · fiat markets · exchange identity",
+    "sources": [
+      {
+        "label": "Publisher DOI record",
+        "url": "https://doi.org/10.1016/j.jfineco.2019.07.001"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "missing_required_data",
+    "related": {
+      "datasets": [
+        "crypto-binance-spot-5m"
+      ]
+    },
+    "summary": {
+      "en": "Documents persistent cross-exchange price deviations and connects them to market segmentation and arbitrage constraints.",
+      "zh": "记录持续的跨交易所价格偏离，并将其与市场分割和套利约束联系起来。"
+    },
+    "limits": {
+      "en": "A single-exchange spot series cannot reproduce a cross-exchange arbitrage study. Use it as market-structure orientation, not evidence of an executable opportunity.",
+      "zh": "单一交易所现货序列无法复现跨交易所套利研究。它适合作为市场结构导读，不是可执行机会的证据。"
+    }
+  },
+  {
+    "title": "Why DeFi Lending? Evidence from Aave V2",
+    "authors": "Giulio Cornelli · Leonardo Gambacorta · Rodney Garratt · Alessio Reghezza",
+    "venue": "BIS Working Papers No 1183",
+    "year": "2024 · rev. 2025",
+    "kind": "industry-research",
+    "topic": "crypto-markets",
+    "data": "funding rate · open interest · leverage context · protocol transactions",
+    "sources": [
+      {
+        "label": "BIS Working Paper 1183",
+        "url": "https://www.bis.org/publ/work1183.htm"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "orientation_only",
+    "related": {
+      "datasets": [
+        "crypto-binance-derivatives"
+      ]
+    },
+    "summary": {
+      "en": "Examines motivations for DeFi lending and borrowing, framing leverage and funding conditions as market context rather than a standalone signal.",
+      "zh": "研究 DeFi 借贷动机，将杠杆与资金条件视为市场背景，而非独立信号。"
+    },
+    "limits": {
+      "en": "Its evidence is based on Aave and multi-venue context. A public Binance funding-rate or open-interest series is narrower and must not inherit the paper's conclusions.",
+      "zh": "其证据来自 Aave 及多场所背景。公开 Binance 资金费率或持仓量序列范围更窄，不能直接继承论文结论。"
+    }
+  },
+  {
+    "title": "Form 13F: Official Filing Guidance and EDGAR Data Access",
+    "authors": "U.S. Securities and Exchange Commission",
+    "venue": "SEC primary sources",
+    "year": "2026",
+    "kind": "primary-source",
+    "topic": "alternative-data",
+    "data": "institution universe · Form 13F filings · amendments · CIK · submission time",
+    "sources": [
+      {
+        "label": "SEC Form 13F FAQ",
+        "url": "https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f"
+      },
+      {
+        "label": "SEC EDGAR data APIs",
+        "url": "https://www.sec.gov/search-filings/edgar-application-programming-interfaces"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "future_contract",
+    "related": {
+      "datasets": [
+        "us-notable-investor-13f"
+      ]
+    },
+    "summary": {
+      "en": "Defines the filing context and public access path for institutional Form 13F holdings disclosures.",
+      "zh": "界定机构 Form 13F 持仓披露的申报背景与公开访问路径。"
+    },
+    "limits": {
+      "en": "Form 13F is quarterly and delayed, with amendments and scope limits. It is not a real-time portfolio, broad US-market coverage, or an investment recommendation.",
+      "zh": "Form 13F 为季度、滞后披露，且存在修订与范围限制；它不是实时组合、全面美股覆盖或投资建议。"
+    }
+  },
+  {
+    "title": "Binance USDⓈ-M Futures Market Data: Funding Rate and Open Interest",
+    "authors": "Binance",
+    "venue": "Binance Developer Documentation",
+    "year": "2026",
+    "kind": "primary-source",
+    "topic": "crypto-markets",
+    "data": "frozen symbol universe · funding rate history · open interest · request limits",
+    "sources": [
+      {
+        "label": "Binance USDⓈ-M market-data reference",
+        "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data"
+      }
+    ],
+    "verifiedAt": "2026-08-30",
+    "readiness": "future_contract",
+    "related": {
+      "datasets": [
+        "crypto-binance-derivatives"
+      ]
+    },
+    "summary": {
+      "en": "Documents public REST market-data endpoints that define funding-rate and open-interest request shapes for USDⓈ-M futures.",
+      "zh": "说明 USDⓈ-M 永续合约的公开 REST 市场数据端点，以及资金费率和持仓量的请求形态。"
+    },
+    "limits": {
+      "en": "Documentation defines an upstream interface, not TradingDatas coverage. The frozen universe, collection receipts, network access, freshness, and authenticated catalog/query readback remain separate gates.",
+      "zh": "文档只定义上游接口，不证明 TradingDatas 覆盖。固定标的范围、采集 receipt、网络可达性、新鲜度及认证 catalog/query 回读仍是独立门槛。"
+    }
+  }
+]

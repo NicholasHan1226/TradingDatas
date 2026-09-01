@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "tutorial": "adjusted-price-series",
+  "identity": "synthetic",
+  "args": [
+    [
+      {
+        "security": "DEMO",
+        "date": "2025-01-02",
+        "close": 100,
+        "factor": 1
+      },
+      {
+        "security": "DEMO",
+        "date": "2025-01-03",
+        "close": 50,
+        "factor": 2
+      },
+      {
+        "security": "DEMO",
+        "date": "2025-01-06",
+        "close": 51,
+        "factor": 2
+      }
+    ],
+    "2025-01-06"
+  ],
+  "expected": [
+    {
+      "security": "DEMO",
+      "date": "2025-01-02",
+      "close": 100,
+      "factor": 1,
+      "anchorDate": "2025-01-06",
+      "adjustedClose": 50
+    },
+    {
+      "security": "DEMO",
+      "date": "2025-01-03",
+      "close": 50,
+      "factor": 2,
+      "anchorDate": "2025-01-06",
+      "adjustedClose": 50
+    },
+    {
+      "security": "DEMO",
+      "date": "2025-01-06",
+      "close": 51,
+      "factor": 2,
+      "anchorDate": "2025-01-06",
+      "adjustedClose": 51
+    }
+  ]
+}
