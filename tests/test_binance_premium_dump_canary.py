@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import io
+import json
 import sqlite3
+import sys
 from zipfile import ZipFile
 
 import pytest
@@ -21,6 +23,7 @@ from storage.schema import SCHEMA_SQL
 from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
 import tools.run_binance_spot_canary as spot_canary
 import tools.run_binance_oi_dump_canary as oi_dump_canary
+import tools.run_binance_premium_dump_canary as premium_dump_canary
 from tools.run_binance_oi_dump_canary import backfill_windows, lookback_days
 from tools.run_binance_premium_dump_canary import run
 from tests.test_crypto_loopback_runtime import _ingest_result
@@ -730,3 +733,29 @@ def test_premium_dump_backfill_skips_unpublished_days_without_receipts(
     assert result["unpublished_skip_count"] == (len(days) - 2) * 40
     assert result["failed_attempt_count"] == 0
     assert len(calls) == 80
+
+
+def test_premium_main_failure_output_includes_error_detail(monkeypatch, capsys) -> None:
+    def _failing_run(**kwargs):
+        del kwargs
+        raise ValueError("daily-dump fact authority is unavailable")
+
+    monkeypatch.setattr(premium_dump_canary, "run", _failing_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_binance_premium_dump_canary.py",
+            "--db-path",
+            "unused.sqlite",
+            "--lock-path",
+            "unused.lock",
+        ],
+    )
+
+    exit_code = premium_dump_canary.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["state"] == "failed"
+    assert payload["error"] == "ValueError: daily-dump fact authority is unavailable"
