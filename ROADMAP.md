@@ -104,10 +104,12 @@ mutable data -> /opt/investment-data/tradingdatas/
 
 公共产品继续销售同一份 receipt-backed 原始数据，不建立研究、策略或交易旁路。
 
-账户独立身份与购买开通的实施前合同、待确认商业选择及验收顺序见
-[Customer identity and commerce draft](docs/design/customer-identity-commerce-v1.md)。
-手机与邮箱双登录、99/299/499 月价及年付九折已由 owner 确认；
-该草案不代表已选定验证码/支付服务，也不构成真实收费授权。
+账户独立身份与购买开通的合同见
+[Customer identity and commerce](docs/design/customer-identity-commerce-v1.md)。
+手机与邮箱双登录、99/299/499 月价及年付九折已由 owner 确认，并在 `/pricing`
+作为展示价格落地；邮箱发送选用现有 Resend 账户与 `account.tradingdatas.com`，
+短信服务尚未选定。展示价格与非付费 `/pricing/preview` 不是 live checkout、
+授权开通或收费授权。
 
 - 冻结 Data / Features / Recipes / Research / Pricing / Docs / Account 的对象、索引页、详情页和状态词；
 - 完成 `zh-CN`/`en` 系统语言检测、显式切换、偏好持久化、English fallback 和技术标识不翻译合同；
@@ -119,7 +121,7 @@ mutable data -> /opt/investment-data/tradingdatas/
 - 冻结少量完整基础套餐与另类数据 add-on 的 server-side entitlement 映射；试用到期默认停止且不自动收费的目标只有在 commerce 实现和读回后才可对外承诺；
 - 第三方数据逐类完成使用/再分发权、provider contract、真实 receipt/API readback 和 account entitlement；
 - 实现网站账户与 API key 分离、订单/订阅/发票/webhook 幂等和客户自助 token 管理；commerce 数据不写入金融 facts SQLite；
-- 在自动价格、支付和授权完成前，公共商业 CTA 固定为申请 private beta；不得把 proposal 套餐写成可立即购买；
+- 公共 Pricing 展示已确认月价/年价，主 CTA 进入非付费 `/pricing/preview`；支付按钮保持禁用。不得把展示价格写成可立即购买或已开通授权。遗留 `/pricing/beta` 明确申请未开放，不再作为商业入口；
 - 公共前端按 `docs/product/PUBLIC_SURFACE_MAP.md` 与 `docs/design/public-data-product-system-v1.md` 完成 desktop/tablet/mobile、无障碍、错误/空/到期/试用结束状态和真实浏览器视觉验收。
 
 退出条件分两步：先让内测客户可以从 Dataset/Feature/Recipe/Research 关系理解产品并申请匹配的 A 股数据访问；随后在 commerce 实现后，客户可以购买已获授权的数据套餐、读取真实 entitlement，并用可复现 Recipe 正确准备数据。网站、commerce、数据 runtime 与生产 readback 仍分别有可验证证据。
@@ -138,6 +140,7 @@ mutable data -> /opt/investment-data/tradingdatas/
 - `docs/product/PUBLIC_SURFACE_MAP.md`：公共对象、导航、分类内页与详情页合同；
 - `docs/product/PRODUCT_PLANES.md`：当前 Evidence Plane 与目标 Product/Feature/Recipe planes；
 - `docs/design/public-data-product-system-v1.md`：公共产品、商业页面与前端视觉开发合同；
+- `docs/design/customer-identity-commerce-v1.md`：双身份方法、展示价格与开通门禁；
 - `docs/adr/`：影响未来实现的长期决策；
 - `docs/reports/`：需要人工可读保留的日期化 readback、事故与验收报告；
 - SQLite receipts、runtime logs/evidence：机器运行历史，保存在运行数据面，不复制进 Git 文档。

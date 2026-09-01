@@ -493,9 +493,14 @@ Keep the floating shared navigation, brand, search and Account layout intact.
 Reuse existing surface/ink/muted/blue/aqua tokens, 48px inputs, visible keyboard
 focus and restrained shadows. Primary form text is 13–16px, not microcopy-sized.
 
-The panel distinguishes available access-key login from the confirmed future
-Phone/Email identity methods. The latter show explicit unavailable states,
-never a fake send-code form or unverified success. No automatic direct-bearer
+The panel exposes three methods inside the existing Account: access-key (current
+production bridge), email, and phone. Email is gated by
+`GET /api/account/auth-methods` returning `email: true`; committed Worker config
+keeps `EMAIL_LOGIN_ENABLED` false, so production shows the unavailable state.
+Phone is always `phone: false` (no SMS provider). Unavailable methods show an
+honest coming-soon state and do not collect contacts or simulate codes. When
+email is configured, use the existing `EmailSignIn` challenge form; configuration
+is not inbox-delivery evidence. No automatic direct-bearer
 fallback; a new session is only established through the same-site gateway.
 Loading, invalid/expired key, denied access, throttling, timeout and service
 outage are distinct feedback states. Usage failure is independent of sign-in.

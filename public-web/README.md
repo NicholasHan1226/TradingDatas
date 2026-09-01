@@ -73,11 +73,27 @@ bearer-only `/app/` fallback exists only on the separate administrator Pages
 origin, never on `tradingdatas.com`.
 
 Purchase preparation: `/pricing` opens the non-paying
-`/pricing/preview?plan=basic&period=monthly`. Six combinations share `src/pricing.js`;
-selection survives refresh and login via a strict same-site return allowlist.
-It never creates orders or changes grants. Account billing remains unavailable.
-Payment onboarding is paused; no merchant calls or live purchase switch exist.
+`/pricing/preview?plan=basic&period=monthly`. Six combinations share `src/pricing.js`.
+Amounts are integer CNY minor units (`9900` = ¥99). Annual total is
+`monthlyMinor * 12 * 90 / 100` in integer arithmetic
+(`106920` / `322920` / `538920`). `getPlanPrice` throws `RangeError` for an
+unknown plan ID or any period other than `monthly`/`annual`; do not catch that
+to pick a default price.
+
+`src/purchasePreview.js` parses the preview query fail-closed (exactly `plan`
+and `period`, known values) and hard-codes `canPay: false`. Login `next` may
+return only `/account` or a canonical preview path; other destinations fall
+back to `/account`. Selection survives refresh and login via that allowlist.
+Changing a numeral in `pricing.js` never creates an order, selects settlement
+currency, or grants data. Account billing remains unavailable. Payment
+onboarding is paused; no merchant calls or live purchase switch exist.
 See [flow and resumption gates](../docs/design/payment-flow-preparation-v1.md).
+
+`/login` shows access-key, email, and phone tabs. Phone is always unavailable.
+Email becomes interactive only after `GET /api/account/auth-methods` returns
+`email: true`; committed Worker config keeps that false. The signed-out
+purchase preview still says email/phone registration are not open, and does
+not collect contacts.
 
 ```bash
 npm run build

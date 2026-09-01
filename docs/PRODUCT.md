@@ -334,17 +334,25 @@ have no daily quota or concurrency ceiling; they are still bounded by their
 for both catalog visibility and query authorization, projected through the
 customer portal, and editable through the admin token API.
 Customer-scoped key listing, creation, and non-current-key disable are also
-implemented; billing, passwordless identity sessions, and account-synced
-bookmarks remain target capabilities rather than production facts.
+implemented; billing, live checkout, and account-synced bookmarks remain target
+capabilities rather than production facts.
 
-The confirmed customer identity target supports phone and email within the same
-Account. The current access-key login is an explicitly temporary same-site cookie
-bridge, not proof of personal identity or a verified email/phone. Login methods
-must disclose unavailable delivery rather than collecting contacts or simulating
-codes. Legacy browser-stored credentials are retired; existing API keys remain
-unchanged. The initial payment direction is active monthly/yearly payment and
-manual renewal, not automatic debit; personal-Alipay eligibility and signing
-remain unverified. See `design/personal-alipay-checkout-v1.md` for the launch gates.
+`/login` exposes three methods inside the existing Account: access-key (current
+same-site cookie bridge), email, and phone. Owner-confirmed dual identity means
+one account with separately verified credentials, not two workspaces. Phone has
+no provider; `GET /api/account/auth-methods` always returns `phone: false`.
+Email is a separately gated candidate (`EMAIL_LOGIN_ENABLED` is false in the
+committed Worker config) and does not mint data grants. Access-key login is not
+proof of personal identity. Unavailable methods must disclose that delivery is
+off rather than collecting contacts or simulating codes. Legacy browser-stored
+credentials are retired; existing API keys remain unchanged.
+
+Approved monthly/annual prices are displayed from `public-web/src/pricing.js`
+and the non-paying `/pricing/preview` flow. Those numerals are not live offers,
+settlement currency, or entitlement. The initial payment direction is active
+monthly/yearly payment and manual renewal, not automatic debit; personal-Alipay
+eligibility and signing remain unverified. See
+`design/personal-alipay-checkout-v1.md` for the launch gates.
 
 The stable category keys are `a_share`, `crypto`, and `news`. Existing token
 records that omit `data_categories` retain their previous all-current-category
@@ -371,6 +379,8 @@ mutation. Production availability remains a separate release/readback fact in
   canonical/PIT, Feature, Recipe, delivery, and commerce boundaries;
 - `docs/design/public-data-product-system-v1.md`: public visual system,
   commerce surfaces, component contract, and frontend acceptance rules;
+- `docs/design/customer-identity-commerce-v1.md`: dual identity methods,
+  displayed prices, and remaining checkout/identity activation gates;
 - `STATUS.md`: time-sensitive production evidence and known gaps;
 - `AGENTS.md`: development and release rules.
 

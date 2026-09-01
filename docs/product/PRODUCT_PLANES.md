@@ -55,7 +55,8 @@ fit.
 
 Packages and add-ons map tenant entitlement to versioned product objects and
 runtime limits. Only authenticated backend state may represent subscription,
-trial, expiry, renewal, payment, invoice, or access.
+trial, expiry, renewal, payment, invoice, or access. Public `/pricing` numerals
+in `public-web/src/pricing.js` are a display contract; they are not this plane.
 
 ## Public artifact boundary
 

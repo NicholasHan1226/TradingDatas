@@ -14,8 +14,10 @@ trading orders. The fixed catalog/query data plane is unchanged.
 - Preview shows the entire period total, term, annual saving, shared data scope,
   no automatic debit, and an explicitly unavailable payment action.
 - Public preview works before sign-in. Existing key holders can sign in and
-  return to the canonical plan/term. Phone/email registration stays unavailable;
-  no contact details or fake verification codes are collected.
+  return to the canonical plan/term. The preview itself never collects contacts
+  or verification codes. `/login` keeps access-key as the production bridge;
+  email is a separately gated candidate (`GET /api/account/auth-methods`);
+  phone stays unavailable (`phone: false`, no SMS provider).
 - Selection is URL state only: non-sensitive plan/term, not a saved order or an
   authenticated purchase intent. Refresh, history and language changes retain it.
   Invalid, duplicate or extra parameters are rejected.

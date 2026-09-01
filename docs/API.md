@@ -419,8 +419,17 @@ Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 ### Independent email identity candidate
 
 The existing Login/Account also has a local-only, separately gated email-identity
-implementation. Its control-plane routes are `GET /api/account/auth-methods`,
-`POST /api/account/email/challenge`, and `POST /api/account/email/verify`.
+implementation. `GET /api/account/auth-methods` is the public readiness probe:
+it returns JSON `{ "email": <boolean>, "phone": false }`. `email` is true only
+when Worker config satisfies `emailConfigured()` (`EMAIL_LOGIN_ENABLED` and
+`IDENTITY_RETENTION_ENABLED` both `"true"`, plus `IDENTITY_DB`, a
+≥32-character `IDENTITY_PEPPER`, and `RESEND_API_KEY`). Committed
+`wrangler.jsonc` keeps those flags false. `phone` is hardcoded false; there is
+no SMS provider. The response is configuration readiness, not delivery health
+or an entitlement claim.
+
+Email control-plane routes are `POST /api/account/email/challenge` and
+`POST /api/account/email/verify`.
 Email sessions reuse `/api/account/me` and `DELETE /api/account/session`, but use
 a distinct opaque cookie with server-side revocation in a dedicated identity
 store. Unlike legacy key-cookie clearing, email sign-out requires confirmation

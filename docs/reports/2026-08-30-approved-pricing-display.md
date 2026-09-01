@@ -1,8 +1,11 @@
 # Confirmed pricing display and identity-method decisions
 
-Date: 2026-08-30 CST. Candidate branch: `codex/identity-commerce-contract-v1`.
-Base inspected: `97c814b`. This report is local candidate evidence, not a release,
-live identity implementation, payment event, or account grant.
+Date: 2026-08-30 CST. Merged as GitHub PR #387 (`489f5be6` on main, 2026-09-01).
+This report is the candidate-branch verification record for the approved price
+display and dual-identity requirement. It is not a release, live identity
+implementation, payment event, or account grant. Later main work added the
+non-paying `/pricing/preview` path and a gated email-identity candidate;
+those do not turn this display contract into checkout.
 
 ## Owner decisions and scope
 

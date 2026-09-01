@@ -1,9 +1,10 @@
-# Customer identity and commerce — implementation contract draft
+# Customer identity and commerce — implementation contract
 
-Status: implementation proposal with owner-confirmed identity methods, Resend
-email provider and numeric prices; not runtime authority or permission to collect
-payments. Inspected against main `97c814b` on
-2026-08-30. Product authority: [Product](../PRODUCT.md); current account design:
+Status: Git-merged display and identity-method contract (PR #387), plus later
+gated email-identity and non-paying purchase-preview work on main. Confirmed
+prices, dual identity methods and Resend selection are product decisions, not
+runtime payment authority or permission to collect charges. Product authority:
+[Product](../PRODUCT.md); current account design:
 [Account convergence](account-admin-convergence-v1.md); current API:
 [API contract](../API.md).
 
@@ -53,15 +54,16 @@ is confirmed. See [implementation and resumption gates](payment-flow-preparation
 | --- | --- | --- |
 | Browser access | Encrypted eight-hour account cookie wrapping an access key | Stable user identity and independently revocable sessions |
 | Account access | Tenant-scoped Portal projection and API key management | Verified user-to-tenant binding; no email-string tenant matching |
+| Price display | `public-web/src/pricing.js` plus `/pricing` and `/pricing/preview` | Server-owned offer versions; settlement currency confirmation |
 | Commercial limits | Server-enforced basic/standard/flagship minute limits | Approved sellable offers and subscription entitlement provisioning |
-| Payment | No checkout, verified notification handler or ledger found | Merchant/provider choice, sandbox integration, reconciliation |
-| User onboarding | Access-key bridge; local email identity candidate in existing Login/Account | Approve dedicated store/secrets and verify real delivery before activation |
+| Payment | Non-paying preview; payment control disabled; no ledger | Merchant/provider choice, sandbox integration, reconciliation |
+| User onboarding | Access-key bridge; gated email candidate in existing Login/Account; phone always unavailable | Activate email only after store/secrets/delivery readback; SMS still has no provider |
 
-The candidate public Pricing cards now follow `PRODUCT.md`: same base-data scope
-and history policy, with rate-only tier differentiation. Monthly/annual switches
-show the actual period total, monthly equivalent and savings. This is a local
-candidate until merged/deployed, and never grants access. The sellable dataset
-set and its licence evidence still require explicit review.
+Public Pricing follows `PRODUCT.md`: same base-data scope and history policy,
+with rate-only tier differentiation. Monthly/annual switches show the actual
+period total, monthly equivalent and savings. Displayed prices never grant
+access. The sellable dataset set and its licence evidence still require
+explicit review.
 
 ## Decisions required before implementation/activation
 
@@ -160,15 +162,17 @@ verification are complete. Local fixtures cannot claim a message was delivered.
 
 ### Release sequence
 
-1. Finish sign-out PR #386 review, exact-head CI, merge and exact release readback.
-   Current acceptance remains in its report; this draft does not approve merging.
-2. User signs in using an intended existing key; verify only Account/read-only
-   views first. Key creation/disabling needs a bounded separately approved test.
+1. Sign-out and session-lifecycle work from PR #386 is merged. Production
+   Account readback of an intended existing key remains a separate evidence
+   step; key creation/disabling still needs a bounded separately approved test.
+2. Keep the access-key bridge during migration. Do not treat Git merge of the
+   pricing/identity contract as email activation or checkout.
 3. Resolve the remaining decisions above, then choose the identity/commerce store and
    provider integrations through an explicit architecture review.
-4. Implement a local/sandbox identity vertical slice, including expiry, replay,
-   resend, abuse, session revoke and tenant-isolation tests. Keep existing keys
-   and the compatibility path intact during migration.
+4. The local email-identity slice already exists as a gated candidate
+   (`EMAIL_LOGIN_ENABLED=false`). Activation still requires approved secrets,
+   delivery/abuse readback, and the [email identity](email-identity-v1.md)
+   release gates. SMS remains a later independent slice.
 5. Implement sandbox checkout with no production merchant writes. Test duplicate,
    forged, out-of-order, wrong-amount, cancelled, delayed and retried events plus
    entitlement provisioning failures and recovery.
@@ -186,8 +190,10 @@ existing paid access. Rollback cannot erase payments, reset subscriptions or
 revoke existing API keys. Reconcile verified paid-but-not-provisioned orders
 before retrying; do not issue duplicate access or duplicate charges.
 
-Until those gates pass, keep purchase and verification-sent claims disabled.
-The current Login remains access-key based, with both future identity methods
-explicitly unavailable; it must not pretend a code was sent or register an account.
-No fake invoice, placeholder amount, guessed expiry or fabricated payment
-success may appear in the public product.
+Until those gates pass, keep purchase and unverified verification-sent claims
+disabled. `/login` shows three methods: access-key (current production
+bridge), email (only when `GET /api/account/auth-methods` returns
+`email: true`; committed Worker config keeps this false), and phone (always
+`phone: false`, no SMS provider). Unavailable methods must not collect
+contacts or simulate a sent code. No fake invoice, placeholder amount,
+guessed expiry or fabricated payment success may appear in the public product.

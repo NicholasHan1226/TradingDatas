@@ -18,7 +18,7 @@ target product plane: canonical/PIT model + transparent Features -> versioned de
 ```
 
 - data plane 是数据身份、可用性、覆盖、freshness、quality 与 lineage 的唯一权威；
-- account/commerce plane 是价格、套餐映射、试用、续费、到期和支付结果的唯一权威；在该 plane 实现并读回前，相关页面只能标记 proposal；
+- account/commerce plane 是价格、套餐映射、试用、续费、到期和支付结果的唯一权威；在该 plane 实现并读回前，相关页面不能把展示价格写成 live offer。公共 `/pricing` 数字来自 `public-web/src/pricing.js` 的展示合同，不是 server-owned offer、结算币种或 entitlement；
 - content plane 解释数据和教授准备方法，读取 data/account 投影但不反向修改 registry、facts、receipts、activation、entitlement 或 quota。
 - target product plane 只通过新合同建立 canonical/PIT 与透明 Feature 对象，并保留回链 provider-native facts/receipts；当前 `/v1` 和 SQLite 权威链不得被原地改写。
 
