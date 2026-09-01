@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import io
 import json
-import os
 import sqlite3
 import sys
 from zipfile import ZipFile
@@ -25,6 +24,7 @@ from dataset_registry import (
 from provider_transport import provider_transport_profile
 from storage.schema import SCHEMA_SQL
 from storage.schema_contract import PROVIDER_DATASET_ROWS_DDL
+from storage.sqlite_authority_lock import sqlite_authority_lock
 import tools.run_binance_spot_canary as spot_canary
 import tools.run_binance_oi_dump_canary as oi_dump_canary
 from tools.run_binance_oi_dump_canary import (
@@ -920,8 +920,8 @@ def test_timed_lock_fails_closed_when_stuck(tmp_path, monkeypatch):
         canary._release(holder)
 
 
-def test_ingested_days_waits_on_a_bounded_shared_lock(tmp_path, monkeypatch) -> None:
-    """The fact-authority read lock must wait for writers, not fail instantly."""
+def test_ingested_days_uses_verified_read_model_snapshot(tmp_path, monkeypatch) -> None:
+    """Dump gap detection must use the same WAL-safe snapshot as catalog/query."""
 
     db_path = tmp_path / "facts.sqlite"
     conn = sqlite3.connect(db_path)
@@ -931,30 +931,26 @@ def test_ingested_days_waits_on_a_bounded_shared_lock(tmp_path, monkeypatch) -> 
         conn.commit()
     finally:
         conn.close()
-    os.chmod(db_path, 0o600)
-    # Materialize the authority-lock sidecar the way production writers do.
-    with oi_dump_canary.sqlite_authority_lock(db_path, mode="exclusive", create=True):
+    with sqlite_authority_lock(db_path, mode="exclusive", create=True):
         pass
     registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
-    real_lock = oi_dump_canary.sqlite_authority_lock
+    real_snapshot = oi_dump_canary.open_verified_read_model_snapshot
     observed: dict[str, object] = {}
 
-    def _recording_lock(db_path_arg, *, mode, create=False, timeout=0.0):
-        observed["mode"] = mode
-        observed["timeout"] = timeout
-        return real_lock(db_path_arg, mode=mode, create=create, timeout=timeout)
+    def _recording_snapshot(db_path_arg):
+        observed["db_path"] = db_path_arg
+        return real_snapshot(db_path_arg)
 
-    monkeypatch.setattr(oi_dump_canary, "sqlite_authority_lock", _recording_lock)
+    monkeypatch.setattr(
+        oi_dump_canary, "open_verified_read_model_snapshot", _recording_snapshot
+    )
 
     days = oi_dump_canary._ingested_days(
         db_path, registry, "crypto.perp.binance.ethusdt.open_interest"
     )
 
     assert days == frozenset()
-    assert observed == {
-        "mode": "shared",
-        "timeout": oi_dump_canary._FACT_AUTHORITY_LOCK_WAIT_SECONDS,
-    }
+    assert observed == {"db_path": db_path}
 
 
 def test_main_failure_output_includes_error_detail(monkeypatch, capsys) -> None:
