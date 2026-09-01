@@ -4891,6 +4891,51 @@ def test_transient_latest_failure_does_not_hide_fresh_append_only_history(
     assert projection.receipt_id == success_id
 
 
+@pytest.mark.parametrize("cadence_class", ["event", "session_minute"])
+def test_high_frequency_append_only_latest_failure_remains_visible(
+    monkeypatch: pytest.MonkeyPatch,
+    cadence_class: str,
+) -> None:
+    conn = _memory_db()
+    dataset = replace(
+        _dataset(cadence_class=cadence_class),
+        point_in_time="append_only",
+        timezone="UTC",
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="attempt-high-frequency-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:00:00+00:00",
+        dataset=dataset,
+    )
+    failed_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="attempt-high-frequency-failed",
+        started_at="2026-07-15T00:02:00+00:00",
+        finished_at="2026-07-15T00:03:00+00:00",
+        data_through=None,
+        dataset=dataset,
+    )
+
+    projection = project_dataset_runtime(
+        conn,
+        dataset,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+
+    assert projection.state == "failed"
+    assert projection.degraded is True
+    assert projection.data_through == "2026-07-15T00:00:00+00:00"
+    assert projection.receipt_id == failed_id
+    assert projection.reasons == ("provider_error",)
+
+
 def test_snapshot_retries_transient_epoch_skew_under_concurrent_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

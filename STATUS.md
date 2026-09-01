@@ -1,12 +1,27 @@
 # TradingDatas 当前状态
 
-最后更新：2026-08-31 00:27 CST（保留主线 PR #403 双请求验收失败、回退4bb/WAL与七组timer恢复记录，
-并整合 PR #404 原生字节匹配候选及邮箱保留/注销候选；本次账户开发不重新声明数据面运行验收。
-短SLA提前刷新保持未启用）。
+最后更新：2026-09-02 00:10 CST（A 股生产仍运行 immutable release
+`82246bc47d721511d4583f4edca71cd83c1327fd`；QuickSync 续费与公开运行规则已脱敏复核；
+Firecrawl 最新来源失败投影候选进入修复。短 SLA 提前刷新保持未启用）。
 本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
 `catalog/query` readback 为准。
+
+## 2026-09-02 残余健康收口
+
+- QuickSync 用户提供的在线测试页已从本机和新加坡服务器分别取得 HTTPS 200。页面的脱敏
+  订阅元数据显示 `anns_d/news/research_report/rt_min/stk_auction/stk_mins/tushare_15000`
+  有效至 `2026-09-27T16:04:00Z`，与本次续费一致；页面路径和内容含凭据，不能入库或提交。
+- 同页公开规则明确基础/标准/极速版最大速率分别为 120/600/1200 次每分钟，异常流量可降至
+  60 或 0 次每分钟并在每日 0 点重置。页面没有声明当前 token 对应的速率档、每日总调用额度
+  或并发上限；因此生产现有 per-run 预算不扩张，`freshness_refresh_lead_seconds` 继续为 0。
+- 过去 24 小时 `global.news.flash` 来源回执：CNBC 110 成功/52 失败，美联储 106 成功/25
+  失败，SEC 93 成功/29 失败；最新一轮 CNBC 与美联储成功、SEC `provider_error`。现有事件波次
+  保持单轮每分片一次、后续 timer 有界重试。本候选修正公共投影：event/session-minute 的最新
+  provider failure 立即显示 failed/degraded，同时保留上一完整成功水位，不再显示旧成功为当前健康。
+- `rt_min`/`rt_min_daily` 的当日分钟采集及 scale500 消费者仍须在 2026-09-02 A 股真实交易
+  时段完成 provider receipt、认证 catalog/query 和消费者 readback；夜间不制造盘中成功证据。
 
 ## 邮箱身份本地候选（2026-08-30）
 
