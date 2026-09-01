@@ -41,3 +41,8 @@ test('samples and history disclose their evidence class beside the content', asy
   assert.doesNotMatch(source, /90 DAY COLLECTION HISTORY/);
   assert.match(source, /buildQueryTemplate\(\)/);
 });
+
+test('mobile collection evidence reads as one editorial sequence', async () => {
+  const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?\.dataset-product-layout > main \.dataset-history \{ display: block; \}/);
+});

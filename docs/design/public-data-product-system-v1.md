@@ -264,6 +264,10 @@ becoming additional ambiguous catalog badges.
 - show concise coverage/cadence/lineage facts from catalog;
 - distinguish `available`, `degraded`, `paused`, and `unobserved` without
   marketing euphemisms;
+- on narrow screens, a product's collection-evidence heading and its evidence
+  note must form one linear reading sequence before the evidence facts; never
+  retain a compressed desktop two-column treatment merely to save vertical
+  space;
 - make package/add-on requirements readable but never client-authoritative;
 - preserve forward-only cursor behavior for actual sample data.
 

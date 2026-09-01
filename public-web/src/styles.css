@@ -1703,6 +1703,12 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .source-candidate-list article > p, .source-candidate-list article > div:nth-of-type(2) { display: none; }
 }
 
+/* Keep collection evidence readable as one short editorial sequence on phones. */
+@media (max-width: 720px) {
+  .dataset-product-layout > main .dataset-history { display: block; }
+  .dataset-product-layout > main .dataset-history > :last-child { margin-top: 22px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
