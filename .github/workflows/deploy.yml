@@ -79,8 +79,8 @@ jobs:
           test -n "$SESSION_ENCRYPTION_KEY"
           secrets_file="$(mktemp)"
           trap 'rm -f "$secrets_file"' EXIT
-          jq -n --arg session_key "$SESSION_ENCRYPTION_KEY" \
-            '{SESSION_ENCRYPTION_KEY: $session_key}' > "$secrets_file"
+          jq -n '{SESSION_ENCRYPTION_KEY: env.SESSION_ENCRYPTION_KEY}' \
+            > "$secrets_file"
           npx --yes wrangler@4.127.1 deploy --config wrangler.jsonc \
             --secrets-file "$secrets_file"
 
