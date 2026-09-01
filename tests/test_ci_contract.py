@@ -104,6 +104,10 @@ def test_static_deploy_has_a_published_route_readback() -> None:
     assert '--secrets-file "$secrets_file"' in workflow
     assert "secret put SESSION_ENCRYPTION_KEY" not in workflow
     assert "secrets: |\n            SESSION_ENCRYPTION_KEY" not in workflow
+    assert "for attempt in {1..12}" in workflow
+    assert "sleep 5" in workflow
+    assert '[[ "$published" != true ]]' in workflow
+    assert "was not visible at $route after 12 attempts" in workflow
 
 
 def test_public_worker_commits_only_the_non_secret_account_upstream() -> None:

@@ -90,16 +90,28 @@ jobs:
           expected_asset="$(sed -nE 's/.*src="\/assets\/([^"]+\.js)".*/\1/p' public-web/dist/client/index.html)"
           test -n "$expected_asset"
           for route in / /account/ /data/ /research/ /pricing/; do
-            readback="$(curl --fail --show-error --silent --retry 3 --retry-all-errors \
-              --connect-timeout 10 --max-time 30 \
-              --write-out $'\n%{http_code}\n%{url_effective}' \
-              "https://tradingdatas.com${route}")"
-            effective_url="${readback##*$'\n'}"
-            readback="${readback%$'\n'*}"
-            response_status="${readback##*$'\n'}"
-            body="${readback%$'\n'*}"
-            test "$response_status" = 200
-            test "$effective_url" = "https://tradingdatas.com${route}"
-            grep -qiF '<!doctype html>' <<<"$body"
-            grep -qF "$expected_asset" <<<"$body"
+            published=false
+            for attempt in {1..12}; do
+              if readback="$(curl --fail --show-error --silent --retry 3 --retry-all-errors \
+                --connect-timeout 10 --max-time 30 \
+                --write-out $'\n%{http_code}\n%{url_effective}' \
+                "https://tradingdatas.com${route}")"; then
+                effective_url="${readback##*$'\n'}"
+                readback="${readback%$'\n'*}"
+                response_status="${readback##*$'\n'}"
+                body="${readback%$'\n'*}"
+                if [[ "$response_status" = 200 ]] \
+                  && [[ "$effective_url" = "https://tradingdatas.com${route}" ]] \
+                  && grep -qiF '<!doctype html>' <<<"$body" \
+                  && grep -qF "$expected_asset" <<<"$body"; then
+                  published=true
+                  break
+                fi
+              fi
+              sleep 5
+            done
+            if [[ "$published" != true ]]; then
+              echo "Published asset $expected_asset was not visible at $route after 12 attempts." >&2
+              exit 1
+            fi
           done
