@@ -104,9 +104,12 @@ export function comparisonReadings(paper, catalog, excludedIds = []) {
     return [{ paper: target, reason }];
   }).slice(0, 3);
   if (linked.length) return linked;
+  // Production index rows intentionally omit the lazy-loaded `readingNotes` body.
+  // `guideSectionCount` remains the public, stable depth signal, so use it when
+  // looking for a genuinely summary-only companion.
   const fallback = paper.guideSectionCount >= 4 && catalog.find((item) =>
-    (item.topic === paper.topic || (paper.topic === "quant-methods" && item.topic === "research-methods")) && !item.readingNotes?.length && !excluded.has(item.id),
-  ) || paper.guideSectionCount >= 4 && catalog.find((item) => !item.readingNotes?.length && !excluded.has(item.id));
+    (item.topic === paper.topic || (paper.topic === "quant-methods" && item.topic === "research-methods")) && !item.guideSectionCount && !excluded.has(item.id),
+  ) || paper.guideSectionCount >= 4 && catalog.find((item) => !item.guideSectionCount && !excluded.has(item.id));
   return fallback ? [{ paper: fallback, reason: {
     zh: "同主题材料提供不同样本或测量视角；请分别核对来源、信息时点与适用边界，不把两者视为互相验证。",
     en: "This same-topic material offers a different sample or measurement perspective. Check source, information timing, and scope separately; it is not corroboration.",

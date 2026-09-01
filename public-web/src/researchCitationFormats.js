@@ -4,10 +4,12 @@ const authors = (paper) => paper.authors.split(" · ").map((author) => author.tr
 const year = (paper) => paper.year === "living" ? "" : String(paper.year).match(/\d{4}/)?.[0] || "";
 
 export function researchBibTeX(paper) {
+  const type = paper.kind === "book" ? "book" : ["industry-research", "working-paper"].includes(paper.kind) ? "techreport" : "article";
+  const venueField = type === "article" ? "journal" : type === "book" ? "publisher" : "institution";
   const fields = [
-    ["author", authors(paper).join(" and ")], ["title", paper.sourceTitle], ["journal", paper.venue], ["year", year(paper)], ["url", paper.sources[0]?.url],
+    ["author", authors(paper).join(" and ")], ["title", paper.sourceTitle], [venueField, paper.venue], ["year", year(paper)], ["url", paper.sources[0]?.url],
   ].filter(([, value]) => value);
-  return `@article{${citationKey(paper)},\n${fields.map(([key, value]) => `  ${key} = {${escapeBibTeX(value)}}`).join(",\n")}\n}`;
+  return `@${type}{${citationKey(paper)},\n${fields.map(([key, value]) => `  ${key} = {${escapeBibTeX(value)}}`).join(",\n")}\n}`;
 }
 
 export function researchRis(paper) {

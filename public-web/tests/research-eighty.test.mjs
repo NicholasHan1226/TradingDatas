@@ -71,9 +71,18 @@ test("all twenty additions have bounded comparisons using metadata only", () => 
     const readings = comparisonReadings(paper, catalog);
     assert.ok(readings.length >= 1 && readings.length <= 3, title);
     assert.equal(new Set(readings.map(r => r.paper.id)).size, readings.length);
-    assert.ok(readings.every(r => r.paper.id !== paper.id && !r.paper.readingNotes));
+    assert.ok(readings.every(r => r.paper.id !== paper.id));
     assert.deepEqual(comparisonReadings(paper, catalog, catalog.map(p => p.id)), []);
   }
   assert.deepEqual(comparisonReadings({ id: "missing", title: "Uncurated work" }, catalog), []);
   assert.deepEqual(comparisonReadings(catalog.find(p => p.title === "Time Series Momentum"), []), []);
+});
+
+test("a guide without an authored comparison falls back to a summary-only companion in the public index", () => {
+  const catalog = papers.map(projectResearchIndex);
+  const guide = catalog.find((paper) => paper.guideSectionCount >= 4 && !researchConnections.some((item) => item.left === paper.title || item.right === paper.title));
+  assert.ok(guide);
+  const readings = comparisonReadings(guide, catalog);
+  assert.ok(readings.length);
+  assert.ok(readings.every((item) => !item.paper.guideSectionCount));
 });

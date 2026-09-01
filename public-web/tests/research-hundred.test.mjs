@@ -56,6 +56,6 @@ test("every guide offers an authored metadata-only comparison", () => {
     const links = comparisonReadings(p, catalog, excluded);
     assert.ok(links.length >= 1 && links.length <= 3, title);
     assert.ok(links.every(r => !excluded.includes(r.paper.id)), title);
-    assert.ok(links.every(r => r.paper.id !== p.id && !r.paper.readingNotes));
+    assert.ok(links.every(r => r.paper.id !== p.id));
   }
 });

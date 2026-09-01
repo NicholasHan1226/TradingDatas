@@ -2,7 +2,7 @@ import { papers, readingPaths, paperSlug, researchTitle, researchData, researchY
 import { tutorialCode, tutorialExamples } from "../src/tutorialExamples.js";
 import { gzipSync } from "node:zlib";
 
-export const publicResearchFields = ["id", "title", "titleZh", "sourceTitle", "authors", "venue", "year", "kind", "topic", "data", "dataZh", "summary", "related", "sourceNote", "sources", "readingNotes", "readerLimits", "guideSectionCount"];
+export const publicResearchFields = ["id", "title", "titleZh", "sourceTitle", "authors", "venue", "year", "kind", "topic", "data", "dataZh", "summary", "related", "sourceNote", "sources", "readingNotes", "readerLimits", "guideSectionCount", "readerReviewedAt"];
 export function projectPaper(paper) {
   return Object.fromEntries(publicResearchFields.filter((key) => paper[key] !== undefined).map((key) => [key, paper[key]]));
 }

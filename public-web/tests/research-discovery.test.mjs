@@ -65,6 +65,16 @@ test("both languages and views render two navigation choices, stable links and n
   }
 });
 
+test("topic links reset the same filters as normal topic clicks", () => {
+  const html = renderToStaticMarkup(createElement(ResearchHub, {
+    ...props,
+    locale: "en",
+    view: { ...initialResearchView, open: true, topic: "asset-pricing", depth: "guide", materials: "prepared", sort: "recent", page: 1 },
+  }));
+  assert.match(html, /href="\/research\?view=topics&amp;topic=market-microstructure"/);
+  assert.doesNotMatch(html, /href="\/research\?view=topics&amp;topic=market-microstructure[^\"]*(?:depth|materials|sort)/);
+});
+
 test("every topic and type has a bounded list or a clear actionable empty state", () => {
   for (const topic of researchSubjects.map((item) => item.id)) for (const kind of [...new Set(papers.map((paper) => paper.kind))]) {
     const html = renderToStaticMarkup(createElement(ResearchHub, { ...props, locale: "en", view: { open: true, topic, kind, page: 0 } }));
