@@ -92,6 +92,11 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
 
+`event` 波次按广度优先执行，每个分片在单轮内只尝试一次。失败分片由
+`failure_retry_seconds=300` 在后续 timer 轮次重新变为可执行；不得在同一轮用最多三次重试
+耗尽共享账号/provider 预算并截断后续独立 dataset 或 `major_news` 来源。其它 cadence 的
+有界同轮重试策略不变。
+
 `event` cadence 可选 `freshness_refresh_lead_seconds`（缺省为 0，当前生产配置不启用）。
 只有正常 success/empty 的重观测可以提前：非零值将间隔取为
 `min(minimum_interval_seconds, max(1, dataset.freshness_sla_seconds - lead))`；失败重试、
