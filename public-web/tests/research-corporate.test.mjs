@@ -9,9 +9,9 @@ import { researchCorporateGuides } from "../src/researchCorporateGuides.js";
 import { researchReaderNotes } from "../src/researchReaderNotes.js";
 import { researchQuestionRoutes, questionRoutesFor } from "../src/researchQuestionRoutes.js";
 
-test("three corporate additions retain 200 identities within 140 bilingual guides", () => {
+test("three corporate additions retain 200 identities within 160 bilingual guides", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 140);
+  assert.equal(Object.keys(researchReaderNotes).length, 160);
   assert.equal(Object.keys(researchCorporateGuides).length, 3);
   for (const [title, guide] of Object.entries(researchCorporateGuides)) {
     const paper = papers.find(p => p.title === title);

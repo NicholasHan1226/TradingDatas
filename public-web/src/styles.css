@@ -1176,7 +1176,7 @@ button { color: inherit; }
 .research-reader-body .research-reader-intro { color: var(--ink); font-size: 20px; line-height: 1.7; }
 .research-reader-body section { margin-top: 32px; }
 .research-reader-body h2 { margin: 0 0 12px; font-size: 21px; line-height: 1.4; letter-spacing: -.02em; }
-.research-reader-body .research-reader-attribution, .research-reader-body .research-edition-note { font-size: 12px; margin-top: 24px; }
+.research-reader-body .research-edition-note { font-size: 12px; margin-top: 24px; }
 .research-reader-aside { align-self: start; border-left: 1px solid var(--line); padding-left: 24px; min-width: 0; }
 .research-reader-aside h2, .research-related-disclosure summary { font-size: 14px; font-weight: 500; line-height: 1.6; margin: 0; }
 .research-reader-aside > section + section { margin-top: 24px; }

@@ -1,6 +1,6 @@
 # External research library
 
-Last reviewed: 2026-08-31. Scope: the `public-web` PR candidate, not production.
+Last reviewed: 2026-09-01. Scope: the `public-web` PR candidate, not production.
 
 ## Purpose and acceptance
 
@@ -74,7 +74,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 120 guides: 119 have six bilingual sections with source locators;
+library has 160 guides: 159 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,7 +113,7 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 120 full-text reviews; 80 works
+This does not certify 200 full-length guides or 160 full-text reviews; 40 works
 remain summary-only.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
@@ -158,7 +158,14 @@ Their explicit material selections remain unchanged; no new original-sample or
 replication claim is introduced. `researchComparisons120.js` adds twenty pairs,
 bringing the total to 85 across 121 works and covering every guide after exclusions.
 Current source ledger and independent acceptance packet:
-`docs/design/research-120-guides-v15.md`. Blocked browser checks, pending Datas PM
+`docs/design/research-120-guides-v15.md`. The 2026-09-01 continuation adds twenty
+existing catalog identities in `researchBatchTwo160.js`: six market-microstructure,
+six corporate-fundamentals, three methods, one text/alternative-data, one
+asset-pricing, one macro-finance and two crypto-market guides. Each is a bounded
+bilingual orientation tied to its DOI or primary archive page; it does not claim
+full-text review, replication, a current market conclusion, or new data coverage.
+Source selection and checked primary pages are recorded in
+`docs/design/research-160-guides-v16.md`. Blocked browser checks, pending Datas PM
 review and predecessor integration are not represented as release acceptance.
 Daily high/low and illiquidity guides link to daily data rather than minute bars;
 text guides link to document versioning. No available order-book, governance,
@@ -185,11 +192,12 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 120 expanded guides below the lead story.
+counts. Featured also exposes the 160 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides do not invent a fourth stage or change original sequence membership.
 `researchConnections.js` supplies 85 explicit, symmetric editorial comparison
-pairs across 121 works, covering all 120 guides. They contrast definitions,
+pairs across 121 works, covering the first 120 guides; newer guides retain the
+same-topic fallback until an explicit comparison is authored. They contrast definitions,
 inputs or methods; they do not assert citations, agreement, replication or evidence
 ranking. The reader shows at most three comparisons with bilingual reasons and
 excludes already displayed previous/next sequence links. Matching uses stable
