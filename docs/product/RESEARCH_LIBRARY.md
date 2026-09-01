@@ -1,6 +1,6 @@
 # External research library
 
-Last reviewed: 2026-08-31. Scope: the `public-web` PR candidate, not production.
+Last reviewed: 2026-09-01. Scope: the `public-web` candidate, not production.
 
 ## Purpose and acceptance
 
@@ -28,6 +28,16 @@ text/alternative data, macro-finance, Chinese/comparative markets and crypto.
 Foreign-market literature is comparative context, not an expansion of TD's live
 collection scope. The catalogue is not a systematic or exhaustive literature
 review, and inclusion is not endorsement of a conclusion or trading strategy.
+
+### Current editorial projection
+
+The checked candidate contains 200 distinct source identities, 140 bilingual
+guides (139 six-section guides and one four-section abstract-based orientation),
+and 60 summary-only records. These are content-structure counts only: they do
+not assert 140 complete paper reviews, replication, source availability, runtime
+data coverage, or production publication. Earlier `research-*-guides` design
+records retain their historical batch counts; the current cumulative boundary is
+[`research-140-guides-v16.md`](../design/research-140-guides-v16.md).
 
 ## Sources and verification
 
@@ -74,7 +84,7 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 120 guides: 119 have six bilingual sections with source locators;
+library has 140 guides: 139 have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,7 +123,7 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 120 full-text reviews; 80 works
+This does not certify 200 full-length guides or 140 full-text reviews; 60 works
 remain summary-only.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
@@ -153,12 +163,15 @@ the other seventeen selections are deliberately empty. Overall material coverage
 stays 75 linked / 125 empty. `researchComparisonExpansion.js` adds 36 comparisons
 after the previous 29; those 100 guides remain covered after core-neighbor exclusions.
 The next twenty in `researchMicrostructure120.js`, `researchCrypto120.js` and
-`researchMacro120.js` add seven microstructure, seven crypto and six macro guides.
-Their explicit material selections remain unchanged; no new original-sample or
-replication claim is introduced. `researchComparisons120.js` adds twenty pairs,
-bringing the total to 85 across 121 works and covering every guide after exclusions.
-Current source ledger and independent acceptance packet:
-`docs/design/research-120-guides-v15.md`. Blocked browser checks, pending Datas PM
+`researchMacro120.js` add seven microstructure, seven crypto and six macro guides
+to the historical 120-guide batch. Their explicit material selections remain
+unchanged; no new original-sample or replication claim is introduced.
+`researchComparisons120.js` adds twenty pairs, bringing that comparison layer to
+85 pairs across 121 works. It is not a claim that every guide in the later
+140-guide projection has a comparison.
+The current cumulative source ledger and acceptance packet is
+`docs/design/research-140-guides-v16.md`. The prior 120-guide packet remains a
+historical batch record. Blocked browser checks, pending Datas PM
 review and predecessor integration are not represented as release acceptance.
 Daily high/low and illiquidity guides link to daily data rather than minute bars;
 text guides link to document versioning. No available order-book, governance,
@@ -185,11 +198,11 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 120 expanded guides below the lead story.
+counts. Featured exposes the current 140 expanded guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides do not invent a fourth stage or change original sequence membership.
 `researchConnections.js` supplies 85 explicit, symmetric editorial comparison
-pairs across 121 works, covering all 120 guides. They contrast definitions,
+pairs across 121 works. They contrast definitions,
 inputs or methods; they do not assert citations, agreement, replication or evidence
 ranking. The reader shows at most three comparisons with bilingual reasons and
 excludes already displayed previous/next sequence links. Matching uses stable

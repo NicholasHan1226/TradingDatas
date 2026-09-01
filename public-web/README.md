@@ -15,14 +15,17 @@ npm install
 npm run dev
 ```
 
-The prototype includes the confirmed public-home visual direction, responsive
-Data/Features/Recipes/Research/Pricing/Docs navigation, a task-oriented Data catalog with
-the connected-interface index, collection-history ledger, reviewed candidate-source landscape and phased integration roadmap, and
-alternative-data ordering proposal, an external-paper/industry-research/case
-library with internal detail records, transparent Feature definitions, versioned
-Recipe examples, three base-data request-rate tiers with confirmed monthly/annual
-price display (checkout not yet available), a platform-wide
-searchable Docs hub with article routes, independent history-aware product pages, a grouped Account workspace
+The prototype includes the confirmed public-home visual direction and the compact
+`Data / Research / Pricing` floating navigation. Global search spans data,
+external research, methods and documentation; compatibility routes for Features,
+Recipes and Docs remain directly addressable but are not equal-weight navigation.
+It includes a task-oriented Data catalog with a contract/config interface index,
+dated historical observations, a reviewed candidate-source landscape and phased
+integration roadmap, plus an alternative-data ordering proposal. Research is an
+external-paper/industry-research/case library with internal detail records;
+methods are progressively disclosed through Recipes. Pricing contains three
+base-data request-rate tiers with confirmed monthly/annual display (checkout is
+not available). Account is a grouped workspace
 containing `zh-CN`/`en` and system/light/dark settings, and a client-only Agent
 setup prompt flow. `src/productManifest.js` is explicitly a design contract;
 Feature/PIT/commerce states are not runtime claims. Unbound dataset pages show
@@ -86,13 +89,13 @@ npm run test:sites
 
 ## Research library
 
-The 2026-08-31 candidate contains 200 distinct external research materials with
+The current candidate contains 200 distinct external research materials with
 Chinese/English editorial titles, orientations, data requirements and limitations.
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 120 bilingual guides: 119 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 80 records are
+There are 140 bilingual guides: 139 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 60 records are
 summary-only. The eight three-stage core journeys retain their 24 original works.
 `src/researchFiftyGuides.js` adds seven primary-source-located guides and
 `src/researchSixtyGuides.js` adds ten more; `src/researchSeventyGuides.js` and
@@ -101,7 +104,7 @@ per-work material selections (including intentional empty sets); unassigned
 records fail closed to no materials, never topic defaults. The 150 previously
 summary-only selections are in `src/researchSummaryMaterials.js`; this curation
 does not constitute 150 full-text reviews. See
-`../docs/design/research-120-guides-v15.md` for current source scope and acceptance.
+`../docs/design/research-140-guides-v16.md` for current source scope and acceptance.
 
 `src/researchNinetyGuides.js` and `src/researchHundredGuides.js` add twenty further
 bounded guides: eight asset-pricing, seven A-share/institutional-comparison and five
@@ -182,10 +185,11 @@ are in `src/researchEditorial.js` and `src/researchEditorialExpansion.js`;
 passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
-passages or author-issued supporting instructions. Subsequent batches above bring
-the current total to 120 guides, 119 with six sections. The latest modules are
-`researchMicrostructure120.js`, `researchCrypto120.js` and `researchMacro120.js`
-(seven, seven and six guides). They retain edition-specific limits and the existing
+passages or author-issued supporting instructions. Subsequent batches expanded the
+current total to 140 guides, 139 with six sections. The latest batch is
+`researchBatchOne140.js`, following the historical 120-guide modules
+`researchMicrostructure120.js`, `researchCrypto120.js` and
+`researchMacro120.js`. They retain edition-specific limits and the existing
 per-work preparation selections. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
@@ -193,8 +197,10 @@ certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
 Core articles show their position and previous/next reading with authored reasons;
-`src/researchConnections.js` adds 85 authored comparison pairs across 121 works,
-covering all 120 guides. Each article shows up to three bilingual
+`src/researchConnections.js` adds 85 authored comparison pairs across 121 works.
+Those comparisons cover the original 120-guide cohort; later guides remain
+discoverable through their topic and source links rather than inheriting a
+comparison claim. Each article shows up to three bilingual
 comparison reasons, excluding its existing previous/next links. These are editorial
 contrasts, not inferred citation edges, agreement or evidence rankings. They work
 from discovery metadata during body loading/error and preserve the core reading
@@ -257,7 +263,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 80 summary-only records, repeated/short paragraphs and
+candidates (including the 60 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only
