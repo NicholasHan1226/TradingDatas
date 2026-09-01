@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
@@ -96,6 +97,7 @@ def test_numeric_leading_provider_field_uses_safe_json_path() -> None:
         query_module._provider_json_path("a" * 65)
 
 
+@lru_cache(maxsize=1)
 def _native_dataset():
     base = load_dataset_registry().resolve("tushare.daily")
     fields = (
@@ -201,7 +203,22 @@ def _insert_row(
     payload: dict[str, object],
     issues: tuple[str, ...] = (),
     receipt_id: str | None = None,
-) -> None:
+) -> str:
+    # Query fixtures now carry real receipt envelopes. A fabricated ID alone
+    # must no longer satisfy the production row-authority contract.
+    if receipt_id is None and dataset_id == "cn.native.query" and provider in {
+        "provider-a", "provider-b"
+    }:
+        with pytest.MonkeyPatch.context() as patch:
+            receipt_id = _insert_native_success_receipt(
+                patch, conn, _native_dataset(),
+                execution_id="fixture." + hashlib.sha256(
+                    f"{provider}:{schema_major}:{row_key}".encode()
+                ).hexdigest()[:16],
+                call_index=0, page_offset=0, provider=provider,
+                request_window={"trade_date": str(payload.get("trade_date", "20260715"))},
+                data_through=str(payload.get("trade_date", "20260715")),
+            )
     canonical = json.dumps(
         payload,
         ensure_ascii=False,
@@ -227,6 +244,7 @@ def _insert_row(
             receipt_id or f"receipt:{provider}:{row_key}",
         ),
     )
+    return receipt_id or f"receipt:{provider}:{row_key}"
 
 
 def _insert_native_success_receipt(
@@ -461,17 +479,21 @@ def native_harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         last_success_receipt_ids=("receipt-current",),
     )
 
+    baseline_receipt_ids = tuple(sorted({
+        "receipt-current",
+        *(row[0] for row in conn.execute(
+            "SELECT receipt_id FROM provider_dataset_rows "
+            "WHERE dataset_id = ? AND schema_major = 1 AND provider IN (?, ?)",
+            (dataset.dataset_id, "provider-a", "provider-b"),
+        )),
+    }))
+
     def project(*_args: object, **kwargs: object) -> DatasetRuntimeEvidence:
         if kwargs.get("evidence_as_of") is None:
             return evidence
         return replace(
             evidence,
-            as_of_success_receipt_ids=(
-                "receipt-current",
-                "receipt:provider-a:row-a",
-                "receipt:provider-a:row-b",
-                "receipt:provider-b:row-c",
-            ),
+            as_of_success_receipt_ids=baseline_receipt_ids,
         )
 
     monkeypatch.setattr(
@@ -1717,7 +1739,6 @@ def test_asof_query_excludes_rows_bound_only_to_a_later_receipt(
             "note": "not observable at cutoff",
             "big": 4,
         },
-        receipt_id="receipt-later",
     )
     native_harness["conn"].commit()
 
@@ -1786,7 +1807,6 @@ def test_asof_cursor_remains_terminal_when_a_later_receipt_row_exists(
             "note": "not observable at cutoff",
             "big": 4,
         },
-        receipt_id="receipt-later",
     )
     native_harness["conn"].commit()
 
@@ -1831,16 +1851,13 @@ def test_append_only_overlap_replay_keeps_exact_terminal_window_after_later_rece
             cursor_codec=SignedCursorCodec(SIGNING_KEY),
         ),
     }
-    permitted = {
-        "receipt-current",
-        "receipt:provider-a:row-a",
-        "receipt:provider-a:row-b",
-        "receipt:provider-b:row-c",
-    }
+    permitted = {row[0] for row in native_harness["conn"].execute(
+        "SELECT receipt_id FROM provider_dataset_rows WHERE dataset_id = ? AND schema_major = 1",
+        (append_only_dataset.dataset_id,),
+    )}
+    permitted.add("receipt-current")  # The fixture's projected dataset receipt.
     for index, symbol in enumerate("CDEFGHIJKL", start=1):
-        receipt_id = f"receipt:append-only-first:{index}"
-        permitted.add(receipt_id)
-        _insert_row(
+        receipt_id = _insert_row(
             native_harness["conn"],
             provider="provider-a",
             row_key=f"append-only-first-{index}",
@@ -1850,8 +1867,8 @@ def test_append_only_overlap_replay_keeps_exact_terminal_window_after_later_rece
                 "note": "first append-only provenance",
                 "big": index,
             },
-            receipt_id=receipt_id,
         )
+        permitted.add(receipt_id)
     _insert_row(
         native_harness["conn"],
         provider="provider-a",
@@ -1862,7 +1879,6 @@ def test_append_only_overlap_replay_keeps_exact_terminal_window_after_later_rece
             "note": "later receipt outside cutoff",
             "big": 99,
         },
-        receipt_id="receipt:append-only-later",
     )
     native_harness["conn"].commit()
 
@@ -1979,6 +1995,7 @@ def test_native_query_dataset_quality_is_visible_when_page_is_clean(
 
 def test_current_exact_partition_uses_only_projected_receipt_cohort(
     native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = native_harness["conn"]
     conn.execute("DELETE FROM provider_dataset_rows")
@@ -1995,9 +2012,8 @@ def test_current_exact_partition_uses_only_projected_receipt_cohort(
             "missing_field:note",
             "time_format_mismatch:trade_date:yyyymmdd",
         ),
-        receipt_id="receipt-older-degraded",
     )
-    _insert_row(
+    current_receipt = _insert_row(
         conn,
         provider="provider-a",
         row_key="current-valid-duplicate",
@@ -2007,9 +2023,17 @@ def test_current_exact_partition_uses_only_projected_receipt_cohort(
             "note": "current full-field row",
             "big": 2,
         },
-        receipt_id="receipt-current",
     )
     conn.commit()
+    original_project = query_module.project_dataset_runtime_evidence
+    def current_authority(*args: object, **kwargs: object) -> DatasetRuntimeEvidence:
+        evidence = original_project(*args, **kwargs)
+        return replace(
+            evidence, projection=replace(evidence.projection, receipt_id=current_receipt),
+            last_success_receipt_id=current_receipt,
+            current_receipt_ids=(current_receipt,), last_success_receipt_ids=(current_receipt,),
+        )
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", current_authority)
 
     exact = _execute(
         native_harness,
@@ -2060,6 +2084,7 @@ def test_current_exact_partition_uses_only_projected_receipt_cohort(
 
 def test_current_exact_request_partition_scopes_null_business_partition_receipts(
     native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = native_harness["conn"]
     conn.execute("DELETE FROM provider_dataset_rows")
@@ -2076,9 +2101,8 @@ def test_current_exact_request_partition_scopes_null_business_partition_receipts
             "missing_field:note",
             "time_format_mismatch:trade_date:yyyymmdd",
         ),
-        receipt_id="receipt-historical-degraded",
     )
-    _insert_row(
+    current_receipt = _insert_row(
         conn,
         provider="provider-a",
         row_key="current-valid-duplicate",
@@ -2088,9 +2112,17 @@ def test_current_exact_request_partition_scopes_null_business_partition_receipts
             "note": "current full-field row",
             "big": 2,
         },
-        receipt_id="receipt-current",
     )
     conn.commit()
+    original_project = query_module.project_dataset_runtime_evidence
+    def current_authority(*args: object, **kwargs: object) -> DatasetRuntimeEvidence:
+        evidence = original_project(*args, **kwargs)
+        return replace(
+            evidence, projection=replace(evidence.projection, receipt_id=current_receipt),
+            last_success_receipt_id=current_receipt,
+            current_receipt_ids=(current_receipt,), last_success_receipt_ids=(current_receipt,),
+        )
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", current_authority)
 
     dataset = replace(native_harness["dataset"], partition_field=None)
     registry = DatasetRegistry(
@@ -2576,9 +2608,17 @@ def test_native_query_rejects_malformed_provider_quality_codes(
 
 def test_native_query_25k_plus_degraded_uses_quality_index_within_vm_budget(
     native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = native_harness["conn"]
     conn.execute("DELETE FROM provider_dataset_rows")
+    page_receipts = [
+        _insert_native_success_receipt(
+            monkeypatch, conn, native_harness["dataset"],
+            execution_id=f"bulk-fixture-{index}", call_index=0, page_offset=0,
+            request_window={"trade_date": "20260716"}, data_through="20260716",
+        ) for index in range(10)
+    ]
     rows: list[tuple[object, ...]] = []
     for index in range(25_000):
         symbol = f"S{index:05d}"
@@ -2606,7 +2646,7 @@ def test_native_query_25k_plus_degraded_uses_quality_index_within_vm_budget(
                 "valid",
                 "[]",
                 "2026-07-17T03:00:00+00:00",
-                f"receipt:provider-a:{index:05d}",
+                page_receipts[index] if index < 10 else f"receipt:provider-a:{index:05d}",
                 1,
             )
         )
@@ -2675,6 +2715,13 @@ def test_native_partition_filter_uses_partition_index_within_vm_budget(
 ) -> None:
     conn = native_harness["conn"]
     conn.execute("DELETE FROM provider_dataset_rows")
+    page_receipts = [
+        _insert_native_success_receipt(
+            monkeypatch, conn, native_harness["dataset"],
+            execution_id=f"bulk-fixture-{index}", call_index=0, page_offset=0,
+            request_window={"trade_date": "20260716"}, data_through="20260716",
+        ) for index in range(10)
+    ]
     rows: list[tuple[object, ...]] = []
     for index in range(25_000):
         trade_date = "20260716" if index < 10 else "20260715"
@@ -2702,7 +2749,7 @@ def test_native_partition_filter_uses_partition_index_within_vm_budget(
                 "valid",
                 "[]",
                 "2026-07-17T03:00:00+00:00",
-                f"receipt:provider-a:partition-{index:05d}",
+                page_receipts[index] if index < 10 else f"receipt:provider-a:partition-{index:05d}",
                 1,
             )
         )
@@ -2713,9 +2760,7 @@ def test_native_partition_filter_uses_partition_index_within_vm_budget(
     )
     conn.commit()
 
-    current_receipt_ids = tuple(
-        f"receipt:provider-a:partition-{index:05d}" for index in range(10)
-    )
+    current_receipt_ids = tuple(sorted(page_receipts))
     original_project = query_module.project_dataset_runtime_evidence
 
     def current_partition_authority(
@@ -2772,3 +2817,61 @@ def test_native_partition_filter_uses_partition_index_within_vm_budget(
     ]
     assert all(row["trade_date"] == "20260716" for row in response["data"])
     assert query_module._field_expression(dataset, "trade_date") == '"partition_value"'
+
+@pytest.mark.parametrize("include_proofs", [False, True])
+@pytest.mark.parametrize("damage", ["missing", "malformed", "foreign_provider", "incomplete_execution"])
+def test_query_rejects_broken_row_authority_even_with_healthy_latest_receipt(
+    native_harness: dict[str, object], monkeypatch: pytest.MonkeyPatch,
+    include_proofs: bool, damage: str,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    historical = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="historical-row",
+        call_index=0, page_offset=0,
+        provider="provider-b" if damage == "foreign_provider" else "provider-a",
+    )
+    latest = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="healthy-latest",
+        call_index=0, page_offset=0,
+    )
+    if damage == "incomplete_execution":
+        _insert_native_success_receipt(
+            monkeypatch, conn, dataset, execution_id="missing-middle-call",
+            call_index=0, page_offset=0,
+        )
+        historical = _insert_native_success_receipt(
+            monkeypatch, conn, dataset, execution_id="missing-middle-call",
+            call_index=2, page_offset=2,
+        )
+    _insert_row(conn, row_key="broken-history", payload={"symbol": "BROKEN", "trade_date": "20260715"}, receipt_id=historical)
+    if damage == "missing":
+        conn.execute("DELETE FROM market_ingest_runs WHERE run_id = ?", (historical,))
+    elif damage == "malformed":
+        conn.execute("UPDATE market_ingest_runs SET notes = '{' WHERE run_id = ?", (historical,))
+    conn.commit()
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *a, **k: _proof_evidence((latest,)))
+    with pytest.raises(QueryServiceUnavailable):
+        _execute(native_harness, _request(filters={"symbol": {"eq": "BROKEN"}}, include_receipt_proofs=include_proofs))
+
+
+def test_default_query_keeps_valid_rows_from_independent_executions(
+    native_harness: dict[str, object], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    ids = []
+    for index in range(2):
+        receipt = _insert_native_success_receipt(
+            monkeypatch, conn, dataset, execution_id=f"separate-{index}", call_index=0, page_offset=0,
+        )
+        ids.append(receipt)
+        _insert_row(conn, row_key=f"separate-{index}", payload={"symbol": f"SEPARATE_{index}", "trade_date": "20260715"}, receipt_id=receipt)
+    conn.commit()
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *a, **k: _proof_evidence(tuple(ids)))
+    request = _request(filters={"symbol": {"in": ["SEPARATE_0", "SEPARATE_1"]}})
+    result = _execute(native_harness, request)
+    assert [row["symbol"] for row in result["data"]] == ["SEPARATE_0", "SEPARATE_1"]
+    assert "row_receipt_proofs" not in result["metadata"]
+    with pytest.raises(QueryServiceUnavailable):
+        _execute(native_harness, replace(request, include_receipt_proofs=True))

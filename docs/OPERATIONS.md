@@ -22,8 +22,9 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 
 采集调度只允许一个 registry-driven runner；timer 每五分钟只唤醒一次 cadence
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
-Tushare API 增加 service/timer。生产 timer 只采集每个 automatic dataset 的最新
-eligible window；它不会隐式启动历史回填。历史回填必须经同一 registry 的外部、有界
+Tushare API 增加 service/timer。生产 timer 默认只采集每个 automatic dataset 的最新
+eligible window；显式声明下述 `partition_continuation` 的绑定可续采已经开始的有界旧日期。
+其它历史回填必须经同一 registry 的外部、有界
 one-shot manifest 明确选择，且继续受同一 transport budget 约束。没有正式 QuickSync
 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在 production 启用采集 timer。采集 unit 只调用一次不带 dataset 参数的通用 cadence
@@ -34,15 +35,44 @@ receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。�
 5 分钟 bar 独立重置游标，因此一个 bar 内完整扫完 5,963 个冻结代码。只有带匹配
 dataset/provider、config hash、frozen universe、batch identity 与
 success/empty 状态的 receipt 才能推进游标；失败批次只在本数据集内优先重试，不能借用其它
-dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 24、
+dataset、其它 universe 或其它 config 的 receipt。这只证明配置在 intraday 每轮账号/provider 48、
 rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement、完整率、稳定性、低延迟或 production runtime
 已接纳。每轮仍须保留实际 bar time、observed_at 和 receipt；上游晚一根 bar 时不得声明低延迟或执行
 可用。它不是研究或交易 Universe。`cn.dataset.rt_min_daily` 的 security-master fanout 每批 5（单批最多约 5×241 根 1 分钟线，午后 payload 最大），`max_rows_per_attempt=1500`，resumable cursor v2 每轮最多 20 批；敏感扫描包络按该乘积定价且必须 ≤ 2,000,000 节点。确定性 `resource_budget`/`config_error`/`validation_failed` 失败批次不得优先钉死同一窗口的 pending 批次。该绑定经 `active_evidence` 恢复采集；回滚时切回上一 immutable registry/release 并更新 activation-wave
 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
+
+`resumable_fanout.progress_mode` 默认 `complete_window`，保持既有合同与配置哈希。
+`rt_min_daily` 的 major 3 显式选择 `session_day_rotation`：完整本地日窗口只用于验证和
+游标，不发送给上游；采集开始与结束必须仍在请求日，逐行校验非空 `[ts_code,time]`
+和真实 provider 时间，拒绝旧日、混日、未来或跨午夜响应。水位取真实最大 provider 时间。
+在精确日/config/universe/batch/variant 内先采未尝试批次，再轮换最久未尝试批次；
+成功、空响应和失败都不会永久占据前缀或终止当日刷新。预算、开市窗口和每轮 20 批不变，
+不新增收盘补采。现有容量不足以承诺全市场或收盘完整覆盖。
+
+七项单代码公告日期绑定显式选择 `partition_continuation`，以 binding-only
+`partition_date_field` 验证返回日期等于实际请求日期、代码属于请求集合。财务公共 schema、
+可空字段、主键和 as-of/range 合同不变。当前日期与最早未完成且已开始的旧日期交替，
+每轮仍只选一个窗口；旧日期最多续采 31 天，不推造缺失日期。当前日期的空响应会继续轮换，
+旧日期只有精确批次与 variant 的成功/空回执才计入已观察覆盖。新配置不能借用旧配置回执；
+超龄债务保留但不再自动消耗预算，不能标成完整。该能力不改变每日容量不足的事实。
+合同及失败测试入口见
+[`resumable collection contract`](reports/2026-08-30-resumable-collection-contract.md)；
+生产是否使用这些模式仍以 exact-release、真实 receipt 和认证 readback 为准。
+
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
 所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，
 不为某个 dataset、provider 或消费者增加专用分支。
+
+`market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`、`postclose_daily` 成功水位读取，在下一配置
+开窗前或配置工作日之外，以前一配置工作日的既有收盘锚点计算 freshness。开窗时间和
+工作日来自本物理 release 的 `config/provider_native_schedule.yaml`，复用既有纯解析器，
+不接受环境路径覆盖；当前值为分钟 09:30、日频 16:30。到达开窗即恢复普通比较，不加
+额外宽限、放宽 SLA 或修改 `data_through`。不完整的前一交易时段仍应过期；empty、
+failed、event、Crypto 和 config mismatch 不获得该保护。固定配置缺失、畸形或符号链接
+会 fail closed；已加载 policy 仅按 immutable release 缓存，变更需新 release/重启。
+这不实现节假日日历，也不把上个交易日的最后一根 bar 称为实时新数据。问题与测试见
+[开窗前读取时钟修正](reports/2026-08-31-cn-prewindow-clock.md)。
 
 读取已结束的精确分钟槽位时，receipt cohort 的 `request_window` 可以保留该 dataset
 合同要求的窗口（例如 `bar_time`）；同一 execution 内必须保持窗口、provider、config
@@ -54,11 +84,21 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 
 `session_minute` 的最小成功间隔为 240 秒：五分钟 timer 在上一个窗口于临界时刻完成
 （例如完成后 265 秒触发下一次）时，仍会规划下一窗口；失败重试、开市日历、窗口和预算
-规则不变。当前 `standard` budget 每轮最多 12 个账号请求、12 个 provider 请求，
-同一 provider API 最多 6 个请求。runner 仍是串行、每五分钟最多运行一次；历史
+规则不变。当前 `standard` budget 每轮最多 64 个账号请求、64 个 provider 请求，
+同一 provider API 最多 16 个请求；`intraday` 为 48/48/6（分钟 API override 60），
+`event` 为 36/36/4（major_news override 16），`low_frequency` 为 16/16/4。
+这些是配置上限，不是上游每日额度或实际已完成调用数。runner 仍是串行、每五分钟最多运行一次；历史
 QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。发布前必须在目标 release 上证明完整
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
+
+`event` cadence 可选 `freshness_refresh_lead_seconds`（缺省为 0，当前生产配置不启用）。
+只有正常 success/empty 的重观测可以提前：非零值将间隔取为
+`min(minimum_interval_seconds, max(1, dataset.freshness_sla_seconds - lead))`；失败重试、
+窗口、receipt、SLA 与账号/provider/API 预算不变。该值必须为非 bool 整数，且
+`0 <= lead < minimum_interval_seconds`；其它 cadence 不允许非零值。提前量用于为 timer
+触发与排队留余量，不代表 provider 更新更频繁。启用前须核验实际新增调用量、当前账号
+每日额度与完整一轮运行时间；仅维持 per-run 上限不证明每日成本不增加。默认 0 保留旧行为。
 
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
@@ -66,6 +106,12 @@ release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
+
+分批续采读取历史时复用 `validated_receipt_history_for_dataset`，仅扫描当前 dataset 的
+完整回执历史；不能在每个分批任务中重复调用全目录 history loader。两者使用同一
+authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用缓存、截断历史、跳过
+校验或其它 dataset 的回执推进游标。该内部性能修正不改变 provider 预算、调度频率或
+发布时长门禁；生产提速必须经自然轮次单独验证。
 
 ### `market_ingest_runs` 的收据读取索引
 
@@ -81,13 +127,18 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 代码回滚继续遵循 immutable release 切换与同层 receipt/API readback，索引缺失在旧 release 中是
 允许状态。
 
-catalog 的最近收据投影先按 envelope `source` 与 payload `dataset_id` 建立数据集相关行索引，
-每个数据集只校验与自己相关的 bounded rows；跨数据集 envelope/payload 不一致必须同时进入
-两个相关数据集并继续 fail closed，不能因性能索引而被跳过。最近收据窗口可能从一个大型
-execution 的中部开始，因此可见 `physical_call_index` 允许是从非零序号开始的连续后缀；
-后缀内部的重复、缺口、混合 physical/non-physical 状态、execution context 漂移或 retry 序列
-不一致仍必须返回 `receipt_execution_inconsistent`。该规则只解释已持久化收据的有界读取，
-不会补写、删除或重排历史 receipt，也不会把 provider/storage 失败改成成功。
+catalog 先取每个 envelope `source` 最近 100 条收据作为初始窗口。达到 100 条的已注册
+source 对窗口内所有可识别的有效 execution 补齐兄弟收据，不能根据尚未完整验证的时间
+上下文猜测只有最旧一组被截断。初始窗口中的无效收据全部保留；初始读取及补读共用
+400,000 条原始读取预算，补读中重复命中的行也计入预算，超限立即 fail closed。
+
+随后按 envelope `source` 与 payload `dataset_id` 建立数据集相关行索引；跨数据集
+envelope/payload 不一致必须同时进入两个相关数据集，不能因性能索引而被跳过。经补齐
+并明确标记完整的物理 execution 必须从 `physical_call_index=0` 开始；重复、内部缺口、
+混合 physical/non-physical 状态、context 漂移或 retry 序列不一致仍报
+`receipt_execution_inconsistent`。其它读取入口原有的连续后缀校验不因此放宽。
+dataset 与 interface 投影共用扩展后的收据集合；本规则不补写、删除或重排历史 receipt，
+不把 provider/storage 失败改成成功，也不证明上游数据完整或连续健康。
 
 对于已经执行的 dataset，scheduler summary 可附带 `receipt_provenance`：它只按本轮已持久化且通过同一 receipt validator 的 receipt ID 投影 `status`、`returned`/`validated`/`rejected`/`committed` 计数、稳定的 `error_layer`、原始结构化 `error_codes` 与 `validation_reasons`。无法通过验证的 receipt 只保留其稳定 reason code，计数字段为 `null`；`validation_failed` 默认归入通用 `ingest_validation` 层，`transport_error` 归入 `transport` 层，只有持久化证据证明更具体层级时才细分，未持久化时不推断确切谓词；读取 provenance 失败不会改变采集结果。失败的 scheduler dataset 摘要还可携带经上游 outcome 边界清洗、单行且长度受限的 `error_message`，便于区分安全的 transport/provider 诊断；它不写入 receipt、不会替代 receipt authority，也不包含 provider payload、请求凭据或本机路径。
 
@@ -97,6 +148,11 @@ execution 的中部开始，因此可见 `physical_call_index` 允许是从非�
 `resumable_fanout` 的分钟批次允许保留请求集合内实际返回的严格子集，单只股票缺失只降低
 该批 coverage；停牌代码带回的历史最后 bar 也按 `[ts_code,time]` 独立保留。越界代码、重复
 主键和非可恢复批次的跨日快照仍失败。允许空结果和禁止空结果继续遵循各自既有策略。
+
+内容流页面全部早于当前窗口时，既有窗口过滤可能移除所有行。允许空结果的数据集此时写入
+`empty` terminal receipt（`data_through=null`），聚合结果同样为 `empty`；不得把零行交给
+非空行写入器而误报 `validation_failed`。混合页面只保留窗口内行，未来时间、重复主键和
+上游失败仍按原合同拒绝，禁止空结果的数据集仍失败。这里不声明原始页面覆盖完整。
 
 生产 one-shot 必须通过安装好的 collector service 启动，使 systemd 按 unit 合同创建并回收
 `RuntimeDirectory=tradingdatas`。不得从 shell 直接执行 runner 却继续使用
@@ -165,6 +221,28 @@ uv run --python 3.12 --with-requirements requirements.txt \
 bounded backfill 逐段补齐。固定未来天数不能被当成 provider 能力事实：只有
 registry 明确声明、transport 实际观测且独立回归覆盖的日历窗口才能受控请求下一日。
 future-empty 响应必须按既有完整性合同诚实处理，不能把其它日参考数据推进到未来。
+
+## 国际新闻原始发布时间与精度
+
+`global.news.flash` 的 `1.1.0` minor合同增加三个可空文本字段：
+`provider_published_at` 保留上游原发布时间字符串，`raw_item_json` 可还原规范化前
+完整item，`publication_precision` 表示原值的 `date` / `datetime` / `time` / `unknown`
+精度。仅全球新闻显式启用本地provenance处理模式，模式参数不得发送上游；国内新闻
+及其它Firecrawl调用保持原合同。
+
+旧 `published_at`、`published_local`、主键和默认投影保持兼容。源值只有日期或时间时，
+旧字段只能视为归一化锚点，不能当作已证明的发布时间instant；使用者必须结合精度
+和原值解释。旧行没有新增字段时仍保留 `missing_field` 质量证据，不做通用校验豁免。
+不离线回写历史事实/回执；全球新闻沿用 `append_only`，真实重采按payload hash保留
+新版本及事务receipt，同一业务主键可同时存在旧、新payload，不能按content_uid只取
+第一行就断言已读到新字段。回退旧release依赖保留旧合同成功回执；只有新合同回执时，
+旧registry仍会以 `active_config_receipt_mismatch` 降级，不得删除新事实来伪造恢复。
+
+此合同不证明网站列表完整性。`response_completeness=null`、query的
+`freshness_watermark_unverified` / `response_completeness_unverified` 以及
+`data_through=null` 均保留；缺失或不可解析发布时间仍按既有规则失败，不借用采集
+时钟补值，也不放宽敏感内容或资源预算。源码合同、候选测试不等于生产启用；仍需
+精确release、真实provider新回执及认证读取这三个新增字段分别验收。
 
 ## 有界 one-shot batch
 
@@ -260,14 +338,15 @@ HTTP/consumer readback。
 
 ### 发布通道选择（强制顺序）
 
-生产发布的权威通道是：**本地已验证的 clean Git commit -> `marketgraph-root` 的
+生产发布的权威通道是：**本地已验证的 clean Git commit -> `marketgraph-main` 的
 immutable release staging -> manifest/rollback 验证 -> 原子 `current` 切换 -> service
-与消费者 readback**。目标 ECS 使用 `marketgraph-root`（严格 host-key 校验）进行 root-only
+与消费者 readback**。目标 ECS 使用 Finance `PRODUCTION_ACCESS.md` 登记的 `marketgraph-main`
+（严格 host-key 校验）进行 root-only
 release 操作；`marketgraph-server` 仅可用于最小权限诊断。服务器工作树能否从 GitHub 拉取，
 只是可选的源码同步能力，绝不能作为“是否可以发布”的前置条件或阻塞结论。
 
 当服务器 GitHub deploy key、known_hosts 或网络异常时，保留已审查本地 commit 的 Git archive
-与其 manifest，通过 `marketgraph-root` 写入一个**不存在的新 commit 目录**，再按本节验证；不得
+与其 manifest，通过同一已核验 SSH identity 写入一个**不存在的新 commit 目录**，再按本节验证；不得
 覆盖已有 release、复制未受 manifest 覆盖的文件，或把服务器 checkout 当作未经核对的发布源。
 Aliyun CLI 是 ECS 身份、实例状态和应急控制面的备选验证渠道，不替代 release manifest，也不
 改变 SSH host identity 的校验要求。每次发布记录必须分别写明：选择了哪条通道、GitHub/main
@@ -602,3 +681,67 @@ QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界�
 
 Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，仅作为 on_demand
 补充手段设计，不在自动调度内；激活前需先验证其真实响应契约。
+
+## 目录请求的可选进程隔离
+
+进程间任务 JSON 上限为 1 MiB；返回体继续服从 registry 的既有响应字节预算。
+
+`TRADINGDATAS_CATALOG_WORKERS` 缺省或精确值 `0` 保留原进程内执行；精确值 `1`、`2`
+启用同一 API unit/OS 账号内的相应数量持久 `spawn` 子进程。其它值不接受，不做静默
+回退。仅 `GET /v1/catalog` 的完整 `CatalogService.list_datasets` 移入子进程，查询、
+认证、endpoint scope、分类授权、频率/日额度和租户并发仍由原 HTTP 进程处理。
+没有新服务、端口、凭据、provider 调用、数据库写入或跨请求投影缓存。
+
+每个目录任务重新打开原 verified SQLite snapshot；runtime、coverage、queryability 和
+cursor 由该完整请求的同一快照产生。子进程启动时核对物理代码目录/文件 hash、完整
+registry hash、SQLite 路径、账号及既有 cursor signer 指纹；不经任务队列传原 token、
+账号字典或 signer 密钥。监听启动前必须完成全部子进程身份检查，此步骤不读取 catalog
+事实，也不构成数据健康证明。初始化失败关闭该候选服务；不能回退到未隔离的计算。
+
+目录运行任务总数最多等于 worker 数，没有隐式等待队列。容量满或 worker/IPC 失败返回
+既有 503 `service_unavailable`，不自动重放或改走 query。父请求一直等待已接收的任务
+真正结束；客户端断开不释放仍在计算的任务/租户名额。Python 的正常 shutdown 停止接收
+新任务并等待自有任务结束。systemd 停止整个 control group 时会同时发送 SIGTERM，
+在途只读请求可能中断或返回 503；这不是无中断排空承诺，不自动重试。仅在预监听
+初始化失败时，允许有界终止并回收该次初始化创建的子进程；
+不终止 collector、正常客户任务或其它服务进程。systemd 仍须 `KillMode=control-group`，
+并预留启动/退出时间；不得为该功能放宽 SQLite、凭据和 filesystem 保护。
+
+启用先完成默认路径、真实 spawn、异常/容量/退出和 HTTP 授权顺序测试；随后在原运行面
+验证冷/热目录、两个同时目录与既有 query 混合负载、完整 240 项/适用目录及查询摘要。
+15 秒请求门禁不含预监听初始化，但初始化自身必须有界。现有服务、timer、锁、数据库
+模式、清单和认证材料分别读回；不以独立进程性能实验代替真实 HTTP 验收。
+配置切换必须与精确 release 一起保留回退：恢复原 worker 配置和原 release，停止/启动
+同一 API unit 并完成认证读取，保留全部事实与回执。当前事故与实验见
+[进程隔离候选记录](reports/2026-08-31-catalog-process-isolation.md)。
+
+Crypto目录的UTF-8回执候选扫描先尝试有界的数据库原生字节匹配：首个共同前缀后的
+精确后缀命中即可返回；首个未命中而有后续/重叠前缀时，仍调用原完整Python matcher。
+无共同前缀、后缀长度种类过多、参数或SQL文本超出优化上限时回到原匹配路径；
+这些优化上限不构成新的查询拒绝或扫描预算豁免。非UTF-8仍使用原SQLite语义。
+不以JSON预解析或跨请求投影缓存跳过损坏候选及receipt authority检查。
+同一次catalog请求内可按含typeof的完整原始行tuple复用该dataset已验证的seed分类与
+execution身份；必须先完成siblings原始读取及预算收费，任一字段不同、新行或invalid
+仍走原校验。此映射不跨请求、不按run_id单独判等，也不改变其它scanner调用者。
+
+UTF-8回执候选扫描仍使用进程内锁，覆盖Python UDF注册、SQL读取和注销，
+用于避免多个SQLite连接同时回调Python时的争用；不串行化整个HTTP服务，也不放宽
+原始候选、损坏回执与扫描预算检查。发布须验证两个同时发起的认证目录请求均在15秒内
+完成，单请求速度不能替代并发验收。当前4bb/WAL之后的运行时升级必须保持WAL，
+回退到4bb/WAL时不得沿用早期恢复DELETE的脚本。详见
+[原生匹配与验收记录](reports/2026-08-30-runtime-native-candidate.md)。
+
+## 采集巡检脚本
+
+已安装的 `/usr/local/sbin/tradingdatas-collector-watch.sh` 对应仓库
+`deploy/tradingdatas-collector-watch.sh`；本文件是既有巡检的可审计源，不创建新 timer，
+也不发送通知。退出码 `1` 表示发现告警，不能单凭 systemd `failed` 断言巡检程序损坏。
+Polymarket 的新失败回执不能刷新成功捕获时间：使用 capture 内的 `observed_at`，并核对
+非空 market/snapshot 数量；超过 26 小时无成功捕获、损坏回执或缺失成功捕获报 ALERT，
+最近六份去重回执至少四次失败报 WARN，同一次判断不得同时输出 OK。这仅是运行诊断，
+不取代 SQLite receipt、认证 API 或 activation/stable 门禁。既有 TA 账本告警保持独立，
+修复 TD 不会抹除或伪造 TA 结果。
+
+更新脚本需先记录现有字节 hash、备份到新的 root-only 路径、通过
+`bash -n` 与 `tests/test_collector_watch.py`，再原子安装并读回 hash；不改 timer 排期。
+回滚只恢复该备份脚本，保留既有日志和数据。读取日志应区分告警内容与工具执行错误。

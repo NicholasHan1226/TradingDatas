@@ -77,6 +77,11 @@ QuickSync 的正式 endpoint、凭证文件、权限码、频率和并发限制�
 
 API 只读 SQLite，不同步调用上游，不回退文件、旧数据库或 provider 专用接口。每次响应保留 dataset 级的 `state`、`degraded`、`freshness`、`quality`、`lineage`、`receipt_id`、`data_through`、`observed_at` 和 `reasons`。
 
+目录可使用默认关闭的 `TRADINGDATAS_CATALOG_WORKERS=1|2`，在同一 API 服务内隔离
+目录计算与查询线程；认证、授权与限额仍由原 HTTP 进程执行。启用需独立的混合负载及
+认证回读验收，配置存在不代表生产已启用。设置、容量和回退要求见
+[运行说明](docs/OPERATIONS.md#目录请求的可选进程隔离)。
+
 详见：
 
 - [产品与开发规则](AGENTS.md)
@@ -141,6 +146,11 @@ reason code 还必须属于固定安全闭集，并与声明的 cadence class �
 receipt 和窗口而变化，必须以 [STATUS.md](STATUS.md) 的最新快照和本轮服务器
 `current`/catalog/query readback 为准。catalog active、HTTP 200、历史 probe 或单次 success
 都不能替代 dataset 级的 receipt、freshness、quality、lineage 与 completeness 验收。
+
+通用续采支持显式选择的日内轮换和已开始日期续采；未选择的绑定保持原有最新窗口语义。
+这改善有限预算内的推进，不承诺全量收敛。模式、真实时间验证、31 天续采边界及回滚见
+[运行说明](docs/OPERATIONS.md) 和
+[续采合同](docs/reports/2026-08-30-resumable-collection-contract.md)。
 
 HTTPS activation evidence 是仓外、hash-bound 的运行 sidecar，不是 repository config，
 也不进入正式编译默认输入。`preactivation_candidate` 只接受显式

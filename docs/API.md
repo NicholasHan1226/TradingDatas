@@ -24,6 +24,11 @@ schema、字段、查询能力、cadence、SLA、entitlement 和 runtime state�
 在 SQLite 或 provider 访问前 fail closed。
 
 catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取时钟判断状态。
+`market=CN`、`timezone=Asia/Shanghai` 的分钟/收盘日频 success 在下一配置开窗前按前一配置工作日收盘锚点
+判断 freshness，开窗后恢复原 SLA 比较。该边界与 query 共用读取投影，不更改实际
+`data_through`/`observed_at`，也不等于实时新数据、节假日日历或全历史完整性。缺失前一
+时段数据、过期 empty、失败回执仍如实降级。固定读取 policy 不可用时 fail closed；
+配置来源及边界见 [运行说明](OPERATIONS.md)。
 `entitlement` 仅表示 provider 侧真实观测到的权限状态。当前 `provider=tushare` 的权限证据来自 `transport_service=quicksync` 的有界真实调用；凭证存在、官方积分、静态目录可见或 HTTP 200 都不能单独证明 QuickSync 权限、频控或数据可用性。
 
 `schema_version` 表示当前 provider-neutral 可读合同，而不是客户端对官方文档字段的假设。
@@ -31,6 +36,22 @@ catalog 不是运行成功证明；每个数据集仍需结合 receipt 和读取
 response-contract delta 做字段子集、类型或新增字段修正，并递增受影响 dataset 的 schema
 major；详情见 [ADR-0011](adr/ADR-0011-quicksync-observed-response-contracts.md)。消费者必须
 始终从 catalog 读取 schema major，不得把旧 schema 当作兼容回退。
+
+`rt_min_daily` 的 schema 2 候选移除实际未返回的响应字段 `freq`，采集请求仍固定为
+`1MIN`；不得由客户端伪造该 provider 字段。`broker_recommend` 的 schema 2 候选
+保持原字段和严格 `YYYYMM` 月份语义，用真实重采建立新质量记录；不会改写 major 1
+的旧 facts/receipts。固定 query 只接受当前 registry major，因此这两项版本切换需
+认证 readback 与消费者合同适配，不能把源码候选称为生产生效。`fut_basic` 的
+schema 2 候选同样只移除缺失的 `trade_time_desc` 响应字段，保留 `[ts_code]` identity
+和全部六个交易所请求 variants；它也需要新回执与消费者 major 适配。详见
+[本轮质量与覆盖证据](reports/2026-08-30-coverage-quality-recovery.md)。
+
+后续 `rt_min_daily` major 3 保留 major 2 的八个原生字段，新增严格非空
+`[ts_code,time]` identity；`time` 可筛选及排序，水位只来自通过完整本地日和实际完成时钟
+校验的 provider 时间。它不回写 major 1/2 历史，也不保证全市场或收盘完整性。
+消费者必须明确支持 major 3。七项财务日期续采只改变 binding 请求验证和调度，
+不更改公共 schema major、字段可空性、主键或 as-of/range 合同；新成功回执不能
+替旧 payload 的原始 row receipt/quality 背书。
 
 每个 catalog row 的 `identity_fields` 是 registry `primary_key` 的有序投影；没有已声明业务主键时为 `[]`。消费者将它与该 row 的 dataset contract fingerprint 一起重算和绑定，不能猜测、替换或信任 producer 自报 hash。`cn.dataset.fut_basic` 的正式合同 identity 为 `[ts_code]`，因此 catalog 的确定性默认顺序为 `[ts_code:asc]`；该 identity 只支持有界分页与 replay，不证明 response completeness、业务时间水位或 PIT。日分区的 receipt completeness 可以声明稳定 identity 并验证请求分区、唯一性和行数上限；若同一 dataset 的 `as_of_field`、`range_field` 与 `partition_field` 都是 `null`，这不声明业务时间水位或 PIT 可用性，消费者仍只能将其作为 receipt-bound current-partition 事实读取。
 
@@ -41,6 +62,17 @@ runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor wate
 增量不会使未过期的 catalog cursor 失效。
 
 ## POST /v1/query
+
+每一页返回的行都必须在同一只读 SQLite 快照内通过自身 `receipt_id` 的身份、
+dataset/provider、成功状态与完整采集序列校验。缺失或无效的行回执返回
+`503 service_unavailable`，不得用最新 dataset 回执替代，也不得标记
+`lineage.complete=true` 后继续返回该行。校验限于当前页引用的去重回执及其
+采集序列，不遍历其它数据集，也不访问 provider；定位序列成员的 SQL 仍可能
+检查当前数据集的历史回执，因此页大小有界不等于历史规模对耗时完全无影响。
+
+`include_receipt_proofs` 只控制是否输出逐行证明及其既有的单一采集序列限制，
+不控制上述基础校验是否执行。默认查询继续允许同页包含来自多个有效历史
+采集序列的行；字段投影、分页和默认响应格式不变。
 
 请求：
 
@@ -108,6 +140,14 @@ runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor wate
 完整的 `success` 映射为 `ready`，合同未验证时可叠加为 `partial`，但客观状态仍保留在
 `runtime_state`。HTTP 200 不得掩盖 dataset 级 degraded 状态；消费者必须逐数据集读取
 metadata，不能只看 HTTP 状态码。
+
+新鲜度按数据时间粒度计算：`YYYYMM` 水印覆盖完整月份，以该月末作为 SLA 参考。
+对于 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute` 与 `postclose_daily`，
+周六/周日读取时分别以最近周五 15:00 和周六 00:00 作为新鲜度时钟，避免已覆盖周五的
+数据因周末无交易被误报过期。仍缺周五数据的水印继续按 SLA 判断；事件、参考数据和
+Crypto 不适用这个时钟。此规则不推断法定节假日、不证明历史完整性；周一和工作日仍
+使用原有时钟（午休按既有规则处理），failed/paused/invalid receipt 不会被放宽。
+
 
 中国市场的 `session_minute` 数据集在同一交易日的 11:30--13:00
 （Asia/Shanghai）午间休市内暂停 freshness 时钟；13:00 起恢复严格 SLA 判断。该规则
@@ -220,6 +260,16 @@ API fail closed 返回 503。
 bar 时间不一致都只写该 batch 的失败 receipt，并保留已成功批次供 cursor v2 续接，不把部分
 结果伪装成完整覆盖。旧 500/30 分片仍可作为独立回滚与诊断证据，但不改变当前 5,963
 代码的 registry authority。
+
+## 目录执行容量
+
+目录进程隔离为默认关闭的运行配置，不新增 route 或请求字段。启用后，认证、endpoint
+scope、分类授权、频率/日额度、租户并发仍先于目录任务执行。目录执行容量满、子进程
+身份不匹配、worker 或 IPC 失败返回既有 503 `service_unavailable`，不会返回旧快照、
+自动重放、调用上游或转到 query。正常任务仍完整使用一次新的 verified SQLite snapshot，
+分页、cursor、字段、响应字节预算及错误分类保持原合同。客户端断开不等于任务已经结束，
+其占用的租户/执行容量要等真实计算结束后释放。运维配置及关闭方式见
+[目录进程隔离](OPERATIONS.md#目录请求的可选进程隔离)。
 
 ## 禁止接口
 

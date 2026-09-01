@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import stat
 import struct
@@ -15,7 +16,8 @@ import uuid
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
@@ -128,12 +130,10 @@ _ERROR_CODES = frozenset(
     }
 )
 _MAX_INGEST_RUN_SCAN_ROWS = 400_000
-# Catalog projection only needs each dataset's most recent receipts, not the
-# full append-only run history.  A single execution normally emits 1-3 receipt
-# rows (success/empty/failed plus fanout siblings and retries), so 100 rows per
-# dataset covers the last few dozen executions and the worst fanout + retry
-# case while keeping the projected union small and independent of the total
-# number of rows in ``market_ingest_runs``.
+# Catalog starts from 100 recent receipts per source, not the full append-only
+# history. This is a seed window, not a complete-execution guarantee: full
+# windows require sibling lookup for every recognizable selected execution,
+# sharing the global raw-read budget (including duplicate reads).
 _MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET = 100
 _RECEIPT_QUERY = """
 SELECT typeof(run_id), run_id,
@@ -417,6 +417,18 @@ class ValidatedReceiptHistories:
 
     entries_by_dataset: Mapping[str, tuple[ValidatedReceiptHistoryEntry, ...]]
     failures_by_dataset: Mapping[str, tuple[str, ...]]
+
+
+@dataclass
+class _ReceiptReadBudget:
+    """One catalog read budget, including repeated rows before deduplication."""
+
+    remaining: int
+
+    def consume(self, count: int) -> None:
+        if count > self.remaining:
+            raise RuntimeProjectionError("receipt execution scan row budget exceeded")
+        self.remaining -= count
 
 
 @dataclass(frozen=True)
@@ -955,10 +967,129 @@ def _scan_ingest_run_rows_by_ids(
     return tuple(_classify_ingest_run_row(row) for row in rows)
 
 
+# SQLite releases the GIL while stepping a query, then reacquires it for each
+# Python UDF call. Keep these scans from interleaving across connections; the
+# gate covers registration through cleanup, not receipt validation or HTTP.
+_EXECUTION_CANDIDATE_SCAN_LOCK = threading.RLock()
+_EXECUTION_CANDIDATE_MAX_PARAMETERS = 800
+_EXECUTION_CANDIDATE_MAX_SQL_BYTES = 32 * 1024
+
+
+def _native_execution_candidate_predicate(
+    conn: sqlite3.Connection,
+    function_name: str,
+    prefix: bytes,
+    suffix_groups: tuple[tuple[int, frozenset[bytes]], ...],
+) -> tuple[str, tuple[object, ...]] | None:
+    """Avoid Python for zero/one-prefix rows; later occurrences use the exact UDF."""
+    # The enclosing scanner binds source and LIMIT in addition to this predicate.
+    parameter_limit = min(
+        _EXECUTION_CANDIDATE_MAX_PARAMETERS,
+        conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) - 2,
+    )
+    parameter_count = 2 + sum(2 + len(values) for _, values in suffix_groups)
+    if parameter_count > parameter_limit:
+        return None
+    clauses = []
+    params = []
+    for length, values in suffix_groups:
+        ordered = tuple(sorted(values))
+        placeholders = ",".join("?" for _ in ordered)
+        clauses.append(
+            "substr(td_candidate_bytes, td_candidate_position + ?, ?) "
+            f"IN ({placeholders})"
+        )
+        params.extend((len(prefix), length, *ordered))
+    predicate = (
+        "(SELECT CASE WHEN td_candidate_position = 0 THEN 0 "
+        f"WHEN ({' OR '.join(clauses)}) THEN 1 "
+        "WHEN instr(substr(td_candidate_bytes, td_candidate_position + 1), ?) > 0 "
+        f"THEN {function_name}(td_candidate_bytes) ELSE 0 END "
+        "FROM (SELECT CAST(notes AS BLOB) AS td_candidate_bytes, "
+        "instr(CAST(notes AS BLOB), ?) AS td_candidate_position)) > 0"
+    )
+    if len(predicate.encode("utf-8")) > _EXECUTION_CANDIDATE_MAX_SQL_BYTES:
+        return None
+    # Search from first-position + 1, not the end of the prefix: overlaps matter.
+    params.extend((prefix, prefix))
+    return predicate, tuple(params)
+
+
+@contextmanager
+def _execution_candidate_predicate(
+    conn: sqlite3.Connection, fragments: list[str]
+):
+    """Accelerate the literal prefilter without parsing or trusting receipt JSON."""
+
+    cursor = conn.execute("PRAGMA encoding")
+    try:
+        encoding = cursor.fetchone()[0]
+    finally:
+        cursor.close()
+    if encoding != "UTF-8":
+        # CAST(text AS BLOB) uses the database encoding. Preserve the original
+        # SQLite semantics for non-UTF-8 databases, including malformed text.
+        yield " OR ".join("instr(notes, ?) > 0" for _ in fragments), tuple(fragments)
+        return
+
+    literals = tuple(item.encode("utf-8") for item in fragments)
+    prefix = os.path.commonprefix(literals)
+    by_length: dict[int, set[bytes]] = {}
+    for literal in literals:
+        suffix = literal[len(prefix):]
+        by_length.setdefault(len(suffix), set()).add(suffix)
+    # Execution IDs usually have only a few lengths. Search their shared literal
+    # prefix once and use exact suffix membership instead of compiling hundreds
+    # of long regex alternatives for each dataset on every catalog request.
+    # Keep the regex path for arbitrary/highly variable fragments so matching
+    # work does not grow with an unbounded number of distinct suffix lengths.
+    suffix_groups = tuple((length, frozenset(values)) for length, values in by_length.items())
+    pattern = (
+        None if prefix and len(suffix_groups) <= 16
+        else re.compile(b"|".join(re.escape(item) for item in literals))
+    )
+    # A lookup owns its callback; never replace another lookup's registered UDF.
+    function_name = f"td_receipt_candidate_{uuid.uuid4().hex}"
+    native = (
+        _native_execution_candidate_predicate(conn, function_name, prefix, suffix_groups)
+        if pattern is None else None
+    )
+
+    def matches(notes: bytes | None) -> int:
+        if notes is None:
+            return 0
+        if pattern is not None:
+            return int(pattern.search(notes) is not None)
+        offset = 0
+        while (found := notes.find(prefix, offset)) != -1:
+            start = found + len(prefix)
+            if any(notes[start:start + length] in values for length, values in suffix_groups):
+                return 1
+            # Advance by one to retain overlapping matches in malformed input.
+            offset = found + 1
+        return 0
+
+    with _EXECUTION_CANDIDATE_SCAN_LOCK:
+        conn.create_function(function_name, 1, matches)
+        try:
+            # BLOB avoids Python's automatic UTF-8 decoding of invalid SQLite TEXT
+            # and preserves literal matches after NUL and in malformed BLOB values.
+            yield native if native is not None else (
+                f"{function_name}(CAST(notes AS BLOB)) > 0", ()
+            )
+        finally:
+            conn.create_function(function_name, 1, None)
+
+
 def _scan_ingest_run_rows_by_execution_ids(
     conn: sqlite3.Connection,
     dataset_id: str,
     execution_ids: tuple[str, ...],
+    *,
+    read_budget: _ReceiptReadBudget | None = None,
+    validated_seed_rows: Mapping[
+        tuple[object, ...], tuple[_ScannedIngestRunRow, str]
+    ] | None = None,
 ) -> tuple[_ScannedIngestRunRow, ...]:
     """Read only receipt rows belonging to selected validated executions.
 
@@ -993,25 +1124,40 @@ def _scan_ingest_run_rows_by_execution_ids(
         fragments.extend(
             (f'"attempt_id":{ordinary}', f'"attempt_id":{physical_prefix}')
         )
-    predicates = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
-    scan_limit = _MAX_INGEST_RUN_SCAN_ROWS + 1
-    query = _RECEIPT_QUERY.replace(
-        "FROM market_ingest_runs\nLIMIT ?",
-        f"FROM market_ingest_runs\nWHERE source = ? AND ({predicates})\nLIMIT ?",
-    )
-    raw_rows = tuple(
-        tuple(row)
-        for row in conn.execute(
-            query,
-            (dataset_id, *fragments, scan_limit),
-        ).fetchall()
-    )
+    scan_limit = (
+        _MAX_INGEST_RUN_SCAN_ROWS
+        if read_budget is None
+        else min(_MAX_INGEST_RUN_SCAN_ROWS, read_budget.remaining)
+    ) + 1
+    with _execution_candidate_predicate(conn, fragments) as (predicate, params):
+        query = _RECEIPT_QUERY.replace(
+            "FROM market_ingest_runs\nLIMIT ?",
+            f"FROM market_ingest_runs\nWHERE source = ? AND ({predicate})\nLIMIT ?",
+        )
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (dataset_id, *params, scan_limit))
+            raw_rows = tuple(tuple(row) for row in cursor.fetchall())
+        finally:
+            cursor.close()
+    if read_budget is not None:
+        read_budget.consume(len(raw_rows))
     if len(raw_rows) == scan_limit:
         raise RuntimeProjectionError("receipt execution scan row budget exceeded")
 
     selected: list[_ScannedIngestRunRow] = []
     expected = frozenset(execution_ids)
     for row in raw_rows:
+        # Catalog may reuse only a seed validated in this same request with an
+        # identical full raw tuple (including SQLite typeof columns). Reads and
+        # duplicate rows have already been charged above; run_id alone is never
+        # sufficient. Other callers and changed/new rows keep the original path.
+        seed = None if validated_seed_rows is None else validated_seed_rows.get(row)
+        if seed is not None:
+            scanned, execution_id = seed
+            if execution_id in expected:
+                selected.append(scanned)
+            continue
         scanned = _classify_ingest_run_row(row)
         if scanned.invalid is not None or scanned.payload is None:
             # The SQL fragment matched receipt-shaped material in this bounded
@@ -1967,13 +2113,15 @@ def _attempt_context_failures(
 
 def _execution_context_failures(
     receipts: list[_Receipt],
+    *,
+    complete_execution_ids: frozenset[str] = frozenset(),
 ) -> tuple[_InvalidReceipt, ...]:
     executions: dict[str, list[_Receipt]] = {}
     for receipt in receipts:
         executions.setdefault(receipt.execution_id, []).append(receipt)
 
     failures: list[_InvalidReceipt] = []
-    for execution_receipts in executions.values():
+    for execution_id, execution_receipts in executions.items():
         representative = max(
             execution_receipts,
             key=lambda receipt: (
@@ -2021,6 +2169,7 @@ def _execution_context_failures(
             any(call_index is None for call_index in call_indexes)
             or len(set(call_indexes)) != len(call_indexes)
             or first_visible_call_index is None
+            or (execution_id in complete_execution_ids and first_visible_call_index != 0)
             or call_indexes
             != list(
                 range(
@@ -2109,11 +2258,80 @@ def _freshness_reference_in_utc(value: str, dataset: DatasetDefinition) -> datet
     except ZoneInfoNotFoundError:
         raise ValueError("dataset_timezone_invalid") from None
     local = data_through_utc.astimezone(dataset_timezone)
+    if len(value.strip()) == 6 and value.strip().isdigit():
+        # YYYYMM denotes the whole month, not its first calendar day.
+        next_month = (local.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return (next_month - timedelta(microseconds=1)).astimezone(timezone.utc)
     if any((local.hour, local.minute, local.second, local.microsecond)):
         return data_through_utc
     return (local + timedelta(days=1) - timedelta(microseconds=1)).astimezone(
         timezone.utc
     )
+
+
+@lru_cache(maxsize=1)
+def _cn_freshness_policies() -> Mapping[str, tuple[datetime_time, tuple[int, ...]]]:
+    """Read only this immutable release's validated, immutable clock policy.
+
+    The planner imports receipt projection, so reuse its pure parser lazily,
+    after this module is initialized. No environment-selected schedule, planner
+    execution, provider access or trading-calendar inference is involved.
+    """
+    from tools.provider_native_cadence_planner import load_schedule_bytes
+    from yaml import YAMLError
+
+    try:
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "config/provider_native_schedule.yaml"
+        )
+        if not stat.S_ISREG(path.lstat().st_mode) or path.resolve(strict=True) != path:
+            raise ValueError("schedule must be a physical release file")
+        schedule = load_schedule_bytes(path.read_bytes())
+        policies = {}
+        for name in ("session_minute", "postclose_daily"):
+            policy = schedule.cadences[name]
+            if (
+                policy.availability_after_local is None
+                or not policy.weekdays
+                or not set(policy.weekdays) <= {1, 2, 3, 4, 5}
+            ):
+                raise ValueError("unsupported CN freshness policy")
+            policies[name] = (policy.availability_after_local, policy.weekdays)
+        return MappingProxyType(policies)
+    except (OSError, ValueError, YAMLError) as exc:
+        raise RuntimeProjectionError(
+            "CN freshness schedule is unavailable or invalid"
+        ) from exc
+
+
+def _freshness_clock_in_utc(dataset: DatasetDefinition, now_utc: datetime) -> datetime:
+    """Use the preceding configured weekday's close before the next window.
+
+    At configured availability the ordinary clock resumes without extra grace.
+    This is not a holiday calendar or an exemption for event/reference/crypto
+    data. Missing preceding-session data still fails the ordinary SLA check.
+    """
+    if (
+        dataset.market != "CN"
+        or dataset.timezone != "Asia/Shanghai"
+        or dataset.cadence_class not in {"session_minute", "postclose_daily"}
+    ):
+        return now_utc
+    local = now_utc.astimezone(ZoneInfo(dataset.timezone))
+    availability, weekdays = _cn_freshness_policies()[dataset.cadence_class]
+    if local.isoweekday() in weekdays and local.time() >= availability:
+        return now_utc
+    preceding = local - timedelta(days=1)
+    while preceding.isoweekday() not in weekdays:
+        preceding -= timedelta(days=1)
+    if dataset.cadence_class == "session_minute":
+        close = preceding.replace(hour=15, minute=0, second=0, microsecond=0)
+    else:
+        close = (preceding + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    return close.astimezone(timezone.utc)
 
 
 def _is_cn_session_minute_lunch_break(
@@ -2155,6 +2373,7 @@ def _project_dataset_runtime(
     expected_binding: ProviderBinding | None = None,
     validation_cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"]
     | None = None,
+    complete_execution_ids: frozenset[str] = frozenset(),
 ) -> DatasetRuntimeProjection:
     """Derive one dataset's current state without consulting flat files."""
 
@@ -2193,7 +2412,9 @@ def _project_dataset_runtime(
     # cascade into bogus receipt_execution_inconsistent, masking the real
     # reason (receipt_timestamp_in_future / data_through_in_future).
     invalid.extend(_attempt_context_failures(receipts))
-    invalid.extend(_execution_context_failures(receipts))
+    invalid.extend(_execution_context_failures(
+        receipts, complete_execution_ids=complete_execution_ids
+    ))
     current_receipts: list[_Receipt] = []
     for receipt in receipts:
         if receipt.started_sort > now_utc or receipt.finished_sort > now_utc:
@@ -2359,7 +2580,7 @@ def _project_dataset_runtime(
     # mark them stale (query-on-demand semantics per registry contract).
     is_stale = (
         dataset.cadence_class != "on_demand"
-        and now_utc - data_through_utc
+        and _freshness_clock_in_utc(dataset, now_utc) - data_through_utc
         > timedelta(seconds=dataset.freshness_sla_seconds)
         and not _is_cn_session_minute_lunch_break(
             dataset,
@@ -3367,6 +3588,7 @@ def _project_registry_datasets(
     tuple[DatasetRuntimeProjection, ...],
     frozenset[str],
     tuple[_ScannedIngestRunRow, ...],
+    Mapping[str, frozenset[str]],
 ]:
     if not isinstance(registry, DatasetRegistry):
         raise TypeError("registry must be DatasetRegistry")
@@ -3375,6 +3597,43 @@ def _project_registry_datasets(
         conn,
         per_dataset_limit=_MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET,
     )
+    seed_rows = rows
+    expanded = list(seed_rows)
+    seen_rows = {row.raw for row in seed_rows}
+    read_budget = _ReceiptReadBudget(_MAX_INGEST_RUN_SCAN_ROWS - len(seed_rows))
+    complete_execution_ids: dict[str, frozenset[str]] = {}
+    # Any selected execution may have older siblings outside a full source
+    # window. Do not trust unverified sibling chronology or text timestamp
+    # ordering to guess that only the oldest visible execution was truncated.
+    by_source: dict[str, list[_ScannedIngestRunRow]] = {}
+    for row in seed_rows:
+        source = row.raw[9]
+        if type(source) is str and source in known_dataset_ids:
+            by_source.setdefault(source, []).append(row)
+    for dataset_id, source_rows in by_source.items():
+        if len(source_rows) < _MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET:
+            continue
+        dataset = registry.resolve(dataset_id)
+        validated_seed_rows = {}
+        for row in source_rows:
+            validated = _validate_receipt_row_memoized(
+                row, dataset, known_dataset_ids, now, None, validation_cache
+            )
+            if isinstance(validated, _Receipt):
+                validated_seed_rows[row.raw] = (row, validated.execution_id)
+        execution_ids = frozenset(value[1] for value in validated_seed_rows.values())
+        if not execution_ids:
+            continue
+        siblings = _scan_ingest_run_rows_by_execution_ids(
+            conn, dataset_id, tuple(sorted(execution_ids)), read_budget=read_budget,
+            validated_seed_rows=validated_seed_rows,
+        )
+        complete_execution_ids[dataset_id] = execution_ids
+        for row in siblings:
+            if row.raw not in seen_rows:
+                expanded.append(row)
+                seen_rows.add(row.raw)
+    rows = tuple(expanded)
     related_rows: dict[str, list[_ScannedIngestRunRow]] = {
         dataset_id: [] for dataset_id in known_dataset_ids
     }
@@ -3403,10 +3662,11 @@ def _project_registry_datasets(
             known_dataset_ids=known_dataset_ids,
             rows=tuple(related_rows[dataset.dataset_id]),
             validation_cache=validation_cache,
+            complete_execution_ids=complete_execution_ids.get(dataset.dataset_id, frozenset()),
         )
         for dataset in registry.datasets
     )
-    return projections, known_dataset_ids, rows
+    return projections, known_dataset_ids, rows, MappingProxyType(complete_execution_ids)
 
 
 def project_catalog_runtime(
@@ -3425,7 +3685,7 @@ def project_catalog_runtime(
     provider binding.
     """
 
-    projections, _known_dataset_ids, _rows = _project_registry_datasets(
+    projections, _known_dataset_ids, _rows, _complete = _project_registry_datasets(
         conn, registry, now=now, validation_cache=validation_cache
     )
     return {
@@ -3445,7 +3705,7 @@ def project_registry_runtime(
     """Project every declared dataset and derive all summary fields from it."""
 
     generated_at = _canonical_now(now)
-    projections, known_dataset_ids, rows = _project_registry_datasets(
+    projections, known_dataset_ids, rows, complete_execution_ids = _project_registry_datasets(
         conn, registry, now=now
     )
     state_counts = {
@@ -3496,6 +3756,7 @@ def project_registry_runtime(
                 known_dataset_ids=known_dataset_ids,
                 rows=rows,
                 expected_binding=binding,
+                complete_execution_ids=complete_execution_ids.get(dataset.dataset_id, frozenset()),
             )
             interface_name = (
                 binding.api_name

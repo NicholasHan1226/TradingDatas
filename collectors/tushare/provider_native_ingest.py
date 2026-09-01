@@ -51,7 +51,7 @@ from storage.receipt_projection import (
     ValidatedReceiptHistoryEntry,
     open_verified_read_model_snapshot,
     validated_success_receipt_ids,
-    validated_receipt_histories_by_dataset,
+    validated_receipt_history_for_dataset,
 )
 from storage.sqlite_authority_lock import (
     SqliteAuthorityLockError,
@@ -411,9 +411,10 @@ def _resumable_histories(
 
     try:
         with open_verified_read_model_snapshot(db_path) as conn:
-            histories = validated_receipt_histories_by_dataset(
+            histories = validated_receipt_history_for_dataset(
                 conn,
                 registry,
+                dataset,
                 now=datetime.now(timezone.utc),
             )
     except (RuntimeProjectionError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
@@ -430,6 +431,7 @@ def _load_completed_fanout_batches(
     dataset: DatasetDefinition | None = None,
     binding: ProviderBinding,
     request_window: Mapping[str, str] | None = None,
+    now: datetime | None = None,
 ) -> tuple[FanoutBatch, ...]:
     policy = binding.fanout
     if policy is None or policy.strategy == "none":
@@ -454,6 +456,7 @@ def _load_completed_fanout_batches(
             binding=binding,
             request_window=request_window or {},
             histories=histories,
+            now=now,
         )
     if (
         policy.strategy != "dataset_field"
@@ -503,11 +506,11 @@ def _load_completed_fanout_batches(
         sqlite3.Error,
     ) as exc:
         raise ValueError("fanout source authority is unavailable") from exc
-    now = datetime.now(ZoneInfo(source.timezone)).date()
+    local_today = datetime.now(ZoneInfo(source.timezone)).date()
     cutoff = (
         None
         if policy.source_date_lte_days is None
-        else now - timedelta(days=policy.source_date_lte_days)
+        else local_today - timedelta(days=policy.source_date_lte_days)
     )
     values: list[RequestScalar] = []
     for payload_json, payload_hash, receipt_id in rows:
@@ -581,6 +584,7 @@ def _load_completed_fanout_batches(
             binding=binding,
             request_window=request_window or {},
             histories=histories,
+            now=now,
         )
     if not batches and binding.resumable_fanout is None:
         raise ValueError("fanout source has no completed values")
@@ -593,15 +597,15 @@ def _fanout_parameter_value(values: tuple[RequestScalar, ...]) -> RequestScalar:
     return ",".join(str(value) for value in values)
 
 
-def _resumable_batch_state(
+def _matching_batch_receipts(
     batch: FanoutBatch,
     *,
     dataset: DatasetDefinition,
     binding: ProviderBinding,
     request_window: Mapping[str, str],
     histories: Sequence[ValidatedReceiptHistoryEntry],
-) -> str:
-    """Classify one v2 batch from receipts for one exact request identity."""
+) -> tuple[ValidatedReceiptHistoryEntry, ...]:
+    """Match only full exact window/config/universe/batch receipt identities."""
 
     if (
         batch.cursor_contract_version != 2
@@ -610,15 +614,17 @@ def _resumable_batch_state(
         or batch.batch_count is None
         or batch.batch_values_sha256 is None
     ):
-        return "pending"
+        return ()
     config_hash = provider_ingest_config_hash(dataset, binding)
-    candidates = tuple(
+    variants = binding.request_variants or ({},)
+    return tuple(
         item
         for item in histories
         if (
             item.dataset_id == dataset.dataset_id
             and item.provider == binding.provider
             and item.config_hash == config_hash
+            and any(dict(item.request_variant) == dict(v) for v in variants)
             and dict(item.request_window) == dict(request_window)
             and item.cursor_contract_version == 2
             and item.frozen_universe_sha256 == batch.frozen_universe_sha256
@@ -626,6 +632,20 @@ def _resumable_batch_state(
             and item.batch_count == batch.batch_count
             and item.batch_values_sha256 == batch.batch_values_sha256
         )
+    )
+
+
+def _resumable_batch_state(
+    batch: FanoutBatch,
+    *,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    request_window: Mapping[str, str],
+    histories: Sequence[ValidatedReceiptHistoryEntry],
+) -> str:
+    candidates = _matching_batch_receipts(
+        batch, dataset=dataset, binding=binding,
+        request_window=request_window, histories=histories,
     )
     variants = binding.request_variants or (MappingProxyType({}),)
     states: list[str] = []
@@ -668,6 +688,7 @@ def _select_resumable_fanout_batches(
     binding: ProviderBinding,
     request_window: Mapping[str, str],
     histories: Sequence[ValidatedReceiptHistoryEntry],
+    now: datetime | None = None,
 ) -> tuple[FanoutBatch, ...]:
     """Select retryable failed batches or the next pending batches.
 
@@ -678,6 +699,39 @@ def _select_resumable_fanout_batches(
     policy = binding.resumable_fanout
     if policy is None:
         return tuple(batches)
+    if policy.progress_mode != "complete_window":
+        candidates = tuple(batches)
+        if policy.progress_mode == "partition_continuation":
+            window_policy = binding.request_window_policy
+            if window_policy is None:
+                raise ValueError("partition continuation requires a window")
+            day = decode_request_window_value(
+                request_window[window_policy.range_start_key], "yyyymmdd"
+            ).anchor.date()
+            local_day = (now or datetime.now(timezone.utc)).astimezone(
+                ZoneInfo(dataset.timezone)
+            ).date()
+            if day < local_day:
+                candidates = tuple(
+                    batch for batch in batches
+                    if _resumable_batch_state(
+                        batch, dataset=dataset, binding=binding,
+                        request_window=request_window, histories=histories,
+                    ) != "complete"
+                )
+        # Attempts govern fair service, never successful coverage. Empty and
+        # persistent failures cannot pin the prefix, and success is refreshed.
+        def last_attempt(batch: FanoutBatch) -> tuple[datetime, int]:
+            matched = _matching_batch_receipts(
+                batch, dataset=dataset, binding=binding,
+                request_window=request_window, histories=histories,
+            )
+            return (
+                max((item.finished_at for item in matched),
+                    default=datetime.min.replace(tzinfo=timezone.utc)),
+                batch.batch_index if batch.batch_index is not None else -1,
+            )
+        return tuple(sorted(candidates, key=last_attempt)[:policy.max_batches_per_run])
     states = tuple(
         _resumable_batch_state(
             batch,
@@ -989,7 +1043,10 @@ def _data_through(
         if binding.response_completeness is None
         else binding.response_completeness.date_field
     )
+    progress = binding.resumable_fanout
+    progress_date = progress.partition_date_field if progress is not None else None
     for field_name in (
+        progress_date,
         dataset.as_of_field,
         dataset.partition_field,
         snapshot_field,
@@ -1629,11 +1686,24 @@ def _persist_provider_call(
         data_through=None,
     )
     try:
+        scoped_rows = _in_scope_success_rows(
+            binding, outcome, request_window=normalized_window
+        )
+        # A valid event page may contain only pre-window items. They have
+        # already passed completeness validation and are intentionally out
+        # of scope; do not send an empty batch to the non-empty row writer.
+        if not scoped_rows and dataset.empty_data_policy == "allowed":
+            return write_terminal_receipt(
+                db_path,
+                context=failure_context,
+                status="empty",
+                errors=(),
+            )
         return ingest_provider_native_rows(
             db_path,
             dataset=dataset,
             binding=binding,
-            rows=_in_scope_success_rows(binding, outcome, request_window=normalized_window),
+            rows=scoped_rows,
             context=call_context,
         )
     except ProviderNativeAdmissionError as exc:
@@ -1692,6 +1762,15 @@ def _aggregate_counts(
 
 
 def _aggregate_success_results(results: Sequence[IngestResult]) -> IngestResult:
+    if results and all(result.status == "empty" for result in results):
+        return IngestResult(
+            status="empty",
+            counts=_zero_counts(),
+            receipt_ids=tuple(
+                receipt_id for result in results for receipt_id in result.receipt_ids
+            ),
+            errors=(),
+        )
     counts = _aggregate_counts(
         results,
         count_semantics="aggregate_physical_call_transactions",
@@ -1839,6 +1918,64 @@ def _validate_response_field_coverage(
             )
 
 
+def _validate_progress_response(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    calls: Sequence[ProviderCall],
+    request_window: Mapping[str, str],
+    started_at: str,
+) -> None:
+    """Admission on every physical outcome, before partial preservation too."""
+    policy = binding.resumable_fanout
+    if policy is None or policy.progress_mode == "complete_window":
+        return
+    window = binding.request_window_policy
+    if window is None:
+        raise ValueError("progress contract requires a request window")
+    zone = ZoneInfo(dataset.timezone)
+    started = datetime.fromisoformat(started_at.replace("Z", "+00:00")).astimezone(zone)
+    finished = datetime.now(timezone.utc).astimezone(zone)
+    if finished < started:
+        raise ValueError("collection completion precedes start")
+    if policy.progress_mode == "session_day_rotation":
+        lower = decode_request_window_value(request_window[window.range_start_key], "local_datetime_seconds").anchor
+        upper = decode_request_window_value(request_window[window.range_end_key], "local_datetime_seconds").anchor
+        if (lower.date() != upper.date() or lower.time().isoformat() != "00:00:00"
+                or upper.time().isoformat() != "23:59:59"
+                or started.date() != lower.date() or finished.date() != lower.date()):
+            raise ValueError("cumulative response must remain in its current local day")
+        completeness = binding.response_completeness
+        if completeness is None or completeness.strategy != "windowed_unique_primary_key":
+            raise ValueError("cumulative response requires windowed identity validation")
+        for call in calls:
+            if call.outcome.state != "success":
+                continue
+            _validate_response_completeness(
+                dataset, binding, call.outcome.rows, request_window=request_window,
+                resolved_params={}, calls=(call,),
+            )
+            for row in call.outcome.rows:
+                stamp = decode_request_window_value(row.get(completeness.date_field), "local_datetime_seconds").anchor
+                if stamp.replace(tzinfo=zone) > finished:
+                    raise ValueError("provider response event time is in the future")
+    else:
+        requested = request_window[window.range_start_key]
+        day = _strict_yyyymmdd(requested).date()
+        if day > started.date():
+            raise ValueError("partition continuation cannot query future dates")
+        for call in calls:
+            if call.outcome.state != "success":
+                continue
+            expected = set(call.identity.fanout_values)
+            for row in call.outcome.rows:
+                value = row.get(policy.partition_date_field)
+                if _strict_yyyymmdd(value).date() != day:
+                    raise ValueError("provider row date differs from requested partition")
+                code = None if binding.fanout is None else row.get(binding.fanout.parameter)
+                if type(code) is not str or not code or code not in expected:
+                    raise ValueError("provider row code differs from requested fanout")
+
+
 def _persist_provider_execution(
     db_path: Path,
     *,
@@ -1854,6 +1991,15 @@ def _persist_provider_execution(
 ) -> IngestResult:
     """Persist one independent terminal transaction for every real call."""
 
+    try:
+        _validate_progress_response(dataset, binding, execution.calls, normalized_window, started_at)
+    except (ValueError, ProviderValidationError):
+        return _persist_failed_execution(
+            db_path, dataset=dataset, binding=binding, calls=execution.calls,
+            normalized_window=normalized_window, root_attempt_id=attempt_id,
+            started_at=started_at, overall_error="validation_failed",
+            terminal_context=terminal_context,
+        )
     if execution.outcome.state == "failed":
         error_code = _provider_error_code(execution.outcome)
         return _persist_failed_execution(
@@ -2119,6 +2265,7 @@ def collect_provider_native_dataset(
             dataset=dataset,
             binding=binding,
             request_window=normalized_window,
+            now=datetime.fromisoformat(started_at.replace("Z", "+00:00")),
         )
     except (TypeError, ValueError):
         return write_terminal_receipt(

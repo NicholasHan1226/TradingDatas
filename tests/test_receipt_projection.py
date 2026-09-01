@@ -1887,14 +1887,15 @@ def test_unassignable_malformed_receipt_like_row_reported_globally(
     )
     conn.commit()
 
+    # Exercise stale isolation after the configured 16:30 CN daily window.
     projection = project_dataset_runtime(
         conn,
         _dataset(),
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
     )
     health = projection_module.project_unattributed_receipts(
         conn,
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
         registry=load_dataset_registry(),
     )
 
@@ -1950,14 +1951,15 @@ def test_jointly_tampered_unknown_dataset_reported_globally_not_per_dataset(
     )
     conn.commit()
 
+    # Exercise stale isolation after the configured 16:30 CN daily window.
     projection = project_dataset_runtime(
         conn,
         _dataset(),
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
     )
     health = projection_module.project_unattributed_receipts(
         conn,
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
         registry=load_dataset_registry(),
     )
 
@@ -2158,14 +2160,15 @@ def test_run_id_and_source_tampering_cannot_escape_receipt_scan(
     )
     conn.commit()
 
+    # Exercise stale isolation after the configured 16:30 CN daily window.
     projection = project_dataset_runtime(
         conn,
         _dataset(),
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
     )
     health = projection_module.project_unattributed_receipts(
         conn,
-        now=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 15, 10, tzinfo=timezone.utc),
         registry=load_dataset_registry(),
     )
 
@@ -2480,6 +2483,326 @@ def test_catalog_projection_recent_scan_preserves_dataset_states(
     assert full["interfaces"]["daily_failed"]["state"] == "failed"
 
 
+def _catalog_retry_boundary(monkeypatch, *, calls=(0, 1, 2), newer_count=98, conn=None, dataset=None):
+    conn = _memory_db() if conn is None else conn
+    dataset = _dataset() if dataset is None else dataset
+    registry = DatasetRegistry((dataset,))
+    ids = []
+    for call in calls:
+        ids.append(_insert_receipt(monkeypatch, conn, dataset=dataset,
+            dataset_id=dataset.dataset_id, provider_api=dataset.provider_bindings[0].api_name,
+            status="failed", errors=("provider_error",),
+            attempt_id=make_provider_call_attempt_id("catalog-boundary-retry-" + dataset.dataset_id, call_index=call, retry_index=call),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=f"2026-07-15T00:01:0{call}+00:00", data_through=None))
+    for index in range(newer_count):
+        ids.append(_insert_receipt(monkeypatch, conn, dataset=dataset,
+            dataset_id=dataset.dataset_id, provider_api=dataset.provider_bindings[0].api_name,
+            status="success", attempt_id=f"catalog-newer-{dataset.dataset_id}-{index}",
+            started_at="2026-07-15T00:02:00+00:00",
+            finished_at=(datetime(2026, 7, 15, 0, 3, tzinfo=timezone.utc) + timedelta(seconds=index)).isoformat(),
+            data_through="20260715"))
+    return conn, registry, ids
+
+
+def test_catalog_reuses_validated_seed_identity_without_reparsing(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=100)
+    original = projection_module.parse_provider_call_attempt_id
+    parsed = []
+
+    def count_parse(value):
+        parsed.append(value)
+        return original(value)
+
+    monkeypatch.setattr(projection_module, "parse_provider_call_attempt_id", count_parse)
+    try:
+        report = project_catalog_runtime(
+            conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+            validation_cache={},
+        )
+        assert report["datasets"][registry.datasets[0].dataset_id]["state"] == "success"
+        assert len(parsed) == 100
+    finally:
+        conn.close()
+
+
+def _validated_single_catalog_seed(monkeypatch):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=1)
+    dataset = registry.datasets[0]
+    seed = projection_module._scan_ingest_run_rows_by_ids(conn, (ids[0],))[0]
+    validated = projection_module._validate_receipt_row(
+        seed, dataset, frozenset({dataset.dataset_id}),
+        datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )
+    assert isinstance(validated, projection_module._Receipt)
+    return conn, dataset.dataset_id, seed, validated.execution_id
+
+
+@pytest.mark.parametrize("mutation", ["notes", "status", "source", "notes_type", "count_type"])
+def test_catalog_seed_reuse_requires_full_raw_tuple_not_run_id(monkeypatch, mutation):
+    conn, dataset_id, seed, execution_id = _validated_single_catalog_seed(monkeypatch)
+    mapping = {seed.raw: (seed, execution_id)}
+    updates = {
+        "notes": "notes = notes || ' '",
+        "status": "status = 'failed'",
+        "source": "source = 'cn.equity.alternate'",
+        "notes_type": "notes = CAST(notes AS BLOB)",
+        "count_type": "rows_read = CAST(rows_read AS BLOB)",
+    }
+    conn.execute(f"UPDATE market_ingest_runs SET {updates[mutation]} WHERE run_id=?", (seed.raw[1],))
+    source = "cn.equity.alternate" if mutation == "source" else dataset_id
+    baseline = projection_module._scan_ingest_run_rows_by_execution_ids(conn, source, (execution_id,))
+    classified = []
+    original = projection_module._classify_ingest_run_row
+
+    def counted(row):
+        classified.append(row)
+        return original(row)
+
+    monkeypatch.setattr(projection_module, "_classify_ingest_run_row", counted)
+    try:
+        reused = projection_module._scan_ingest_run_rows_by_execution_ids(
+            conn, source, (execution_id,), validated_seed_rows=mapping,
+        )
+        assert len(reused) == 1 and reused[0].raw == baseline[0].raw
+        assert reused[0] is not seed
+        assert classified == [baseline[0].raw]
+        assert reused[0].raw[1] == seed.raw[1]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("budget", [0, 1])
+def test_catalog_seed_reuse_still_charges_all_raw_reads(monkeypatch, budget):
+    conn, dataset_id, seed, execution_id = _validated_single_catalog_seed(monkeypatch)
+    read_budget = projection_module._ReceiptReadBudget(budget)
+    try:
+        if budget == 0:
+            with pytest.raises(RuntimeProjectionError, match="budget"):
+                projection_module._scan_ingest_run_rows_by_execution_ids(
+                    conn, dataset_id, (execution_id,), read_budget=read_budget,
+                    validated_seed_rows={seed.raw: (seed, execution_id)},
+                )
+        else:
+            result = projection_module._scan_ingest_run_rows_by_execution_ids(
+                conn, dataset_id, (execution_id,), read_budget=read_budget,
+                validated_seed_rows={seed.raw: (seed, execution_id)},
+            )
+            assert result[0] is seed and read_budget.remaining == 0
+    finally:
+        conn.close()
+
+
+def test_catalog_seed_reuse_does_not_admit_an_unselected_execution(monkeypatch):
+    conn, dataset_id, seed, execution_id = _validated_single_catalog_seed(monkeypatch)
+    try:
+        assert projection_module._scan_ingest_run_rows_by_execution_ids(
+            conn, dataset_id, (execution_id,),
+            validated_seed_rows={seed.raw: (seed, "another-execution")},
+        ) == ()
+    finally:
+        conn.close()
+
+
+def test_catalog_seed_mapping_is_request_local_and_excludes_invalid_receipts(monkeypatch):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=100)
+    mappings = []
+    original = projection_module._scan_ingest_run_rows_by_execution_ids
+
+    def inspect_mapping(*args, **kwargs):
+        mappings.append(kwargs["validated_seed_rows"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(projection_module, "_scan_ingest_run_rows_by_execution_ids", inspect_mapping)
+    try:
+        now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+        first = project_catalog_runtime(conn, registry, now=now, validation_cache={})
+        assert first["datasets"][registry.datasets[0].dataset_id]["state"] == "success"
+        conn.execute("UPDATE market_ingest_runs SET notes='not-json' WHERE run_id=?", (ids[0],))
+        second = project_catalog_runtime(conn, registry, now=now, validation_cache={})
+        assert second["datasets"][registry.datasets[0].dataset_id]["state"] == "failed"
+        assert len(mappings) == 2 and mappings[0] is not mappings[1]
+        assert len(mappings[0]) == 100 and len(mappings[1]) == 99
+        assert ids[0] not in {raw[1] for raw in mappings[1]}
+    finally:
+        conn.close()
+
+
+def test_catalog_completes_retry_prefix_cut_by_recent_100(monkeypatch):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch)
+    dataset = registry.datasets[0]
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    seeds = projection_module._scan_recent_ingest_run_rows(conn, per_dataset_limit=100)
+    assert len(seeds) == 100 and ids[0] not in {row.raw[1] for row in seeds}
+    assert project_dataset_runtime(conn, dataset, now=now, registry=registry).state == "success"
+    catalog = project_catalog_runtime(conn, registry, now=now)
+    assert catalog["datasets"][dataset.dataset_id]["state"] == "success"
+    full = project_registry_runtime(conn, registry, now=now)
+    assert full["interfaces"]["daily"]["state"] == "success"
+    _, _, expanded, _ = projection_module._project_registry_datasets(conn, registry, now=now)
+    assert {row.raw[1] for row in expanded} == set(ids)
+
+
+@pytest.mark.parametrize("calls", [(1, 2), (0, 2)])
+def test_catalog_completion_does_not_hide_missing_retry_receipt(monkeypatch, calls):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=calls, newer_count=99)
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][registry.datasets[0].dataset_id]
+    assert entry["state"] == "failed"
+    assert entry["reasons"] == ["receipt_execution_inconsistent"]
+
+
+@pytest.mark.parametrize("victim", [0, -1])
+def test_catalog_completion_preserves_invalid_seed_and_fetched_sibling(monkeypatch, victim):
+    conn, registry, ids = _catalog_retry_boundary(monkeypatch)
+    raw, = conn.execute("SELECT notes FROM market_ingest_runs WHERE run_id=?", (ids[victim],)).fetchone()
+    payload = json.loads(raw)
+    payload["schema_version"] = "invalid-synthetic-schema"
+    conn.execute("UPDATE market_ingest_runs SET notes=? WHERE run_id=?",
+                 (json.dumps(payload, sort_keys=True, separators=(",", ":")), ids[victim]))
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][registry.datasets[0].dataset_id]
+    assert entry["state"] == "failed"
+    # A missing validated retry zero can add an execution error, but neither
+    # the corrupt fetched sibling nor corrupt original seed may disappear.
+    _, _, rows, _ = projection_module._project_registry_datasets(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert any(row.raw[1] == ids[victim] for row in rows)
+
+
+def test_catalog_completion_raw_budget_counts_duplicate_reads_across_sources(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch)
+    base = registry.datasets[0]
+    other = replace(base, dataset_id="cn.equity.boundary_other", aliases=(),
+        provider_bindings=(replace(base.provider_bindings[0], api_name="boundary_other",
+                                  read_discriminator_value="boundary_other"),))
+    _catalog_retry_boundary(monkeypatch, conn=conn, dataset=other)
+    registry = DatasetRegistry((base, other))
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    # 200 seed rows + two 101-row sibling lookups = 402 raw reads. The union
+    # has only 202 rows, so enforcing the cap after deduplication would be wrong.
+    monkeypatch.setattr(projection_module, "_MAX_INGEST_RUN_SCAN_ROWS", 401)
+    with pytest.raises(RuntimeProjectionError, match="execution scan row budget"):
+        project_catalog_runtime(conn, registry, now=now)
+    monkeypatch.setattr(projection_module, "_MAX_INGEST_RUN_SCAN_ROWS", 402)
+    assert all(item["state"] == "success" for item in
+               project_catalog_runtime(conn, registry, now=now)["datasets"].values())
+
+
+@pytest.mark.parametrize("offset_text", [False, True])
+def test_catalog_completion_checks_older_sibling_without_trusting_chronology(monkeypatch, offset_text):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=99)
+    dataset = registry.datasets[0]
+    # Call 0 is selected; call 1 sorts outside the seed window. Each receipt
+    # is individually valid, but their execution start contexts disagree.
+    for call, start, finish in (
+        (0, "2026-07-15T00:02:00+00:00", "2026-07-15T00:03:00+00:00"),
+        (1, "2026-07-15T00:00:00+00:00", "2026-07-15T00:01:00+00:00"),
+    ):
+        if offset_text and call == 0:
+            start, finish = "2026-07-15T09:02:00+09:00", "2026-07-15T09:03:00+09:00"
+        _insert_receipt(monkeypatch, conn, dataset=dataset, status="success",
+            attempt_id=make_provider_call_attempt_id("catalog-context-mismatch", call_index=call, retry_index=0),
+            started_at=start, finished_at=finish, data_through="20260715",
+            request_identity=ProviderRequestIdentity(request_variant={"page": call},
+                fanout_parameter=None, fanout_values=(), page_offset=call, page_index=call))
+    result = project_registry_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert result["datasets"][dataset.dataset_id]["reasons"] == ["receipt_execution_inconsistent"]
+    assert result["interfaces"]["daily"]["reasons"] == ["receipt_execution_inconsistent"]
+
+
+def test_catalog_completion_handles_multiple_interleaved_executions(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=96)
+    dataset = registry.datasets[0]
+    ids = set()
+    for root in ("catalog-overlap-first", "catalog-overlap-second"):
+        for call in range(3):
+            ids.add(_insert_receipt(monkeypatch, conn, dataset=dataset,
+                status="failed", errors=("provider_error",),
+                attempt_id=make_provider_call_attempt_id(root, call_index=call, retry_index=call),
+                started_at="2026-07-15T00:00:00+00:00",
+                finished_at=f"2026-07-15T00:01:0{call}+00:00", data_through=None))
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    seeds = projection_module._scan_recent_ingest_run_rows(conn, per_dataset_limit=100)
+    assert len(ids & {row.raw[1] for row in seeds}) == 4
+    projections, _, expanded, _ = projection_module._project_registry_datasets(conn, registry, now=now)
+    assert projections[0].state == "success"
+    assert ids <= {row.raw[1] for row in expanded}
+
+
+def test_catalog_completion_requires_zero_prefix_for_fully_read_execution(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=(), newer_count=99)
+    _insert_receipt(monkeypatch, conn, dataset=registry.datasets[0], status="success",
+        attempt_id=make_provider_call_attempt_id("missing-earlier-logical-request", call_index=7, retry_index=0),
+        started_at="2026-07-15T00:00:00+00:00", finished_at="2026-07-15T00:01:00+00:00",
+        data_through="20260715")
+    result = project_catalog_runtime(conn, registry, now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert result["datasets"][registry.datasets[0].dataset_id]["reasons"] == ["receipt_execution_inconsistent"]
+
+
+def test_catalog_completion_validates_future_sibling_after_execution_integrity(monkeypatch):
+    conn, registry, _ = _catalog_retry_boundary(monkeypatch, calls=())
+    ids = []
+    for call in range(3):
+        ids.append(_insert_receipt(monkeypatch, conn, dataset=registry.datasets[0],
+            status="failed", errors=("provider_error",),
+            attempt_id=make_provider_call_attempt_id("catalog-future-retry", call_index=call, retry_index=call),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=("2026-07-15T00:01:00-10:00" if call == 0
+                         else f"2026-07-15T00:01:0{call}+00:00"), data_through=None))
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][registry.datasets[0].dataset_id]
+    assert entry["state"] == "failed"
+    assert entry["receipt_id"] == ids[0]
+    assert entry["reasons"] == ["receipt_timestamp_in_future"]
+
+
+@pytest.mark.parametrize("include_second_variant", [False, True])
+def test_catalog_completion_preserves_registered_variant_requirements(monkeypatch, include_second_variant):
+    conn = _memory_db()
+    base = _dataset()
+    dataset = replace(base, provider_bindings=(replace(base.provider_bindings[0],
+        request_variants=({"venue": "a"}, {"venue": "b"})),))
+    registry = DatasetRegistry((dataset,))
+    calls = [(0, 0, "a", "failed"), (1, 1, "a", "empty")]
+    if include_second_variant:
+        calls.append((2, 0, "b", "success"))
+    for call, retry, venue, status in calls:
+        _insert_receipt(monkeypatch, conn, dataset=dataset, status=status,
+            attempt_id=make_provider_call_attempt_id("catalog-variant-retry", call_index=call, retry_index=retry),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=f"2026-07-15T00:01:0{call}+00:00",
+            data_through="20260715" if status == "success" else None,
+            request_identity=ProviderRequestIdentity(request_variant={"venue": venue},
+                fanout_parameter=None, fanout_values=(), page_offset=None, page_index=0))
+    monkeypatch.setattr(projection_module, "_MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET", 1)
+    entry = project_catalog_runtime(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))["datasets"][dataset.dataset_id]
+    assert entry["state"] == ("success" if include_second_variant else "failed")
+    if not include_second_variant:
+        assert entry["reasons"] == ["variant_cohort_incomplete"]
+
+
+def test_catalog_completion_accepts_large_complete_physical_execution(monkeypatch):
+    conn = _memory_db()
+    dataset = _dataset()
+    registry = DatasetRegistry((dataset,))
+    ids = set()
+    for call in range(128):
+        ids.add(_insert_receipt(monkeypatch, conn, dataset=dataset, status="success",
+            attempt_id=make_provider_call_attempt_id("catalog-large-execution", call_index=call, retry_index=0),
+            started_at="2026-07-15T00:00:00+00:00",
+            finished_at=(datetime(2026, 7, 15, 0, 1, tzinfo=timezone.utc) + timedelta(seconds=call)).isoformat(),
+            data_through="20260715", request_identity=ProviderRequestIdentity(
+                request_variant={}, fanout_parameter=None, fanout_values=(),
+                page_offset=call, page_index=call)))
+    projections, _, rows, _ = projection_module._project_registry_datasets(conn, registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc))
+    assert projections[0].state == "success"
+    assert {row.raw[1] for row in rows} == ids
+
+
 def test_catalog_projection_matches_dataset_rows_without_binding_reprojection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2790,6 +3113,386 @@ def test_interface_projection_is_scoped_to_its_provider_binding(
     assert report["interfaces"]["daily"]["state"] == "success"
     assert report["interfaces"]["alternate:daily_alt"]["state"] == "unobserved"
     assert report["interfaces"]["alternate:daily_alt"]["receipt_id"] is None
+
+
+@pytest.mark.parametrize("encoding", ["UTF-8", "UTF-16le", "UTF-16be"])
+def test_execution_candidate_predicate_matches_original_sql_for_raw_material(encoding):
+    conn = sqlite3.connect(":memory:")
+    conn.execute(f"PRAGMA encoding='{encoding}'")
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    roots = ['exec-alpha', '执行记录', 'exec-"quote', 'exec-\\slash']
+    fragments = []
+    material = [None, 1, 1.5, "", b"", '{"unrelated":true}']
+    for root in roots:
+        ordinary = '"attempt_id":' + json.dumps(root, ensure_ascii=False)
+        physical = '"attempt_id":' + json.dumps(root + ':provider-call:', ensure_ascii=False)[:-1]
+        fragments.extend((ordinary, physical))
+        material.extend([
+            '{' + ordinary + '}',
+            '{"attempt_id":"other",' + ordinary + '}',
+            '{"nested":{' + ordinary + '}}',
+            '{' + ordinary,
+            '\x00' + ordinary,
+            ordinary.encode('utf-8'),
+            b'\x80\x00' + ordinary.encode('utf-8'),
+            '{' + physical + '000000000000:retry:000000000000"}',
+            '{"attempt_id":' + json.dumps(root + '-near-prefix') + '}',
+            json.dumps(ordinary),
+        ])
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in material])
+    # Invalid TEXT must be filtered without Python decoding before the predicate.
+    for value in [b'\x80unrelated', b'\x80' + fragments[0].encode('utf-8')]:
+        conn.execute("INSERT INTO candidates(notes) VALUES (CAST(? AS TEXT))", (value,))
+    old = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
+    expected = conn.execute(f"SELECT id FROM candidates WHERE {old}", fragments).fetchall()
+    with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+        cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+        try:
+            assert cursor.fetchall() == expected
+        finally:
+            cursor.close()
+    conn.close()
+
+
+@pytest.mark.parametrize("fragments", [
+    ["aba", "abab"],
+    ["ababaX", "ababaY"],
+    ["shared", "shared-tail"],
+    ['"attempt_id":"exec-' + str(i).zfill(4) + '"' for i in range(200)],
+    ['"attempt_id":"' + "x" * i + '"' for i in range(1, 25)],
+    ["prefix-" + "x" * i for i in range(1, 17)],
+    ["prefix-" + "x" * i for i in range(1, 18)],
+    ["", "other"],
+    ["unrelated", "different"],
+])
+def test_execution_candidate_literal_membership_preserves_all_raw_matches(fragments):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    material = [None, b"", b"no-match", b"ababab", b"abababaX", b"shared"]
+    for fragment in fragments:
+        literal = fragment.encode("utf-8")
+        material.extend([
+            literal, b"\xff\x00" + literal, literal + b"\x00\xff",
+            literal[:-1], literal + literal,
+            b'"attempt_id":"not-selected",' + literal,
+        ])
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in material])
+    old = " OR ".join("instr(notes, ?) > 0" for _ in fragments)
+    expected = conn.execute(f"SELECT id FROM candidates WHERE {old}", fragments).fetchall()
+    with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+        cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+        assert cursor.fetchall() == expected
+        cursor.close()
+    conn.close()
+
+
+@pytest.mark.parametrize("outcome", ["success", "budget", "interrupted"])
+def test_execution_candidate_callback_is_removed_after_scan(monkeypatch, outcome):
+    class TrackingConnection(sqlite3.Connection):
+        registrations = []
+
+        def create_function(self, name, narg, func, **kwargs):
+            self.registrations.append((name, func is not None))
+            return super().create_function(name, narg, func, **kwargs)
+
+    conn = sqlite3.connect(":memory:", factory=TrackingConnection)
+    conn.executescript(SCHEMA_SQL)
+    _insert_receipt(
+        monkeypatch, conn, status="success", attempt_id="lookup-cleanup",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T08:00:00+08:00",
+    )
+    if outcome == "interrupted":
+        def authorizer(action, name, *_):
+            if action == sqlite3.SQLITE_READ and name == "market_ingest_runs":
+                conn.set_progress_handler(lambda: 1, 1)
+            return sqlite3.SQLITE_OK
+        conn.set_authorizer(authorizer)
+    budget = projection_module._ReceiptReadBudget(0 if outcome == "budget" else 10)
+    try:
+        if outcome == "success":
+            assert projection_module._scan_ingest_run_rows_by_execution_ids(
+                conn, "cn.equity.daily", ("lookup-cleanup",), read_budget=budget
+            )
+        else:
+            error = RuntimeProjectionError if outcome == "budget" else sqlite3.OperationalError
+            with pytest.raises(error, match="budget|interrupted"):
+                projection_module._scan_ingest_run_rows_by_execution_ids(
+                    conn, "cn.equity.daily", ("lookup-cleanup",), read_budget=budget
+                )
+    finally:
+        conn.set_progress_handler(None, 0)
+        conn.set_authorizer(None)
+    installed = [name for name, active in conn.registrations if active]
+    removed = [name for name, active in conn.registrations if not active]
+    assert len(installed) == 1
+    assert installed == removed
+    with pytest.raises(sqlite3.OperationalError):
+        conn.execute(f"SELECT {installed[0]}(?)", (b'"attempt_id":"lookup-cleanup"',)).fetchall()
+    conn.close()
+
+
+def test_execution_candidate_native_first_match_avoids_python_except_later_prefix():
+    calls = []
+
+    class CountingConnection(sqlite3.Connection):
+        def create_function(self, name, narg, func, **kwargs):
+            if func is None:
+                return super().create_function(name, narg, func, **kwargs)
+
+            def counted(value):
+                calls.append(value)
+                return func(value)
+
+            return super().create_function(name, narg, counted, **kwargs)
+
+    conn = sqlite3.connect(":memory:", factory=CountingConnection)
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    values = [None, b"nothing", b"ababaX", b"ababaZ", b"abababaX", b"ababaZababaY", b"ababaZababaQ"]
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in values])
+    fragments = ["ababaX", "ababaY"]
+    try:
+        expected = conn.execute(
+            "SELECT id FROM candidates WHERE instr(notes,?)>0 OR instr(notes,?)>0", fragments
+        ).fetchall()
+        with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+            cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+            try:
+                assert cursor.fetchall() == expected
+            finally:
+                cursor.close()
+        assert calls == values[4:]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("bound", ["parameters", "connection_limit", "sql_bytes"])
+def test_execution_candidate_native_bound_falls_back_without_losing_rows(monkeypatch, bound):
+    calls = []
+
+    class CountingConnection(sqlite3.Connection):
+        def create_function(self, name, narg, func, **kwargs):
+            if func is None:
+                return super().create_function(name, narg, func, **kwargs)
+
+            def counted(value):
+                calls.append(value)
+                return func(value)
+
+            return super().create_function(name, narg, counted, **kwargs)
+
+    fragments = (
+        [f"prefix-{index:04d}" for index in range(800)]
+        if bound == "parameters" else ["prefix-A", "prefix-B"]
+    )
+    conn = sqlite3.connect(":memory:", factory=CountingConnection)
+    conn.execute("CREATE TABLE candidates (id INTEGER PRIMARY KEY, notes)")
+    values = [None, b"nothing", fragments[0].encode(), b"\x80\x00" + fragments[-1].encode()]
+    conn.executemany("INSERT INTO candidates(notes) VALUES (?)", [(value,) for value in values])
+    old = " OR ".join("instr(notes,?)>0" for _ in fragments)
+    expected = conn.execute(f"SELECT id FROM candidates WHERE {old}", fragments).fetchall()
+    if bound == "connection_limit":
+        conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 5)
+    elif bound == "sql_bytes":
+        monkeypatch.setattr(projection_module, "_EXECUTION_CANDIDATE_MAX_SQL_BYTES", 10)
+    try:
+        with projection_module._execution_candidate_predicate(conn, fragments) as (predicate, params):
+            assert params == ()
+            cursor = conn.execute(f"SELECT id FROM candidates WHERE {predicate}", params)
+            try:
+                assert cursor.fetchall() == expected
+            finally:
+                cursor.close()
+        assert calls == values
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("variable_limit,native", [(7, False), (8, True)])
+def test_execution_candidate_native_reserves_source_and_limit_parameters(variable_limit, native):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE candidates(source, notes)")
+    conn.execute("INSERT INTO candidates VALUES ('chosen', 'prefix-A')")
+    conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, variable_limit)
+    try:
+        with projection_module._execution_candidate_predicate(conn, ["prefix-A", "prefix-B"]) as (predicate, params):
+            assert bool(params) is native
+            cursor = conn.execute(
+                f"SELECT source FROM candidates WHERE source=? AND ({predicate}) LIMIT ?",
+                ("chosen", *params, 10),
+            )
+            try:
+                assert cursor.fetchall() == [("chosen",)]
+            finally:
+                cursor.close()
+    finally:
+        conn.close()
+
+
+def test_execution_candidate_callbacks_do_not_overlap_between_connections():
+    first_callback = threading.Event()
+    second_attempt = threading.Event()
+    second_callback = threading.Event()
+    release_first = threading.Event()
+    outcomes = []
+    removed = []
+
+    def worker(index):
+        class ObservedConnection(sqlite3.Connection):
+            def create_function(self, name, narg, func, **kwargs):
+                if func is None:
+                    result = super().create_function(name, narg, func, **kwargs)
+                    removed.append(index)
+                    return result
+
+                def observed(value):
+                    if index == 0:
+                        first_callback.set()
+                        if not release_first.wait(5):
+                            raise RuntimeError("test callback release timed out")
+                    else:
+                        second_callback.set()
+                    return func(value)
+
+                return super().create_function(name, narg, observed, **kwargs)
+
+        conn = sqlite3.connect(":memory:", factory=ObservedConnection)
+        try:
+            if index == 1:
+                second_attempt.set()
+            with projection_module._execution_candidate_predicate(conn, ["needle", "other"]) as (predicate, params):
+                cursor = conn.execute(
+                    f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
+                )
+                try:
+                    outcomes.append(cursor.fetchall())
+                finally:
+                    cursor.close()
+        except (sqlite3.Error, RuntimeError, AssertionError) as error:
+            outcomes.append(error)
+        finally:
+            conn.close()
+
+    first = threading.Thread(target=worker, args=(0,), daemon=True)
+    second = threading.Thread(target=worker, args=(1,), daemon=True)
+    first.start()
+    try:
+        assert first_callback.wait(5)
+        second.start()
+        assert second_attempt.wait(5)
+        assert not second_callback.wait(0.2)
+    finally:
+        release_first.set()
+        first.join(5)
+        if second.ident is not None:
+            second.join(5)
+    assert not first.is_alive() and not second.is_alive()
+    assert outcomes == [[(1,)], [(1,)]]
+    assert sorted(removed) == [0, 1]
+
+
+@pytest.mark.parametrize("failure", ["registration", "query_body", "query_interrupted", "cleanup"])
+def test_execution_candidate_releases_scan_lock_after_exception(failure):
+    class FailingConnection(sqlite3.Connection):
+        def create_function(self, name, narg, func, **kwargs):
+            if failure == "registration" and func is not None:
+                raise RuntimeError("synthetic registration failure")
+            result = super().create_function(name, narg, func, **kwargs)
+            if failure == "cleanup" and func is None:
+                raise RuntimeError("synthetic cleanup failure")
+            return result
+
+    conn = sqlite3.connect(":memory:", factory=FailingConnection)
+    try:
+        error = sqlite3.OperationalError if failure == "query_interrupted" else RuntimeError
+        with (
+            pytest.raises(error, match="synthetic|interrupted"),
+            projection_module._execution_candidate_predicate(conn, ["needle", "other"]) as (predicate, params),
+        ):
+            if failure == "query_interrupted":
+                conn.set_progress_handler(lambda: 1, 1)
+            cursor = conn.execute(
+                f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
+            )
+            try:
+                assert cursor.fetchall() == [(1,)]
+            finally:
+                cursor.close()
+            if failure == "query_body":
+                raise RuntimeError("synthetic query body failure")
+    finally:
+        conn.set_progress_handler(None, 0)
+        conn.close()
+
+    outcomes = []
+
+    def another_connection():
+        other = sqlite3.connect(":memory:")
+        try:
+            with projection_module._execution_candidate_predicate(other, ["needle", "other"]) as (predicate, params):
+                cursor = other.execute(
+                    f"SELECT {predicate} FROM (SELECT ? AS notes)", (*params, b"needle")
+                )
+                try:
+                    outcomes.append(cursor.fetchall())
+                finally:
+                    cursor.close()
+        except (sqlite3.Error, RuntimeError, AssertionError) as error:
+            outcomes.append(error)
+        finally:
+            other.close()
+
+    thread = threading.Thread(target=another_connection, daemon=True)
+    thread.start()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert outcomes == [[(1,)]]
+
+
+@pytest.mark.parametrize("encoding", ["UTF-8", "UTF-16le", "UTF-16be"])
+def test_execution_candidate_nested_connection_or_non_utf8_does_not_deadlock(encoding):
+    outcomes = []
+
+    def query_other():
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute(f"PRAGMA encoding='{encoding}'")
+            conn.execute("CREATE TABLE notes(value)")
+            with projection_module._execution_candidate_predicate(conn, ["needle", "other"]) as (predicate, params):
+                cursor = conn.execute(
+                    f"SELECT {predicate} FROM (SELECT 'needle' AS notes)", params
+                )
+                try:
+                    outcomes.append(cursor.fetchall())
+                finally:
+                    cursor.close()
+        except (sqlite3.Error, RuntimeError, AssertionError) as error:
+            outcomes.append(error)
+        finally:
+            conn.close()
+
+    def outer_query():
+        outer = sqlite3.connect(":memory:")
+        try:
+            with projection_module._execution_candidate_predicate(outer, ["outer"]):
+                if encoding == "UTF-8":
+                    # The same thread may nest another connection's UDF lifetime.
+                    query_other()
+                else:
+                    # Native SQLite fallback must not wait on the Python UDF gate.
+                    thread = threading.Thread(target=query_other, daemon=True)
+                    thread.start()
+                    thread.join(2)
+                    outcomes.append(not thread.is_alive())
+        finally:
+            outer.close()
+
+    outer_thread = threading.Thread(target=outer_query, daemon=True)
+    outer_thread.start()
+    outer_thread.join(5)
+    assert not outer_thread.is_alive()
+    assert outcomes == ([[(1,)]] if encoding == "UTF-8" else [[(1,)], True])
 
 
 def test_file_projection_rejects_ingest_schema_without_primary_key(
@@ -3242,12 +3945,13 @@ def test_stale_transition_is_strictly_after_the_sla_boundary_in_dataset_timezone
         conn,
         status="success",
         attempt_id="attempt-success",
-        started_at="2026-07-15T03:00:00+00:00",
-        finished_at="2026-07-15T03:01:00+00:00",
-        data_through="2026-07-15T12:00:00",
+        started_at="2026-07-15T07:00:00+00:00",
+        finished_at="2026-07-15T07:01:00+00:00",
+        data_through="2026-07-15T16:00:00",
     )
     dataset = _dataset(freshness_sla_seconds=3_600)
-    boundary = datetime(2026, 7, 15, 5, tzinfo=timezone.utc)
+    # Evaluate the ordinary strict SLA after the 16:30 daily availability.
+    boundary = datetime(2026, 7, 15, 9, tzinfo=timezone.utc)
 
     exact = project_dataset_runtime(conn, dataset, now=boundary)
     stale = project_dataset_runtime(
@@ -4324,3 +5028,301 @@ def test_unattributed_health_reports_envelope_mismatch(
         for anomaly in health.anomalies
     ] == [(receipt_id, "ghost.dataset", "receipt_envelope_mismatch")]
     assert health.benign_tombstones == 0
+
+
+@pytest.mark.parametrize('cadence,watermark,expected', [
+    ('session_minute', '2026-08-28T15:00:00+08:00', 'success'),
+    ('session_minute', '2026-08-28T14:30:00+08:00', 'stale'),
+    ('session_minute', '2026-08-27T15:00:00+08:00', 'stale'),
+    ('postclose_daily', '20260828', 'success'),
+    ('postclose_daily', '20260827', 'stale'),
+    ('event', '2026-08-28T15:00:00+08:00', 'stale'),
+])
+def test_cn_weekend_preserves_last_session_without_hiding_missing_data(monkeypatch, cadence, watermark, expected):
+    conn = _memory_db()
+    dataset = _dataset(cadence_class=cadence, freshness_sla_seconds=600 if cadence == 'session_minute' else 86400)
+    _insert_receipt(monkeypatch, conn, dataset=dataset, status='success', attempt_id='weekend',
+                    started_at='2026-08-28T07:00:00Z', finished_at='2026-08-28T07:10:00Z', data_through=watermark)
+    projection = project_dataset_runtime(conn, dataset, now=datetime(2026, 8, 30, 3, tzinfo=timezone.utc))
+    assert projection.state == expected
+
+
+def test_month_watermark_stays_current_for_its_whole_month(monkeypatch):
+    conn = _memory_db()
+    dataset = _dataset(cadence_class='monthly', freshness_sla_seconds=86400)
+    _insert_receipt(monkeypatch, conn, dataset=dataset, status='success', attempt_id='month',
+                    started_at='2026-08-01T01:00:00Z', finished_at='2026-08-01T01:01:00Z', data_through='202608')
+    assert project_dataset_runtime(conn, dataset, now=datetime(2026, 8, 30, 3, tzinfo=timezone.utc)).state == 'success'
+    assert project_dataset_runtime(conn, dataset, now=datetime(2026, 9, 2, 3, tzinfo=timezone.utc)).state == 'stale'
+
+
+@pytest.mark.parametrize('market,now', [
+    ('CRYPTO', datetime(2026, 8, 30, 3, tzinfo=timezone.utc)),
+    ('CN', datetime(2026, 8, 31, 2, tzinfo=timezone.utc)),
+])
+def test_weekend_clock_never_hides_crypto_or_monday_session_gap(monkeypatch, market, now):
+    conn = _memory_db()
+    dataset = replace(_dataset(cadence_class='session_minute', freshness_sla_seconds=600), market=market)
+    _insert_receipt(monkeypatch, conn, dataset=dataset, status='success', attempt_id='session-gap',
+                    started_at='2026-08-28T07:00:00Z', finished_at='2026-08-28T07:01:00Z', data_through='2026-08-28T15:00:00+08:00')
+    assert project_dataset_runtime(conn, dataset, now=now).state == 'stale'
+
+
+@pytest.fixture
+def cn_prewindow_schedule(monkeypatch):
+    """Override only the immutable release's schedule bytes, never an env path."""
+    path = (
+        Path(projection_module.__file__).resolve().parents[1]
+        / "config/provider_native_schedule.yaml"
+    )
+    read_bytes = Path.read_bytes
+    payload = {"bytes": read_bytes(path), "reads": 0}
+    loader = getattr(projection_module, "_cn_freshness_policies", None)
+    if loader is not None:
+        loader.cache_clear()
+
+    def read(candidate):
+        if candidate == path:
+            payload["reads"] += 1
+            value = payload["bytes"]
+            if isinstance(value, Exception):
+                raise value
+            return value
+        return read_bytes(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", read)
+    yield payload
+    loader = getattr(projection_module, "_cn_freshness_policies", None)
+    if loader is not None:
+        loader.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "cadence,watermark,local_now,expected",
+    [
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-30T23:59:59+08:00",
+            "success",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T00:00:00+08:00",
+            "success",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T09:29:59.999999+08:00",
+            "success",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T09:30:00+08:00",
+            "stale",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T15:00:00+08:00",
+            "2026-08-31T10:00:00+08:00",
+            "stale",
+        ),
+        (
+            "session_minute",
+            "2026-08-28T14:30:00+08:00",
+            "2026-08-31T00:00:00+08:00",
+            "stale",
+        ),
+        (
+            "session_minute",
+            "2026-08-27T15:00:00+08:00",
+            "2026-08-31T00:00:00+08:00",
+            "stale",
+        ),
+        ("postclose_daily", "20260828", "2026-08-30T23:59:59+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-08-31T00:00:00+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-08-31T16:29:59.999999+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-08-31T16:30:00+08:00", "stale"),
+        ("postclose_daily", "20260827", "2026-08-31T00:00:00+08:00", "stale"),
+        ("postclose_daily", "20260831", "2026-09-01T00:00:00+08:00", "success"),
+        ("postclose_daily", "20260828", "2026-09-01T00:00:00+08:00", "stale"),
+    ],
+)
+def test_cn_prewindow_receipt_boundaries(
+    monkeypatch, cadence, watermark, local_now, expected
+):
+    conn = _memory_db()
+    dataset = _dataset(
+        cadence_class=cadence,
+        freshness_sla_seconds=600 if cadence == "session_minute" else 86400,
+    )
+    # Keep the receipt before the read clock and the declared partition end.
+    finished = (
+        "2026-08-31T09:00:00Z" if watermark == "20260831" else "2026-08-28T07:10:00Z"
+    )
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset=dataset,
+        status="success",
+        attempt_id="prewindow",
+        started_at=finished,
+        finished_at=finished,
+        data_through=watermark,
+    )
+    result = project_dataset_runtime(
+        conn, dataset, now=datetime.fromisoformat(local_now)
+    )
+    assert result.state == expected
+    assert result.data_through == watermark
+    assert result.reasons == (
+        () if expected == "success" else ("freshness_sla_exceeded",)
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "missing",
+        "yaml",
+        "null_availability",
+        "weekend",
+        "empty_weekdays",
+        "invalid_clock",
+    ],
+)
+def test_cn_prewindow_invalid_schedule_fails_closed(
+    monkeypatch, cn_prewindow_schedule, bad
+):
+    import yaml
+
+    raw = yaml.safe_load(cn_prewindow_schedule["bytes"])
+    if bad == "missing":
+        value = FileNotFoundError("schedule absent")
+    elif bad == "yaml":
+        value = b"cadences: ["
+    else:
+        policy = raw["cadences"]["session_minute"]
+        if bad == "null_availability":
+            policy["availability_after_local"] = None
+        elif bad == "weekend":
+            policy["weekdays"] = [1, 2, 3, 4, 5, 6]
+        elif bad == "empty_weekdays":
+            policy["weekdays"] = []
+        else:
+            policy["availability_after_local"] = "25:00"
+        value = yaml.safe_dump(raw).encode()
+    cn_prewindow_schedule["bytes"] = value
+    conn = _memory_db()
+    dataset = _dataset(cadence_class="session_minute", freshness_sla_seconds=600)
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset=dataset,
+        status="success",
+        attempt_id="bad-policy",
+        started_at="2026-08-28T07:00:00Z",
+        finished_at="2026-08-28T07:10:00Z",
+        data_through="2026-08-28T15:00:00+08:00",
+    )
+    with pytest.raises(RuntimeProjectionError, match="freshness schedule"):
+        project_dataset_runtime(
+            conn, dataset, now=datetime.fromisoformat("2026-08-31T00:00:00+08:00")
+        )
+
+
+def test_cn_prewindow_uses_configured_window_weekdays_and_cache(cn_prewindow_schedule):
+    import yaml
+
+    raw = yaml.safe_load(cn_prewindow_schedule["bytes"])
+    raw["cadences"]["postclose_daily"]["availability_after_local"] = "17:15"
+    raw["cadences"]["postclose_daily"]["weekdays"] = [2, 3, 4, 5]
+    cn_prewindow_schedule["bytes"] = yaml.safe_dump(raw).encode()
+    dataset = _dataset(cadence_class="postclose_daily")
+    for now, expected in [
+        ("2026-08-31T18:00:00+08:00", "2026-08-29T00:00:00+08:00"),
+        ("2026-09-01T17:14:59+08:00", "2026-08-29T00:00:00+08:00"),
+        ("2026-09-01T17:15:00+08:00", "2026-09-01T17:15:00+08:00"),
+    ]:
+        assert projection_module._freshness_clock_in_utc(
+            dataset, datetime.fromisoformat(now)
+        ) == datetime.fromisoformat(expected)
+    assert cn_prewindow_schedule["reads"] == 1
+
+
+@pytest.mark.parametrize(
+    "market,tz,cadence",
+    [
+        ("CRYPTO", "Asia/Shanghai", "session_minute"),
+        ("CN", "UTC", "postclose_daily"),
+        ("CN", "Asia/Shanghai", "event"),
+        ("CN", "Asia/Shanghai", "daily_reference"),
+        ("CN", "Asia/Shanghai", "on_demand"),
+    ],
+)
+def test_cn_prewindow_unrelated_clock_does_not_read_policy(
+    cn_prewindow_schedule, market, tz, cadence
+):
+    cn_prewindow_schedule["bytes"] = FileNotFoundError(
+        "unrelated policy must not be read"
+    )
+    dataset = replace(_dataset(cadence_class=cadence, timezone_name=tz), market=market)
+    now = datetime.fromisoformat("2026-08-31T00:00:00+08:00")
+    assert projection_module._freshness_clock_in_utc(dataset, now) == now
+    assert cn_prewindow_schedule["reads"] == 0
+
+
+@pytest.mark.parametrize(
+    "status,config_mismatch,expected",
+    [
+        ("empty", False, "stale"),
+        ("failed", False, "failed"),
+        ("success", True, "unobserved"),
+    ],
+)
+def test_cn_prewindow_preserves_non_success_paths(
+    monkeypatch, cn_prewindow_schedule, status, config_mismatch, expected
+):
+    cn_prewindow_schedule["bytes"] = FileNotFoundError("must not load for this receipt")
+    conn = _memory_db()
+    dataset = _dataset(cadence_class="session_minute", freshness_sla_seconds=600)
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        dataset=dataset,
+        status=status,
+        attempt_id="unchanged-path",
+        config_hash="f" * 64 if config_mismatch else None,
+        started_at="2026-08-28T07:00:00Z",
+        finished_at="2026-08-28T07:10:00Z",
+        data_through="2026-08-28T15:00:00+08:00" if status == "success" else None,
+    )
+    result = project_dataset_runtime(
+        conn, dataset, now=datetime.fromisoformat("2026-08-31T00:00:00+08:00")
+    )
+    assert result.state == expected
+    if status == "empty":
+        assert result.reasons == ("freshness_sla_exceeded", "latest_receipt_empty")
+    assert cn_prewindow_schedule["reads"] == 0
+
+
+def test_cn_prewindow_rejects_symlink_schedule(
+    monkeypatch, tmp_path, cn_prewindow_schedule
+):
+    root = tmp_path / "release"
+    (root / "storage").mkdir(parents=True)
+    (root / "config").mkdir()
+    external = tmp_path / "outside.yaml"
+    external.write_bytes(cn_prewindow_schedule["bytes"])
+    (root / "config/provider_native_schedule.yaml").symlink_to(external)
+    monkeypatch.setattr(
+        projection_module, "__file__", str(root / "storage/receipt_projection.py")
+    )
+    with pytest.raises(RuntimeProjectionError, match="freshness schedule"):
+        projection_module._freshness_clock_in_utc(
+            _dataset(cadence_class="session_minute"),
+            datetime.fromisoformat("2026-08-31T00:00:00+08:00"),
+        )

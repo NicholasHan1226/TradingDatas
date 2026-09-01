@@ -133,10 +133,14 @@ def main() -> int:
             now=now,
             backfill_days=args.backfill_days,
         )
-    except Exception:
+    except Exception as exc:
         print(
             json.dumps(
-                {"mode": "execute" if args.execute else "plan", "state": "failed"},
+                {
+                    "mode": "execute" if args.execute else "plan",
+                    "state": "failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
                 sort_keys=True,
             )
         )

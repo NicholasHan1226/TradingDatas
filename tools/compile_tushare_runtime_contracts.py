@@ -25,9 +25,9 @@ from zoneinfo import ZoneInfo
 import yaml
 
 if __package__:
-    from tools.compile_provider_native_registry import load_upstream_contract_bundle
+    from tools.compile_provider_native_registry import load_upstream_contract_bundle, _resumable_fanout
 else:  # pragma: no cover - exercised by the checked-in CLI test
-    from compile_provider_native_registry import load_upstream_contract_bundle
+    from compile_provider_native_registry import load_upstream_contract_bundle, _resumable_fanout
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -863,23 +863,17 @@ def _request_fanout(
     }
 
 
-def _request_resumable_fanout(raw: object, *, label: str) -> dict[str, int]:
+def _request_resumable_fanout(raw: object, *, label: str) -> dict[str, Any]:
     value = _mapping(raw, label)
-    _exact_keys(
-        value,
-        frozenset({"cursor_contract_version", "max_batches_per_run"}),
-        label,
-    )
-    if value["cursor_contract_version"] != 2:
-        raise RuntimeContractCompilationError(
-            f"{label}.cursor_contract_version must be 2"
-        )
-    return {
-        "cursor_contract_version": 2,
-        "max_batches_per_run": _positive_int(
-            value["max_batches_per_run"], f"{label}.max_batches_per_run"
-        ),
-    }
+    required = frozenset({"cursor_contract_version", "max_batches_per_run"})
+    optional = frozenset({"progress_mode", "continuation_max_age_days", "partition_date_field"})
+    _exact_keys(value, required | (set(value) & optional), label)
+    try:
+        result = _resumable_fanout(value, label)
+    except ValueError as exc:
+        raise RuntimeContractCompilationError(str(exc)) from exc
+    assert result is not None
+    return result
 
 
 def _request_observation_index(

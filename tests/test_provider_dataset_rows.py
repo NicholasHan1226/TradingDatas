@@ -1393,3 +1393,36 @@ def test_provider_entry_rejects_invalid_window_before_provider_or_sqlite(
         assert (
             conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()[0] == 0
         )
+
+
+def test_new_schema_major_reobserves_month_without_rewriting_historical_quality(tmp_path, monkeypatch):
+    """A validator repair must not erase the first append-only observation."""
+    db_path = tmp_path / "facts.sqlite"
+    _db(db_path)
+    payload = generic_dataset(point_in_time="append_only", as_of_format="yyyymm")
+    payload["read_model_adapter"]["row_key_strategy"] = "payload_hash"
+    dataset = load_dataset_registry(write_registry(tmp_path, payload)).datasets[0]
+    binding = dataset.provider_bindings[0]
+    rows = [_row(trade_date="202608")]
+    current_validator = provider_rows_module.matches_declared_provider_time
+    with monkeypatch.context() as legacy:
+        legacy.setattr(provider_rows_module, "matches_declared_provider_time", lambda value, fmt: False if fmt == "yyyymm" else current_validator(value, fmt))
+        initial = ingest_provider_native_rows(db_path, dataset=dataset, binding=binding, rows=rows, context=_context(dataset, binding, 1))
+    before = tuple(_fact(db_path))
+    assert _fact(db_path)["quality_issues_json"] == '["time_format_mismatch:trade_date:yyyymm"]'
+    overlap = ingest_provider_native_rows(db_path, dataset=dataset, binding=binding, rows=rows, context=_context(dataset, binding, 2))
+    assert overlap.counts.unchanged == 1
+    assert tuple(_fact(db_path)) == before
+    revised = replace(dataset, schema_version="3.0.0")
+    fresh = ingest_provider_native_rows(db_path, dataset=revised, binding=binding, rows=rows, context=_context(revised, binding, 3))
+    assert fresh.counts.inserted == 1
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        facts = conn.execute("SELECT * FROM provider_dataset_rows ORDER BY schema_major").fetchall()
+    assert tuple(facts[0]) == before
+    assert facts[0]["receipt_id"] == initial.receipt_ids[0]
+    assert facts[1]["receipt_id"] == fresh.receipt_ids[0]
+    assert facts[1]["payload_json"] == facts[0]["payload_json"]
+    assert facts[1]["payload_hash"] == facts[0]["payload_hash"]
+    assert facts[1]["quality_state"] == "valid"
+    assert facts[1]["quality_issues_json"] == "[]"

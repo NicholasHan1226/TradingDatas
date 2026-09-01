@@ -173,7 +173,7 @@ contracts:
   api_name: scrape_page_global
   source_document_url: https://docs.firecrawl.dev/api-reference/endpoint/scrape
   source_document_sha256: 57586f065a864567e5a9e7860747fe972f7e48297d7d3203d7733343568a9536
-  schema_version: 1.0.0
+  schema_version: 1.1.0
   input_fields:
   - name: url
     declared_source_type: str
@@ -184,6 +184,9 @@ contracts:
   - name: window_end
     declared_source_type: datetime
     required: true
+  - name: publication_provenance_mode
+    declared_source_type: str
+    required: false
   fields:
   - name: source
     declared_source_type: str
@@ -241,6 +244,27 @@ contracts:
     selectable: true
     filterable: false
     sortable: false
+  - name: provider_published_at
+    declared_source_type: str
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: raw_item_json
+    declared_source_type: str
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
+  - name: publication_precision
+    declared_source_type: str
+    logical_type: text
+    nullable: true
+    selectable: true
+    filterable: false
+    sortable: false
   primary_key:
   - source
   - published_local
@@ -271,6 +295,7 @@ contracts:
     evidence_ref: server-evidence/20260816T140000Z-firecrawl-global-flash-bounded-probe
   request_shape: event_or_intraday_window
   request_template:
+    publication_provenance_mode: raw_item_v1
     extraction_schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"url":{"type":"string"},"published_at":{"type":"string"}},"required":["title","url"],"additionalProperties":true}}},"required":["items"]}'
     max_age_ms: "900000"
     prompt: 只抽取页面中客观存在的新闻条目：标题、原文链接、页面显示的发布日期。禁止生成摘要、情绪判断或任何加工结论；禁止输出页面上不存在的内容。

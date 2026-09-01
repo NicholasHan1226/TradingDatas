@@ -453,20 +453,24 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
         "pledge_stat",
     )
     for api_name in report_family:
-        assert _entry(observations, api_name)["resumable_fanout"] == {
-            "cursor_contract_version": 2,
-            "max_batches_per_run": 1,
-        }
+        expected_progress = {"cursor_contract_version": 2, "max_batches_per_run": 1}
+        if api_name != "pledge_stat":  # Undated snapshots keep the existing cursor.
+            expected_progress.update(
+                progress_mode="partition_continuation",
+                continuation_max_age_days=31,
+                partition_date_field="ann_date",
+            )
+        assert _entry(observations, api_name)["resumable_fanout"] == expected_progress
         assert _entry(observations, api_name)["parameters"]["ts_code"]["batch_size"] == 1
         assert _contract(bundle, api_name)["cadence_class"] == "event"
-        assert _contract(bundle, api_name)["resumable_fanout"] == {
-            "cursor_contract_version": 2,
-            "max_batches_per_run": 1,
-        }
+        assert _contract(bundle, api_name)["resumable_fanout"] == expected_progress
         assert _contract(bundle, api_name)["fanout"]["batch_size"] == 1
     assert _entry(observations, "cb_share")["resumable_fanout"] == {
         "cursor_contract_version": 2,
         "max_batches_per_run": 1,
+        "progress_mode": "partition_continuation",
+        "continuation_max_age_days": 31,
+        "partition_date_field": "publish_date",
     }
     assert _contract(bundle, "cb_share")["cadence_class"] == "event"
     assert _contract(bundle, "cb_basic")["cadence_class"] == "daily_reference"

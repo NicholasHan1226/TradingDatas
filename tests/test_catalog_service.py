@@ -501,7 +501,9 @@ def real_catalog_harness(
         ),
     )
     boundary = (NOW - timedelta(seconds=3_600)).isoformat()
-    stale_through = (NOW - timedelta(seconds=3_601)).isoformat()
+    # The six-state fixture must stay stale even before CN daily availability:
+    # use data older than the preceding configured weekday's close and SLA.
+    stale_through = (NOW - timedelta(days=1, seconds=3_601)).isoformat()
     _insert_runtime_receipt(
         monkeypatch,
         conn,
