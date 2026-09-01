@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createReadingPositions, isInPageNavigation, locationHashId } from "../src/researchHistory.js";
+import { createReadingPositions, isInPageNavigation, locationHashId, restoreLocationHashTarget } from "../src/researchHistory.js";
 
 test("native section links and their back navigation do not reset page scrolling", () => {
   const base = "https://tradingdatas.com/recipes/adjusted-price-series/";
@@ -17,6 +17,36 @@ test("direct and encoded hashes resolve to stable section identities", () => {
   assert.equal(locationHashId("#"), "");
   assert.equal(locationHashId(""), "");
   assert.equal(locationHashId("#invalid%2"), "invalid%2");
+});
+
+test("cancelled lazy hash restoration cannot scroll after later navigation", () => {
+  let observerCallback;
+  let disconnected = false;
+  let scrollCount = 0;
+  let targetAvailable = false;
+  class Observer {
+    constructor(callback) { observerCallback = callback; }
+    observe() {}
+    disconnect() { disconnected = true; }
+  }
+  const windowObject = {
+    location: { hash: "#tutorial-downloads" },
+    setTimeout: () => 1,
+    clearTimeout: () => {},
+  };
+  const documentObject = {
+    body: {},
+    querySelector: () => ({}),
+    getElementById: () => targetAvailable ? { scrollIntoView: () => { scrollCount += 1; } } : null,
+  };
+
+  const cancel = restoreLocationHashTarget({ windowObject, documentObject, Observer });
+  cancel();
+  targetAvailable = true;
+  if (!disconnected) observerCallback();
+
+  assert.equal(disconnected, true);
+  assert.equal(scrollCount, 0);
 });
 
 test("separate library visits retain their own positions through backward and forward traversal", () => {
