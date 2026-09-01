@@ -41,3 +41,10 @@ test("candidate sources progressively disclose roadmap phases without a second s
   assert.match(app, /source-phase-control/);
   assert.match(app, /Global search still finds a specific source/);
 });
+
+test("public source maintenance guidance matches the reviewed snapshot", async () => {
+  const guide = await readFile(new URL("../../docs/product/DATA_SOURCE_LANDSCAPE.md", import.meta.url), "utf8");
+  assert.match(guide, /133 configured active; 57 paused/);
+  assert.match(guide, /## Updating the public snapshot/);
+  assert.match(guide, /landscapeMeta\.reviewedAt/);
+});

@@ -46,3 +46,9 @@ test('mobile collection evidence reads as one editorial sequence', async () => {
   const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?\.dataset-product-layout > main \.dataset-history \{ display: block; \}/);
 });
+
+test('public shell does not depend on a remote font request', async () => {
+  const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(styles, /fonts\.googleapis\.com|@import\s+url/i);
+  assert.match(styles, /"SF Pro Display", "SF Pro Text", "PingFang SC", "Noto Sans SC", system-ui/);
+});

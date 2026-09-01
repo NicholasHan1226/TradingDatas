@@ -135,6 +135,12 @@ external-literature database. It must not imply that TradingDatas authored or
 endorsed a paper's conclusions. Do not use `Benchmark` as a primary navigation
 item or independently rank TradingDatas' own product.
 
+The curated Research home begins with three durable, question-led paths:
+point-in-time fundamentals, A-share microstructure, and announcements/events.
+Each path links the question to external readings and raw-material categories;
+it is an orientation aid, not a research conclusion, backtest, or product
+availability claim.
+
 ### 4.2 Proposed route map
 
 The paths below are a design contract, not a claim that they are implemented.
@@ -561,7 +567,9 @@ prove DNS, HTTPS, deployment, or `api.tradingdatas.com` runtime availability.
 
 ### 6.2 Typography
 
-- UI and Chinese body: `Inter`, `PingFang SC`, `Noto Sans SC`, system sans;
+- UI and Chinese body: platform-first `SF Pro Display` / `SF Pro Text`,
+  `PingFang SC`, `Noto Sans SC`, system sans. The public shell must not depend
+  on a remote font request for its baseline hierarchy;
 - editorial display: `Songti SC`, `Noto Serif CJK SC`, `STSong`, `Georgia`,
   used only for selected Research reading headings;
 - code and identifiers: `IBM Plex Mono`, system monospace;
