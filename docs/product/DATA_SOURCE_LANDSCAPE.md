@@ -63,7 +63,7 @@ reviewable change, never as a substitute for runtime health:
 
 1. Regenerate `public-web/src/connectedInterfaceSnapshot.json` from the
    immutable provider registry with
-   `cd public-web && python scripts/build-connected-interface-snapshot.py`.
+   `cd public-web && python3 scripts/build-connected-interface-snapshot.py`.
    The resulting count is contract/config evidence only.
 2. Review each changed candidate independently against its official source,
    access terms and redistribution boundary. Record only a source identity,
