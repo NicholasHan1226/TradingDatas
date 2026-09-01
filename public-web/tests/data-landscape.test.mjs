@@ -32,3 +32,12 @@ test("candidate sources carry official evidence, rights state, and a roadmap pha
     assert.ok(phaseIds.has(source.phase));
   }
 });
+
+test("candidate sources progressively disclose roadmap phases without a second search", async () => {
+  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(app, /useState\("P1"\)/);
+  assert.match(app, /sourcePhase === "all"/);
+  assert.match(app, /sourceCandidates\.filter\(\(source\) => source\.phase === sourcePhase\)/);
+  assert.match(app, /source-phase-control/);
+  assert.match(app, /Global search still finds a specific source/);
+});

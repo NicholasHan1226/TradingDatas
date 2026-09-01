@@ -1654,6 +1654,15 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
 .source-history-list svg { color: var(--aqua); }
 .source-history-list strong { font-size: 16px; font-weight: 520; }
 .source-history-list p { max-width: 720px; margin: 9px 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.source-candidate-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; }
+.source-candidate-heading .section-heading { max-width: 670px; }
+.source-phase-control { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 475px; }
+.source-phase-control button { min-height: 36px; display: inline-flex; align-items: center; gap: 9px; border: 1px solid var(--line-soft); border-radius: 999px; padding: 7px 10px 7px 13px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1; cursor: pointer; transition: border-color .18s ease, background .18s ease, color .18s ease; }
+.source-phase-control button:hover { border-color: var(--blue); color: var(--ink); }
+.source-phase-control button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.source-phase-control button.is-selected { border-color: color-mix(in srgb, var(--blue) 28%, var(--line-soft)); background: color-mix(in srgb, var(--blue) 8%, transparent); color: var(--blue); }
+.source-phase-control small { min-width: 16px; display: grid; place-items: center; color: currentColor; font: 9px/1 "IBM Plex Mono", monospace; }
+.source-candidate-count { margin: 26px 0 12px; color: var(--faint); font: 10px/1.55 "IBM Plex Mono", monospace; }
 .source-candidate-list { border-top: 1px solid var(--line-soft); }
 .source-candidate-list article { min-height: 92px; display: grid; grid-template-columns: minmax(220px, .9fr) minmax(280px, 1.3fr) minmax(160px, .55fr) 28px; gap: 22px; align-items: center; border-bottom: 1px solid var(--line-soft); }
 .source-candidate-list article > div { min-width: 0; display: grid; gap: 5px; }
@@ -1675,6 +1684,8 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .data-source-hero dl, .source-summary-grid, .source-roadmap-grid { grid-template-columns: repeat(2, 1fr); }
   .source-candidate-list article { grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.2fr) 26px; }
   .source-candidate-list article > div:nth-of-type(2) { display: none; }
+  .source-candidate-heading { align-items: flex-start; flex-direction: column; }
+  .source-phase-control { justify-content: flex-start; max-width: none; }
 }
 
 @media (max-width: 620px) {

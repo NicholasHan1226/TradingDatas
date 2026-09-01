@@ -256,6 +256,11 @@ becoming additional ambiguous catalog badges.
 - group by data family rather than upstream vendor;
 - provide a clearly labelled `Alternative Data` category and filter, then list
   individual products such as `Pizza Index` beneath it;
+- on the dedicated Sources & roadmap route, begin candidate-source reading with
+  the current P1 priority lane; P2, P3, P4 and all candidates remain selectable
+  in place through a compact phase control. That control changes only reading
+  density: it is not a second keyword search and never implies connection,
+  rights, runtime activation, redistribution, or purchase availability;
 - show concise coverage/cadence/lineage facts from catalog;
 - distinguish `available`, `degraded`, `paused`, and `unobserved` without
   marketing euphemisms;

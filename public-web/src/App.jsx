@@ -493,6 +493,7 @@ function ProductObjectDetail({ type, item, locale, onNavigate }) {
 }
 
 function DataSourceLandscapePage({ locale, onNavigate }) {
+  const [sourcePhase, setSourcePhase] = useState("P1");
   const familyLabels = {
     "china-markets": { zh: "中国市场", en: "China markets" },
     "global-markets": { zh: "全球市场", en: "Global markets" },
@@ -507,6 +508,13 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
   };
   const connected = connectedInterfaceSnapshot.interfaces;
   const activeCount = connected.filter((item) => item.activation === "active").length;
+  const phaseOptions = [
+    ...roadmapPhases.filter((phase) => phase.id !== "P0"),
+    { id: "all", horizon: { zh: "全部", en: "All" }, title: { zh: "全部候选来源", en: "All candidate sources" } },
+  ];
+  const visibleCandidates = sourcePhase === "all"
+    ? sourceCandidates
+    : sourceCandidates.filter((source) => source.phase === sourcePhase);
 
   return (
     <section className="data-source-page">
@@ -535,8 +543,19 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
         <div className="source-history-list">{collectionHistory.map((event) => <article key={`${event.date}-${event.provider}`}><time>{event.date}</time><ClockCounterClockwise size={17} /><div><strong>{event.title[locale]}</strong><p>{event.detail[locale]}</p><small>{event.provider} · {event.status.replaceAll("_", " ")}</small></div></article>)}</div>
       </section>
       <section className="source-evidence-section">
-        <div className="section-heading compact-heading"><span className="mono-kicker">03 / CANDIDATE SOURCES</span><h2>{locale === "zh" ? "候选来源保持轻量可读。" : "Candidate sources, kept lightweight."}</h2><p>{locale === "zh" ? "不增加第二个搜索框；使用全站搜索发现具体来源。" : "No second search box; use global search to discover a specific source."}</p></div>
-        <div className="source-candidate-list">{sourceCandidates.map((source) => <article key={source.id}><div><span>{familyLabels[source.family]?.[locale] || source.family}</span><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div><p>{source.materials}</p><div><span>{source.stage.replaceAll("_", " ")}</span><small>{source.rights.replaceAll("_", " ")}</small></div><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut /></a></article>)}</div>
+        <div className="source-candidate-heading">
+          <div className="section-heading compact-heading"><span className="mono-kicker">03 / CANDIDATE SOURCES</span><h2>{locale === "zh" ? "候选来源保持轻量可读。" : "Candidate sources, kept lightweight."}</h2><p>{locale === "zh" ? "默认展示当前优先来源；其它阶段可在原位查看。全站搜索仍用于发现具体来源。" : "Start with current priorities; review other phases in place. Global search still finds a specific source."}</p></div>
+          <div className="source-phase-control" role="group" aria-label={locale === "zh" ? "候选来源阶段" : "Candidate source phase"}>
+            {phaseOptions.map((phase) => {
+              const count = phase.id === "all" ? sourceCandidates.length : sourceCandidates.filter((source) => source.phase === phase.id).length;
+              return <button key={phase.id} type="button" className={sourcePhase === phase.id ? "is-selected" : ""} aria-pressed={sourcePhase === phase.id} onClick={() => setSourcePhase(phase.id)}>
+                <span>{phase.id === "all" ? phase.title[locale] : `${phase.id} · ${phase.horizon[locale]}`}</span><small>{count}</small>
+              </button>;
+            })}
+          </div>
+        </div>
+        <p className="source-candidate-count">{locale === "zh" ? `当前显示 ${visibleCandidates.length} 个候选来源。候选不代表已接入、可再分发或可购买。` : `Showing ${visibleCandidates.length} candidate sources. A candidate is not connected, redistributable, or purchasable.`}</p>
+        <div className="source-candidate-list">{visibleCandidates.map((source) => <article key={source.id}><div><span>{familyLabels[source.family]?.[locale] || source.family}</span><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div><p>{source.materials}</p><div><span>{source.stage.replaceAll("_", " ")}</span><small>{source.rights.replaceAll("_", " ")}</small></div><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut /></a></article>)}</div>
       </section>
       <section className="source-evidence-section source-roadmap-section">
         <div className="section-heading compact-heading"><span className="mono-kicker">04 / INTEGRATION ROADMAP</span><h2>{locale === "zh" ? "按证据门槛，而不是接口数量推进。" : "Progress by evidence gates, not interface count."}</h2></div>
