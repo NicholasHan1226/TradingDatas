@@ -17,6 +17,32 @@ export function locationHashId(hash) {
   }
 }
 
+export function restoreLocationHashTarget({ windowObject = window, documentObject = document, Observer = MutationObserver } = {}) {
+  const targetId = locationHashId(windowObject.location.hash);
+  if (!targetId) return () => {};
+
+  let observer;
+  let timeoutId;
+  const cleanup = () => {
+    observer?.disconnect();
+    if (timeoutId) windowObject.clearTimeout(timeoutId);
+  };
+  const revealTarget = () => {
+    const target = documentObject.getElementById(targetId);
+    if (!target) return false;
+    target.scrollIntoView({ behavior: "instant" });
+    cleanup();
+    return true;
+  };
+
+  if (!revealTarget()) {
+    observer = new Observer(revealTarget);
+    observer.observe(documentObject.querySelector("main") ?? documentObject.body, { childList: true, subtree: true });
+    timeoutId = windowObject.setTimeout(cleanup, 2000);
+  }
+  return cleanup;
+}
+
 export function createReadingPositions() {
   const entries = new Map();
   return {

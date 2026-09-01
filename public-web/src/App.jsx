@@ -29,7 +29,7 @@ import { researchHref, researchLocation, researchSubjects } from "./researchDisc
 import { ResearchHub } from "./ResearchHub.jsx";
 import { GlobalSearchField } from "./GlobalSearchField.jsx";
 import { ResearchArticle } from "./ResearchArticle.jsx";
-import { createReadingPositions, isInPageNavigation, locationHashId, researchSectionTarget } from "./researchHistory.js";
+import { createReadingPositions, isInPageNavigation, locationHashId, researchSectionTarget, restoreLocationHashTarget } from "./researchHistory.js";
 import { preparationTutorials } from "./preparationTutorials.js";
 import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
 const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
@@ -62,33 +62,6 @@ function getRouteFromPath() {
   if (primary === "cookbook") return candidate.replace(/^cookbook/, "recipes");
   return productRoutes.includes(primary) ? candidate : "home";
 }
-
-function restoreLocationHashTarget() {
-  const targetId = locationHashId(window.location.hash);
-  if (!targetId) return () => {};
-
-  let observer;
-  let timeoutId;
-  const cleanup = () => {
-    observer?.disconnect();
-    if (timeoutId) window.clearTimeout(timeoutId);
-  };
-  const revealTarget = () => {
-    const target = document.getElementById(targetId);
-    if (!target) return false;
-    target.scrollIntoView({ behavior: "instant" });
-    cleanup();
-    return true;
-  };
-
-  if (!revealTarget()) {
-    observer = new MutationObserver(revealTarget);
-    observer.observe(document.querySelector("main") ?? document.body, { childList: true, subtree: true });
-    timeoutId = window.setTimeout(cleanup, 2000);
-  }
-  return cleanup;
-}
-
 
 const researchObjectGroups = {
   datasets: { collection: "datasets", route: "datasets", label: { en: "Data product", zh: "数据产品" } },
@@ -639,6 +612,7 @@ export function App() {
   const [initialReadingEntry] = useState(() => window.history.state?.tdReadingEntry ?? crypto.randomUUID());
   const readingEntry = useRef(initialReadingEntry);
   const readingLocation = useRef(window.location.href);
+  const hashTargetCleanup = useRef(() => {});
   const [navigationRevision, setNavigationRevision] = useState(0);
   const currentRouteRef = useRef(route);
   function changeResearchView(action) {
@@ -883,8 +857,9 @@ export function App() {
       readingLocation.current = window.location.href;
       if (inPage) {
         window.history.replaceState({ ...window.history.state, tdReadingEntry: readingEntry.current }, "");
-        if (window.location.hash) restoreLocationHashTarget();
-        else window.scrollTo({ top: 0, behavior: "instant" });
+        hashTargetCleanup.current();
+        hashTargetCleanup.current = window.location.hash ? restoreLocationHashTarget() : () => {};
+        if (!window.location.hash) window.scrollTo({ top: 0, behavior: "instant" });
         return;
       }
       if (currentRouteRef.current === "research") readingPositions.current.save(readingEntry.current, window.scrollY);
@@ -900,6 +875,7 @@ export function App() {
     };
     window.addEventListener("popstate", syncRoute);
     return () => {
+      hashTargetCleanup.current();
       window.removeEventListener("popstate", syncRoute);
       window.history.scrollRestoration = previousRestoration;
     };
@@ -922,7 +898,12 @@ export function App() {
     }
   }, [route, navigationRevision]);
 
-  useEffect(() => restoreLocationHashTarget(), [route, navigationRevision]);
+  useEffect(() => {
+    hashTargetCleanup.current();
+    const cleanup = restoreLocationHashTarget();
+    hashTargetCleanup.current = cleanup;
+    return cleanup;
+  }, [route, navigationRevision]);
 
   useEffect(() => {
     const focusGlobalSearch = (event) => {
