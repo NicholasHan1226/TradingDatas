@@ -1554,8 +1554,18 @@ def _dataset_plans(
         )
         if prior is not None:
             age = (now_utc - prior.finished_at).total_seconds()
+            healthy = (
+                prior.status == "empty"
+                or (dataset.point_in_time == "append_only" and prior.status == "success")
+                or any(
+                    fact.receipt_id in prior.success_receipt_ids
+                    for fact in current.facts
+                )
+            )
             if (prior.status == "failed" and age < policy.failure_retry_seconds) or (
-                correction_only
+                prior.status != "failed"
+                and healthy
+                and (dataset.cadence_class == "event" or correction_only)
                 and age < _repeat_interval_seconds(dataset, policy, prior.status)
             ):
                 suppressed = True

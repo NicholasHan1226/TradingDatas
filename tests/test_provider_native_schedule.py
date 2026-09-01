@@ -1068,6 +1068,58 @@ def test_event_wave_preserves_breadth_without_same_run_retries() -> None:
     assert policy.retry == cadence_planner.RetryPolicy(1, 0, 0, 0)
 
 
+def test_successful_event_window_waits_for_minimum_interval() -> None:
+    registry = _active_registry()
+    dataset = registry.resolve("global.news.flash")
+    binding = dataset.provider_bindings[0]
+    finished_at = datetime(2026, 9, 1, 7, 0, tzinfo=ZoneInfo("UTC"))
+    window = MappingProxyType(
+        {
+            "start_time": "2026-09-01 00:00:00",
+            "end_time": "2026-09-01 23:59:59",
+        }
+    )
+    receipt_id = "receipt:event-success"
+    history = ValidatedReceiptHistoryEntry(
+        dataset_id=dataset.dataset_id,
+        provider=binding.provider,
+        receipt_id=receipt_id,
+        status="success",
+        cohort_status="success",
+        started_at=finished_at - timedelta(minutes=1),
+        finished_at=finished_at,
+        request_window=window,
+        request_variant=MappingProxyType({}),
+        execution_id="execution:event-success",
+        config_hash=provider_ingest_config_hash(dataset, binding),
+        physical_call_index=0,
+        retry_index=0,
+    )
+    state = cadence_planner.PlannerState(
+        MappingProxyType(
+            {
+                (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                    (history,),
+                    # Append-only facts keep their original provenance when a
+                    # later successful event observation is byte-identical.
+                    (cadence_planner._Fact("20260901", {}, "receipt:older-fact"),),
+                )
+            }
+        )
+    )
+    plans, skips = cadence_planner.plan_runs(
+        registry=DatasetRegistry((dataset,), query_defaults=registry.query_defaults),
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=finished_at + timedelta(minutes=5),
+    )
+
+    assert plans == ()
+    assert [(item.dataset_id, item.state) for item in skips] == [
+        (dataset.dataset_id, "not_due")
+    ]
+
+
 def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

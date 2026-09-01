@@ -111,7 +111,7 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   activation:
-    activation_state: active
+    activation_state: paused
     entitlement_state: active
     evidence_ref: server-evidence/20260816T073000Z-firecrawl-flash-bounded-canary
   request_shape: event_or_intraday_window

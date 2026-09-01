@@ -4182,25 +4182,22 @@ def _connection_epoch_evidence(conn: sqlite3.Connection) -> tuple[object, ...]:
             "freelist_count",
         )
     )
-    receipt_summary = conn.execute(
+    # Receipts are append-only and every fact write commits its receipt in the
+    # same transaction.  The newest rowid therefore identifies the visible
+    # ingest epoch while the authority lock prevents a writer from advancing
+    # it between the primary and verifier reads.  Do not aggregate the entire
+    # receipt journal here: that made every catalog/query request O(history)
+    # twice and could exhaust consumer deadlines during collection.
+    latest_receipt = conn.execute(
         """
-        SELECT COUNT(*),
-               COALESCE(MIN(run_id), ''),
-               COALESCE(MAX(run_id), ''),
-               COALESCE(SUM(rows_read), 0),
-               COALESCE(SUM(rows_written), 0),
-               COALESCE(SUM(length(CAST(run_id AS BLOB))), 0),
-               COALESCE(SUM(length(CAST(started_at AS BLOB))), 0),
-               COALESCE(SUM(length(CAST(finished_at AS BLOB))), 0),
-               COALESCE(SUM(length(CAST(status AS BLOB))), 0),
-               COALESCE(SUM(length(CAST(source AS BLOB))), 0),
-               COALESCE(SUM(length(CAST(notes AS BLOB))), 0)
+        SELECT rowid, run_id, started_at, finished_at, status, source,
+               rows_read, rows_written, length(CAST(notes AS BLOB))
         FROM market_ingest_runs
+        ORDER BY rowid DESC
+        LIMIT 1
         """
     ).fetchone()
-    if receipt_summary is None:
-        raise RuntimeProjectionError("receipt database epoch is unavailable")
-    return (*pragmas, *tuple(receipt_summary))
+    return (*pragmas, *(tuple(latest_receipt) if latest_receipt is not None else ()))
 
 
 @contextmanager
