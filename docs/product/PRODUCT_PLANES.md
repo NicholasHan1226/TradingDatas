@@ -44,6 +44,12 @@ question, evidence, method, limitations, and links to relevant TradingDatas
 objects. Docs explains the platform and its contracts. Neither plane can grant
 data access or invent runtime availability.
 
+Public `/recipes/:id` tutorials that ship with the research library are
+content-plane teaching articles. They reuse existing Recipe bookmark IDs and
+may generate same-origin synthetic notebooks, but they do not implement,
+version, entitle or activate the Recipe Plane. See
+[`RESEARCH_LIBRARY.md`](RESEARCH_LIBRARY.md).
+
 ## Delivery plane
 
 HTTP API, MCP/Agent connection, notebooks, and exports are delivery mechanisms.

@@ -35,6 +35,8 @@ discovered source, technically reachable source, registry contract,
 receipt/API-observed dataset, and redistribution-authorized sellable data. The
 landscape method and first reviewed source universe are defined in
 [`docs/product/DATA_SOURCE_LANDSCAPE.md`](product/DATA_SOURCE_LANDSCAPE.md).
+The external research library policy, routes and maintainer workflow are in
+[`docs/product/RESEARCH_LIBRARY.md`](product/RESEARCH_LIBRARY.md).
 
 ## Primary consumers
 
@@ -65,8 +67,9 @@ The public experience has seven durable information areas:
   datasets, optional transparent Features, time alignment, output schema,
   validation and limitations;
 - **Research**: externally authored financial papers and research, reorganized
-  through TradingDatas' own learning taxonomy while preserving source,
-  authorship, year, venue, and outbound attribution;
+  through TradingDatas' own Featured/Topics library while preserving source,
+  authorship, year, venue, and outbound attribution; the accepted count is
+  200 distinct works plus 24 guides and three synthetic preparation tutorials;
 - **Pricing**: a small number of complete A-share workflow packages plus
   separately selected alternative-data access;
 - **Docs**: the platform-wide help hub for product areas, data guidance,
@@ -82,14 +85,20 @@ entries continue into the full Recipe contract below.
 
 `Research` is a primary learning area, but not a TradingDatas research desk. It
 indexes external papers, industry research, and market-structure cases under a consistent platform
-taxonomy such as asset pricing, market microstructure, corporate fundamentals,
-alternative data, quantitative methods, and A-share markets. Each record keeps
-external authorship and source attribution. TradingDatas may map a paper to the
-raw data materials needed to reproduce or extend it, but does not adopt the
-paper's conclusions. The reading path is question -> evidence/data -> method
-and limits -> related Data/Feature/Recipe material. `Benchmark` is not a primary product area. Research and
-Recipe content must not present PnL, win rate, alpha, security recommendations,
-provider rankings, or a platform-authored market conclusion.
+taxonomy: asset pricing, market microstructure, corporate fundamentals,
+alternative data, quantitative methods, A-share/comparative markets,
+crypto markets, and macro-finance. The public reader opens Featured by default
+and Topics through `?view=topics`. Each record keeps external authorship and
+source attribution. TradingDatas may map a paper to the raw data materials
+needed to reproduce or extend it, but does not adopt the paper's conclusions.
+The reading path is question -> evidence/data -> method and limits -> related
+Data/Feature/Recipe material. Three `/recipes/:id` tutorials teach preparation
+with explicitly synthetic examples; they reuse Recipe deep-link IDs and do not
+activate the Recipe or Feature planes. `Benchmark` is not a primary product
+area. Research and Recipe content must not present PnL, win rate, alpha,
+security recommendations, provider rankings, or a platform-authored market
+conclusion. Git containing the 200-source library is not proof that the
+published Worker is serving that build.
 
 Dataset-detail pages are the closest product analogue to an OpenRouter model
 page. They combine objective product facts in one place: purpose, schema,

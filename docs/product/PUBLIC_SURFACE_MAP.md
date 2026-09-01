@@ -1,8 +1,10 @@
 # TradingDatas public surface map
 
-Status: product contract v2, 2026-08-26. This document defines the public
+Status: product contract v2, 2026-09-01. This document defines the public
 information architecture. It does not claim that target product capabilities,
-commerce, or the public domain are live.
+commerce, or the public domain are live. Research routes below describe the
+merged `public-web` library; production serving still needs exact-main
+Worker readback.
 
 ## 1. Navigation logic
 
@@ -125,32 +127,53 @@ Recommended routes:
 Recipe detail shows the research task, inputs, time-alignment assumptions,
 ordered steps, output schema, validation checks, limitations, related research,
 and a reproducible request/notebook asset when available. It must not publish
-backtest returns, alpha claims, or investment conclusions.
+backtest returns, alpha claims, or investment conclusions. The three current
+`/recipes/:id` pages are research-library teaching articles with synthetic
+downloads; they do not activate this Recipe Plane contract.
 
 ### Research `/research`
 
 Research is an attributed learning database for externally authored papers,
 industry reports, methodologies, and market cases. TradingDatas organizes and
-explains relevance; it does not claim authorship or endorse conclusions.
+explains relevance; it does not claim authorship or endorse conclusions. The
+accepted library is 200 distinct works. Guides, translations, tutorials and
+path membership are not extra works. Source policy and maintainer workflow:
+[`RESEARCH_LIBRARY.md`](RESEARCH_LIBRARY.md).
 
-Subcategories combine format and topic:
+The implemented reader has exactly two views. Featured is the default
+`/research` landing; Topics is `?view=topics`. Topics uses eight display
+subjects and a publication-type filter, 12 rows per page:
 
-- formats: papers, industry research, cases, official methodologies;
-- topics: A-share market, asset pricing, market microstructure, corporate
-  fundamentals, alternative data, quantitative methods;
-- reading paths: beginner, data preparation, method deep dive, market structure.
+- subjects: asset pricing, market microstructure, company & financials,
+  China & comparative markets, alternative data, crypto markets, research
+  methods, macro & fixed income;
+- formats: paper, working paper, book, industry research, case;
+- `quant-methods` joins `research-methods` only in discovery.
+
+Featured also exposes 24 four-section bilingual guides (three per subject
+journey) and keeps the three existing four-record paths reachable. Three
+`/recipes/:id` tutorials teach adjusted prices, as-of filing versions and
+event-calendar alignment with synthetic local examples. Publishing those
+routes does not activate the Recipe or Feature product planes.
 
 Recommended routes:
 
 ```text
 /research
+/research?view=topics
 /research/:slug
+/research/paths/:id
+/recipes
+/recipes/:slug
+/downloads/research/:slug/<file>
 ```
 
 Research detail shows citation, source link, research question, evidence and
 data requirements, method summary, assumptions/limitations, related TradingDatas
 datasets/features/recipes, and further reading. The internal record is the
-first click; the external source remains authoritative.
+first click; the external source remains authoritative. Git merge of this
+library is not production publication; live route and download readback remain
+separate.
 
 ### Pricing `/pricing`
 

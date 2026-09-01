@@ -22,7 +22,7 @@ target product plane: canonical/PIT model + transparent Features -> versioned de
 - content plane 解释数据和教授准备方法，读取 data/account 投影但不反向修改 registry、facts、receipts、activation、entitlement 或 quota。
 - target product plane 只通过新合同建立 canonical/PIT 与透明 Feature 对象，并保留回链 provider-native facts/receipts；当前 `/v1` 和 SQLite 权威链不得被原地改写。
 
-Recipe 是版本化准备合同，不是当前运行时 pipeline。它可以组合多个 `catalog/query` 请求的示例、join/as-of 规则、预期输出 schema 和 synthetic/observed 教学结果，但不得由当前 API 服务器现场执行跨 dataset join、生成 feature、跑回测或返回研究结论。未来若提供可执行 Recipe，必须经过独立运行合同、版本、lineage、授权与读回。
+Recipe 是版本化准备合同，不是当前运行时 pipeline。它可以组合多个 `catalog/query` 请求的示例、join/as-of 规则、预期输出 schema 和 synthetic/observed 教学结果，但不得由当前 API 服务器现场执行跨 dataset join、生成 feature、跑回测或返回研究结论。未来若提供可执行 Recipe，必须经过独立运行合同、版本、lineage、授权与读回。公开站随研究文献库发布的 `/recipes/:id` 教程属于 content plane 教学页，复用既有 Recipe 深链 ID 并生成虚构示例下载，不构成 Recipe Plane 激活；维护合同见 `docs/product/RESEARCH_LIBRARY.md`。
 
 Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具和限制的透明衍生数据。它不能是 alpha、信号、排名或建议。Feature Plane 目前未实现，详情页与 manifest 只能标记为 target/product definition/planned。完整分层见 `docs/product/PRODUCT_PLANES.md`。
 

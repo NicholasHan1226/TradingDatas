@@ -1,5 +1,11 @@
 # Research reading depth and preparation tutorials
 
+Superseded for guide count and offline downloads by
+`research-reading-continuity-v5.md`: the implemented library has **24**
+four-section guides, not twelve. Keep this file for the original build and
+share-metadata contract. Do not treat the “twelve guides” sentences below as
+current acceptance.
+
 Owner request: Nicholas, 2026-08-30. Scope: PR #385, `public-web` only.
 Source of truth: the accepted Featured/Topics model in `research-dual-view-v3.md`,
 the source policy in `../product/RESEARCH_LIBRARY.md`, and current source records.

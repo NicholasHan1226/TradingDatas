@@ -14,6 +14,7 @@
 10. `reports/`：日期化事故、验收和迁移复盘。
 11. `design/public-data-product-system-v1.md`：公共数据目录、Cookbook、套餐/加购和前端设计开发合同。
 12. `AGENT_INTEGRATIONS.md`：Claude、Codex、OpenClaw、Hermes 与其它 Agent 的单一接入提示词、密钥边界和前端验收合同。
+13. `product/RESEARCH_LIBRARY.md`：公开站外部文献库、24 篇导读、离线教程与维护流程；Git 合入不是生产发布证据。
 
 ## 规则
 

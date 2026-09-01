@@ -1,13 +1,17 @@
 # External research library
 
-Last reviewed: 2026-08-30. Scope: the `public-web` PR candidate, not production.
+Last reviewed: 2026-09-01 after PR #385 merged to `main`. Git now contains the
+200-source library, 24 bilingual guides and three offline tutorials. Merge is
+not a production publication claim: exact-main public-web deploy plus route,
+share-metadata and download readback remain separate evidence. Local QA for the
+candidate is in `docs/reports/2026-08-30-research-library-200-qa.md`.
 
 ## Purpose and acceptance
 
 Research helps users move from a question to an attributed external source and
-its data-preparation requirements. The current candidate target is 200 distinct
+its data-preparation requirements. The accepted count is 200 distinct
 works/materials; a translation, working-paper duplicate, digest, edition link,
-or reading-path membership is not an additional work.
+guide, tutorial or reading-path membership is not an additional work.
 
 Every record needs:
 
@@ -28,6 +32,50 @@ text/alternative data, macro-finance, Chinese/comparative markets and crypto.
 Foreign-market literature is comparative context, not an expansion of TD's live
 collection scope. The catalogue is not a systematic or exhaustive literature
 review, and inclusion is not endorsement of a conclusion or trading strategy.
+
+## Implemented surface
+
+Reader routes live in `public-web` and stay on the content plane. They do not
+call catalog/query, activate Recipe/Feature contracts, or change entitlements.
+
+| Route | What the reader sees |
+| --- | --- |
+| `/research` | Featured: editorial lead, three four-record paths, 24 guides |
+| `/research?view=topics` | Topics: eight subjects, format filter, 12 rows per page |
+| `/research/:slug` | Article for one of the 200 records |
+| `/research/paths/:id` | One of the three existing four-record paths |
+| `/recipes` and `/recipes/:id` | Three bilingual preparation tutorials |
+| `/downloads/research/:id/*` | Generated synthetic inputs, JS example, localized notebooks |
+
+Topics query parameters are `view`, `topic`, `format` and one-based `page`.
+Unknown values fall back; out-of-range pages clamp. Canonical share URLs use
+the trailing-slash directory form `https://tradingdatas.com/<route>/`.
+
+Maintainer files (edit these; do not hand-edit `dist/`):
+
+| File | Role |
+| --- | --- |
+| `src/researchSeeds.js`, `src/researchLegacy.json` | Editorial identity seeds |
+| `src/researchBibliography.json` | Crossref-normalized DOI records |
+| `src/researchSourcePages.json` | Official pages without a usable DOI |
+| `src/researchLookups.json` | Crossref query hints |
+| `src/researchCatalog.js` | Assembles the 200 records |
+| `src/researchEditorial.js`, `src/researchEditorialExpansion.js` | 24 four-section guides |
+| `src/researchReaderNotes.js` | Reader notes and source-specific limits |
+| `src/researchJourneys.js` | Eight three-step subject journeys |
+| `src/researchDiscovery.js` | Featured/Topics URL state |
+| `src/researchHistory.js` | In-tab scroll positions and hash restore |
+| `src/preparationTutorials.js` | Tutorial copy and teaching fields |
+| `src/tutorialExamples.js`, `scripts/tutorial-python/` | Shared JS/Python synthetic examples |
+
+`npm run build` runs Vite, Sites preparation, then
+`scripts/build-research-pages.mjs` (208 static HTML entries with bilingual
+share metadata) and `scripts/build-tutorial-downloads.mjs` (three download
+directories: `inputs.json`, `example.mjs`, `tutorial-zh.ipynb`,
+`tutorial-en.ipynb`). The Vite plugin
+`scripts/research-public-projection.mjs` strips internal
+`evidence`/`verifiedAt`/`readiness`/`checks`/`limits`/`orientationMinutes`
+from the public catalogue bundle. Source records still retain those fields.
 
 ## Sources and verification
 
@@ -131,14 +179,41 @@ reading-note reviews are separate evidence, neither implies replication.
 ## Maintenance and verification
 
 1. Add or revise editorial notes and identify the intended original work.
-2. Run `node scripts/verify-research-sources.mjs` in `public-web`. Review its
-   unresolved report and inspect authoritative sources for exceptions.
-3. Run `node --test tests/research-catalog.test.mjs`, `npm run test:sites` and
-   `npm run build`. Review identity, duplicate, locale, source and related-link checks.
+2. Run `node scripts/verify-research-sources.mjs` in `public-web`. Review
+   `research-source-review.json` and inspect authoritative sources for
+   exceptions. Default mode only fills missing or mismatched Crossref rows.
+   `--refresh` re-queries Crossref at 1.5s per pending item and rewrites
+   bibliography dates; do not use it for a routine content pass, and never let
+   a library-wide refresh advance stored legacy official-source check dates.
+3. Run `npm run test:sites` (includes `tests/research-*.test.mjs` and
+   `tests/tutorial-*.test.mjs`) and `npm run build`. Then
+   `python3 scripts/verify-tutorial-notebooks.py` against
+   `dist/client/downloads/research/*/tutorial-*.ipynb`. The Python runner
+   executes generated cells with the standard library only; it is not a
+   Jupyter kernel or UI test.
 4. Inspect actual desktop/narrow rendering, language preferences, both themes,
-   pagination, filters, global search, saved links and source/detail navigation.
+   pagination, filters, global search, saved links, article return, native
+   Back/Forward and tutorial section hashes.
 5. Commit only scoped content/UI/docs/build changes through the feature PR.
    CI, merge and production publication are distinct states requiring fresh evidence.
+
+### Common pitfalls
+
+- Hash restore in `researchHistory.restoreLocationHashTarget` waits up to 2s
+  for lazy tutorial sections to mount, then `scrollIntoView`. Leaving that
+  hash, or starting another restore, must cancel the pending observer; the
+  late PR #385 commits exist because a stale restore scrolled the wrong page.
+  `App.jsx` tracks native `hashchange` so Back stays in-page
+  (`isInPageNavigation`) instead of treating a section link as a new route.
+- Vite preview may serve the root SPA shell for some slashless URLs. Confirm
+  share metadata on directory URLs (`/research/<slug>/`) and confirm
+  trailing-slash behavior separately on Wrangler or the published Worker.
+- Related Data/Feature/Recipe IDs are methodological context from
+  `productManifest.js`. They are not catalog availability, entitlement, or
+  Recipe Plane activation.
+- Do not copy protected full text or publisher abstracts into seeds, guides
+  or notebooks. Tutorial downloads are synthetic and generated; do not
+  hand-edit `dist/client/downloads/`.
 
 This is a maintainable editorial workflow, not an automatic web-ingestion or
 publication job. No recurring automation, provider call, account permission or

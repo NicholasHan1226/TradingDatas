@@ -1,6 +1,9 @@
 # Research: Featured and Topics
 
-Confirmed by Nicholas on 2026-08-30. Scope: PR #385 public-web candidate only.
+Confirmed by Nicholas on 2026-08-30. Implemented in PR #385 and merged to
+`main`. This file remains the Featured/Topics discovery contract. Guide count
+and offline downloads are in `research-reading-continuity-v5.md`. Merge is not
+a production publication claim.
 
 ## Source and reading model
 

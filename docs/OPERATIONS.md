@@ -607,6 +607,43 @@ SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke
 payload 目录执行 `sha256sum -c /absolute/fix/PAYLOADS.sha256`，再进入修复目录校验
 sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
 
+## 公开站 Research 静态页与教程下载
+
+`public-web` 的研究文献库（200 条记录、24 篇导读、3 个虚构教程）在 `main` 的 PR
+#385 已合入代码树。内容合同与维护流程见 `docs/product/RESEARCH_LIBRARY.md`。
+合入、CI 绿和本机 `npm run build` 都不能代替公开 Worker 发布与资源回读。
+
+发布前在 `public-web` 目录执行：
+
+```text
+npm run test:sites
+npm run build
+python3 scripts/verify-tutorial-notebooks.py
+```
+
+`npm run build` 在 Vite 与 Sites 准备之后生成 208 个带 bilingual
+title/description/canonical/OG 的目录 HTML，以及
+`dist/client/downloads/research/<tutorial-id>/` 下的 `inputs.json`、
+`example.mjs`、`tutorial-zh.ipynb` 与 `tutorial-en.ipynb`。不要手改 `dist/`。
+构建投影会从读者包中去掉内部 `evidence`/`verifiedAt`/`readiness`/`checks`。
+
+生产读回应分别打开精确当前 SHA 的：
+
+- `/research/` 与 `/research/?view=topics`；
+- 至少一条 `/research/<slug>/` 与一条 `/research/paths/<id>/`；
+- 三个 `/recipes/<id>/` 教程页；
+- 对应 `/downloads/research/<id>/inputs.json` 与所选语言 notebook。
+
+无 JavaScript 时静态 HTML 只保证分享元数据，不保证正文 SSR。斜杠形式以
+Worker/`auto-trailing-slash` 的目录 URL 为准；Vite preview 对无斜杠 URL
+可能只返回根 SPA，不能当作生产回读。教程锚点
+（`#tutorial-example` 等）依赖客户端在懒加载挂载后再滚动，最长等待 2s；
+离开该 hash 必须取消未完成的 restore，否则会滚到错误页面。
+
+回滚是 scoped revert 上一已验证公开站 SHA 并重新发布其构建产物，不是删除
+文献种子、教程示例或任何 SQLite/凭据。文献库变更不得触碰 collector、
+catalog/query、Token 或 Recipe/Feature 运行面。
+
 ## 发布门禁
 
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。

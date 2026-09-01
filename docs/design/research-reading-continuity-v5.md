@@ -1,8 +1,9 @@
 # Research continuity and offline tutorials
 
 Owner request: Nicholas, 2026-08-30; follow-up to PR #385 and
-`research-reading-depth-v4.md`. Scope is public research/editorial/tutorial UI,
-tests, documentation and generated assets; no data-plane or account change.
+`research-reading-depth-v4.md`. Merged to `main` in PR #385. Scope is public
+research/editorial/tutorial UI, tests, documentation and generated assets; no
+data-plane or account change. Merge is not production publication.
 
 ## Acceptance contract
 
