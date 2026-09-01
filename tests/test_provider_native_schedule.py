@@ -3616,6 +3616,34 @@ def test_session_minute_current_plan_precedes_other_current_plans(
     ]
 
 
+def test_cadence_class_selection_is_generic_and_excludes_other_cadences(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    now = datetime(2026, 7, 28, 9, 35, tzinfo=ZoneInfo("Asia/Shanghai"))
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {now.date(): True})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=now,
+        execute=False,
+        cadence_class="session_minute",
+    )
+
+    assert [item.dataset_id for item in result.plans] == [
+        "cn.dataset.rt_min",
+        "cn.dataset.rt_min_daily",
+    ]
+    assert all(item.cadence_class == "session_minute" for item in result.plans)
+
+
 @pytest.mark.parametrize("activation_wave", [None, "direct_wave_1"])
 def test_current_only_requires_pilot_wave_before_database_access(
     activation_wave: str | None,

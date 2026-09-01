@@ -198,7 +198,15 @@ closed。波次外的 active dataset 以
 `not_selected` 记录，global flock、planner/runtime budgets、retry、receipt 和公开输出
 redaction 均不变。
 
-省略 `--activation-wave` 时保持完整 automatic scheduler 行为；这是正式采集 unit 的唯一入口。
+省略 `--activation-wave` 时保持正式 automatic scheduler 行为；这是正式采集 unit 的唯一入口。
+dispatcher 在 `session_minute` 会话窗口开始前 50 分钟到窗口结束之间，仍从同一 registry 与
+schedule 运行同一个 runner，但用通用 `--cadence-class session_minute` 只选择该 cadence，避免
+耗时较长的低频波次跨过下一根 5 分钟快照；50 分钟覆盖 systemd 45 分钟硬超时并留 5 分钟
+退出余量。窗口外恢复完整 automatic scheduler。该选择不含
+dataset allowlist，不改变 entitlement、请求形状、串行 provider budget、SQLite/receipt 事务或
+全局 collection lock；新增 session-minute dataset 仍只能通过 registry/config 接入。每个真实
+交易窗口的连续 receipt 与认证 query/consumer readback 仍是稳定性证据，调度隔离本身不构成
+`stable` 声明。
 `pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。其中的
 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
