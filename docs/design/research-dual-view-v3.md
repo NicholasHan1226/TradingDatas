@@ -29,8 +29,14 @@ tickers, market statistics, publisher logos or fabricated report covers.
 - `/research` opens Featured for a fresh visit. `?view=topics` opens Topics;
   optional `topic`, `format` and one-based `page` parameters reproduce discovery.
   Unknown values fall back safely; out-of-range pages clamp to the final page.
+  After PR #423 the same URL also carries `depth=guide` (full guides only),
+  `materials=prepared` (non-empty related datasets/features/recipes), and
+  `sort=recent` (`readerReviewedAt`, then title). Subject clicks reset those
+  extra filters together with format and page.
 - Switching views preserves filters/page; choosing a subject or all literature
   resets format and page to avoid stale combinations. Format changes reset page.
+  Depth, materials, and sort also reset page. Topic counts still derive from
+  all records in the subject, independent of those filters.
 - Filter/view edits replace the current discovery history entry. Article
   navigation creates a normal history entry; native back and the reader's return
   link restore discovery. Refresh preserves URL filters/page, not scroll position.
@@ -38,9 +44,18 @@ tickers, market statistics, publisher logos or fabricated report covers.
   synchronization or per-entry cross-device storage.
 - The Topics index becomes a horizontally scrollable text index on small screens;
   semantic links remain keyboard reachable. Empty combinations offer a type reset.
+  That empty-state button still resets publication type only; depth, materials,
+  and sort stay until Clear filters or a subject click.
 - Language and appearance keep the existing Account controls and system defaults.
   Chinese guides keep original-language paper titles visible; neither language
   changes DOI/source/bookmark identity. Internal review records stay internal.
+
+## Increment after PR #423
+
+Current counts, module map, citation downloads and the `guideSectionCount`
+comparison fallback live in `docs/product/RESEARCH_LIBRARY.md`. This file
+keeps the Featured/Topics contract; it does not freeze 24 guides or omit the
+later query parameters.
 
 ## Verification and rollback
 

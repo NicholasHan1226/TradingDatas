@@ -47,13 +47,47 @@ npm run test:sites
 
 ## Research library
 
-The 2026-08-31 candidate contains 200 distinct external research materials with
+Maintainer contract: [`docs/product/RESEARCH_LIBRARY.md`](../docs/product/RESEARCH_LIBRARY.md).
+Current Git-merged snapshot (not a production publication claim): 200 works,
+140 guides (139 six-section; Dechow/Dichev four-section), 60 summary-only,
+85 comparison pairs, six synthetic `/recipes/:id` tutorials, 24 generated
+downloads, 211 static HTML entries, 140 deferred guide chunks.
+
+| Task | Command or file |
+| --- | --- |
+| Structural / editorial audit | `npm run audit:research` |
+| Bounded link or Crossref check | `npm run audit:research -- --links` or `--metadata` (read-only) |
+| Source-identity review (may write a report) | `node scripts/verify-research-sources.mjs` |
+| Catalog and site tests | `npm run test:sites` |
+| Project bodies + downloads | `npm run build` |
+| Offline notebook arithmetic | `python3 scripts/verify-tutorial-notebooks.py` |
+| Optional Jupyter kernel | `scripts/verify-tutorial-jupyter.py` in an isolated env |
+
+Guide bodies assemble in `src/researchReaderNotes.js` (later spreads win; last
+module is `researchBatchOne140.js`). Discovery rows come from
+`src/researchCatalog.js`. Production builds replace `researchGuideLoader.js`
+and strip article bodies via `scripts/research-public-projection.mjs`; keep
+`guideSectionCount` and `readerReviewedAt` on the public index so Topics
+`depth=guide` / `sort=recent` and the Featured eight-item shelf still work.
+Development keeps the in-process fallback. Do not hand-edit `dist/client`.
+Hash restore for lazy mounts cancels after 2s
+(`researchHistory.restoreLocationHashTarget`).
+
+Topics query parameters: `view`, `topic`, `format`, `page`, plus `depth=guide`,
+`materials=prepared`, and `sort=recent`. Subject clicks reset depth, materials,
+sort, format and page. Article pages can download kind-aware BibTeX/RIS and
+inject `ScholarlyArticle` JSON-LD. Guides without an authored comparison fall
+back to a same-topic summary-only companion using `guideSectionCount`.
+
+### Current library contents
+
+The 2026-09-01 candidate contains 200 distinct external research materials with
 Chinese/English editorial titles, orientations, data requirements and limitations.
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 120 bilingual guides: 119 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 80 records are
+There are 140 bilingual guides: 139 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 60 records are
 summary-only. The eight three-stage core journeys retain their 24 original works.
 `src/researchFiftyGuides.js` adds seven primary-source-located guides and
 `src/researchSixtyGuides.js` adds ten more; `src/researchSeventyGuides.js` and
@@ -109,8 +143,9 @@ checked primary-source exceptions. `src/researchCatalog.js` assembles the librar
 shared preparation checks and three curated reading paths. See
 [`RESEARCH_LIBRARY.md`](../docs/product/RESEARCH_LIBRARY.md) for acceptance rules.
 The reader page keeps internal source-verification and preparation statuses out
-of the public body. Source access, browser-local bookmarks and citation copying
-are first-screen actions; clipboard failures offer selectable citation text.
+of the public body. Source access, browser-local bookmarks, citation copying and BibTeX/RIS
+downloads are first-screen actions; clipboard failures offer selectable citation
+text. BibTeX type follows `paper.kind` (`article` / `book` / `techreport`).
 `researchReaderNotes.js` holds source-specific editorial additions and internal
 review references, without replacing bibliographic verification. Library filters,
 page and scroll position survive in-tab article navigation. Filters and page also
@@ -144,9 +179,11 @@ passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
 passages or author-issued supporting instructions. Subsequent batches above bring
-the current total to 120 guides, 119 with six sections. The latest modules are
+the current total to 140 guides, 139 with six sections. The v15 modules remain
 `researchMicrostructure120.js`, `researchCrypto120.js` and `researchMacro120.js`
-(seven, seven and six guides). They retain edition-specific limits and the existing
+(seven, seven and six guides). `researchBatchOne140.js` adds twenty orientation
+guides from public descriptions, not a second primary-source ledger. They retain
+edition-specific limits and the existing
 per-work preparation selections. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
@@ -154,9 +191,11 @@ certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
 Core articles show their position and previous/next reading with authored reasons;
-`src/researchConnections.js` adds 85 authored comparison pairs across 121 works,
-covering all 120 guides. Each article shows up to three bilingual
-comparison reasons, excluding its existing previous/next links. These are editorial
+`src/researchConnections.js` adds 85 authored comparison pairs across 121 works
+from the 120-guide freeze. Each article shows up to three bilingual
+comparison reasons, excluding its existing previous/next links. A later guide
+without a pair falls back to a summary-only companion; this is not corroboration.
+These are editorial
 contrasts, not inferred citation edges, agreement or evidence rankings. They work
 from discovery metadata during body loading/error and preserve the core reading
 order. Records without a sequence or a curated comparison retain same-topic links.
@@ -207,7 +246,8 @@ separates React and research-catalog cache chunks, lazy-loads tutorial execution
 211 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
 these generated `dist/client` entries together with the current hashed assets;
 do not hand-edit them. Static metadata supports link previews, not article-body
-SSR or verified search indexing. Existing Sites packaging and Worker stay intact.
+SSR or verified search indexing. Article pages also emit `ScholarlyArticle`
+JSON-LD. Existing Sites packaging and Worker stay intact.
 
 ### Read-only editorial maintenance
 
@@ -218,7 +258,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 80 summary-only records, repeated/short paragraphs and
+candidates (including the 60 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only

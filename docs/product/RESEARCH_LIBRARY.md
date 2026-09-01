@@ -1,6 +1,8 @@
 # External research library
 
-Last reviewed: 2026-08-31. Scope: the `public-web` PR candidate, not production.
+Last reviewed: 2026-09-01. Scope: the `public-web` Git-merged candidate after
+PR #423, not production publication. Counts below are locked by
+`public-web/tests/research-maintenance.test.mjs` and sibling identity tests.
 
 ## Purpose and acceptance
 
@@ -28,6 +30,188 @@ text/alternative data, macro-finance, Chinese/comparative markets and crypto.
 Foreign-market literature is comparative context, not an expansion of TD's live
 collection scope. The catalogue is not a systematic or exhaustive literature
 review, and inclusion is not endorsement of a conclusion or trading strategy.
+
+Batch-by-batch edition notes remain under Language and discovery. Use the
+snapshot and maintainer map below when editing code.
+
+## Current candidate snapshot
+
+These numbers are Git-merged contract facts. They are not a production
+publication claim, full-text review count, or Recipe/Feature activation.
+
+| Object | Count | Constraint |
+| --- | --- | --- |
+| Distinct works | 200 | Translation, digest, edition link, or path membership is not a new work |
+| Bilingual guides | 140 | 139 six-section; Dechow/Dichev stays four-section / abstract-bounded |
+| Summary-only records | 60 | Review candidates, not automatic defects |
+| Related-material links | 75 linked / 125 empty | Explicit empty object; no topic fallback |
+| Comparison pairs | 85 across 121 works | Symmetric, authored titles; display at most three |
+| Core journeys | 8 × 3 = 24 works | Additional guides do not add a fourth stage |
+| Question routes | 3 | Company topic only; nine existing works |
+| Curated paths | 3 | `/research/paths/{pit-fundamentals,market-microstructure,announcement-events}` |
+| Preparation tutorials | 6 | `/recipes/:id`; synthetic local examples only |
+| Offline downloads | 24 | 6 JSON + 6 JS + 12 notebooks, generated at build |
+| Static HTML entries | 211 | 200 records + 3 paths + 6 tutorials + 2 index routes |
+| Deferred guide chunks | 140 | One production chunk per guide; never merged into the entry graph |
+
+Display subjects in `researchDiscovery.js`: `all`, `asset-pricing`,
+`market-microstructure`, `corporate-fundamentals`, `a-share-market`,
+`alternative-data`, `crypto-markets`, `research-methods` (also stores
+`quant-methods`), `macro-finance`. Pages of 12. Featured and Topics share the
+same 200 identities.
+
+The latest twenty guides live in `researchBatchOne140.js`. They are
+orientation records bounded to each work's public description or official
+report plus the registered bibliographic record. They do not add table-level
+results, numerical replication, or a claim that the earlier nine
+`check_reading_scope` audit flags were content defects; the current auditor
+reports none of that code.
+
+## Maintainer map
+
+Edit the source module that owns the object. Do not hand-edit `dist/client`.
+Later object-spread keys win.
+
+| Change | File | Notes |
+| --- | --- | --- |
+| New work identity | `researchSeeds.js` or `researchLegacy.json` | Needs Crossref or `researchSourcePages.json` before assemble |
+| Guide body | batch module imported by `researchReaderNotes.js` | Key is the canonical English title |
+| Related materials | guide `related`, else `researchGuideMaterials.js`, else `researchSummaryMaterials.js` | `{}` suppresses disclosure |
+| Comparison pair | `researchConnections.js` and its expansion modules | Titles must match catalog identities |
+| Topic journey | `researchJourneys.js` | Three guides each; reasons are bilingual |
+| Question route | `researchQuestionRoutes.js` | Existing titles only; no new routes |
+| Tutorial copy | `preparationTutorials.js` / `preparationTutorialExpansion.js` | Also add `productManifest.js` recipe row |
+| Tutorial code | `tutorialExamples.js` + `scripts/tutorial-python/<id>.py` | Register `pythonFunctionNames` in `build-tutorial-downloads.mjs` |
+| Citation download | `researchCitationFormats.js` | Kind-aware BibTeX; RIS maps books and industry reports only |
+| Public catalog projection | `scripts/research-public-projection.mjs` | Build strips bodies and QA profiles; keeps `guideSectionCount` and `readerReviewedAt` |
+| Structural audit | `scripts/audit-research-content.mjs` | Read-only; `npm run audit:research` |
+
+Guide merge order in `researchReaderNotes.js`:
+
+```text
+researchEditorial
+-> researchDeepReads
+-> researchGuideDepthExpansion
+-> researchAdditionalGuides
+-> researchFundamentalsMicrostructureGuides
+-> researchMethodsMarketsGuides
+-> researchCorporateGuides
+-> researchFiftyGuides … researchHundredGuides
+-> researchMicrostructure120 / researchCrypto120 / researchMacro120
+-> researchBatchOne140
+```
+
+### Discovery URL and filter contract
+
+`/research` opens Featured. `?view=topics` opens Topics. Optional query
+parameters:
+
+| Param | Values | Effect |
+| --- | --- | --- |
+| `topic` | subject id | Unknown values fall back to `all`; stored `quant-methods` displays as `research-methods` |
+| `format` | a catalog `kind` | Unknown values fall back to `all` |
+| `depth` | `guide` | Keep rows with `guideSectionCount >= 4` |
+| `materials` | `prepared` | Keep rows with a non-empty datasets/features/recipes selection |
+| `sort` | `recent` | Order by `readerReviewedAt` descending, then `sourceTitle` |
+| `page` | 1-based | Out of range clamps to the last page; invalid values become page 1 |
+
+Switching Featured/Topics preserves filters. Choosing a subject (or all
+literature) resets format, depth, materials, sort, and page — subject index
+`href`s must encode that reset, not carry the current query. Changing format,
+depth, materials, or sort resets page. Topic counts stay independent of
+format/depth/materials. Suggested journeys and company question routes appear
+only on an unfiltered first page (`kind`, `depth`, and `materials` all
+default). Clearing filters also restores library order. The empty-state
+button currently resets publication type only.
+
+Featured shows the China-market lead story, two path cards, then a shelf of
+eight recently guided works (`guideSectionCount >= 4`, same `recent` order).
+The shelf is navigation, not a ranking or endorsement.
+
+### Article actions, comparisons, and structured data
+
+Article pages keep Read original, Bookmark, Copy citation, and Copy link.
+They also download `{id}.bib` / `{id}.ris` in the browser. BibTeX uses
+`@article` / `@book` / `@techreport` from `paper.kind` (`working-paper` and
+`industry-research` are technical reports). RIS uses `JOUR` / `BOOK` /
+`RPRT`; working papers stay `JOUR`. Clipboard failure still exposes
+selectable citation or URL text. These files are local downloads, not a
+citation API.
+
+Authored comparisons remain 85 pairs. A guide with no pair falls back to one
+same-topic summary-only companion, then any summary-only companion, using
+`guideSectionCount` rather than stripped `readingNotes` on the public index.
+The fallback reason states that the two works do not corroborate each other.
+Missing catalog titles fail closed.
+
+`pageMetadata.js` injects `ScholarlyArticle` JSON-LD on article routes
+(`headline` is `sourceTitle`, `sameAs` is the primary source URL). This is
+share-preview structured data, not proof of search-engine indexing.
+
+### Dev versus production build
+
+- Development `researchGuideLoader.js` reads the full catalog and reader notes
+  in-process.
+- `npm run build` replaces that loader with one dynamic import per guide and
+  projects discovery rows without `readingNotes`. Keep `readerReviewedAt` in
+  `publicResearchFields`; recently-guided sort and the Featured shelf need it
+  after projection. `inspectResearchChunks` fails if bodies are merged,
+  missing, or reachable from the entry graph.
+- `ResearchArticle.jsx` loads a body only when `guideSectionCount > 0` and the
+  projected row has no inline notes. Leaving the article marks the observer
+  inactive so a late response cannot overwrite the current paper.
+- Section hashes (`#research-section-N`) restore after the body is ready.
+  Hash restore (`researchHistory.restoreLocationHashTarget`) waits at most 2s
+  for a lazy mount and must cancel on leave.
+
+### Add a guide
+
+1. Confirm the work already exists in the 200-record catalog. Do not invent a
+   new identity to deepen an existing paper.
+2. Add a six-section bilingual record (or keep Dechow/Dichev at four) in the
+   current batch module, keyed by the exact catalog title.
+3. Import and spread it last in `researchReaderNotes.js`.
+4. Add comparisons by catalog title when an authored contrast is intended.
+   Guides without a pair use the summary-only fallback; do not fuzzy-match.
+5. Choose materials explicitly. Prefer `{}` over a convenient topic default.
+6. Run `npm run audit:research`, `npm run test:sites`, and `npm run build`.
+   Browser acceptance remains a separate gate.
+
+### Add a tutorial
+
+1. Add bilingual copy under `preparationTutorials` / expansion.
+2. Implement a deterministic function and fixture in `tutorialExamples.js`.
+3. Add a matching standard-library Python file and `pythonFunctionNames` entry.
+4. Add a `product_definition` row in `productManifest.js`. Publishing the
+   tutorial does not activate the Recipe/Feature product plane.
+5. Rebuild so `dist/client/downloads/research/<id>/` is generated. Do not edit
+   those notebooks by hand.
+6. `python3 scripts/verify-tutorial-notebooks.py` is the default offline check.
+   `scripts/verify-tutorial-jupyter.py` is optional isolated-kernel acceptance
+   and does not rewrite shipped files.
+
+### Pitfalls
+
+- `activation`, HTTP 200, Crossref registration, or a matching PDF
+  `Content-Type` is not full-text review, redistribution rights, or live data.
+- `on_demand` and Recipe publication are not automatic collection.
+- `--refresh` on Crossref is not a routine pass; audit `--metadata` only
+  reports publisher drift.
+- `verify-research-sources.mjs` may write `research-source-review.json` and
+  exit nonzero. The read-only auditor never writes or advances source dates.
+- Download URLs exist only after `npm run build`. The Vite dev server does not
+  serve `dist/client/downloads`.
+- Internal evidence scopes, check dates, and preparation status stay out of
+  public article prose. `internal_note_in_prose` fails the auditor.
+- Do not treat `docs/design/research-reading-depth-v4.md` “twelve guides”,
+  `docs/design/research-120-guides-v15.md` “120 guides”, or earlier batch
+  counts as current. Current counts live in this page.
+- `sort=recent` is guide-review time, not publication year. Production
+  discovery cannot sort recently guided works unless `readerReviewedAt`
+  survives public projection.
+- Comparison fallback must key off `guideSectionCount`. Public index rows
+  omit `readingNotes`, so `!readingNotes` would treat every projected guide
+  as summary-only.
 
 ## Sources and verification
 
@@ -73,8 +257,9 @@ reader notes and their internal review references live in `researchReaderNotes.j
 guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
-adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 120 guides: 119 have six bilingual sections with source locators;
+adds two six-section guides for existing Amihud and Novy-Marx records. After
+the v15 freeze the library had 120 guides; PR #423 raised that to 140. 139
+have six bilingual sections with source locators;
 Dechow/Dichev remains a four-section,
 abstract-based orientation pending usable full text. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
@@ -113,8 +298,8 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 120 full-text reviews; 80 works
-remain summary-only.
+This does not certify 200 full-length guides or 140 full-text reviews; 60 works
+remain summary-only after the PR #423 orientation batch.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
 document pairing, parsing and similarity definitions, and in governance with
@@ -156,10 +341,16 @@ The next twenty in `researchMicrostructure120.js`, `researchCrypto120.js` and
 `researchMacro120.js` add seven microstructure, seven crypto and six macro guides.
 Their explicit material selections remain unchanged; no new original-sample or
 replication claim is introduced. `researchComparisons120.js` adds twenty pairs,
-bringing the total to 85 across 121 works and covering every guide after exclusions.
-Current source ledger and independent acceptance packet:
-`docs/design/research-120-guides-v15.md`. Blocked browser checks, pending Datas PM
-review and predecessor integration are not represented as release acceptance.
+bringing the total to 85 across 121 works and covering every guide after exclusions
+in that freeze. Current source ledger for those twenty:
+`docs/design/research-120-guides-v15.md`. PR #423 then added twenty orientation
+guides in `researchBatchOne140.js` (momentum, event reports, 13F access,
+Binance public futures docs, valuation/habit theory, multiple-testing and
+volatility papers). Those guides stay inside public descriptions; they do not
+extend the v15 primary-source ledger or add comparison pairs. Guides without
+an authored pair use the summary-only companion fallback. Blocked browser
+checks, pending Datas PM review and predecessor integration are not
+represented as release acceptance.
 Daily high/low and illiquidity guides link to daily data rather than minute bars;
 text guides link to document versioning. No available order-book, governance,
 token-adoption or general model-fitting tutorial is implied. Related materials
@@ -172,7 +363,8 @@ stable. Source sites/full text may be in another language; this is disclosed.
 
 The confirmed reading views are Featured and Topics. Featured presents an editorial
 recommendation and question-led paths; Topics exposes the complete library through
-eight display subjects and publication-type filtering, in pages of 12. The existing
+eight display subjects plus publication-type, full-guide, data-material and
+recently-guided filters, in pages of 12. The existing
 quant-methods and research-methods records share one display subject without
 changing their stored identity. All three four-record reading paths stay reachable.
 Global search covers both languages across all records; counts derive from records.
@@ -185,18 +377,20 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 120 expanded guides below the lead story.
+counts. Featured also exposes an eight-item recently guided shelf below the
+lead story, not a dump of all 140 guides.
 The eight core sequences retain their original 24 distinct guides; additional
 guides do not invent a fourth stage or change original sequence membership.
 `researchConnections.js` supplies 85 explicit, symmetric editorial comparison
-pairs across 121 works, covering all 120 guides. They contrast definitions,
+pairs across 121 works from the 120-guide freeze. They contrast definitions,
 inputs or methods; they do not assert citations, agreement, replication or evidence
 ranking. The reader shows at most three comparisons with bilingual reasons and
 excludes already displayed previous/next sequence links. Matching uses stable
 catalog identities resolved from authored titles; missing matches fail closed.
 Metadata is sufficient, so comparison navigation remains available while article
-text is loading or has failed. Without a sequence or curated comparisons, the
-existing same-topic fallback remains. No new route, API or stored preference.
+text is loading or has failed. A guide with no authored pair falls back to a
+same-topic summary-only companion keyed by `guideSectionCount`. That fallback
+is not corroboration. No new route, API or stored preference.
 Three supplementary corporate question routes in `researchQuestionRoutes.js`
 connect nine existing works around earnings quality, company comparison and
 financial distress. They appear as closed disclosures on the first unfiltered
@@ -224,11 +418,13 @@ are redistributed. See `docs/design/research-reading-depth-v4.md` and
 `docs/design/research-depth-completion-v7.md`.
 
 View changes preserve filters/page. Selecting a subject or all literature resets
-format/page; format changes reset page. URL parameters reproduce view, topic, format
+format, depth, materials, sort and page; format/depth/materials/sort changes
+reset page. URL parameters reproduce view, topic, format, depth, materials, sort
 and page across reload/share; each in-tab library history entry retains its own
 scroll position, and explicit article return restores the latest library view.
 This is not synchronized reading history. Clipboard failure exposes selectable
-citation text instead of claiming success. See `docs/design/research-dual-view-v3.md`.
+citation text instead of claiming success. BibTeX/RIS downloads are local files
+named from the stable record id. See `docs/design/research-dual-view-v3.md`.
 
 Article share links use stable production canonical URLs. Build-generated HTML
 for 200 records, three paths, six tutorials and both index routes supplies
@@ -238,7 +434,8 @@ support, not server-rendered article bodies or proof of search-engine indexing.
 The build omits internal evidence/check profiles from the public catalogue;
 source records and validation still retain them. Tutorials load on demand.
 Production research discovery also omits body paragraphs and expanded-guide
-limitations while retaining both languages and `guideSectionCount`. Article
+limitations while retaining both languages, `guideSectionCount` and
+`readerReviewedAt`. Article
 bodies load in one bilingual module per guide, independent of locale choice.
 Loading and retryable failure keep identity/source actions visible; cancelled
 article requests cannot overwrite the current article. Valid section fragments

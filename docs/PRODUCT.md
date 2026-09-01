@@ -83,7 +83,8 @@ entries continue into the full Recipe contract below.
 `Research` is a primary learning area, but not a TradingDatas research desk. It
 indexes external papers, industry research, and market-structure cases under a consistent platform
 taxonomy such as asset pricing, market microstructure, corporate fundamentals,
-alternative data, quantitative methods, and A-share markets. Each record keeps
+alternative data, quantitative methods, A-share / comparative markets,
+crypto markets, and macro / fixed income. Each record keeps
 external authorship and source attribution. TradingDatas may map a paper to the
 raw data materials needed to reproduce or extend it, but does not adopt the
 paper's conclusions. The reading path is question -> evidence/data -> method
