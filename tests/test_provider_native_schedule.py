@@ -1100,7 +1100,9 @@ def test_successful_event_window_waits_for_minimum_interval() -> None:
             {
                 (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
                     (history,),
-                    (cadence_planner._Fact("20260901", {}, receipt_id),),
+                    # Append-only facts keep their original provenance when a
+                    # later successful event observation is byte-identical.
+                    (cadence_planner._Fact("20260901", {}, "receipt:older-fact"),),
                 )
             }
         )
