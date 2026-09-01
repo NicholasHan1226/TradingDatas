@@ -622,7 +622,11 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 identity_gateway_unavailable`，再按获批范围重新发布上一已验证公开站 SHA。当前前端不得
 回退为 direct-bearer 或浏览器存储密钥；同源清 Cookie 仍可用。回滚到旧版时需明确其
 旧兼容路径风险，不能把降级当成功。不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
-SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke 和审计仍是独立后续发布。
+SQLite。邮箱身份候选已在同一 Worker 内实现服务端 session revoke，但
+`EMAIL_LOGIN_ENABLED` 与 `IDENTITY_RETENTION_ENABLED` 仍为 false；跨设备 session
+list 与审计仍未交付。回滚密钥桥接不得删除 `IDENTITY_DB`、Resend 域名或金融
+SQLite。邮箱与密钥两条 `503` 不得互相冒充，见
+[Identity troubleshooting](#identity-troubleshooting-not-production-enablement)。
 
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
 `PAYLOADS.sha256`，再用独立 sidecar 记录该清单的 SHA-256；交接前必须分别执行
@@ -738,6 +742,40 @@ and this Resend domain, after checking that no sender has begun using them.
 Do not delete unrelated DNS records, the root Worker binding, existing Resend
 domains, website sessions, customer keys or data-plane services. DNS rollback
 does not authorize credential rotation or deletion of any account data.
+
+### Identity troubleshooting (not production enablement)
+
+The public Worker owns three different account failures. Do not treat them as
+one outage, and do not infer email login from a key-bridge success.
+
+| JSON `error` | Plane | Typical cause |
+| --- | --- | --- |
+| `identity_gateway_unavailable` | Key cookie bridge | Missing `SESSION_ENCRYPTION_KEY` or `ACCOUNT_API_BASE` |
+| `email_login_unavailable` | Email challenge/verify | `EMAIL_LOGIN_ENABLED` / `IDENTITY_RETENTION_ENABLED` not both `"true"`, or pepper/Resend/D1 missing |
+| `identity_unavailable` | Email cookie or send/verify | Missing D1, missing `CF-Connecting-IP`, or identity exception |
+| `delivery_unavailable` | Resend | Provider timeout, `redirect: manual` 3xx, or non-OK; unaccepted challenge is deleted |
+| `identity_retention_incomplete` / cron failure | Hourly D1 job | Flag on but batch leftover (`backlog`) or maintenance exception; Cloudflare retries the failed scheduled invocation |
+
+Local pitfalls:
+
+- `npm run dev` (Vite) does not serve `/api/account/*`. Use
+  `npm run build` then `node scripts/preview-email-identity.mjs` (loopback
+  `:5195`, in-memory D1, `@example.com` only) or the optional Miniflare check.
+  Miniflare is **not** a `package.json` dependency; pass an installed module
+  path to `node scripts/check-email-runtime.mjs <miniflare-index.js>`.
+- Challenge/verify without Cloudflare's overwritten `CF-Connecting-IP` returns
+  `503 identity_unavailable`. The loopback preview injects that header; raw
+  curl against the Worker does not. Do not add an `X-Forwarded-For` bypass.
+- Non-GET calls need `Origin` equal to the request origin or they return
+  `403 origin_not_allowed`.
+- Email sign-out/deletion need `X-TD-Identity` matching the current `user_id`.
+  A stale tab is `409 identity_changed`, not a successful revoke.
+- Login UI copy collapses most 5xx into a generic send/verify failure. Read
+  the JSON `error` field. Error table: [API.md](API.md#independent-email-identity-candidate).
+
+The scheduled handler logs `{event:"identity_retention", state, deleted, pending}`
+counts/booleans only. A leftover pending row fails the invocation; that is not
+a deletion SLA and not a reason to drop the additive table.
 
 ## 发布门禁
 

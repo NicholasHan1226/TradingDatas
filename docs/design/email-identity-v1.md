@@ -49,7 +49,7 @@ the live service; a later exact-source release must verify secret preservation.
 | `POST /api/account/email/challenge` | `{email, locale}`; 202 with opaque `challenge_id`, `delivery: accepted`, `expires_in: 600`, `retry_after: 60` only after provider acceptance. |
 | `POST /api/account/email/verify` | `{email, challenge_id, code}`; verify once, create/reuse identity and create independent session. |
 | `GET /api/account/me` | With email cookie, verified identity and `not_subscribed`; without it preserve existing key bridge. |
-| `DELETE /api/account/session` | With email cookie revoke server-side session, then clear both email and legacy cookies. |
+| `DELETE /api/account/session` | With email cookie, matching `X-TD-Identity`, revoke the D1 session then clear both cookies. Mismatch is `409 identity_changed`; D1 outage is `503`, never a successful revoke. |
 | `POST /api/account/profile/deletion` | Current email identity only; `{confirmation: "DELETE"}`, same origin, verification within ten minutes. Atomically accept explicit deletion, disable identity and revoke all email sessions; 202 is acceptance, not completed purge. |
 
 An email projection contains `kind: email`, opaque `user_id`, verified `email`,
@@ -179,9 +179,18 @@ module beside the existing Worker; test harnesses and schema are not served.
 `node scripts/preview-email-identity.mjs` starts loopback-only port 5195 with an
 in-memory identity store and synthetic `@example.com` messages. Open `/login`
 and `/__test__/mail` to review; no external mail is sent. Restart clears fixtures.
-An optional `node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js`
+The preview injects `CF-Connecting-IP`; Vite `npm run dev` does not serve these
+routes. An optional `node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js`
 runs the same Worker against local workerd/D1 with every outgoing request
-intercepted. Neither harness is production evidence or a deployment command.
+intercepted. Miniflare is not a repository dependency. Neither harness is
+production evidence or a deployment command.
+
+JSON `error` codes, cookie names and request examples live in
+[API.md](../API.md#independent-email-identity-candidate). Operator distinction
+between key-bridge `identity_gateway_unavailable` and email
+`email_login_unavailable` / `identity_unavailable` is in
+[OPERATIONS.md](../OPERATIONS.md#identity-troubleshooting-not-production-enablement).
+The Login UI collapses most 5xx into generic send/verify copy; read the JSON.
 
 References: [D1 database API](https://developers.cloudflare.com/d1/worker-api/d1-database/),
 [Resend email API](https://resend.com/docs/api-reference/emails/send-email).

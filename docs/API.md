@@ -400,9 +400,9 @@ credential-containment bridge，不是邮箱身份库，也不改变 Agent 继�
   同站 cookie 恢复上游 credential，并分别代理到当前 Customer Portal API。
 - `POST /api/account/keys`、`PATCH /api/account/keys/{key_id}`：要求同源 `Origin`，保持
   原有同租户、非管理员 scope、一次显示和不可停用当前 key 的后端约束。
-- `DELETE /api/account/session`：要求同源 `Origin`，清除当前浏览器 cookie。当前桥接为
-  短期无状态会话；完整的跨设备 session list、单会话服务端 revoke 与审计仍属于后续
-  identity store 合同，不能由清 Cookie 冒充。
+- `DELETE /api/account/session`：要求同源 `Origin`，清除当前浏览器 cookie。密钥桥接
+  仍是短期无状态会话，清 Cookie 不等于跨设备 revoke。邮箱身份候选在专用 D1 上有
+  服务端 session revoke，但默认关闭，不能由密钥桥接冒充已启用。
 
 同源 DELETE 清 Cookie 不依赖上游或密钥配置，故网关配置故障时仍可退出。上游 401
 也会清除当前 Cookie；403、429 与服务故障不能冒充成功或静默降级。代理按路径约束
@@ -414,25 +414,89 @@ Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 `sessionStorage` credential 在启动时移除，旧直连用户需重新登录；服务端 Token 不变。
 前端请求设 12 秒超时，登录单飞，账户变化后的迟到结果不得恢复前一账户/新密钥。
 `me` 验证身份与 `usage` 可用性分离，用量服务故障仅展示可重试提示。页面重新可见时
-验证现有会话；非后台轮询。此桥接仍不等于手机/邮箱身份库或可独立撤销的持久会话。
+验证现有会话；非后台轮询。此桥接仍不等于已启用的邮箱身份库。
 
 ### Independent email identity candidate
 
-The existing Login/Account also has a local-only, separately gated email-identity
-implementation. Its control-plane routes are `GET /api/account/auth-methods`,
-`POST /api/account/email/challenge`, and `POST /api/account/email/verify`.
-Email sessions reuse `/api/account/me` and `DELETE /api/account/session`, but use
-a distinct opaque cookie with server-side revocation in a dedicated identity
-store. Unlike legacy key-cookie clearing, email sign-out requires confirmation
-from that store; a store outage cannot be reported as successful revocation.
+The existing Login/Account also has a separately gated email-identity
+implementation in `public-web/worker/email-identity.js`. It is not live: both
+`EMAIL_LOGIN_ENABLED` and `IDENTITY_RETENTION_ENABLED` are `"false"` in
+`public-web/wrangler.jsonc`. `GET /api/account/auth-methods` reports
+`{"email": true, "phone": false}` only when those flags are true **and**
+`IDENTITY_DB`, `IDENTITY_PEPPER` (≥32 chars) and `RESEND_API_KEY` are present.
+The UI then shows the email form; otherwise it collects no contact details.
 
-The only email-account state implemented is verified and `not_subscribed`, with
-no tenant, data grant, usage or API key access. This does not change catalog/query
-or existing Portal authentication. Configured readiness is not delivery evidence;
-missing configuration keeps email login unavailable. Detailed request/response,
-limits, failure and release contracts: [Email identity v1](design/email-identity-v1.md).
-No production storage migration, secret provisioning or email activation is
-asserted by this API description.
+`handleEmailIdentity` runs first for every `/api/account/*` request. A present
+`td_identity_session` cookie never falls through to the key bridge. With no
+email cookie the handler returns `null` and the AES-GCM `td_account_session`
+bridge continues, except that configured email login answers cookie-less
+`GET /api/account/me` with `401 unauthenticated` instead of the key gateway.
+
+| Cookie | Store | Meaning |
+| --- | --- | --- |
+| `td_identity_session` | D1 `IDENTITY_DB` SHA-256 of 256-bit token | Email session; 8h absolute; HttpOnly; Secure; SameSite=Strict; Path=/api/account |
+| `td_account_session` | AES-GCM blob of the access key | Legacy key bridge; same Path/flags; not server-revocable |
+
+Successful email verify sets the identity cookie and **clears** the key cookie.
+Email `DELETE /api/account/session` revokes the D1 row then clears **both**
+cookies; it also requires `X-TD-Identity` to match the current `user_id` or
+returns `409 identity_changed`. A D1 outage during email sign-out is `503`,
+never a successful revoke. Key-only sign-out still only clears the key cookie.
+
+Challenge/verify bodies are JSON, 4 KiB streaming limit (the key bridge remains
+16 KiB). Mutations need an exact same-origin `Origin`. Resend is called with
+`redirect: manual` and an 8s timeout; 3xx or non-OK deletes the unaccepted
+challenge and returns `503 delivery_unavailable`. Provider `202 accepted` is
+not inbox delivery.
+
+```http
+POST /api/account/email/challenge
+Origin: https://tradingdatas.com
+Content-Type: application/json
+
+{"email":"you@example.com","locale":"zh"}
+```
+
+```json
+{"challenge_id":"…uuid…","delivery":"accepted","expires_in":600,"retry_after":60}
+```
+
+```http
+POST /api/account/email/verify
+Origin: https://tradingdatas.com
+Content-Type: application/json
+
+{"email":"you@example.com","challenge_id":"…uuid…","code":"12345678"}
+```
+
+A successful verify returns `{identity, capabilities}` with
+`kind: "email"`, `email_verified: true`, `tenant_id: null`,
+`subscription_state: "not_subscribed"` and `data_categories: []`. There is no
+fake tier, quota or usage. Catalog/query stay bearer-token data APIs.
+
+| `error` | Status | When |
+| --- | --- | --- |
+| `email_login_unavailable` | 503 | Challenge/verify while the shared enable+retention+secret gate is off |
+| `identity_unavailable` | 503 | Missing `IDENTITY_DB`, missing `CF-Connecting-IP`, or unhandled identity exception. Not the key-bridge `identity_gateway_unavailable` |
+| `identity_gateway_unavailable` | 503 | Key bridge only: missing `SESSION_ENCRYPTION_KEY` / `ACCOUNT_API_BASE` |
+| `delivery_unavailable` | 503 | Resend timeout, 3xx, non-OK, or invalid provider id; challenge row removed if not yet accepted |
+| `invalid_request` | 400 | Non-JSON, oversize body, or email that fails conservative ASCII canonicalization |
+| `invalid_code` | 400 | Malformed/expired/consumed code, five attempts exhausted, or user insert failed closed |
+| `rate_limited` | 429 | Fixed D1 windows; `Retry-After: 60`. Global 1000/10min is admitted atomically with the per-IP send (10/h) or verify (40/10min) bucket |
+| `origin_not_allowed` | 403 | Non-GET without matching `Origin` |
+| `unauthenticated` | 401 | Missing/revoked/expired/disabled email session |
+| `sign_out_first` | 409 | `POST /api/account/session` while an email cookie is present |
+| `subscription_required` | 403 | Email session hitting usage/keys **without** a connected data key (continuity candidate) |
+| `identity_changed` | 409 | `X-TD-Identity` missing or not the current `user_id` on email sign-out or deletion |
+| `recent_sign_in_required` | 403 | Deletion when the session is older than ten minutes |
+| `confirmation_required` | 400 | Deletion body is not `{"confirmation":"DELETE"}` |
+| `deletion_unavailable` | 503 | Deletion while `IDENTITY_RETENTION_ENABLED` is not `"true"` |
+
+The browser client collapses most 5xx/unknown failures to generic
+`account_unavailable` / send-failed copy. Operators must read the JSON `error`
+from `/api/account/*`, not the Login UI string. Limits, retention and release
+gates: [Email identity v1](design/email-identity-v1.md). This description does
+not assert production activation.
 
 The local candidate also adds `POST /api/account/profile/deletion`: same-origin
 JSON `{confirmation: "DELETE"}`, `X-TD-Identity` matching the current email identity,

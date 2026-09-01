@@ -94,6 +94,7 @@ API 只读 SQLite，不同步调用上游，不回退文件、旧数据库或 pr
 - [当前状态](STATUS.md)
 - [架构](docs/ARCHITECTURE.md)
 - [API 合同](docs/API.md)
+- [邮箱身份候选（默认关闭）](docs/design/email-identity-v1.md)
 - [运行与发布](docs/OPERATIONS.md)
 - [clean-slate 决策](docs/adr/ADR-0010-tradingdatas-clean-slate.md)
 - [事实权威、历史决策与复盘入口](docs/AUTHORITY_AND_HISTORY.md)

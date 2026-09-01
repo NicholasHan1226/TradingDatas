@@ -28,6 +28,17 @@ Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具�
 
 公共路由和内部部署路径在实现前由 `docs/design/public-data-product-system-v1.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
 
+公开站 Account 的邮箱身份是独立的控制面，不是 data plane 的一部分：
+
+```text
+browser Login/Account
+  -> public-web Worker /api/account/*
+  -> dedicated Cloudflare D1 IDENTITY_DB  (email users/challenges/sessions)
+  -> Resend (sign-in mail only, when EMAIL_LOGIN_ENABLED is true)
+```
+
+该 D1 不得与金融事实 SQLite、ingest receipts 或 API-token 库共用。邮箱验证只产生 `not_subscribed` 投影，不能签发 catalog/query 授权、关联既有租户或创建订单。浏览器密钥会话仍走同站 AES-GCM cookie 桥接到 Customer Portal；两条会话使用不同 cookie，邮箱 cookie 在场时不得回退到密钥桥接。候选配置把 `EMAIL_LOGIN_ENABLED` 与 `IDENTITY_RETENTION_ENABLED` 固定为 false；配置存在、域名 verified 或本地 harness 通过都不是生产启用证据。合同见 [Email identity v1](design/email-identity-v1.md) 与 [API.md](API.md#independent-email-identity-candidate)。
+
 ## 权威顺序
 
 1. dataset registry：数据集身份、provider binding、schema、cadence、entitlement 和 query policy；

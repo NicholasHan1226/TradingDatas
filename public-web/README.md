@@ -15,6 +15,12 @@ npm install
 npm run dev
 ```
 
+`npm run dev` is the Vite UI only. It does **not** serve `/api/account/*`,
+Resend, or D1. Access-key and email login against those routes need a Worker
+harness after `npm run build` (`scripts/login-qa-server.mjs` or
+`scripts/preview-email-identity.mjs`). Hitting Login in Vite will look like
+email is unavailable (`auth-methods` never returns `email: true`).
+
 The prototype includes the confirmed public-home visual direction, responsive
 Data/Features/Recipes/Research/Pricing/Docs navigation, a task-oriented Data catalog with
 the connected-interface index, collection-history ledger, reviewed candidate-source landscape and phased integration roadmap, and
@@ -331,17 +337,24 @@ purchase-flow review while another login harness is running. Binding stays loopb
 Email identity review: after building, run `node scripts/preview-email-identity.mjs`
 and open `http://127.0.0.1:5195/login`. Use an `@example.com` fixture; codes appear
 only in the local synthetic mailbox at `/__test__/mail`, never in a real inbox.
-The in-memory store resets on restart; no production secrets are used.
+The harness injects `CF-Connecting-IP` and enables both identity flags in memory.
+Restart clears fixtures; no production secrets are used. Direct curl against a
+real Worker without that header returns `503 identity_unavailable`. Non-GET
+calls need a matching `Origin`. Email sign-out/deletion also send
+`X-TD-Identity`; a stale tab is `409 identity_changed`.
 `/__test__/viewport?width=390` or `?width=768` renders a nested Account viewport
 for responsive review; it is local-only and uses the same synthetic session.
-Optional
-local workerd/D1 verification and the production approval gates are documented in
-[Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
-harness are not public assets. The dedicated remote account DB has been initialized;
-the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
-`EMAIL_LOGIN_ENABLED="false"`. On August 31, sender/pepper secrets were privately
-prepared in an **undeployed** Worker version; the live version and identity binding
-were not changed. See the [private provisioning checkpoint](../docs/reports/2026-08-31-identity-private-provisioning.md)
+Optional local workerd/D1 verification uses
+`node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js`.
+Miniflare is not a shipped dependency. Production approval gates are in
+[Email identity v1](../docs/design/email-identity-v1.md); JSON `error` codes are
+in [API.md](../docs/API.md#independent-email-identity-candidate). The schema
+file and review harness are not public assets. The dedicated remote account DB
+has been initialized; the candidate `wrangler.jsonc` binds it as `IDENTITY_DB`
+but explicitly keeps `EMAIL_LOGIN_ENABLED="false"`. On August 31, sender/pepper
+secrets were privately prepared in an **undeployed** Worker version; the live
+version and identity binding were not changed. See the
+[private provisioning checkpoint](../docs/reports/2026-08-31-identity-private-provisioning.md)
 for the exact version and release gates. Do not deploy that old-code preparation
 version as the email implementation or assume its secrets survive a later upload.
 SMS and payments stay unavailable.
