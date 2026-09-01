@@ -271,7 +271,6 @@ class DatasetRuntimeEvidence:
     last_success_provider_config_hashes: tuple[tuple[str, str], ...] = ()
     current_receipt_ids: tuple[str, ...] = ()
     last_success_receipt_ids: tuple[str, ...] = ()
-    failed_cohort_success_receipt_ids: tuple[str, ...] = ()
     as_of_success_receipt_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -313,10 +312,6 @@ class DatasetRuntimeEvidence:
         for name, receipt_ids in (
             ("current_receipt_ids", self.current_receipt_ids),
             ("last_success_receipt_ids", self.last_success_receipt_ids),
-            (
-                "failed_cohort_success_receipt_ids",
-                self.failed_cohort_success_receipt_ids,
-            ),
             ("as_of_success_receipt_ids", self.as_of_success_receipt_ids),
         ):
             if type(receipt_ids) is not tuple or any(
@@ -3586,11 +3581,6 @@ def project_dataset_runtime_evidence(
         last_success_receipt_ids = tuple(
             sorted({receipt.receipt_id for receipt in last_success_execution})
         )
-    failed_execution_ids = {
-        receipt.execution_id
-        for receipt in authority_receipts
-        if receipt.status == "failed"
-    }
     return DatasetRuntimeEvidence(
         projection=projection,
         current_receipt_status=current_status,
@@ -3606,14 +3596,6 @@ def project_dataset_runtime_evidence(
         last_success_provider_config_hashes=last_success_provider_config_hashes,
         current_receipt_ids=current_receipt_ids,
         last_success_receipt_ids=last_success_receipt_ids,
-        failed_cohort_success_receipt_ids=tuple(
-            sorted(
-                receipt.receipt_id
-                for receipt in authority_receipts
-                if receipt.status == "success"
-                and receipt.execution_id in failed_execution_ids
-            )
-        ),
         as_of_success_receipt_ids=(
             ()
             if evidence_as_of is None

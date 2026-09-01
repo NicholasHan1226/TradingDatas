@@ -2410,22 +2410,6 @@ class QueryService:
                     dataset,
                     prepared,
                 )
-                # Historical versions could commit a successful provider-call
-                # prefix before a later call made the same execution terminally
-                # failed. Those individually valid receipts are known partial
-                # facts, not query authority. Exclude only that explicit class
-                # before pagination. Missing, malformed, foreign-provider, or
-                # merely incomplete evidence is still selected and rejected by
-                # the per-row proof gate below.
-                if evidence.failed_cohort_success_receipt_ids:
-                    failed_cohort_predicate, failed_cohort_params = (
-                        _provider_native_receipt_predicate(
-                            evidence.failed_cohort_success_receipt_ids
-                        )
-                    )
-                    assert failed_cohort_predicate is not None
-                    predicates.append(f"NOT ({failed_cohort_predicate})")
-                    params.extend(failed_cohort_params)
                 current_receipt_predicate, current_receipt_params = (
                     _provider_native_receipt_predicate(
                         current_partition_receipt_ids
