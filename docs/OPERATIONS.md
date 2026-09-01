@@ -29,7 +29,9 @@ one-shot manifest 明确选择，且继续受同一 transport budget 约束。�
 凭证文件、冻结的 transport budget、真实 latest collection 与 fresh readback
 前，不在 production 启用采集 timer。采集 unit 只调用一次不带 dataset 参数的通用 cadence
 planner：所有 registry 中 `active` 且 cadence 为 automatic 的绑定由同一计划器按预算、窗口和
-receipt 状态选择；`on_demand` 绑定始终不会被 timer 自动执行。受审沪深主板
+receipt 状态选择。临近盘中窗口时，同一 dispatcher 可附加通用 `--cadence-class session_minute`
+（见下节），仍不传 dataset allowlist，也不另开 service/timer。`on_demand` 绑定始终不会被
+timer 自动执行。受审沪深主板
 `cn.dataset.rt_min` 5MIN 是其中一个受控 canary：当前 registry 的 5,963 个冻结代码以每批 300
 拆为 20 个确定性批次；resumable cursor v2 每轮最多推进 20 批，并以 bar_time 窗口在每根
 5 分钟 bar 独立重置游标，因此一个 bar 内完整扫完 5,963 个冻结代码。只有带匹配
@@ -91,6 +93,51 @@ failed、event、Crypto 和 config mismatch 不获得该保护。固定配置缺
 QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。发布前必须在目标 release 上证明完整
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
+
+### session_minute 采集周期隔离
+
+低频 automatic 波次可能超过一根 5 分钟 timer 间隔。生产 oneshot 的
+`TimeoutStartSec=45min`，因此 dispatcher
+（`tools/run_provider_native_collector.py`）在会话窗口开始前 50 分钟到窗口结束之间，
+仍从同一 registry 与 schedule 运行同一个 runner，但附加通用
+`--cadence-class session_minute`，只选择该 cadence；50 分钟覆盖 45 分钟硬超时并留
+5 分钟退出余量，避免宽波次在开盘前起步并占住第一根盘中 tick。窗口外恢复完整
+automatic scheduler。该选择不含 dataset allowlist，不改变 entitlement、请求形状、
+串行 provider budget、SQLite/receipt 事务或全局 `collect.lock`；新增 session-minute
+dataset 仍只能通过 registry/config 接入。每个真实交易窗口的连续 receipt 与认证
+query/consumer readback 仍是稳定性证据，调度隔离本身不构成 `stable` 声明。
+
+当前 `config/provider_native_schedule.yaml` 的 `session_minute` 窗口与预留
+（`Asia/Shanghai`、配置工作日 Mon–Fri）为：
+
+| 配置窗口 | dispatcher 预留 |
+| --- | --- |
+| 09:30–11:35 | 08:40–11:35 |
+| 13:00–15:05 | 12:10–15:05 |
+
+比较按分钟截断秒与微秒，以覆盖 timer `RandomizedDelaySec=15s` 的整根结束分钟
+（例如 11:35:59、15:05:59 仍预留；11:36:00、15:06:00 起恢复完整 scheduler）。
+午休 11:36–12:09、08:40 之前、15:06 之后以及周末不预留。午休不预留是因为即使
+oneshot 打到 45 分钟超时，也会在下午窗口开始前结束。
+
+预留只读 schedule 的 `weekdays` 与 `session_windows_local`，**不**读交易日历：
+工作日假期里 session_minute 计划仍会是 `not_due`，其它 automatic cadence 要等到
+当日预留结束后才重新进入完整 scheduler。预留时钟必须带时区；naive 时钟与
+schedule 加载失败一样，dispatcher 打印脱敏
+`{"mode":"execute","phase":"preplan","reason":"schedule_load","state":"validation"}`
+并以 exit `2` fail closed，不暴露路径或异常细节。
+
+`--cadence-class` 是 planner 的通用过滤器：只接受 schedule 已声明的 cadence class，
+未知值 fail closed；与 `--activation-wave` 同时出现时取交集。生产 dispatcher 不传
+wave。只读核对（不写库、不调用 provider）：
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/run_provider_native_schedule.py --cadence-class session_minute
+```
+
+生产仍必须经安装好的 collector service 启动，不得用该 flag 另开第二套 timer，
+也不得从 shell 直连 `/run/tradingdatas/collect.lock`。
 
 `event` 波次按广度优先执行，每个分片在单轮内只尝试一次。失败分片由
 `failure_retry_seconds=300` 在后续 timer 轮次重新变为可执行；不得在同一轮用最多三次重试
@@ -199,14 +246,8 @@ closed。波次外的 active dataset 以
 redaction 均不变。
 
 省略 `--activation-wave` 时保持正式 automatic scheduler 行为；这是正式采集 unit 的唯一入口。
-dispatcher 在 `session_minute` 会话窗口开始前 50 分钟到窗口结束之间，仍从同一 registry 与
-schedule 运行同一个 runner，但用通用 `--cadence-class session_minute` 只选择该 cadence，避免
-耗时较长的低频波次跨过下一根 5 分钟快照；50 分钟覆盖 systemd 45 分钟硬超时并留 5 分钟
-退出余量。窗口外恢复完整 automatic scheduler。该选择不含
-dataset allowlist，不改变 entitlement、请求形状、串行 provider budget、SQLite/receipt 事务或
-全局 collection lock；新增 session-minute dataset 仍只能通过 registry/config 接入。每个真实
-交易窗口的连续 receipt 与认证 query/consumer readback 仍是稳定性证据，调度隔离本身不构成
-`stable` 声明。
+临近 `session_minute` 窗口时，同一入口由 dispatcher 附加通用 `--cadence-class`，合同见上文
+「session_minute 采集周期隔离」。
 `pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。其中的
 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
@@ -283,12 +324,13 @@ window 被明确放进该 manifest，才会采集。
 生产按需 batch 复用唯一的 `tradingdatas-provider-native-collect.service`，不创建第二个
 service 或 timer。该 unit 以 `RuntimeDirectoryPreserve=yes` 保留其私有 `0700` runtime
 目录，使 operator 能在 unit 空闲时安全暂存下一次手工启动所需的 selector；普通 timer
-没有 selector 时仍走原 cadence planner。发布 operator 只能在该 unit 空闲时，在其 `RuntimeDirectory` 写入由
+没有 selector 时走 automatic dispatcher（窗口外为完整 cadence planner，临近盘中窗口时
+附加 `--cadence-class session_minute`）。发布 operator 只能在该 unit 空闲时，在其 `RuntimeDirectory` 写入由
 `tradingdatas` 账号拥有、`0600`、无链接且单链接的
 `/run/tradingdatas/on-demand-batch.json` 与 `/run/tradingdatas/on-demand.env`。后者只能
 逐字节指定该固定 batch 路径，不能含任何其它环境变量；手工启动同一 service 后，通用 dispatcher 先消费 selector，再以
-同一 `/run/tradingdatas/collect.lock` 串行执行 batch。无 selector 时 timer 保持原有 cadence
-planner 路径。无论成功、合法 empty、失败或 validation，batch 文件均在本轮结束时删除，
+同一 `/run/tradingdatas/collect.lock` 串行执行 batch。无 selector 时 timer 保持上述
+automatic dispatcher，不另开入口。无论成功、合法 empty、失败或 validation，batch 文件均在本轮结束时删除，
 避免下一次 timer 重放。batch 仍需先经过同 release 的 no-write plan，且不得含 token、
 provider API 名、字段或专用行为。
 

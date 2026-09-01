@@ -147,6 +147,12 @@ activation evidence 不能绕过 provider payload 的绝对扫描上限。regist
 
 当前数据优先于历史回填；回填必须有界、可恢复、可观察，并遵守账号级和 API 级预算。
 
+生产只有一个 collector dispatcher。临近 `session_minute` 配置窗口时，它仍使用同一
+registry/schedule runner 与全局 lock，但通过通用 `--cadence-class` 只选择该
+cadence，避免低频波次跨过下一根 5 分钟快照。这不是 dataset allowlist、新
+service/timer，也不是 `stable` 证据；预留超前量、工作日/窗口边界与 fail-closed
+诊断见 `docs/OPERATIONS.md`。新增 session-minute dataset 仍只能改 registry/config。
+
 ## Provider 权限与 Transport 预算
 
 registry 的 `entitlement` 是 provider-neutral 技术状态。对当前 Tushare 数据集，它表示通过 QuickSync transport 受控真实调用观测到的账号接口权限；它不表示购买、计费或订阅。凭证只建立 transport 账号身份，不证明接口权限。
