@@ -1822,7 +1822,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "active",
+      "activation": "paused",
       "apiName": "scrape_page",
       "cadence": "event",
       "category": "news-events",

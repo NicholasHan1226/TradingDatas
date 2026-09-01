@@ -3753,6 +3753,41 @@ def _snapshot_select_one(db_path: Path) -> tuple[object, ...]:
         return tuple(conn.execute("SELECT 1").fetchone())
 
 
+def test_connection_epoch_evidence_is_bounded_by_latest_receipt() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA_SQL)
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            (
+                f"run-{index:05d}",
+                "2026-09-01T00:00:00Z",
+                "2026-09-01T00:00:01Z",
+                "success",
+                "provider-native",
+                1,
+                1,
+                '{"receipt":true}',
+            )
+            for index in range(5_000)
+        ),
+    )
+    conn.commit()
+    progress_calls = 0
+
+    def bounded_progress() -> int:
+        nonlocal progress_calls
+        progress_calls += 1
+        return int(progress_calls > 200)
+
+    conn.set_progress_handler(bounded_progress, 1)
+    evidence = projection_module._connection_epoch_evidence(conn)
+    conn.set_progress_handler(None, 0)
+
+    assert "run-04999" in evidence
+    assert progress_calls <= 200
+
+
 def test_backwards_receipt_chronology_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

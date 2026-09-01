@@ -61,7 +61,8 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
-所有 `session_minute` 合同先于其它 automatic 合同执行；该排序只按 cadence class 决定，
+所有 `session_minute` 合同先执行，`event` 合同随后执行，其它 automatic 合同再按既有顺序执行；
+该排序只按 cadence class 决定，避免低频大批量采集把分钟或事件观测拖过 freshness SLA，
 不为某个 dataset、provider 或消费者增加专用分支。
 
 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`、`postclose_daily` 成功水位读取，在下一配置
@@ -108,7 +109,7 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
-planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
+planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；failed 仍只按 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
@@ -198,7 +199,15 @@ closed。波次外的 active dataset 以
 `not_selected` 记录，global flock、planner/runtime budgets、retry、receipt 和公开输出
 redaction 均不变。
 
-省略 `--activation-wave` 时保持完整 automatic scheduler 行为；这是正式采集 unit 的唯一入口。
+省略 `--activation-wave` 时保持正式 automatic scheduler 行为；这是正式采集 unit 的唯一入口。
+dispatcher 在 `session_minute` 会话窗口开始前 50 分钟到窗口结束之间，仍从同一 registry 与
+schedule 运行同一个 runner，但用通用 `--cadence-class session_minute` 只选择该 cadence，避免
+耗时较长的低频波次跨过下一根 5 分钟快照；50 分钟覆盖 systemd 45 分钟硬超时并留 5 分钟
+退出余量。窗口外恢复完整 automatic scheduler。该选择不含
+dataset allowlist，不改变 entitlement、请求形状、串行 provider budget、SQLite/receipt 事务或
+全局 collection lock；新增 session-minute dataset 仍只能通过 registry/config 接入。每个真实
+交易窗口的连续 receipt 与认证 query/consumer readback 仍是稳定性证据，调度隔离本身不构成
+`stable` 声明。
 `pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。其中的
 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
@@ -798,6 +807,10 @@ QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界�
   全部 key 耗尽且暂无新 key 时，把 `config/firecrawl_upstream_contracts.v1.yaml` 中
   `cn.news.flash` 的 `activation.activation_state` 改回 `paused`（registry/config 改动），
   管线形态不变，恢复新 key 后按同一路径改回 `active` 并重编 registry。
+- `cn.news.flash` 当前保持 `paused`。它是已有 Tushare 快讯主干的 Firecrawl 冗余源；间歇性
+  `provider_error` 或串行抽取耗时不得触发共享 event 扫描的连续重跑。恢复 `active` 前先做
+  仓外有界复验，证明三个声明源连续成功、整轮可留出消费者读窗口，并完成认证 query 回读。
+  `global.news.flash` 的 activation 独立判断，不随该境内冗余源联动暂停。
 - 生产采集单元的环境变量 `FIRECRAWL_API_KEY_FILE` 由
   `/etc/systemd/system/tradingdatas-provider-native-collect.service.d/20-firecrawl.conf`
   提供；修改凭证文件路径时必须同步该 drop-in，并 `systemctl daemon-reload`。

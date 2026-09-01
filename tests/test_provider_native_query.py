@@ -255,6 +255,8 @@ def _insert_native_success_receipt(
     execution_id: str,
     call_index: int,
     page_offset: int,
+    retry_index: int = 0,
+    request_page_index: int | None = None,
     request_window: dict[str, str] | None = None,
     provider: str = "provider-a",
     config_hash: str | None = None,
@@ -269,7 +271,7 @@ def _insert_native_success_receipt(
         attempt_id=make_provider_call_attempt_id(
             execution_id,
             call_index=call_index,
-            retry_index=0,
+            retry_index=retry_index,
         ),
         dataset_id=dataset.dataset_id,
         provider=provider,
@@ -288,7 +290,9 @@ def _insert_native_success_receipt(
             fanout_parameter=None,
             fanout_values=(),
             page_offset=page_offset,
-            page_index=call_index,
+            page_index=(
+                call_index if request_page_index is None else request_page_index
+            ),
         ),
     )
     counts = IngestCounts(
@@ -320,6 +324,7 @@ def _insert_native_failed_receipt(
     *,
     execution_id: str,
     call_index: int,
+    retry_index: int = 0,
     request_window: dict[str, str] | None = None,
     data_through: str | None = "20260715",
     started_at: str = "2026-07-17T03:00:00+00:00",
@@ -328,7 +333,7 @@ def _insert_native_failed_receipt(
     binding = next(item for item in dataset.provider_bindings if item.provider == "provider-a")
     context = IngestContext(
         attempt_id=make_provider_call_attempt_id(
-            execution_id, call_index=call_index, retry_index=0
+            execution_id, call_index=call_index, retry_index=retry_index
         ),
         dataset_id=dataset.dataset_id,
         provider="provider-a",
@@ -2853,6 +2858,95 @@ def test_query_rejects_broken_row_authority_even_with_healthy_latest_receipt(
     monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", lambda *a, **k: _proof_evidence((latest,)))
     with pytest.raises(QueryServiceUnavailable):
         _execute(native_harness, _request(filters={"symbol": {"eq": "BROKEN"}}, include_receipt_proofs=include_proofs))
+
+
+def test_default_query_excludes_success_prefix_from_explicitly_failed_cohort(
+    native_harness: dict[str, object], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    valid = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="complete-independent",
+        call_index=0, page_offset=0,
+    )
+    partial = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="explicitly-failed",
+        call_index=0, page_offset=0,
+    )
+    _insert_native_failed_receipt(
+        monkeypatch, conn, dataset, execution_id="explicitly-failed", call_index=1,
+    )
+    _insert_row(
+        conn, row_key="complete-independent", receipt_id=valid,
+        payload={"symbol": "VALID", "trade_date": "20260715"},
+    )
+    _insert_row(
+        conn, row_key="failed-prefix", receipt_id=partial,
+        payload={"symbol": "PARTIAL", "trade_date": "20260715"},
+    )
+    conn.commit()
+    evidence = _proof_evidence((valid,))
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: evidence,
+    )
+
+    response = _execute(
+        native_harness,
+        _request(filters={"symbol": {"in": ["PARTIAL", "VALID"]}}),
+    )
+
+    assert response["data"] == [{"symbol": "VALID", "trade_date": "20260715"}]
+
+
+def test_default_query_keeps_successful_retry_after_failed_attempt(
+    native_harness: dict[str, object], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    _insert_native_failed_receipt(
+        monkeypatch,
+        conn,
+        dataset,
+        execution_id="retry-then-success",
+        call_index=0,
+        retry_index=0,
+        finished_at="2026-07-17T03:01:00+00:00",
+    )
+    successful_retry = _insert_native_success_receipt(
+        monkeypatch,
+        conn,
+        dataset,
+        execution_id="retry-then-success",
+        call_index=1,
+        page_offset=0,
+        retry_index=1,
+        request_page_index=0,
+        finished_at="2026-07-17T03:02:00+00:00",
+    )
+    _insert_row(
+        conn,
+        row_key="successful-retry",
+        receipt_id=successful_retry,
+        payload={"symbol": "RETRIED", "trade_date": "20260715"},
+    )
+    conn.commit()
+    evidence = _proof_evidence((successful_retry,))
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: evidence,
+    )
+
+    response = _execute(
+        native_harness,
+        _request(filters={"symbol": {"eq": "RETRIED"}}),
+    )
+
+    assert response["data"] == [
+        {"symbol": "RETRIED", "trade_date": "20260715"}
+    ]
 
 
 def test_default_query_keeps_valid_rows_from_independent_executions(

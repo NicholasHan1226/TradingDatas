@@ -17,7 +17,7 @@ export const researchCrypto120 = Object.fromEntries([
       "2019年5月NBER工作稿",
       "May 2019 NBER draft"
     ],
-    "NBER w25882 cover, abstract and printed pp. 1–2 inspected for 2014–2018 sample selection, weekly sorts, market/size/momentum factors and the scope of tested characteristics. Later regression tables not independently reproduced.",
+    "NBER w25882 cover, abstract and printed pp. 1–2 inspected for 2014–2018 sample selection, weekly sorts, market/size/momentum factors and the scope of tested characteristics. No claim extends beyond the abstract and inspected pages; later regression tables not independently reproduced.",
     [
       "导读依据2019年工作稿，不以2022年期刊版的结果替换。历史样本中的因子解释力不证明当前风险补偿、可交易收益或跨交易所执行可行性。",
       "This guide uses the 2019 draft, without substituting results from the 2022 journal version. Historical factor fit establishes neither current compensation nor attainable cross-venue returns."

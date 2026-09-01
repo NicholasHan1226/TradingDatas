@@ -21,7 +21,7 @@ test("discovery links round-trip view, subject, publication type and page", () =
     const state = { ...initialResearchView, open, topic };
     assert.deepEqual(researchLocation(new URL(researchHref(state), "https://example.test").search, papers), state);
   }
-  const state = { open: true, topic: "research-methods", kind: "paper", page: 1 };
+  const state = { ...initialResearchView, open: true, topic: "research-methods", kind: "paper", page: 1 };
   assert.deepEqual(researchLocation(new URL(researchHref(state), "https://example.test").search, papers), state);
 });
 
@@ -33,9 +33,9 @@ test("invalid query values and out-of-range pages normalize safely", () => {
 });
 
 test("switching views preserves filters; selecting a subject clears incompatible types", () => {
-  const state = { open: true, topic: "research-methods", kind: "book", page: 1 };
+  const state = { ...initialResearchView, open: true, topic: "research-methods", kind: "book", page: 1 };
   assert.deepEqual(researchViewReducer(state, { type: "visibility", value: false }), { ...state, open: false });
-  assert.deepEqual(researchViewReducer(state, { type: "open", topic: "corporate-fundamentals" }), { open: true, topic: "corporate-fundamentals", kind: "all", page: 0 });
+  assert.deepEqual(researchViewReducer(state, { type: "open", topic: "corporate-fundamentals" }), { ...initialResearchView, open: true, topic: "corporate-fundamentals" });
   assert.deepEqual(researchViewReducer(initialResearchView, { type: "restore", value: state }), state);
 });
 
@@ -63,6 +63,16 @@ test("both languages and views render two navigation choices, stable links and n
       assert.ok(html.includes("200"));
     } else assert.match(html, /research-editorial-architecture.webp/);
   }
+});
+
+test("topic links reset the same filters as normal topic clicks", () => {
+  const html = renderToStaticMarkup(createElement(ResearchHub, {
+    ...props,
+    locale: "en",
+    view: { ...initialResearchView, open: true, topic: "asset-pricing", depth: "guide", materials: "prepared", sort: "recent", page: 1 },
+  }));
+  assert.match(html, /href="\/research\?view=topics&amp;topic=market-microstructure"/);
+  assert.doesNotMatch(html, /href="\/research\?view=topics&amp;topic=market-microstructure[^\"]*(?:depth|materials|sort)/);
 });
 
 test("every topic and type has a bounded list or a clear actionable empty state", () => {

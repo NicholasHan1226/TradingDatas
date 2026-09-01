@@ -102,7 +102,7 @@ registry 声明 request template、variants、window、fanout、pagination、字
 `activation=active` 仅允许通用 collector 按显式有界请求执行，仍必须由实际 receipt、lineage 和
 读取时 freshness/quality 投影决定是否可消费。隔离验证或历史分区的成功不构成持续 fresh 保证。
 
-### Firecrawl provider（合同冻结，未激活）
+### Firecrawl provider
 
 Firecrawl 是继 Binance 隔离切片之后新增的 provider-level adapter：其
 transport/auth/pagination 协议与 Tushare/QuickSync 及 Binance 公共接口均真实不同
@@ -120,11 +120,12 @@ bearer key 只从 `FIRECRAWL_API_KEY_FILE`（0600、仓库外）读取，永不�
 `cn.news.flash` 是该 provider 的首个合同：经 `config/firecrawl_upstream_contracts.v1.yaml`
 （独立 bundle、独立 provenance）由 registry compiler 编译进同一单一 registry，源差异全部在
 registry/config（literal_values 源 URL、extraction_schema、prompt），adapter 不持有任何源 URL。
-当前状态为 `contract_ready`：`activation_state: paused`、`entitlement_state: unknown`、
-`on_demand` cadence，不进入 scheduler，plan 模式对其 fail-closed；激活前必须完成真实 key
-探测、dry-run 非零计划门禁与有界 canary readback（见
-`docs/design/firecrawl-news-pipeline.v1.md` 的分期）。一次性 key 额度是决定性约束：
-402/429 只降级本 dataset，不阻塞其它 provider；key 耗尽即把 binding 调回 paused，管线形态不变。
+`cn.news.flash` 保留已观测的 `entitlement_state: active`，但当前
+`activation_state: paused`：Tushare 的 `news`/`major_news` 已承担境内快讯主干，而该
+Firecrawl 冗余源的单页结构化抽取存在间歇性上游失败和较长串行耗时，不能继续占用共享
+event 扫描周期。它仍保留合同、历史 facts/receipts 与手工有界复验入口；恢复自动采集前必须
+重新完成连续成功、周期预算及认证 readback。`global.news.flash` 是独立合同和独立运行状态，
+不因境内冗余源暂停而降级。402/429 只降级对应 dataset，不阻塞其它 provider。
 
 生产 `current` 只承担进程入口的原子版本选择。入口脚本用 `Path(__file__).resolve()`
 绑定一个物理 immutable release，registry 和 schedule 必须从该物理 release 内读取；
@@ -156,7 +157,7 @@ Tushare 官方接口说明给出的积分门槛、单次行数、分钟频次和
 
 所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。对 `current_snapshot`，上游再次返回相同 payload 时，事实的 payload 与数据 revision 不变，但同一事务会把其 provenance 绑定到新的 success receipt；因此当前合同只能依赖本轮重新验证的事实，不能借用旧合同 receipt，也不会因 SQLite 的 payload 去重而丢失 scheduler authority。
 
-可写 ingest/collect 连接在 `BEGIN IMMEDIATE` 之前请求 `PRAGMA journal_mode=WAL`，busy timeout 仍为既有 180 秒。catalog/query 的已验证只读快照在存在 WAL sidecar 时使用 `mode=ro` 而不带 `immutable=1`；无 sidecar 的 rollback-journal 库仍可使用 `immutable=1`。WAL sidecar 不是业务表，不改变两对象规则。生产 journal 切换仍是停写窗口内的后续运维步骤，不是代码合入即切库。
+可写 ingest/collect 连接在 `BEGIN IMMEDIATE` 之前请求 `PRAGMA journal_mode=WAL`，busy timeout 仍为既有 180 秒。catalog/query 的已验证只读快照在存在 WAL sidecar 时使用 `mode=ro` 而不带 `immutable=1`；无 sidecar 的 rollback-journal 库仍可使用 `immutable=1`。WAL sidecar 不是业务表，不改变两对象规则。快照在共享 authority lock 内以文件身份、SQLite pragma 与 append-only receipt 最新行做双连接 epoch 核对；不得按请求对完整 receipt 历史做聚合扫描。生产 journal 切换仍是停写窗口内的后续运维步骤，不是代码合入即切库。
 
 empty、failed、permission denied、rate limited、validation failed 和 storage failed 必须分开记录。未知字段保留并标记 schema drift，不能静默删除。
 

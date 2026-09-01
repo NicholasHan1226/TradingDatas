@@ -12,7 +12,15 @@ export const researchSubjects = [
 ].map(([id, zh, en, descriptionZh, descriptionEn]) => ({ id, label: { zh, en }, description: { zh: descriptionZh, en: descriptionEn } }));
 
 export const researchSubject = (topic) => topic === "quant-methods" ? "research-methods" : topic;
-export const researchMatches = (paper, topic, kind) => (topic === "all" || researchSubject(paper.topic) === researchSubject(topic)) && (kind === "all" || paper.kind === kind);
+export const researchHasMaterials = (paper) => ["datasets", "features", "recipes"].some((key) => (paper.related?.[key] || []).length > 0);
+export const researchMatches = (paper, topic, kind, depth = "all", materials = "all") =>
+  (topic === "all" || researchSubject(paper.topic) === researchSubject(topic)) &&
+  (kind === "all" || paper.kind === kind) &&
+  (depth !== "guide" || paper.guideSectionCount >= 4) &&
+  (materials !== "prepared" || researchHasMaterials(paper));
+export const researchOrder = (records, sort = "relevance") => sort === "recent"
+  ? [...records].sort((left, right) => String(right.readerReviewedAt || "").localeCompare(String(left.readerReviewedAt || "")) || left.sourceTitle.localeCompare(right.sourceTitle))
+  : records;
 export const researchPageSize = 12;
 
 export function researchHref(state) {
@@ -20,6 +28,9 @@ export function researchHref(state) {
   if (state.open) query.set("view", "topics");
   if (state.topic !== "all") query.set("topic", researchSubject(state.topic));
   if (state.kind !== "all") query.set("format", state.kind);
+  if (state.depth === "guide") query.set("depth", "guide");
+  if (state.materials === "prepared") query.set("materials", "prepared");
+  if (state.sort === "recent") query.set("sort", "recent");
   if (state.page > 0) query.set("page", String(state.page + 1));
   return `/research${query.size ? `?${query}` : ""}`;
 }
@@ -29,8 +40,11 @@ export function researchLocation(search, papers) {
   const candidate = researchSubject(query.get("topic"));
   const topic = researchSubjects.some((item) => item.id === candidate) ? candidate : "all";
   const kind = papers.some((paper) => paper.kind === query.get("format")) ? query.get("format") : "all";
-  const count = papers.filter((paper) => researchMatches(paper, topic, kind)).length;
+  const depth = query.get("depth") === "guide" ? "guide" : "all";
+  const materials = query.get("materials") === "prepared" ? "prepared" : "all";
+  const sort = query.get("sort") === "recent" ? "recent" : "relevance";
+  const count = papers.filter((paper) => researchMatches(paper, topic, kind, depth, materials)).length;
   const requested = Number(query.get("page"));
   const page = Number.isSafeInteger(requested) && requested > 0 ? Math.min(requested - 1, Math.max(0, Math.ceil(count / researchPageSize) - 1)) : 0;
-  return { topic, kind, page, open: query.get("view") === "topics" };
+  return { topic, kind, depth, materials, sort, page, open: query.get("view") === "topics" };
 }

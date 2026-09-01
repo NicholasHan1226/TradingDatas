@@ -15,8 +15,8 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   assert.equal(Object.keys(additions).length, 20);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 120);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 119);
+  assert.equal(Object.keys(researchReaderNotes).length, 140);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 139);
   for (const [title, guide] of Object.entries(additions)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
     assert.equal(researchReaderNotes[title], guide);
@@ -37,7 +37,7 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   }
   const audit = auditContent();
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 80);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 60);
 });
 
 test("measurement, edition and source-access limits survive expansion", () => {
@@ -71,9 +71,18 @@ test("all twenty additions have bounded comparisons using metadata only", () => 
     const readings = comparisonReadings(paper, catalog);
     assert.ok(readings.length >= 1 && readings.length <= 3, title);
     assert.equal(new Set(readings.map(r => r.paper.id)).size, readings.length);
-    assert.ok(readings.every(r => r.paper.id !== paper.id && !r.paper.readingNotes));
+    assert.ok(readings.every(r => r.paper.id !== paper.id));
     assert.deepEqual(comparisonReadings(paper, catalog, catalog.map(p => p.id)), []);
   }
   assert.deepEqual(comparisonReadings({ id: "missing", title: "Uncurated work" }, catalog), []);
   assert.deepEqual(comparisonReadings(catalog.find(p => p.title === "Time Series Momentum"), []), []);
+});
+
+test("a guide without an authored comparison falls back to a summary-only companion in the public index", () => {
+  const catalog = papers.map(projectResearchIndex);
+  const guide = catalog.find((paper) => paper.guideSectionCount >= 4 && !researchConnections.some((item) => item.left === paper.title || item.right === paper.title));
+  assert.ok(guide);
+  const readings = comparisonReadings(guide, catalog);
+  assert.ok(readings.length);
+  assert.ok(readings.every((item) => !item.paper.guideSectionCount));
 });

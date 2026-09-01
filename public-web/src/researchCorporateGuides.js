@@ -34,7 +34,7 @@ export const researchCorporateGuides = {
     ]),
   "Earnings, Book Values, and Dividends in Equity Valuation": guide(
     "https://users.metu.edu.tr/mugan/Ohlson%201995%20earnings%20bv%20div%20in%20eq%20valuation.pdf", 1995,
-    "METU-hosted scan of the 1995 Contemporary Accounting Research article. Printed pp. 664–668 visually inspected for the valuation overview, clean surplus, residual-income identity, terminal condition and information dynamics. Publisher abstract checked for identity. Later proofs and empirical application were not verified.",
+    "METU-hosted scan of the 1995 Contemporary Accounting Research article. Printed pp. 664–668 visually inspected for the valuation overview, clean surplus, residual-income identity, terminal condition and information dynamics. Publisher abstract checked for identity, with no claim beyond that abstract and the inspected pages. Later proofs and empirical application were not verified.",
     { zh: "这是在净盈余关系、折现与信息动态假设下建立的理论基准，不是由当期财报直接得出的目标价。剩余收益中的“异常”也不表示会计操纵。", en: "This is a theoretical benchmark with clean-surplus, discounting and information-dynamics assumptions, not a target price read directly from current statements. Abnormal earnings here do not mean accounting manipulation." },
     [
       ["664–666", "盈利与账面价值各自提供什么", "What earnings and book value contribute",

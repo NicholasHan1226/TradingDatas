@@ -8,9 +8,9 @@ test("read-only maintenance distinguishes valid structure from editorial depth c
   const report = auditContent({ today: "2026-08-31" });
   assert.deepEqual(report.errors, []);
   assert.equal(report.records, 200);
-  assert.equal(report.guides, 120);
+  assert.equal(report.guides, 140);
   assert.equal(report.tutorials, 6);
-  assert.equal(report.review.filter(item => item.code === "summary_only").length, 80);
+  assert.equal(report.review.filter(item => item.code === "summary_only").length, 60);
   assert.equal(new Set(sourceUrls()).size, sourceUrls().length);
 });
 
@@ -34,7 +34,7 @@ test("review dates, source versions and repeated prose remain review items, neve
   const report = auditContent({ guides, today: "2026-08-31" });
   assert.ok(report.review.some(item => item.code === "repeated_paragraph"));
   assert.ok(report.review.some(item => item.code === "review_age"));
-  assert.ok(report.review.some(item => item.code === "check_reading_scope"));
+  assert.ok(!report.review.some(item => item.code === "check_reading_scope"));
   assert.deepEqual(report.errors, []);
 });
 

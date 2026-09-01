@@ -1068,6 +1068,58 @@ def test_event_wave_preserves_breadth_without_same_run_retries() -> None:
     assert policy.retry == cadence_planner.RetryPolicy(1, 0, 0, 0)
 
 
+def test_successful_event_window_waits_for_minimum_interval() -> None:
+    registry = _active_registry()
+    dataset = registry.resolve("global.news.flash")
+    binding = dataset.provider_bindings[0]
+    finished_at = datetime(2026, 9, 1, 7, 0, tzinfo=ZoneInfo("UTC"))
+    window = MappingProxyType(
+        {
+            "start_time": "2026-09-01 00:00:00",
+            "end_time": "2026-09-01 23:59:59",
+        }
+    )
+    receipt_id = "receipt:event-success"
+    history = ValidatedReceiptHistoryEntry(
+        dataset_id=dataset.dataset_id,
+        provider=binding.provider,
+        receipt_id=receipt_id,
+        status="success",
+        cohort_status="success",
+        started_at=finished_at - timedelta(minutes=1),
+        finished_at=finished_at,
+        request_window=window,
+        request_variant=MappingProxyType({}),
+        execution_id="execution:event-success",
+        config_hash=provider_ingest_config_hash(dataset, binding),
+        physical_call_index=0,
+        retry_index=0,
+    )
+    state = cadence_planner.PlannerState(
+        MappingProxyType(
+            {
+                (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                    (history,),
+                    # Append-only facts keep their original provenance when a
+                    # later successful event observation is byte-identical.
+                    (cadence_planner._Fact("20260901", {}, "receipt:older-fact"),),
+                )
+            }
+        )
+    )
+    plans, skips = cadence_planner.plan_runs(
+        registry=DatasetRegistry((dataset,), query_defaults=registry.query_defaults),
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=finished_at + timedelta(minutes=5),
+    )
+
+    assert plans == ()
+    assert [(item.dataset_id, item.state) for item in skips] == [
+        (dataset.dataset_id, "not_due")
+    ]
+
+
 def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2148,8 +2200,14 @@ def test_failed_dataset_does_not_hide_later_terminal_results(tmp_path: Path) -> 
     )
 
     priority_rank = {"current": 0, "backfill": 1, "correction": 2}
+    cadence_rank = {"session_minute": 0, "event": 1}
     planner_order = [
-        (priority_rank[plan.priority], plan.dataset_id, index)
+        (
+            priority_rank[plan.priority],
+            cadence_rank.get(plan.cadence_class, 2),
+            plan.dataset_id,
+            index,
+        )
         for index, plan in enumerate(result.plans)
     ]
     assert planner_order == sorted(planner_order)
@@ -3562,6 +3620,61 @@ def test_session_minute_current_plan_precedes_other_current_plans(
         "cn.dataset.rt_min",
         "cn.dataset.adj_factor",
     ]
+
+
+def test_event_current_plan_precedes_low_frequency_current_plan() -> None:
+    plans = (
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.balancesheet",
+            provider="tushare",
+            provider_api="balancesheet",
+            cadence_class="quarterly_reporting",
+            request_window={},
+        ),
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.cn_schedule",
+            provider="tushare",
+            provider_api="cn_schedule",
+            cadence_class="event",
+            request_window={},
+        ),
+    )
+
+    assert [
+        plan.dataset_id
+        for _, plan in sorted(
+            enumerate(plans),
+            key=lambda item: (*cadence_planner._execution_order(item[1]), item[0]),
+        )
+    ] == ["cn.dataset.cn_schedule", "cn.dataset.balancesheet"]
+
+
+def test_cadence_class_selection_is_generic_and_excludes_other_cadences(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    now = datetime(2026, 7, 28, 9, 35, tzinfo=ZoneInfo("Asia/Shanghai"))
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {now.date(): True})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=now,
+        execute=False,
+        cadence_class="session_minute",
+    )
+
+    assert [item.dataset_id for item in result.plans] == [
+        "cn.dataset.rt_min",
+        "cn.dataset.rt_min_daily",
+    ]
+    assert all(item.cadence_class == "session_minute" for item in result.plans)
 
 
 @pytest.mark.parametrize("activation_wave", [None, "direct_wave_1"])

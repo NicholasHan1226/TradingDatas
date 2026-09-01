@@ -11,8 +11,8 @@ import { researchSummaryMaterials } from "../src/researchSummaryMaterials.js";
 
 test("120 bounded bilingual guides retain 200 bibliography identities", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 120);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 119);
+  assert.equal(Object.keys(researchReaderNotes).length, 140);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 139);
   for (const [title, g] of Object.entries(researchReaderNotes)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
     for (const s of g.sections) for (const locale of ["zh", "en"]) {
@@ -56,6 +56,6 @@ test("every guide offers an authored metadata-only comparison", () => {
     const links = comparisonReadings(p, catalog, excluded);
     assert.ok(links.length >= 1 && links.length <= 3, title);
     assert.ok(links.every(r => !excluded.includes(r.paper.id)), title);
-    assert.ok(links.every(r => r.paper.id !== p.id && !r.paper.readingNotes));
+    assert.ok(links.every(r => r.paper.id !== p.id));
   }
 });

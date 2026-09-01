@@ -89,17 +89,20 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def _execution_order(plan: "ScheduledRun") -> tuple[int, int, str]:
-    """Order current intraday observations before other equal-priority work.
+    """Order freshness-sensitive cadences before other equal-priority work.
 
     This remains cadence-driven: any dataset declared as ``session_minute`` gets
-    the first provider slot in its current/backfill/correction tier.  It avoids
-    an alphabetically earlier reference request delaying a completed bar while
-    preserving the existing priority and deterministic dataset ordering.
+    the first provider slot and ``event`` gets the second slot in its
+    current/backfill/correction tier.  It avoids an alphabetically earlier
+    low-frequency request delaying a completed bar or an event observation
+    beyond its freshness SLA while preserving the existing priority and
+    deterministic dataset ordering.
     """
 
+    cadence_rank = {"session_minute": 0, "event": 1}.get(plan.cadence_class, 2)
     return (
         _PRIORITY[plan.priority],
-        0 if plan.cadence_class == "session_minute" else 1,
+        cadence_rank,
         plan.dataset_id,
     )
 
@@ -1554,8 +1557,18 @@ def _dataset_plans(
         )
         if prior is not None:
             age = (now_utc - prior.finished_at).total_seconds()
+            healthy = (
+                prior.status == "empty"
+                or (dataset.point_in_time == "append_only" and prior.status == "success")
+                or any(
+                    fact.receipt_id in prior.success_receipt_ids
+                    for fact in current.facts
+                )
+            )
             if (prior.status == "failed" and age < policy.failure_retry_seconds) or (
-                correction_only
+                prior.status != "failed"
+                and healthy
+                and (dataset.cadence_class == "event" or correction_only)
                 and age < _repeat_interval_seconds(dataset, policy, prior.status)
             ):
                 suppressed = True
