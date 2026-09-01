@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createReadingPositions, isInPageNavigation, researchSectionTarget } from "../src/researchHistory.js";
+import { createReadingPositions, isInPageNavigation, locationHashId, researchSectionTarget } from "../src/researchHistory.js";
 
 test("article entry honors only valid research-section fragments", () => {
   assert.equal(researchSectionTarget("research/detecting-earnings-management", "#research-section-3"), "research-section-3");
@@ -15,6 +15,14 @@ test("native section links and their back navigation do not reset page scrolling
   assert.equal(isInPageNavigation(base, base), false);
   assert.equal(isInPageNavigation(base, `${base}?other=1#tutorial-example`), false);
   assert.equal(isInPageNavigation(base, "https://tradingdatas.com/research/"), false);
+});
+
+test("direct and encoded hashes resolve to stable section identities", () => {
+  assert.equal(locationHashId("#tutorial-downloads"), "tutorial-downloads");
+  assert.equal(locationHashId("#tutorial%20downloads"), "tutorial downloads");
+  assert.equal(locationHashId("#"), "");
+  assert.equal(locationHashId(""), "");
+  assert.equal(locationHashId("#invalid%2"), "invalid%2");
 });
 
 test("separate library visits retain their own positions through backward and forward traversal", () => {

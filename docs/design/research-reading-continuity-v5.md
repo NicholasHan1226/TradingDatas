@@ -21,6 +21,8 @@ tests, documentation and generated assets; no data-plane or account change.
   browser-local navigation state, not synced reading history.
   Native tutorial section links and their back/forward traversal must retain
   section positioning instead of triggering the route-level scroll-to-top.
+  Direct, refreshed and history-restored hash URLs must also wait for lazy
+  tutorial content to mount before scrolling to the decoded target identity.
 - Three tutorials offer same-origin downloads: synthetic input JSON, a readable
   JavaScript example and localized Python notebooks. Notebooks include setup,
   parameters, assumptions, input validation, expected-output assertions and next

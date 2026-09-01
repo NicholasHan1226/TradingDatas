@@ -8,6 +8,15 @@ export function isInPageNavigation(previous, next) {
   return before.origin === after.origin && before.pathname === after.pathname && before.search === after.search && before.hash !== after.hash;
 }
 
+export function locationHashId(hash) {
+  if (!hash || hash === "#") return "";
+  try {
+    return decodeURIComponent(hash.slice(1));
+  } catch {
+    return hash.slice(1);
+  }
+}
+
 export function createReadingPositions() {
   const entries = new Map();
   return {
