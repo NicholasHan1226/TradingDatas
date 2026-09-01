@@ -128,7 +128,10 @@ def _reserve_session_minute_cadence(now: datetime) -> bool:
     policy = schedule.cadences["session_minute"]
     if local_now.isoweekday() not in policy.weekdays:
         return False
-    local_time = local_now.timetz().replace(tzinfo=None)
+    # Match the cadence planner's minute-granularity session comparison.  The
+    # timer intentionally jitters by up to 15 seconds, so the whole declared
+    # end minute must remain reserved for the final session snapshot.
+    local_time = local_now.timetz().replace(second=0, microsecond=0, tzinfo=None)
     for start, end in policy.session_windows_local:
         reserved_start = (
             datetime.combine(local_now.date(), start, LOCAL_TIMEZONE)
