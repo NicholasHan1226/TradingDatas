@@ -395,6 +395,7 @@ def run_schedule(
     registry_source_path: Path = DEFAULT_RUNTIME_REGISTRY_CONFIG,
     schedule_source_path: Path = DEFAULT_SCHEDULE_CONFIG,
     current_only: bool = False,
+    cadence_class: str | None = None,
 ) -> ScheduleResult:
     if current_only and activation_wave != _CURRENT_ONLY_ACTIVATION_WAVE:
         raise ValueError("current-only requires pilot_existing activation wave")
@@ -413,6 +414,19 @@ def run_schedule(
         ).dataset_ids
     elif registry is None or schedule is None:
         raise ValueError("default schedule inputs are required")
+    if cadence_class is not None:
+        if cadence_class not in schedule.cadences:
+            raise ValueError("selected cadence class is not scheduled")
+        cadence_dataset_ids = frozenset(
+            dataset.dataset_id
+            for dataset in registry.datasets
+            if dataset.cadence_class == cadence_class
+        )
+        selected_dataset_ids = (
+            cadence_dataset_ids
+            if selected_dataset_ids is None
+            else selected_dataset_ids & cadence_dataset_ids
+        )
     calendar_dataset_ids = frozenset(
         policy.calendar.dataset_id
         for policy in schedule.cadences.values()
@@ -569,6 +583,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK_PATH)
     parser.add_argument("--activation-wave")
     parser.add_argument("--current-only", action="store_true")
+    parser.add_argument("--cadence-class")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--now", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
@@ -660,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
                     activation_wave=args.activation_wave,
                     schedule_source_path=args.schedule_config,
                     current_only=args.current_only,
+                    cadence_class=args.cadence_class,
                 )
             except Exception:
                 print(

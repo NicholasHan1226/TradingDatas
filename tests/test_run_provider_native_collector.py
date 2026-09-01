@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -37,6 +39,11 @@ def test_default_dispatch_uses_unchanged_cadence_runner(
     calls: list[list[str]] = []
     monkeypatch.delenv(runner.ON_DEMAND_BATCH_ENV, raising=False)
     monkeypatch.setattr(
+        runner,
+        "_local_now",
+        lambda: datetime(2026, 9, 1, 7, 55, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    monkeypatch.setattr(
         runner.run_provider_native_schedule,
         "provider_native_sqlite_path",
         lambda: Path("/data/provider_native.sqlite"),
@@ -57,6 +64,80 @@ def test_default_dispatch_uses_unchanged_cadence_runner(
             "--execute",
         ]
     ]
+
+
+@pytest.mark.parametrize(
+    ("now", "reserved"),
+    [
+        (datetime(2026, 9, 1, 8, 39, 59), False),
+        (datetime(2026, 9, 1, 8, 40, 0), True),
+        (datetime(2026, 9, 1, 11, 35, 0), True),
+        (datetime(2026, 9, 1, 11, 35, 1), False),
+        (datetime(2026, 9, 1, 12, 10, 0), True),
+        (datetime(2026, 9, 1, 15, 5, 0), True),
+        (datetime(2026, 9, 1, 15, 5, 1), False),
+        (datetime(2026, 9, 5, 10, 0, 0), False),
+    ],
+)
+def test_session_minute_reservation_follows_schedule_windows(
+    now: datetime,
+    reserved: bool,
+) -> None:
+    localized = now.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+    assert runner._reserve_session_minute_cadence(localized) is reserved
+
+
+def test_reserved_dispatch_selects_generic_session_minute_cadence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.delenv(runner.ON_DEMAND_BATCH_ENV, raising=False)
+    monkeypatch.setattr(
+        runner,
+        "_local_now",
+        lambda: datetime(2026, 9, 1, 14, 55, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    monkeypatch.setattr(
+        runner.run_provider_native_schedule,
+        "provider_native_sqlite_path",
+        lambda: Path("/data/provider_native.sqlite"),
+    )
+    monkeypatch.setattr(
+        runner.run_provider_native_schedule,
+        "main",
+        lambda args: calls.append(args) or 0,
+    )
+
+    assert runner.main() == 0
+    assert calls == [
+        [
+            "--db-path",
+            "/data/provider_native.sqlite",
+            "--lock-path",
+            "/run/tradingdatas/collect.lock",
+            "--cadence-class",
+            "session_minute",
+            "--execute",
+        ]
+    ]
+
+
+def test_automatic_dispatch_fails_closed_when_schedule_cannot_load(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv(runner.ON_DEMAND_BATCH_ENV, raising=False)
+    monkeypatch.setattr(
+        runner.run_provider_native_schedule,
+        "load_schedule",
+        lambda: (_ for _ in ()).throw(ValueError("sensitive detail")),
+    )
+
+    assert runner.main() == 2
+    assert capsys.readouterr().out == (
+        '{"mode":"execute","phase":"preplan",'
+        '"reason":"schedule_load","state":"validation"}\n'
+    )
 
 
 def test_on_demand_dispatch_consumes_selector_and_uses_shared_lock(
