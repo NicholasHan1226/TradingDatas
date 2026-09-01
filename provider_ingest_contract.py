@@ -75,6 +75,12 @@ def provider_ingest_config_hash(
             {"resumable_fanout": {
                 "cursor_contract_version": binding.resumable_fanout.cursor_contract_version,
                 "max_batches_per_run": binding.resumable_fanout.max_batches_per_run,
+                **({"progress_mode": binding.resumable_fanout.progress_mode}
+                   if binding.resumable_fanout.progress_mode != "complete_window" else {}),
+                **({
+                    "continuation_max_age_days": binding.resumable_fanout.continuation_max_age_days,
+                    "partition_date_field": binding.resumable_fanout.partition_date_field,
+                } if binding.resumable_fanout.progress_mode == "partition_continuation" else {}),
             }}
             if binding.resumable_fanout is not None
             else {}

@@ -13,6 +13,18 @@ matrix_evidence:
   production_ready: false
   production_transport_alignment: blocked_until_safe_pre_request_dns_failover_is_implemented_and_verified
 response_contract_overrides:
+  fut_basic:
+    evidence_ref: docs/reports/2026-08-30-coverage-quality-recovery.md
+    schema_version: 2.0.0
+    missing_fields: [trade_time_desc]
+    type_overrides: []
+    additional_fields: []
+  rt_min_daily:
+    evidence_ref: docs/reports/2026-08-30-coverage-quality-recovery.md
+    schema_version: 3.0.0
+    missing_fields: [freq]
+    type_overrides: []
+    additional_fields: []
   anns_d:
     evidence_ref: docs/adr/ADR-0011-quicksync-observed-response-contracts.md
     schema_version: 2.0.0

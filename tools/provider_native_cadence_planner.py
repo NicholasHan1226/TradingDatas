@@ -11,7 +11,7 @@ import math
 from pathlib import Path
 import re
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -23,6 +23,7 @@ from dataset_registry import (
     ResumableFanoutPolicy,
     RequestScalar,
     encode_request_window_value,
+    decode_request_window_value,
     normalize_request_window,
     request_window_covered_dates,
 )
@@ -60,6 +61,7 @@ _CADENCE_KEYS = frozenset(
         "partition_frequency",
         "calendar",
         "minimum_interval_seconds",
+        "freshness_refresh_lead_seconds",
         "failure_retry_seconds",
         "correction_overlap_days",
         "correction_overlap_bars",
@@ -73,7 +75,10 @@ _CADENCE_KEYS = frozenset(
         "retry",
     }
 )
-_REQUIRED_CADENCE_KEYS = _CADENCE_KEYS - {"session_windows_local"}
+_REQUIRED_CADENCE_KEYS = _CADENCE_KEYS - {
+    "session_windows_local",
+    "freshness_refresh_lead_seconds",
+}
 _PRIORITY = {"current": 0, "backfill": 1, "correction": 2}
 _ACTIVATION_WAVE_ROOT_KEYS = frozenset({"version", "input_hashes", "waves"})
 _ACTIVATION_WAVE_HASH_KEYS = frozenset(
@@ -147,6 +152,7 @@ class CadencePolicy:
     max_backfill_chunks_per_run: int
     rate_budget_class: str
     retry: RetryPolicy
+    freshness_refresh_lead_seconds: int = 0
 
 
 @dataclass(frozen=True)
@@ -555,6 +561,17 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
         )
         if session_windows and (name != "session_minute" or calendar is None):
             raise ValueError("session windows require session_minute calendar cadence")
+        minimum_interval = _integer(
+            value["minimum_interval_seconds"], "minimum_interval_seconds", positive=True
+        )
+        refresh_lead = _integer(
+            value.get("freshness_refresh_lead_seconds", 0),
+            "freshness_refresh_lead_seconds",
+        )
+        if refresh_lead >= minimum_interval or (refresh_lead and name != "event"):
+            raise ValueError(
+                "freshness refresh lead requires event cadence and is below its interval"
+            )
         cadences[name] = CadencePolicy(
             automatic,
             _clock(value["availability_after_local"], "availability_after_local"),
@@ -563,11 +580,7 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
             incremental,
             frequency,
             calendar,
-            _integer(
-                value["minimum_interval_seconds"],
-                "minimum_interval_seconds",
-                positive=True,
-            ),
+            minimum_interval,
             _integer(
                 value["failure_retry_seconds"], "failure_retry_seconds", positive=True
             ),
@@ -589,6 +602,7 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
             ),
             rate_class,
             retry,
+            refresh_lead,
         )
     return Schedule(
         _integer(
@@ -687,9 +701,9 @@ def load_planner_state(
     """Load only the fact material needed to plan one schedule run.
 
     All datasets need their validated receipt history and partition values.
-    Provider payloads are only needed to derive an exchange calendar; avoiding
-    payload JSON hydration for every other historical fact keeps the common
-    automatic run bounded without changing scheduling semantics.
+    Provider payloads are needed for exchange calendars and active resumable
+    fanout source universes. Other historical facts need only partition values;
+    avoiding their payload hydration keeps the common automatic run bounded.
     ``None`` preserves the complete-fact behaviour for direct callers.
     """
 
@@ -703,6 +717,17 @@ def load_planner_state(
         for item in registry.datasets
         if item.read_model_adapter.storage_kind == "provider_native_rows"
     }
+    fanout_source_dataset_ids = frozenset(
+        binding.fanout.source_dataset_id
+        for dataset in datasets.values()
+        for binding in dataset.provider_bindings
+        if binding.entitlement_state == "active"
+        and binding.activation_state == "active"
+        and binding.resumable_fanout is not None
+        and binding.fanout is not None
+        and binding.fanout.strategy == "dataset_field"
+        and binding.fanout.source_dataset_id is not None
+    )
     receipts: dict[tuple[str, str], list[ValidatedReceiptHistoryEntry]] = defaultdict(
         list
     )
@@ -751,6 +776,7 @@ def load_planner_state(
                 hydrate_payload = (
                     calendar_dataset_ids is None
                     or dataset.dataset_id in calendar_dataset_ids
+                    or dataset.dataset_id in fanout_source_dataset_ids
                 )
                 columns = (
                     "partition_value, payload_json, receipt_id"
@@ -977,51 +1003,13 @@ def _latest(
     )
 
 
-def _resumable_window_completed_at(
-    receipts: Sequence[ValidatedReceiptHistoryEntry],
-    *,
+def _expected_resumable_batches(
     registry: DatasetRegistry,
     state: PlannerState,
     now: datetime,
-    dataset: DatasetDefinition,
     binding: ProviderBinding,
-    request_window: Mapping[str, str],
-) -> datetime | None:
-    """Return completion time only for one exact, variant-complete v2 window."""
-
-    if binding.resumable_fanout is None:
-        return None
-    config_hash = provider_ingest_config_hash(dataset, binding)
-    candidates = tuple(
-        item
-        for item in receipts
-        if (
-            item.dataset_id == dataset.dataset_id
-            and item.provider == binding.provider
-            and item.config_hash == config_hash
-            and dict(item.request_window) == dict(request_window)
-            and item.cursor_contract_version == 2
-            and item.frozen_universe_sha256 is not None
-            and item.batch_index is not None
-            and item.batch_count is not None
-            and item.batch_values_sha256 is not None
-        )
-    )
-    if not candidates:
-        return None
-    universes = {item.frozen_universe_sha256 for item in candidates}
-    counts = {item.batch_count for item in candidates}
-    if len(universes) != 1 or len(counts) != 1:
-        return None
-    universe_sha = next(iter(universes))
-    batch_count = next(iter(counts))
-    if (
-        type(universe_sha) is not str
-        or not _SHA256.fullmatch(universe_sha)
-        or type(batch_count) is not int
-        or batch_count <= 0
-    ):
-        return None
+) -> tuple[Any, ...] | None:
+    """Derive only the current verified source universe, without receipt shortcuts."""
     fanout = binding.fanout
     if (
         fanout is None
@@ -1104,6 +1092,55 @@ def _resumable_window_completed_at(
         )
     except (TypeError, ValueError):
         return None
+    return expected_batches
+
+
+def _resumable_window_completed_at(
+    receipts: Sequence[ValidatedReceiptHistoryEntry],
+    *,
+    registry: DatasetRegistry,
+    state: PlannerState,
+    now: datetime,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    request_window: Mapping[str, str],
+) -> datetime | None:
+    """Return completion time only for one exact, variant-complete v2 window."""
+
+    if binding.resumable_fanout is None or binding.resumable_fanout.progress_mode == "session_day_rotation":
+        return None
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    candidates = tuple(
+        item
+        for item in receipts
+        if (
+            item.dataset_id == dataset.dataset_id
+            and item.provider == binding.provider
+            and item.config_hash == config_hash
+            and dict(item.request_window) == dict(request_window)
+            and item.cursor_contract_version == 2
+            and item.frozen_universe_sha256 is not None
+            and item.batch_index is not None
+            and item.batch_count is not None
+            and item.batch_values_sha256 is not None
+        )
+    )
+    if not candidates:
+        return None
+    universes = {item.frozen_universe_sha256 for item in candidates}
+    counts = {item.batch_count for item in candidates}
+    if len(universes) != 1 or len(counts) != 1:
+        return None
+    universe_sha = next(iter(universes))
+    batch_count = next(iter(counts))
+    if (
+        type(universe_sha) is not str
+        or not _SHA256.fullmatch(universe_sha)
+        or type(batch_count) is not int
+        or batch_count <= 0
+    ):
+        return None
+    expected_batches = _expected_resumable_batches(registry, state, now, binding)
     if not expected_batches or len(expected_batches) != batch_count:
         return None
     if expected_batches[0].frozen_universe_sha256 != universe_sha:
@@ -1258,6 +1295,86 @@ def _runs(
     )
 
 
+def _continuation_plans(
+    registry: DatasetRegistry,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    policy: CadencePolicy,
+    state: PlannerState,
+    now: datetime,
+) -> tuple[tuple[ScheduledRun, ...], str]:
+    """Alternate current observations with bounded, already-started date debt."""
+    progress = binding.resumable_fanout
+    assert progress is not None and binding.request_window_policy is not None
+    available = _latest_available(now.astimezone(ZoneInfo(dataset.timezone)), policy)
+    window_policy = binding.request_window_policy
+    key = window_policy.range_start_key
+    current_window = _window(binding, available, available)
+    config_hash = provider_ingest_config_hash(dataset, binding)
+    batches = _expected_resumable_batches(registry, state, now, binding)
+    if not batches:
+        return (), "dependency_unavailable"
+    identities = {
+        (batch.frozen_universe_sha256, batch.batch_index, batch.batch_count, batch.batch_values_sha256)
+        for batch in batches
+    }
+    receipts = tuple(
+        item for item in state.get(dataset, binding).receipts
+        if item.config_hash == config_hash and item.provider == binding.provider
+        and item.dataset_id == dataset.dataset_id and item.cursor_contract_version == 2
+        and (item.frozen_universe_sha256, item.batch_index, item.batch_count, item.batch_values_sha256) in identities
+        and set(item.request_window) == {key}
+        and any(dict(item.request_variant) == dict(v) for v in (binding.request_variants or ({},)))
+    )
+    started: dict[date, Mapping[str, str]] = {}
+    for item in receipts:
+        try:
+            day = decode_request_window_value(item.request_window[key], "yyyymmdd").anchor.date()
+        except ValueError:
+            continue
+        if available - timedelta(days=progress.continuation_max_age_days) <= day < available:
+            started[day] = item.request_window
+    old_window = next((
+        window for day, window in sorted(started.items())
+        if _resumable_window_completed_at(
+            receipts, registry=registry, state=state, now=now, dataset=dataset,
+            binding=binding, request_window=window,
+        ) is None
+    ), None)
+    current_seen = any(dict(item.request_window) == dict(current_window) for item in receipts)
+    relevant = tuple(item for item in receipts if dict(item.request_window) == dict(current_window)
+                     or (old_window is not None and dict(item.request_window) == dict(old_window)))
+    latest = max(relevant, key=lambda item: (item.finished_at, item.receipt_id), default=None)
+    choose_old = (old_window is not None and current_seen and latest is not None
+                  and dict(latest.request_window) == dict(current_window))
+    chosen = old_window if choose_old else current_window
+    assert chosen is not None
+    prior = _latest(receipts, chosen)
+    if prior is not None and prior.status == "failed" and (
+        now.astimezone(timezone.utc) - prior.finished_at
+    ).total_seconds() < policy.failure_retry_seconds:
+        return (), "not_due"
+    # A continuation replaces this round's current request; it does not add a
+    # backfill plan/call or lose its original provider request date.
+    return _runs(dataset, binding, policy, chosen, "current"), "planned"
+
+
+def _repeat_interval_seconds(
+    dataset: DatasetDefinition, policy: CadencePolicy, status: str
+) -> int:
+    """Optionally reserve refresh time, without changing failure throttles."""
+    if (
+        dataset.cadence_class != "event"
+        or policy.freshness_refresh_lead_seconds == 0
+        or status not in {"success", "empty"}
+    ):
+        return policy.minimum_interval_seconds
+    return min(
+        policy.minimum_interval_seconds,
+        max(1, dataset.freshness_sla_seconds - policy.freshness_refresh_lead_seconds),
+    )
+
+
 def _dataset_plans(
     registry: DatasetRegistry,
     dataset: DatasetDefinition,
@@ -1302,9 +1419,12 @@ def _dataset_plans(
             and bar_end.timetz().replace(tzinfo=None) < active_window[0]
         ):
             return (), "not_due"
-        window = {
-            "bar_time": encode_request_window_value(bar_end, "local_datetime_seconds")
-        }
+        if binding.resumable_fanout is not None and binding.resumable_fanout.progress_mode == "session_day_rotation":
+            window = dict(_window(binding, local_now.date(), local_now.date()))
+        else:
+            window = {
+                "bar_time": encode_request_window_value(bar_end, "local_datetime_seconds")
+            }
         latest = _latest(current.receipts, window)
         if latest is not None:
             age = (now_utc - latest.finished_at).total_seconds()
@@ -1321,6 +1441,8 @@ def _dataset_plans(
         return _runs(
             dataset, binding, policy, MappingProxyType(window), "current"
         ), "planned"
+    if binding.resumable_fanout is not None and binding.resumable_fanout.progress_mode == "partition_continuation":
+        return _continuation_plans(registry, dataset, binding, policy, state, now)
     if binding.request_window_policy is None:
         latest = _latest(current.receipts, {})
         if latest is not None:
@@ -1332,7 +1454,7 @@ def _dataset_plans(
             if (latest.status == "failed" and age < policy.failure_retry_seconds) or (
                 latest.status != "failed"
                 and healthy
-                and age < policy.minimum_interval_seconds
+                and age < _repeat_interval_seconds(dataset, policy, latest.status)
             ):
                 return (), "not_due"
         return _runs(
@@ -1433,7 +1555,8 @@ def _dataset_plans(
         if prior is not None:
             age = (now_utc - prior.finished_at).total_seconds()
             if (prior.status == "failed" and age < policy.failure_retry_seconds) or (
-                correction_only and age < policy.minimum_interval_seconds
+                correction_only
+                and age < _repeat_interval_seconds(dataset, policy, prior.status)
             ):
                 suppressed = True
                 continue

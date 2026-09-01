@@ -9,6 +9,7 @@ import logging
 import math
 import os
 import re
+import signal
 import socket
 import threading
 import time
@@ -755,7 +756,10 @@ class Handler(BaseHTTPRequestHandler):
         filters, limit, cursor = _parse_catalog_request(raw_query)
         catalog, _query = self._build_services_fail_closed()
         defaults = self._service_query_defaults(catalog)
-        response = catalog.list_datasets(
+        from catalog_executor import execute_catalog
+
+        response = execute_catalog(
+            catalog,
             access=access,
             filters=filters,
             limit=limit,
@@ -1721,14 +1725,46 @@ class TradingDatasHTTPServer(ThreadingHTTPServer):
 
 def main() -> None:
     _ensure_process_config_loaded()
-    httpd = TradingDatasHTTPServer(
-        (HOST, PORT),
-        Handler,
-        request_timeout=REQUEST_TIMEOUT,
-        max_threads=MAX_THREADS,
+    from catalog_executor import (
+        catalog_worker_count,
+        initialize_catalog_executor,
+        shutdown_catalog_executor,
     )
-    print(f"TradingDatas API listening on {HOST}:{PORT}", flush=True)
-    httpd.serve_forever()
+
+    httpd = None
+    previous_sigterm = None
+    handles_signals = threading.current_thread() is threading.main_thread()
+
+    def terminate(_signum, _frame):
+        raise SystemExit(0)
+
+    if handles_signals:
+        previous_sigterm = signal.signal(signal.SIGTERM, terminate)
+    try:
+        if catalog_worker_count():
+            from data_plane_runtime import build_data_plane_runtime
+
+            # Complete identity/bootstrap before accepting requests. This does
+            # not read catalog facts or establish production data health.
+            initialize_catalog_executor(build_data_plane_runtime().catalog)
+        httpd = TradingDatasHTTPServer(
+            (HOST, PORT),
+            Handler,
+            request_timeout=REQUEST_TIMEOUT,
+            max_threads=MAX_THREADS,
+        )
+        print(f"TradingDatas API listening on {HOST}:{PORT}", flush=True)
+        httpd.serve_forever()
+    finally:
+        try:
+            try:
+                if httpd is not None:
+                    httpd.server_close()
+            finally:
+                shutdown_catalog_executor()
+        finally:
+            if handles_signals:
+                signal.signal(signal.SIGTERM, previous_sigterm)
 
 
 if __name__ == "__main__":

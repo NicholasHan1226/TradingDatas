@@ -48,8 +48,10 @@ from dataset_registry import (  # noqa: E402
     BINANCE_SPOT_CANARY_MODE,
     load_dataset_registry,
 )
-from storage.receipt_projection import validated_success_receipt_ids  # noqa: E402
-from storage.sqlite_authority_lock import sqlite_authority_lock  # noqa: E402
+from storage.receipt_projection import (  # noqa: E402
+    open_verified_read_model_snapshot,
+    validated_success_receipt_ids,
+)
 from tools.run_binance_spot_canary import (  # noqa: E402
     _LOCK_RETRY_INTERVAL,
     _collect_with_one_provider_retry,
@@ -61,11 +63,6 @@ from tools.run_binance_usdm_canary import _perp_datasets  # noqa: E402
 # batches legitimately hold the shared lock for minutes; wait them out up to
 # a bound well inside the unit's TimeoutStartSec=10min instead of failing.
 _OI_DUMP_LOCK_WAIT_SECONDS = 480.0
-
-# The fact-authority shared lock is contended by the exclusive writer side,
-# which itself waits up to 180s to acquire; mirror that bound so a read that
-# starts mid-write waits for the writer instead of failing the whole round.
-_FACT_AUTHORITY_LOCK_WAIT_SECONDS = 180.0
 
 _PROVIDER = BinanceUsdmMetricsDumpCollector.provider
 _LOOKBACK_DAYS = 7
@@ -126,23 +123,20 @@ def _ingested_days(
     dataset = registry.resolve(dataset_id)
     binding = registry.provider_binding(dataset_id, _PROVIDER)
     try:
-        with sqlite_authority_lock(
-            db_path,
-            mode="shared",
-            timeout=_FACT_AUTHORITY_LOCK_WAIT_SECONDS,
-        ):
-            uri = f"{db_path.resolve(strict=True).as_uri()}?mode=ro"
-            with sqlite3.connect(uri, uri=True) as conn:
-                conn.execute("PRAGMA query_only = ON")
-                valid = validated_success_receipt_ids(
-                    conn, registry, dataset, binding, now=now
-                )
-                rows = conn.execute(
-                    "SELECT p.observed_at, p.receipt_id "
-                    "FROM provider_dataset_rows AS p "
-                    "WHERE p.dataset_id=? AND p.provider=? AND p.schema_major=?",
-                    (dataset.dataset_id, binding.provider, dataset.schema_major),
-                ).fetchall()
+        # Use the same sidecar-bound, epoch-verified snapshot as catalog/query.
+        # A bare mode=ro connection can bind a transient WAL epoch between
+        # per-symbol writes and surface a false "database disk image is
+        # malformed" even when the canonical snapshot and integrity checks pass.
+        with open_verified_read_model_snapshot(db_path) as conn:
+            valid = validated_success_receipt_ids(
+                conn, registry, dataset, binding, now=now
+            )
+            rows = conn.execute(
+                "SELECT p.observed_at, p.receipt_id "
+                "FROM provider_dataset_rows AS p "
+                "WHERE p.dataset_id=? AND p.provider=? AND p.schema_major=?",
+                (dataset.dataset_id, binding.provider, dataset.schema_major),
+            ).fetchall()
     except (OSError, sqlite3.Error, RuntimeError, TypeError, ValueError) as exc:
         raise ValueError("daily-dump fact authority is unavailable") from exc
     days: set[str] = set()

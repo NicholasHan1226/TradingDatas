@@ -1740,7 +1740,15 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         "cn.dataset.pledge_stat",
         "cn.dataset.cb_share",
     }
-    assert report_family <= planned
+    # Continuation must first derive the current verified code universe. This
+    # fixture seeds daily prices/calendar only, so these seven bindings cannot
+    # borrow a universe from a terminal receipt or plan an unbound batch.
+    continuation_family = report_family - {"cn.dataset.pledge_stat"}
+    assert {"cn.dataset.pledge_stat"} <= planned
+    assert not continuation_family & planned
+    assert {skipped[dataset_id] for dataset_id in continuation_family} == {
+        "dependency_unavailable"
+    }
     assert not any(skipped.get(dataset_id) == "on_demand" for dataset_id in report_family)
 
 

@@ -164,6 +164,12 @@ runtime 投影把“最新可信 scheduler run 的当前状态”和“全部完
 
 `postclose_daily` 的纯日期（或本地午夜）分区在 freshness 比较中代表该本地交易日结束，而不是零点开始。这样周五已经完整写入的日线在周末不会被提前标为 stale；带实际时分秒的数据时间保持原样。该规则只影响读取时的 freshness 投影，不改变 facts、receipt、provider 返回或调度。
 
+`market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`/`postclose_daily` 成功水位，读取时钟复用本物理
+release 的固定 schedule policy：配置开窗前或非配置工作日，以前一配置工作日的原收盘
+锚点比较现有 SLA；开窗后回到普通时钟。纯 schedule parser 被延迟复用，不执行 planner、
+读取上游或在 API 中增加调度旁路。配置验证失败保持 fail closed；本规则不推断节假日，
+不改变 empty/failed/config mismatch 或其它 cadence/market 的语义。
+
 ## 数据服务
 
 catalog 和 query 只读 SQLite。缺数据库、缺表、缺 receipt、损坏或 metadata 不一致时 fail closed；不得同步调用 provider 或回退旧文件/旧数据库。
@@ -171,6 +177,14 @@ catalog 和 query 只读 SQLite。缺数据库、缺表、缺 receipt、损坏�
 API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。
 
 ## 运行面隔离与未来扩展
+
+同一 API 服务可默认关闭、受控启用目录计算子进程，缓解目录和查询线程争用 Python
+解释器的问题。这是 API 内部的执行隔离，不是新的数据面：父进程保留认证、授权和所有
+用户限额，只向受信子进程传递已解析的查询合同；子进程使用同一 immutable release、
+registry、SQLite 路径和既有 cursor signer。完整 catalog 请求在子进程独立新建的只读
+快照中完成，不能把不同快照的 projection、coverage 或 cursor 拼接，也不共享跨请求结果。
+执行数量有硬上限、没有无界排队；失败不回退旧数据或原进程计算。初始化发生在监听前，
+正常停机须回收该 unit 的全部任务进程。配置、容量响应和生产验收见 `docs/OPERATIONS.md`。
 
 TradingDatas 是一个产品和一套固定数据合同，不是一个必须共享所有运行状态的单体服务。
 所有 lane 复用同一 registry → provider adapter → SQLite facts/receipts → catalog/query
