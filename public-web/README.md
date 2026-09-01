@@ -352,12 +352,11 @@ local workerd/D1 verification and the production approval gates are documented i
 [Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
 harness are not public assets. The dedicated remote account DB has been initialized;
 the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
-`EMAIL_LOGIN_ENABLED="false"`. On August 31, sender/pepper secrets were privately
-prepared in an **undeployed** Worker version; the live version and identity binding
-were not changed. See the [private provisioning checkpoint](../docs/reports/2026-08-31-identity-private-provisioning.md)
-for the exact version and release gates. Do not deploy that old-code preparation
-version as the email implementation or assume its secrets survive a later upload.
-SMS and payments stay unavailable.
+`EMAIL_LOGIN_ENABLED="false"`. A September 1 dashboard readback confirmed the live
+binding plus encrypted identity, Resend and session-key secret names; it did not
+inspect secret values or enable any account capability. Do not use that presence as
+delivery proof or assume a later upload preserves settings without an exact-head
+readback. SMS and payments stay unavailable.
 
 New email challenge/verification readiness also requires
 `IDENTITY_RETENTION_ENABLED="true"`. Existing verified sessions, revocation,

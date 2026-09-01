@@ -20,6 +20,19 @@ or commerce launch:
 - Pricing remains a non-paying URL-state preview. It creates no order, charge,
   subscription or entitlement.
 
+## Read-only configuration observation
+
+At 23:05 CST on September 1, the Cloudflare dashboard showed that the live
+`tradingdatas` Worker has the dedicated `IDENTITY_DB` binding and encrypted
+`IDENTITY_PEPPER`, `RESEND_API_KEY`, and `SESSION_ENCRYPTION_KEY` secrets. The
+separate Resend account showed `account.tradingdatas.com` as a verified,
+send-enabled domain and a TradingDatas login key. The D1 Studio showed the six
+expected account-only tables. Secret presence, domain verification, and schema
+presence do not prove a successful delivery or login: both `EMAIL_LOGIN_ENABLED`
+and `IDENTITY_RETENTION_ENABLED` remained `false`, as did the optional account
+connection, library, and admin flags. No values, mail, D1 data, settings, or
+Worker version were changed during this observation.
+
 ## Checks performed
 
 - Baseline `npm run test:sites` and `npm run test:search` passed on Node
@@ -37,11 +50,11 @@ or commerce launch:
 
 ## Remaining activation gates
 
-1. **Email account:** approved Cloudflare credential access, exact-head Worker
-   upload, an approved Resend sender secret, both email/retention flags,
+1. **Email account:** exact-head Worker upload, both email/retention flags,
    retention-job acceptance, recipient-authorized OTP delivery, session/replay/
-   logout readback, and a separate role/tenant denial test. The static D1 binding
-   and a successful template test alone do not satisfy these gates.
+   logout readback, and a separate role/tenant denial test. The configured D1
+   binding, secret names, sender domain, template test and schema alone do not
+   satisfy these gates.
 2. **Data evidence:** a reviewed projection sourced from the existing
    authenticated catalog/receipt authority, with dataset identities and evidence
    time boundaries preserved. It must not create a provider call, public data
