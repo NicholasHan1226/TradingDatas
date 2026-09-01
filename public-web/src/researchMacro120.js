@@ -131,7 +131,7 @@ export const researchMacro120 = Object.fromEntries([
       "2013年8月NBER工作稿19325",
       "August 2013 NBER WP 19325"
     ],
-    "NBER w19325 cover, abstract and printed pp. 1–3 inspected for ex-ante carry definition, price-change decomposition, cross-asset construction and static/dynamic distinction. Later asset-specific formulas and performance tables not reconstructed.",
+    "NBER w19325 cover, abstract and printed pp. 1–3 inspected for ex-ante carry definition, price-change decomposition, cross-asset construction and static/dynamic distinction. No claim extends beyond the abstract and inspected pages; later asset-specific formulas and performance tables are not reconstructed.",
     [
       "所读为2013年工作稿，不替代2018年发表版的全部结果。Carry不是保证收益；跨资产的融资、展期、价格变化和尾部风险不能被一个同名指标抹平。",
       "This uses the 2013 draft, not all results of the 2018 publication. Carry is not guaranteed return; financing, rolling, price changes and tail risk differ across asset classes despite the shared label."

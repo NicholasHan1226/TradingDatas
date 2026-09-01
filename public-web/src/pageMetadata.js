@@ -12,7 +12,15 @@ export function pageMetadata(route, locale = "en") {
   const researchRoute = /^(research|recipes)(\/|$)/.test(path);
   const description = paper ? `${paper.authors} · ${paper.venue} · ${paper.year}. ${paper.summary[locale]}` : tutorial ? tutorial.summary[locale] : researchRoute ? (zh ? "按精选与主题阅读外部研究，探索数据准备方法。" : "Discover external research by topic and explore data preparation methods.") : (zh ? "TradingDatas — 面向研究与Agent的高质量、可追溯、可组合金融数据。" : "TradingDatas — high-quality, traceable and composable financial data for research and Agents.");
   const canonicalPath = path === "home" ? "" : researchRoute ? `${path}/` : path;
-  return { title: `${title} | TradingDatas`, description, url: `${publicOrigin}/${canonicalPath}`, type: paper || tutorial ? "article" : "website" };
+  const structuredData = paper ? {
+    "@context": "https://schema.org", "@type": "ScholarlyArticle", headline: paper.sourceTitle,
+    alternateName: paper.titleZh, author: paper.authors.split(" · ").map((name) => ({ "@type": "Person", name })),
+    datePublished: /^\d{4}$/.test(String(paper.year)) ? String(paper.year) : undefined,
+    isPartOf: { "@type": "CollectionPage", name: "TradingDatas Research Library", url: `${publicOrigin}/research/` },
+    url: `${publicOrigin}/${canonicalPath}`, sameAs: paper.sources[0]?.url, inLanguage: locale === "zh" ? "zh-CN" : "en",
+    description,
+  } : null;
+  return { title: `${title} | TradingDatas`, description, url: `${publicOrigin}/${canonicalPath}`, type: paper || tutorial ? "article" : "website", structuredData };
 }
 
 export function applyPageMetadata(metadata) {
@@ -28,4 +36,10 @@ export function applyPageMetadata(metadata) {
   }
   const canonical = document.querySelector('link[rel="canonical"]') || document.head.appendChild(document.createElement("link"));
   canonical.setAttribute("rel", "canonical"); canonical.setAttribute("href", metadata.url);
+  const existing = document.getElementById("tradingdatas-structured-data");
+  if (metadata.structuredData) {
+    const node = existing || document.head.appendChild(document.createElement("script"));
+    node.id = "tradingdatas-structured-data"; node.setAttribute("type", "application/ld+json");
+    node.textContent = JSON.stringify(metadata.structuredData);
+  } else existing?.remove();
 }

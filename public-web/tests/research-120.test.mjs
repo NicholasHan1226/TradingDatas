@@ -11,13 +11,13 @@ import { comparisonReadings } from "../src/researchConnections.js";
 import { projectResearchIndex } from "../scripts/research-public-projection.mjs";
 const additions = { ...researchMicrostructure120, ...researchCrypto120, ...researchMacro120 };
 
-test("120 bilingual guides keep the 200 identities and the honest accrual source gap", () => {
+test("140 bilingual guides keep the 200 identities and the honest accrual source gap", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 120);
+  assert.equal(Object.keys(researchReaderNotes).length, 140);
   assert.equal(Object.keys(additions).length, 20);
   assert.deepEqual([researchMicrostructure120, researchCrypto120, researchMacro120].map(x => Object.keys(x).length), [7, 7, 6]);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 119);
-  assert.equal(auditContent().review.filter(x => x.code === "summary_only").length, 80);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 139);
+  assert.equal(auditContent().review.filter(x => x.code === "summary_only").length, 60);
   assert.deepEqual(auditContent().errors, []);
 });
 
@@ -56,8 +56,5 @@ test("edition-specific definitions cannot silently become generic current claims
 
 test("new guides retain scope cues without short, repeated or untranslated prose", () => {
   const findings = auditContent().review.filter(r => Object.hasOwn(additions, r.id));
-  assert.deepEqual(findings.map(r => [r.code, r.id]), [
-    ["check_reading_scope", "Common Risk Factors in Cryptocurrency"],
-    ["check_reading_scope", "Carry"],
-  ]);
+  assert.deepEqual(findings, []);
 });
