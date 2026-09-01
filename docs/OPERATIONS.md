@@ -97,6 +97,18 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 耗尽共享账号/provider 预算并截断后续独立 dataset 或 `major_news` 来源。其它 cadence 的
 有界同轮重试策略不变。
 
+`cn.dataset.major_news` 的单行 payload 上限是该 binding 声明的
+`max_payload_bytes_per_row=131072`（128 KiB），不是全局 64 KiB 常量。多数 reviewed
+Tushare 合同仍声明 64 KiB；compiler 要求四个 budget 键均为正整数，不会填隐藏默认值。
+长正文超过绑定上限时，通用 executor（`_batch_size_bytes`）与 admission
+（`storage/provider_dataset_rows._prepare_rows`）两层都以 `resource_budget` fail closed：
+整次 attempt 写 failed receipt、不写入该批 rows、不截断 `content`。这不是来源分片
+legally empty，128 KiB 也不是窗口完整性承诺。该分片仍受每次 2000 行、64 MiB batch、
+16 MiB provider response 和嵌套深度上限约束。诊断时先读该分片 receipt 的 `errors`；
+`resource_budget` 表示超限，不要当成 empty，也不要为塞进预算而改写正文。提高单行上限
+只改 reviewed contract / registry，不得新增 dataset-specific collector，也不得放宽
+敏感扫描包络。
+
 `event` cadence 可选 `freshness_refresh_lead_seconds`（缺省为 0，当前生产配置不启用）。
 只有正常 success/empty 的重观测可以提前：非零值将间隔取为
 `min(minimum_interval_seconds, max(1, dataset.freshness_sla_seconds - lead))`；失败重试、
@@ -181,8 +193,6 @@ WAL 的库提供服务。回退 journal mode 不是默认动作；若必须回�
 超时后仍必须失败并写稳定错误码，禁止跳过事务 readback 或改写已有 receipt。宽字段（超过 256 个声明
 字段）的 transport 敏感信息扫描使用独立 400 万节点硬上限，普通合同继续保持 200 万节点；
 两者仍受 registry 行数、16 MiB provider response、64 MiB batch 和深度上限共同约束。
-`cn.dataset.major_news` 的 provider-native 长正文单行上限为 128 KiB；它继续受每次
-2000 行、64 MiB batch、16 MiB provider response 和深度上限约束，正文不得截断。
 
 ## Activation wave
 

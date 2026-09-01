@@ -48,7 +48,7 @@ cron、scheduler 和 backfill 只负责按 registry cadence 编排 dataset/windo
 
 1. **新增普通 Tushare dataset**：只改 registry/config；不得新增 Python collector、table、route、专用 fixture 或专用 query 分支。zero-code onboarding 失败即架构 FAIL。
 2. **新增 provider**：只有 transport/auth/pagination 与现有 adapter 真正不同才允许新增 provider-level adapter；必须先冻结 provider-neutral 输出、资源预算、凭证防泄漏和回滚合同。
-3. **无损输出**：provider 返回的全部 key/value 原样保存在 `payload_json`；未知字段和类型漂移只标记 quality/degraded，除硬 admission failure 外不得丢行或改值。
+3. **无损输出**：provider 返回的全部 key/value 原样保存在 `payload_json`；未知字段和类型漂移只标记 quality/degraded，除硬 admission failure 外不得丢行或改值。单行超过 binding 的 `max_payload_bytes_per_row` 是 `resource_budget` admission failure，不得截断正文后入库。
 4. **事务事实**：数据和 success receipt 同 SQLite transaction；empty/failed 写 terminal receipt；provider failure 不能伪装为 empty。
 5. **数据不分析**：不产生 feature、factor、alpha、候选、预测、资金、持仓、风险、订单或建议；事实型资金/持仓排名仍只是 provider payload。
 6. **API 隔离**：外部消费者只能经 `GET /v1/catalog` 和 `POST /v1/query`；不得直连 provider、collector、SQLite 或 staging 文件。

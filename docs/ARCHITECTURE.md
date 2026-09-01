@@ -133,7 +133,7 @@ systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 
 
 官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表与更新说明，冻结 URL 和内容哈希；`config/tushare_cadence_policy.v1.yaml` 是 190 个已有正式文档合同的唯一 cadence authority，按排序 `api_name` 精确覆盖、逐项绑定官方文档 SHA，并只允许八个通用 cadence class、正 freshness SLA 和固定安全闭集内且与 cadence 语义一致的 reason code；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。更具体的 reviewed contract cadence/SLA 优先于该通用政策，`reviewed_contract_exact` 只能用于 reviewed bundle 中 cadence/SLA 精确一致的合同。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。
 
-activation evidence 不能绕过 provider payload 的绝对扫描上限。registry compiler 按声明字段数通用、确定性地收窄 active binding 的 `max_rows_per_attempt`；字段、深度或最小窗口在现有绝对上限内无法安全编译时，该 binding 继续保持 paused。runtime 仍复核同一硬上限，不因单个 dataset 放宽。
+activation evidence 不能绕过 provider payload 的绝对扫描上限。registry compiler 按声明字段数通用、确定性地收窄 active binding 的 `max_rows_per_attempt`；字段、深度或最小窗口在现有绝对上限内无法安全编译时，该 binding 继续保持 paused。runtime 仍复核同一硬上限，不因单个 dataset 放宽。该硬上限是敏感扫描包络与编译后的行数/深度窗口，不是禁止 reviewed contract 为个别 dataset 声明更高的 `max_payload_bytes_per_row`。
 
 请求合同的输入权威也必须按原始文件字节绑定，不能只信任调用方传入的已解析对象。runtime compiler 固定核对 official document、request observation、transport observation 和 reviewed contract 四类输入；HTTPS probe plan 固定核对 official document、request observation、transport observation 和 registered runtime contract 四类输入。任一文件内容与其冻结 SHA 不一致时，在生成请求或调用 provider 前失败。dataset-field seed 只有在 fresh success receipt 存在且 producer schema 与 registry 精确相等时才可使用；migration hint、旧 schema 或未来 schema 都不能替代生产者合同。
 
@@ -154,7 +154,7 @@ Tushare 官方接口说明给出的积分门槛、单次行数、分钟频次和
 
 ## 通用存储
 
-所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。对 `current_snapshot`，上游再次返回相同 payload 时，事实的 payload 与数据 revision 不变，但同一事务会把其 provenance 绑定到新的 success receipt；因此当前合同只能依赖本轮重新验证的事实，不能借用旧合同 receipt，也不会因 SQLite 的 payload 去重而丢失 scheduler authority。
+所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。无损保留的含义是不截断、不改写 provider key/value；它仍受 binding 声明的 `max_payload_bytes_per_row`、`max_rows_per_attempt`、`max_batch_bytes` 与 `max_nesting_depth` 约束。超限是 `resource_budget` admission failure（整批不入事实表，写 failed receipt），不是 schema drift，也不是把超长字段裁短后入库。reviewed Tushare 合同通常声明 64 KiB 单行上限；`cn.dataset.major_news` 因长正文声明 128 KiB。这是合同预算，不是扫描包络放宽，也不证明窗口完整。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。对 `current_snapshot`，上游再次返回相同 payload 时，事实的 payload 与数据 revision 不变，但同一事务会把其 provenance 绑定到新的 success receipt；因此当前合同只能依赖本轮重新验证的事实，不能借用旧合同 receipt，也不会因 SQLite 的 payload 去重而丢失 scheduler authority。
 
 可写 ingest/collect 连接在 `BEGIN IMMEDIATE` 之前请求 `PRAGMA journal_mode=WAL`，busy timeout 仍为既有 180 秒。catalog/query 的已验证只读快照在存在 WAL sidecar 时使用 `mode=ro` 而不带 `immutable=1`；无 sidecar 的 rollback-journal 库仍可使用 `immutable=1`。WAL sidecar 不是业务表，不改变两对象规则。生产 journal 切换仍是停写窗口内的后续运维步骤，不是代码合入即切库。
 
