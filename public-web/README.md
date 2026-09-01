@@ -47,11 +47,60 @@ npm run test:sites
 
 ## Research library
 
-The 2026-08-30 candidate contains 200 distinct external research materials with
+The 2026-08-31 candidate contains 200 distinct external research materials with
 Chinese/English editorial titles, orientations, data requirements and limitations.
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
+There are 120 bilingual guides: 119 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 80 records are
+summary-only. The eight three-stage core journeys retain their 24 original works.
+`src/researchFiftyGuides.js` adds seven primary-source-located guides and
+`src/researchSixtyGuides.js` adds ten more; `src/researchSeventyGuides.js` and
+`src/researchEightyGuides.js` each add ten bounded primary-source guides. All 200 records now use explicit
+per-work material selections (including intentional empty sets); unassigned
+records fail closed to no materials, never topic defaults. The 150 previously
+summary-only selections are in `src/researchSummaryMaterials.js`; this curation
+does not constitute 150 full-text reviews. See
+`../docs/design/research-120-guides-v15.md` for current source scope and acceptance.
+
+`src/researchNinetyGuides.js` and `src/researchHundredGuides.js` add twenty further
+bounded guides: eight asset-pricing, seven A-share/institutional-comparison and five
+alternative-data records. They retain the earlier three preparation links and
+seventeen intentional empty selections (75 linked records / 125 empty overall).
+`src/researchComparisonExpansion.js` adds 36 explicit comparisons after the earlier
+29, preserving their priority. Every guide has a comparison even after core-path
+neighbors are excluded. The v15 packet separates executable checks, blocked real
+browser acceptance, independent Datas PM approval and production release.
+
+Production discovery retains both languages, stable IDs and `guideSectionCount`
+but excludes article bodies. `ResearchArticle.jsx` requests one bilingual body
+through `researchGuideLoader.js`, with loading/error/retry states, cancellation
+of stale responses and section-fragment restoration after loading. Development
+uses the full source modules. The build projection emits one dynamic module per
+guide and fails if bodies are merged, missing or statically reachable from entry
+chunks; its console report measures generated JavaScript bytes, not device speed.
+No new API, analytics, account persistence or live-data request is introduced.
+`src/researchFundamentalsMicrostructureGuides.js` adds six source-backed guides
+on accounting signals, governance, distress and market microstructure. Source
+edition differences are visible in locators/limitations; internal review notes
+are not projected into articles.
+
+`src/researchMethodsMarketsGuides.js` adds eight distinct guides on CAPM, five
+factors, sentiment, crypto, policy uncertainty, HAC covariance, bootstrap and
+Lasso; it also deepens the existing China market guide without counting it twice.
+Actual source editions/pages and full-library maintenance results are recorded
+in `../docs/design/research-forty-guides-v8.md`.
+
+`src/researchCorporateGuides.js` adds three existing works on accrual-model tests,
+residual-income valuation and financial-ratio classification. Three supplementary
+question routes connect nine works on the company-topic page and article sidebars;
+they do not replace core sequences or create duplicate records. Source reading
+scopes and acceptance: `../docs/design/research-corporate-questions-v9.md`.
+The editorial follow-up deepens Lazy Prices' document pairing/parsing and four
+similarity definitions, governance coding exceptions and opt-outs, and the
+abstract-supported firm-specific accrual method without increasing guide counts.
+See `../docs/design/research-editorial-polish-v10.md` for the current audit and gaps.
 
 `src/researchSeeds.js` holds new editorial notes; `src/researchLegacy.json` preserves
 the original records and stable routes. `src/researchBibliography.json` is generated
@@ -88,23 +137,48 @@ languages and original titles regardless of the selected display language.
 The complete library is available in Topics in pages of 12; global search
 still searches all 200 records. Bookmarks and source routes remain language-neutral.
 
-Twenty-four selected records now include four-part bilingual reading guides in
-`src/researchEditorial.js` and `src/researchEditorialExpansion.js`; eight subject
+The original 24 bilingual guides
+are in `src/researchEditorial.js` and `src/researchEditorialExpansion.js`;
+`src/researchAdditionalGuides.js` adds Amihud and Novy-Marx using located primary
+passages, without changing the eight core three-stage reading sequences.
+`src/researchDeepReads.js` deepens eight of them, and
+`src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
+passages or author-issued supporting instructions. Subsequent batches above bring
+the current total to 120 guides, 119 with six sections. The latest modules are
+`researchMicrostructure120.js`, `researchCrypto120.js` and `researchMacro120.js`
+(seven, seven and six guides). They retain edition-specific limits and the existing
+per-work preparation selections. Nelson/Siegel uses the 1985 NBER working paper,
+explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
+abstract-based sections pending usable full-text evidence; section counts do not
+certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
-Articles show their position and previous/next reading with authored reasons.
-Three preparation tutorials (`preparationTutorials.js`, `tutorialExamples.js`) use
+Core articles show their position and previous/next reading with authored reasons;
+`src/researchConnections.js` adds 85 authored comparison pairs across 121 works,
+covering all 120 guides. Each article shows up to three bilingual
+comparison reasons, excluding its existing previous/next links. These are editorial
+contrasts, not inferred citation edges, agreement or evidence rankings. They work
+from discovery metadata during body loading/error and preserve the core reading
+order. Records without a sequence or a curated comparison retain same-topic links.
+Amihud uses the 2002
+journal article; Novy-Marx uses the June 2012 author draft, identified separately
+from its retained 2013 journal citation. The Chinese title now distinguishes gross
+profitability (gross profits/assets) from gross margin (gross profits/sales).
+Six preparation tutorials (`preparationTutorials.js`, `preparationTutorialExpansion.js`, `tutorialExamples.js`) use
 local synthetic examples, never real requests. Their publication does not change
 the product manifest's underlying data/Feature/Recipe maturity or account grants.
 See [`research-reading-depth-v4.md`](../docs/design/research-reading-depth-v4.md).
-The follow-up contract is
-[`research-reading-continuity-v5.md`](../docs/design/research-reading-continuity-v5.md).
+The current editorial follow-up is
+[`research-editorial-polish-v10.md`](../docs/design/research-editorial-polish-v10.md),
+continuing the tutorial/maintenance contracts in
+[`research-depth-completion-v7.md`](../docs/design/research-depth-completion-v7.md) and
+[`research-depth-quality-v6.md`](../docs/design/research-depth-quality-v6.md).
 Library scroll positions are isolated per in-tab history entry; explicit article
 return restores the latest library view. They are neither persisted nor synced.
 
-The normal build also generates twelve offline download artifacts under
-`dist/client/downloads/research/`: three synthetic input/expected-output JSON files,
-three standalone JavaScript examples and six localized Python notebooks. The
+The normal build also generates twenty-four offline download artifacts under
+`dist/client/downloads/research/`: six synthetic input/expected-output JSON files,
+six standalone JavaScript examples and twelve localized Python notebooks. The
 notebooks embed the same fixtures, require Python 3.10+ standard library only for
 computation, and open in an existing Jupyter environment. Source generation lives
 in `scripts/build-tutorial-downloads.mjs` and `scripts/tutorial-python/`. Do not
@@ -119,16 +193,53 @@ npm run test:sites
 The standard-library validator executes all code cells top-to-bottom and compares
 results with the browser examples. It is not a Jupyter UI/kernel integration test.
 The test suite requires `python3`, or `TD_NOTEBOOK_PYTHON` pointing at Python 3.10+.
+For actual Jupyter-kernel acceptance, run `scripts/verify-tutorial-jupyter.py`
+with an isolated Python containing `nbformat`, `nbclient` and `ipykernel`.
+This optional acceptance runner uses that interpreter, local IPC and temporary
+connection files, shuts down every kernel and does not rewrite shipped notebooks
+or register a global kernel. Opening the Jupyter UI remains a separate check.
 Download URLs are build output: review them with `npm run preview` after building,
 not the source-only Vite dev server. Changing language selects the matching
 notebook without changing any dataset identifier.
 
 The normal build now projects only reader fields into the browser catalogue,
 separates React and research-catalog cache chunks, lazy-loads tutorial execution UI, and generates
-208 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
+211 research/tutorial/index HTML entries with bilingual sharing metadata. Keep
 these generated `dist/client` entries together with the current hashed assets;
 do not hand-edit them. Static metadata supports link previews, not article-body
 SSR or verified search indexing. Existing Sites packaging and Worker stay intact.
+
+### Read-only editorial maintenance
+
+```bash
+npm run audit:research
+npm run audit:research -- --links --limit=20 --offset=0 --timeout-ms=8000
+npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
+```
+
+The default is offline. Structural errors are separate from editorial review
+candidates (including the 80 summary-only records, repeated/short paragraphs and
+limited reading scope). Optional HTTPS link checks use system `curl`, at most two
+concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
+back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only
+and capped at 50 records per invocation. They flag registered title/author/year/
+venue changes and reported updates without rewriting identities. Offsets apply
+to the sorted unique URL list for links and DOI-bearing catalog order for metadata.
+Run the two modes separately when advancing batches.
+
+404/410 are broken links; 403/429, network and timeout results remain unresolved,
+not proof of deletion. For explicit `.pdf` / `.txt` URL paths, the report compares
+the final response Content-Type with `application/pdf` / `text/plain`. A mismatch
+(including an HTML shell returned with 200) is `unexpected_content_type`; missing
+or generic binary types are `file_type_unconfirmed`. Query-string filenames do
+not imply an expected format. These are review items, not automatic broken-link
+declarations. The check uses headers only, does not authenticate file bytes, and
+cannot detect every soft-404 or prove that the linked edition is the latest.
+Even a matching type remains `reachable_not_content_verified`. Metadata matches do not validate
+paper findings. Review warnings and incomplete external checks are visible in
+JSON but do not fail the process; structural errors and observed broken links do.
+Check the report, not just exit status. No files are written, no source dates are
+advanced, and no recurring update, ingestion or publication job is installed.
 
 Keep the generated raster assets in `public/assets/`. Do not rebuild the brand
 mark or data-material artwork with CSS, inline SVG, or placeholder elements.

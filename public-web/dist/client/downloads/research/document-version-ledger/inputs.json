@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "tutorial": "document-version-ledger",
+  "identity": "synthetic",
+  "args": [
+    [
+      {
+        "publisher": "DEMO",
+        "documentId": "DOC-1",
+        "version": "v1",
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "publishedAt": "2025-01-06T08:00:00Z",
+        "firstSeenAt": "2025-01-06T08:01:00Z"
+      },
+      {
+        "publisher": "DEMO",
+        "documentId": "DOC-1",
+        "version": "v1",
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "publishedAt": "2025-01-06T08:00:00Z",
+        "firstSeenAt": "2025-01-06T08:01:00Z"
+      },
+      {
+        "publisher": "DEMO",
+        "documentId": "DOC-1",
+        "version": "v2",
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "publishedAt": "2025-01-07T08:00:00Z",
+        "firstSeenAt": "2025-01-07T08:01:00Z"
+      },
+      {
+        "publisher": "DEMO",
+        "documentId": "DOC-1",
+        "version": "v3",
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "publishedAt": "2025-01-08T08:00:00Z",
+        "firstSeenAt": "2025-01-08T08:01:00Z"
+      }
+    ],
+    "2025-01-08T09:00:00Z"
+  ],
+  "expected": [
+    {
+      "publisher": "DEMO",
+      "documentId": "DOC-1",
+      "version": "v1",
+      "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "publishedAt": "2025-01-06T08:00:00Z",
+      "firstSeenAt": "2025-01-06T08:01:00Z",
+      "availableAt": "2025-01-06T08:01:00.000Z",
+      "status": "first_observation"
+    },
+    {
+      "publisher": "DEMO",
+      "documentId": "DOC-1",
+      "version": "v2",
+      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "publishedAt": "2025-01-07T08:00:00Z",
+      "firstSeenAt": "2025-01-07T08:01:00Z",
+      "availableAt": "2025-01-07T08:01:00.000Z",
+      "status": "changed_content"
+    },
+    {
+      "publisher": "DEMO",
+      "documentId": "DOC-1",
+      "version": "v3",
+      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "publishedAt": "2025-01-08T08:00:00Z",
+      "firstSeenAt": "2025-01-08T08:01:00Z",
+      "availableAt": "2025-01-08T08:01:00.000Z",
+      "status": "unchanged_content"
+    }
+  ]
+}

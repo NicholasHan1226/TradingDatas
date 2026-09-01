@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { papers } from "../src/researchCatalog.js";
-import { projectPaper, publicResearchModule, researchPublicProjection } from "../scripts/research-public-projection.mjs";
+import { projectResearchIndex, publicResearchModule, researchPublicProjection } from "../scripts/research-public-projection.mjs";
 import { tutorialCode, tutorialExamples } from "../src/tutorialExamples.js";
 import { runInNewContext } from "node:vm";
 import { pageMetadata } from "../src/pageMetadata.js";
@@ -14,17 +14,17 @@ test("build projection preserves every public record and omits internal verifica
   assert.equal(compiled.papers.length, 200);
   for (const paper of papers) {
     const projected = compiled.papers.find((item) => item.id === paper.id);
-    assert.deepEqual(projected, projectPaper(paper));
+    assert.deepEqual(projected, projectResearchIndex(paper));
     for (const key of ["evidence", "verifiedAt", "readiness", "checks", "limits", "orientationMinutes"]) assert.equal(key in projected, false);
     assert.equal(compiled.researchTitle(projected, "zh"), paper.titleZh);
   }
   assert.equal(compiled.readingPaths.length, 3);
 });
 
-test("all 208 static entries have escaped bilingual titles, descriptions and canonical share URLs", () => {
+test("all 211 static entries have escaped bilingual titles, descriptions and canonical share URLs", () => {
   const template = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  assert.equal(researchPageRoutes.length, 208);
-  assert.equal(new Set(researchPageRoutes).size, 208);
+  assert.equal(researchPageRoutes.length, 211);
+  assert.equal(new Set(researchPageRoutes).size, 211);
   for (const route of researchPageRoutes) {
     const metadata = pageMetadata(route, "en");
     const html = renderResearchPage(template, route);

@@ -133,6 +133,9 @@ export const productManifest = {
       { id: "adjusted-price-series", title: { en: "Build an adjusted price series", zh: "构建复权价格序列" }, status: "product_definition", detail: "daily prices + adjustment factors" },
       { id: "pit-fundamentals-panel", title: { en: "Build a point-in-time fundamentals panel", zh: "构建时点一致财务面板" }, status: "planned", detail: "reports + publication time + revisions" },
       { id: "company-event-timeline", title: { en: "Prepare a company-event timeline", zh: "准备公司事件时间线" }, status: "product_definition", detail: "actions + announcements + trading calendar" },
+      { id: "minute-bar-gaps", title: { en: "Audit minute-bar gaps", zh: "检查分钟行情缺口" }, status: "product_definition", detail: "interval grid + observations + missingness" },
+      { id: "document-version-ledger", title: { en: "Keep a document revision ledger", zh: "保留文档修订与去重台账" }, status: "product_definition", detail: "document identity + hashes + availability" },
+      { id: "crypto-observation-alignment", title: { en: "Align spot intervals and open-interest observations", zh: "对齐现货区间与持仓量观测" }, status: "product_definition", detail: "spot intervals + open interest + clocks + units" },
     ],
   },
 };
