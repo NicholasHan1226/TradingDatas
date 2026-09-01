@@ -36,6 +36,14 @@ receipt/API-observed dataset, and redistribution-authorized sellable data. The
 landscape method and first reviewed source universe are defined in
 [`docs/product/DATA_SOURCE_LANDSCAPE.md`](product/DATA_SOURCE_LANDSCAPE.md).
 
+Unbound public product pages must label collection evidence as unverified on
+that page, without inferring that collection has not started. Synthetic sample
+rows and receipt illustrations are labelled beside the object; no authored
+percentage, time window or receipt is a health claim. Product slugs do not become
+API dataset IDs. Agent setup remains a draft until the public API origin and
+authorized catalog/query behavior are verified; see
+[public evidence readiness](design/public-evidence-readiness-v1.md).
+
 ## Primary consumers
 
 TradingDatas is Agent-first infrastructure. The main consumption path is an AI
@@ -100,6 +108,12 @@ must never invent availability or history.
 
 ## Data products, packages, and add-ons
 
+As of the owner's 2026-08-30 decision, payment activation is paused. Prepare the
+selection -> purchase preview -> sign-in return path only, with no orders,
+charges or grants created. Manual renewal/no automatic debit is confirmed.
+Implementation, state distinctions and resumption gates are recorded in
+[Payment flow preparation](design/payment-flow-preparation-v1.md).
+
 The commercial presentation may group datasets into a small number of complete
 packages organized by customer workload, instead of exposing upstream
 permissions or per-interface checkboxes. Package names, prices, dataset grants,
@@ -114,6 +128,36 @@ per-minute request limit: 200, 600, and 1000. It has no daily quota or
 commercial concurrency limit. The frontend may not grant those limits by
 itself: authenticated Account readback remains the authority for the effective
 tier, request frequency, expiry, and category access.
+
+Owner-confirmed commercial choices (2026-08-30): support both mobile-phone
+and email sign-in/registration, independently of API keys. Delivery providers,
+verified identity binding, recovery, and production activation are not yet
+implemented. Both credentials must be verified before they can be linked to
+the same account; never merge accounts from matching unverified input.
+
+Owner-confirmed account role (2026-08-30): the owner's designated email identity
+is intended to access both the existing public Account and the administrator
+console. Keep one identity with separately authorized workspaces, not two user
+accounts or another customer dashboard. Verification and an explicit server-owned
+administrator role are required; an email string or UI switch cannot grant it.
+Shared administrator sign-in is not implemented by the email identity candidate.
+See [owner access contract](design/account-admin-convergence-v1.md#owner-identity-and-two-workspaces).
+
+The approved numeric prices are 99 / 299 / 499 per month. The domestic-first
+display uses CNY (currency assumption to confirm before merchant activation).
+Annual payment is twelve monthly prices at 10% off, billed as one annual total:
+
+| Plan | Per month | Annual total | Monthly equivalent on annual plan |
+| --- | ---: | ---: | ---: |
+| Basic (`basic`) | ¥99 | ¥1,069.20 | ¥89.10 |
+| Professional (`standard`) | ¥299 | ¥3,229.20 | ¥269.10 |
+| Flagship (`flagship`) | ¥499 | ¥5,389.20 | ¥449.10 |
+
+Prices may be displayed with an explicit checkout-unavailable state; they do
+not establish a live offer, payment, automatic renewal, tax/invoice treatment,
+or data entitlement. Merchant configuration, renewal/refund policy and the
+approved sellable dataset scope remain activation gates. Implementation plan:
+[Customer identity and commerce](design/customer-identity-commerce-v1.md).
 
 The backend contract in this code tree enforces those three rolling minute
 limits, rejects commercial `daily_limit` and `max_concurrent` writes, and retains
@@ -292,6 +336,15 @@ customer portal, and editable through the admin token API.
 Customer-scoped key listing, creation, and non-current-key disable are also
 implemented; billing, passwordless identity sessions, and account-synced
 bookmarks remain target capabilities rather than production facts.
+
+The confirmed customer identity target supports phone and email within the same
+Account. The current access-key login is an explicitly temporary same-site cookie
+bridge, not proof of personal identity or a verified email/phone. Login methods
+must disclose unavailable delivery rather than collecting contacts or simulating
+codes. Legacy browser-stored credentials are retired; existing API keys remain
+unchanged. The initial payment direction is active monthly/yearly payment and
+manual renewal, not automatic debit; personal-Alipay eligibility and signing
+remain unverified. See `design/personal-alipay-checkout-v1.md` for the launch gates.
 
 The stable category keys are `a_share`, `crypto`, and `news`. Existing token
 records that omit `data_categories` retain their previous all-current-category

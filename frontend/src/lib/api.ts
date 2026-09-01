@@ -1,8 +1,7 @@
 // Thin API client for the TradingDatas console.
 //
-// Auth model is bearer-token-only (no cookies), which is what keeps the
-// server's wildcard CORS policy valid — do not introduce cookie storage here
-// without changing docs/API.md and the backend CORS headers together.
+// Standalone console remains bearer-only. The public site's /admin/ entry uses
+// a same-origin identity gateway; cookies NEVER go to the wildcard-CORS backend.
 
 export const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE || 'https://td-admin-api.tradingagent.cc'
 
@@ -53,11 +52,16 @@ export class ApiClient {
   private base: string
   private token: string
   private onUnauthorized?: () => void
+  private identity?: string
+  private requests = new Set<AbortController>()
+  private disposed = false
 
-  constructor(base: string, token: string, onUnauthorized?: () => void) {
+  constructor(base: string, token: string, onUnauthorized?: () => void, identity?: string) {
     this.base = base.replace(/\/+$/, '')
     this.token = token
     this.onUnauthorized = onUnauthorized
+    this.identity = identity
+    if (identity && new URL(this.base).origin !== window.location.origin) throw new Error('Account gateway must be same-origin')
   }
 
   get baseUrl(): string {
@@ -67,6 +71,11 @@ export class ApiClient {
   get bearerToken(): string {
     return this.token
   }
+  dispose(): void {
+    this.disposed = true
+    for (const request of this.requests) request.abort()
+    this.requests.clear()
+  }
 
   private async request<T>(
     method: string,
@@ -74,6 +83,7 @@ export class ApiClient {
     body?: unknown,
     query?: Record<string, string>,
   ): Promise<T> {
+    if (this.disposed) throw new ApiError(401, 'session_changed', '账户会话已改变，请重新验证')
     const url = new URL(this.base + path)
     if (query) {
       for (const [key, value] of Object.entries(query)) {
@@ -81,26 +91,32 @@ export class ApiClient {
       }
     }
     let response: Response
+    let payload: unknown = null
+    const controller = new AbortController()
+    this.requests.add(controller)
+    const timeout = setTimeout(() => controller.abort(), 15000)
     try {
       response = await fetch(url.toString(), {
         method,
         headers: {
-          Authorization: `Bearer ${this.token}`,
+          ...(this.identity ? { 'X-TD-Identity': this.identity } : { Authorization: `Bearer ${this.token}` }),
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
+        credentials: this.identity ? 'same-origin' : 'omit',
+        signal: controller.signal,
         body: body !== undefined ? JSON.stringify(body) : undefined,
       })
+      try { payload = await response.json() } catch { /* Generic error for non-JSON responses. */ }
+      if (controller.signal.aborted) throw new Error('request_aborted')
     } catch {
       throw new ApiError(0, 'network_error', '无法连接到 API 服务，请检查网络或 API 地址')
+    } finally {
+      clearTimeout(timeout)
+      this.requests.delete(controller)
     }
-    let payload: unknown = null
-    try {
-      payload = await response.json()
-    } catch {
-      // Non-JSON error pages still surface as generic errors below.
-    }
+    if (this.disposed) throw new ApiError(401, 'session_changed', '账户会话已改变，请重新验证')
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 || (this.identity && [403, 409].includes(response.status))) {
         this.onUnauthorized?.()
       }
       const err = (payload as { error?: { code?: string; message?: string } })?.error

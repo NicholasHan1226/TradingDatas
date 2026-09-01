@@ -388,11 +388,12 @@ methods/headers，不读取或返回任何管理数据；后续实际请求仍�
 `tradingdatas.com` 的静态资源 Worker 包含一个同站 Account 代理合同。该合同是浏览器
 credential-containment bridge，不是邮箱身份库，也不改变 Agent 继续使用 bearer token
 调用固定数据 API 的方式。生产环境只有在 Cloudflare secret `SESSION_ENCRYPTION_KEY` 和
-非密钥 binding `ACCOUNT_API_BASE` 均存在时才启用；否则所有 `/api/account/*` 请求返回
+非密钥 binding `ACCOUNT_API_BASE` 均存在时才启用；否则认证与代理请求返回
 `503 {"error":"identity_gateway_unavailable"}`，不得推断为生产已启用。
 
 - `POST /api/account/session`：同源请求提交 `{"access_key":"..."}`，通过
-  `GET /portal/api/me` 验证后返回相同 account projection，并设置 8 小时、AES-GCM 封装的
+  `GET /portal/api/me` 验证，且响应包含非空字符串 `portal.tenant_id`/`portal.tier` 后
+  返回相同 account projection，并设置 8 小时、AES-GCM 封装的
   `HttpOnly; Secure; SameSite=Strict; Path=/api/account` cookie。原始 key 不写入响应、URL、
   analytics 或持久化浏览器存储。
 - `GET /api/account/me`、`GET /api/account/usage?days=N`、`GET /api/account/keys`：从
@@ -403,9 +404,73 @@ credential-containment bridge，不是邮箱身份库，也不改变 Agent 继�
   短期无状态会话；完整的跨设备 session list、单会话服务端 revoke 与审计仍属于后续
   identity store 合同，不能由清 Cookie 冒充。
 
-浏览器兼容路径只在桥接未配置时使用，并将访问 key 保存在当前标签页的
-`sessionStorage`；旧 `localStorage` 值会迁移后立即删除。这个兼容路径不等于
-passwordless identity，也不提供跨设备恢复。
+同源 DELETE 清 Cookie 不依赖上游或密钥配置，故网关配置故障时仍可退出。上游 401
+也会清除当前 Cookie；403、429 与服务故障不能冒充成功或静默降级。代理按路径约束
+允许的方法，请求体在流读取过程中限制为 16 KiB，登录账户响应限制为 512 KiB；
+上游请求使用 Worker 支持的 `redirect: manual` 并拒绝 3xx（不跟随、不转发
+Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
+
+浏览器不再使用 direct-bearer 兼容路径，也不保存原始 key。旧 `localStorage` 与
+`sessionStorage` credential 在启动时移除，旧直连用户需重新登录；服务端 Token 不变。
+前端请求设 12 秒超时，登录单飞，账户变化后的迟到结果不得恢复前一账户/新密钥。
+`me` 验证身份与 `usage` 可用性分离，用量服务故障仅展示可重试提示。页面重新可见时
+验证现有会话；非后台轮询。此桥接仍不等于手机/邮箱身份库或可独立撤销的持久会话。
+
+### Independent email identity candidate
+
+The existing Login/Account also has a local-only, separately gated email-identity
+implementation. Its control-plane routes are `GET /api/account/auth-methods`,
+`POST /api/account/email/challenge`, and `POST /api/account/email/verify`.
+Email sessions reuse `/api/account/me` and `DELETE /api/account/session`, but use
+a distinct opaque cookie with server-side revocation in a dedicated identity
+store. Unlike legacy key-cookie clearing, email sign-out requires confirmation
+from that store; a store outage cannot be reported as successful revocation.
+
+The only email-account state implemented is verified and `not_subscribed`, with
+no tenant, data grant, usage or API key access. This does not change catalog/query
+or existing Portal authentication. Configured readiness is not delivery evidence;
+missing configuration keeps email login unavailable. Detailed request/response,
+limits, failure and release contracts: [Email identity v1](design/email-identity-v1.md).
+No production storage migration, secret provisioning or email activation is
+asserted by this API description.
+
+The local candidate also adds `POST /api/account/profile/deletion`: same-origin
+JSON `{confirmation: "DELETE"}`, `X-TD-Identity` matching the current email identity,
+current email session verified within ten
+minutes, and the separate retention feature flag are required. The server derives
+the user exclusively from that session. A D1 transaction queues deletion,
+disables the user and revokes all its email sessions; 202 returns
+`deletion: {state: "accepted", user_id, requested_at, delete_by}` and clears both cookies.
+Missing/mismatched expected identity returns 409 `identity_changed`; the frontend
+also validates the receipt identity so a stale tab cannot confirm another profile.
+This is not a completed-purge receipt. Wrong confirmation is 400, stale
+verification is 403 `recent_sign_in_required`, unauthenticated/expired email
+session is 401, and unavailable configuration/storage is 503. A legacy-only
+key session cannot use this route. `me.identity.deletion_available` indicates
+the feature flag only, not maintenance health. Email alone grants no admin/tenant
+authority; see the [retention contract](design/identity-retention-v1.md).
+
+### Account continuity candidate (not deployed)
+
+The gated [account/library contract](design/account-library-v1.md) adds explicit
+`POST/DELETE /api/account/connection`, `GET /api/account/bookmarks`,
+`PUT/DELETE /api/account/bookmarks/item`, and `POST /api/account/bookmarks/import`.
+All use the verified email cookie and expected `X-TD-Identity`; mutations require
+same origin. A connection requires recent verification, one existing backend-verified
+key and encrypted user-bound storage, never client tenant/role input or a new grant.
+`me.identity` remains grant-free; `me.data_access` is a separately revalidated backend
+projection (`none/connected/invalid/unavailable`). `me.capabilities` reports switches,
+not successful deployment or data health. Usage and key routes proxy the connected
+credential's existing portal authority. Invalid data access does not end email sign-in.
+
+The `/api/account/admin/*` bridge has a fixed whitelist of existing backend admin
+routes and restricted data-browser catalog/query calls; it is not a public data API.
+Each call revalidates admin scope/internal tier and expected identity. Administrative
+writes additionally require recent email verification. Ordinary customer credentials
+are rejected. Backend bearer/CORS authentication is unchanged; cookies terminate at
+the same-origin gateway. Cloud bookmarks store only typed resource references, max
+500 per identity; explicit import is atomic and capped at 100 references per action.
+Feature flags remain false and require separate schema/release acceptance.
 
 ## Customer Portal API
 

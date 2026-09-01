@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/prepare-sites-build.mjs && node scripts/build-research-pages.mjs && node scripts/build-tutorial-downloads.mjs",
     "preview": "vite preview",
+    "preview:email": "node scripts/preview-email-templates.mjs",
     "test:search": "node --test tests/search-index.test.mjs",
     "test:sites": "node --test tests/*.test.mjs",
     "audit:research": "node scripts/audit-research-content.mjs"

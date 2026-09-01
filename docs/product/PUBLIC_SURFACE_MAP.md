@@ -15,7 +15,7 @@ Every primary section represents a durable object:
 | Features | transparent derived field | What repeatable transformation is available, exactly how was it produced, and which version is it? | inspect methodology |
 | Recipes | executable preparation method | How do I combine datasets correctly for a research task? | open a recipe |
 | Research | external paper, report, or case | What can I learn, and which data/methods does the work rely on? | read the TradingDatas record, then the source |
-| Pricing | package or add-on | Which complete data access package matches my work? | request private-beta access |
+| Pricing | base plan; separate future add-on | Which request rate and billing period fit my needs? | review a non-paying purchase preview; no order or access grant |
 | Docs | product or technical guide | How does the platform, data contract, API, account, or policy work? | open a guide |
 | Account | tenant-owned access state | What can I access and how do I connect it? | manage access or an integration |
 
@@ -154,22 +154,28 @@ first click; the external source remains authoritative.
 
 ### Pricing `/pricing`
 
-Packages are organized by A-share work scenario, not upstream API names:
+Three base plans share the same base-data scope and differ only in request rate:
 
-- A-share Research;
-- Systematic Research;
-- Trading Data.
+- Basic: 200/minute, 99/month;
+- Professional: 600/minute, 299/month;
+- Flagship: 1000/minute, 499/month.
 
-Alternative data remains a separate trial/add-on area. Package comparison must
-show included data families, historical/intraday scope, runtime limits,
-alternative-data trial state, support, and entitlement term. Price, checkout,
-renewal, and live access remain unavailable until the commerce contract is
-implemented. The honest current conversion is `Request private beta`.
+No daily quota or commercial concurrency limit. Annual payment is twelve months
+at 10% off: 1,069.20 / 3,229.20 / 5,389.20. CNY is the domestic-first display
+assumption, pending settlement confirmation. Show one focused product, a rate-tier
+selector and monthly/annual switch; make actual annual total distinct from its
+monthly equivalent. Alternative data remains a separate trial/add-on area.
+Prices are confirmed, but checkout/renewal/live grants require backend evidence.
+The public action opens a non-paying purchase preview; the actual payment action
+remains disabled. Existing key holders can sign in and return to their selection.
+The preview has no order or entitlement writes. See
+[product contract](../PRODUCT.md) and [identity/commerce plan](../design/customer-identity-commerce-v1.md).
 
 Recommended routes:
 
 ```text
 /pricing
+/pricing/preview?plan=:plan&period=:period
 /pricing/alternative
 /pricing/beta
 ```

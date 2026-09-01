@@ -32,7 +32,7 @@ projection or authenticated `catalog/query` readback.
 
 | Surface | Contract coverage | Boundary |
 |---|---:|---|
-| Tushare through QuickSync | 190 interfaces; 132 configured active; 58 paused | Configuration, not a continuous-health claim |
+| Tushare through QuickSync | 190 interfaces; 133 configured active; 57 paused | Configuration, not a continuous-health claim |
 | Firecrawl | 2 page-collection pipelines | Per-site rights remain source-specific |
 | Binance public market data | 6 data families across a fixed 40-symbol universe, producing 240 dataset objects | 240 objects are not 240 upstream APIs |
 | Tushare domestic discovery scope | 222 read-data capabilities | 32 discovery-only additions are not runtime contracts |
@@ -55,6 +55,29 @@ Every candidate source must retain:
 The registry is intentionally open-ended. “All possible sources” means a
 maintained intake system that can accept new evidence; it is not a one-time
 claim to have enumerated every financial or alternative-data API in existence.
+
+## Updating the public snapshot
+
+The public source page is a dated editorial projection. Update it as one
+reviewable change, never as a substitute for runtime health:
+
+1. Regenerate `public-web/src/connectedInterfaceSnapshot.json` from the
+   immutable provider registry with
+   `cd public-web && python3 scripts/build-connected-interface-snapshot.py`.
+   The resulting count is contract/config evidence only.
+2. Review each changed candidate independently against its official source,
+   access terms and redistribution boundary. Record only a source identity,
+   official URL, access model, rights state, review stage and roadmap phase;
+   do not infer collection or commercial eligibility.
+3. Update `landscapeMeta.reviewedAt`, the dated historical ledger and this
+   document together. A changed review date without changed underlying evidence
+   is not a refresh.
+4. Run the snapshot check, `npm run test:sites` and `npm run build` from
+   `public-web`. Submit the result as a draft PR with the review date and scope
+   visible in the diff.
+5. Keep runtime receipt, authenticated API readback, entitlement and public
+   release verification separate. None of these public-content edits activates
+   a source or changes a customer's access.
 
 ## First reviewed source universe
 
