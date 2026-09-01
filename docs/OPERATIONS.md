@@ -60,10 +60,13 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 生产是否使用这些模式仍以 exact-release、真实 receipt 和认证 readback 为准。
 
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
-午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
-所有 `session_minute` 合同先执行，`event` 合同随后执行，其它 automatic 合同再按既有顺序执行；
-该排序只按 cadence class 决定，避免低频大批量采集把分钟或事件观测拖过 freshness SLA，
-不为某个 dataset、provider 或消费者增加专用分支。
+午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。planner 在每个
+`current` / `backfill` / `correction` 优先级内先按 cadence class 排序，再消耗该
+plan 自己的 `rate_budget_class` 预算：`session_minute` 最先，`event` 其次，其余
+automatic class 并列，再按 `dataset_id` 稳定打破并列。`event` 与 `low_frequency`
+使用独立预算，排序改变的是共享 runner 的串行时刻，不是互相挪用请求次数。
+这避免字母序更前的季报或其它低频合同把到期事件观测拖过 freshness SLA，也不为某个
+dataset、provider 或消费者增加专用分支。
 
 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`、`postclose_daily` 成功水位读取，在下一配置
 开窗前或配置工作日之外，以前一配置工作日的既有收盘锚点计算 freshness。开窗时间和
@@ -208,6 +211,12 @@ dataset allowlist，不改变 entitlement、请求形状、串行 provider budge
 全局 collection lock；新增 session-minute dataset 仍只能通过 registry/config 接入。每个真实
 交易窗口的连续 receipt 与认证 query/consumer readback 仍是稳定性证据，调度隔离本身不构成
 `stable` 声明。
+
+`event` 先于低频的排序只作用于同一轮里同时入选的混合 cadence 计划，也就是窗口外的
+完整 automatic 轮次。窗口内 `--cadence-class session_minute` 会把其它 cadence 记为
+`not_selected`，因此盘中 event SLA 超时不能解释成“低频合同抢先执行”。排查时应先
+看该轮是否处于预留窗口、event 自身 fanout 或 transport 是否超时，以及
+`failure_retry_seconds=300` 是否尚未到期。排序合入仓库不构成生产 freshness 已恢复。
 `pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。其中的
 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
@@ -226,9 +235,14 @@ raw HTTPS sidecar 可以引用已经 formal 注册的 dependency seed authority�
 与 data_through，并要求 dependent API 已在 authority 的显式清单中。不匹配、未列出的 sibling
 或缺少 fresh result 的 API 都保持 fail-closed/paused，不会由 seed authority 推断 provider rows
 或扩大 activation。
-只读 plan 可按以下方式检查：
+只读 plan 可按以下方式检查。省略 `--execute`（plan 模式是默认值）；输出 JSON 的
+`datasets` 数组顺序就是 planner 排序后将串行执行的顺序。采集正在持有 lock 时返回
+`busy`，不能改 lock 或并行执行。正式 automatic 集合不要加 `--activation-wave`；
+`pilot_existing` 只复现该波次：
 
 ```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/run_provider_native_schedule.py
 uv run --python 3.12 --with-requirements requirements.txt \
   python tools/run_provider_native_schedule.py --activation-wave pilot_existing
 ```

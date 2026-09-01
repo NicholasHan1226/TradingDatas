@@ -146,6 +146,13 @@ activation evidence 不能绕过 provider payload 的绝对扫描上限。regist
 - event/intraday window。
 
 当前数据优先于历史回填；回填必须有界、可恢复、可观察，并遵守账号级和 API 级预算。
+planner 在生成候选之后、按每个 plan 的 `rate_budget_class` 接受预算之前，用通用
+cadence 排序决定同一轮的串行顺序：每个 `current` / `backfill` / `correction`
+优先级内先 `session_minute`，再 `event`，其余 cadence class 并列第三档，再按
+`dataset_id` 稳定打破并列。该排序只提前 freshness 敏感合同相对低频合同的执行时刻，
+不改变哪些 plan 会被生成、retry、receipt、预算上限或公开 API；它不是 dataset
+allowlist、provider 特例或 `stable` 声明。`--cadence-class` 在排序前收窄候选；
+dispatcher 在会话窗口内只选择 `session_minute` 时，本轮根本不会出现 event 合同。
 
 ## Provider 权限与 Transport 预算
 
