@@ -267,6 +267,13 @@ former persistent `localStorage` credential. See `docs/API.md` and
 `docs/OPERATIONS.md`; a code deploy alone is not evidence that the secure session
 path is active.
 
+Anonymous public pages do not probe `/api/account/me` on initial render. Session
+resolution starts only when a visitor explicitly enters the Account workspace or
+after an authenticated login handoff; a current-tab compatibility key still
+restores the direct Account view. This keeps ordinary reading paths free of
+expected unauthenticated account responses while preserving deliberate Account
+access.
+
 Pushes to `main` that change `public-web/**` run the repository Cloudflare
 workflow. The workflow checks out the immutable source SHA, deploys the Worker,
 then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to return

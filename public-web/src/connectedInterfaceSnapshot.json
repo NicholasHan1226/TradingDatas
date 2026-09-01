@@ -284,7 +284,7 @@
     {
       "activation": "active",
       "apiName": "balancesheet",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.balancesheet",
       "entitlement": "active",
@@ -294,7 +294,7 @@
     {
       "activation": "active",
       "apiName": "cashflow",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.cashflow",
       "entitlement": "active",
@@ -314,7 +314,7 @@
     {
       "activation": "active",
       "apiName": "express",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.express",
       "entitlement": "active",
@@ -324,7 +324,7 @@
     {
       "activation": "active",
       "apiName": "fina_audit",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.fina_audit",
       "entitlement": "active",
@@ -334,7 +334,7 @@
     {
       "activation": "active",
       "apiName": "fina_indicator",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.fina_indicator",
       "entitlement": "active",
@@ -364,7 +364,7 @@
     {
       "activation": "active",
       "apiName": "income",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.income",
       "entitlement": "active",
@@ -384,7 +384,7 @@
     {
       "activation": "active",
       "apiName": "pledge_stat",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.pledge_stat",
       "entitlement": "active",
@@ -474,7 +474,7 @@
     {
       "activation": "active",
       "apiName": "cb_basic",
-      "cadence": "on_demand",
+      "cadence": "daily_reference",
       "category": "funds-indices",
       "datasetId": "cn.dataset.cb_basic",
       "entitlement": "active",
@@ -554,7 +554,7 @@
     {
       "activation": "active",
       "apiName": "cb_share",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "funds-indices",
       "datasetId": "cn.dataset.cb_share",
       "entitlement": "active",
@@ -1822,7 +1822,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "active",
+      "activation": "paused",
       "apiName": "scrape_page",
       "cadence": "event",
       "category": "news-events",

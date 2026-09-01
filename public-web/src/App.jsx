@@ -628,7 +628,7 @@ export function App() {
   const [docsCategory, setDocsCategory] = useState("all");
   const [pricingPlanIndex, setPricingPlanIndex] = useState(0);
   const [accountToken, setAccountToken] = useState(restoreTabAccountToken);
-  const [accountAuthMode, setAccountAuthMode] = useState(() => sessionStorage.getItem(TAB_ACCOUNT_TOKEN_KEY) ? "direct" : "session");
+  const [accountAuthMode, setAccountAuthMode] = useState(() => sessionStorage.getItem(TAB_ACCOUNT_TOKEN_KEY) ? "direct" : "anonymous");
   const [accountConnectionRevision, setAccountConnectionRevision] = useState(0);
   const [accountTokenInput, setAccountTokenInput] = useState("");
   const [accountData, setAccountData] = useState(null);
@@ -643,6 +643,7 @@ export function App() {
   const copy = messages[locale];
 
   function accountRequest(endpoint, init = {}) {
+    if (accountAuthMode === "anonymous") return Promise.resolve(new Response(null, { status: 401 }));
     if (accountAuthMode === "session") {
       return fetch(`/api/account/${endpoint}`, { ...init, credentials: "same-origin" });
     }
@@ -654,7 +655,7 @@ export function App() {
   }
 
   useEffect(() => {
-    if (accountAuthMode === "direct" && !accountToken) {
+    if (accountAuthMode === "anonymous" || (accountAuthMode === "direct" && !accountToken)) {
       setAccountData(null);
       setAccountUsage(null);
       setAccountKeys([]);
@@ -761,7 +762,7 @@ export function App() {
     localStorage.removeItem(LEGACY_ACCOUNT_TOKEN_KEY);
     sessionStorage.removeItem(TAB_ACCOUNT_TOKEN_KEY);
     setAccountToken("");
-    setAccountAuthMode("session");
+    setAccountAuthMode("anonymous");
     setAccountData(null);
     setAccountUsage(null);
     setAccountKeys([]);
@@ -965,6 +966,7 @@ export function App() {
     goTo(path);
   }
   function openAccountSection(key) {
+    if (accountAuthMode === "anonymous") setAccountAuthMode("session");
     setAccountSection(key);
     goTo("/account");
   }

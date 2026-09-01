@@ -21,6 +21,13 @@ test("keeps unimplemented identity and commerce capabilities explicit", () => {
   assert.doesNotMatch(appSource, /模拟订单号|mock invoice|verification code sent/i);
 });
 
+test("does not probe an account session from an anonymous public page", () => {
+  assert.match(appSource, /TAB_ACCOUNT_TOKEN_KEY\) \? "direct" : "anonymous"/);
+  assert.match(appSource, /accountAuthMode === "anonymous" \|\| \(accountAuthMode === "direct" && !accountToken\)/);
+  assert.match(appSource, /if \(accountAuthMode === "anonymous"\) setAccountAuthMode\("session"\);/);
+  assert.match(appSource, /setAccountAuthMode\("anonymous"\);/);
+});
+
 test("uses a lightweight responsive account presentation", () => {
   assert.match(styleSource, /\.account-plan-hero \{/);
   assert.match(styleSource, /\.account-usage-chart \{/);
