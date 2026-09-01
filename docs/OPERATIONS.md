@@ -92,10 +92,21 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
 
-`event` 波次按广度优先执行，每个分片在单轮内只尝试一次。失败分片由
-`failure_retry_seconds=300` 在后续 timer 轮次重新变为可执行；不得在同一轮用最多三次重试
-耗尽共享账号/provider 预算并截断后续独立 dataset 或 `major_news` 来源。其它 cadence 的
-有界同轮重试策略不变。
+`event` 波次按广度优先执行。采集重试分两层，不能混为一谈：
+
+- collector 同轮 `retry.max_attempts`：`_collect_with_retry` 对可重试的
+  `rate_limited` / `provider_error` / `transport_error` 再发起真实调用；每一次调用都经
+  `request_gate` 计入该 cadence 的账号/provider/API 预算。
+- planner `failure_retry_seconds`：只看同一 `dataset + provider + request_window` 最近失败
+  receipt 的年龄；未到期时该窗口返回 `not_due`，不消耗本轮预算。
+
+当前 `event` 配置为每个分片单轮只尝试一次（`max_attempts=1`，延迟全 0）。失败后由
+`failure_retry_seconds=300` 在后续五分钟 timer 轮次重新变为可执行；不得在同一轮用最多三次
+重试耗尽共享账号/provider 预算并截断后续独立 dataset 或 `major_news` 来源。当前 active
+event 波次的确定性调用数必须严格低于 event 账号/provider 上限 36；余量不是同轮重试头寸。
+后续 event 分片若出现 `resource_budget`，应先核对波次是否长大，而不是假设前序分片在同轮
+重试。失败后 300 秒内 planner 对同一窗口返回 `not_due` 是预期节流，不是调度丢失。其它
+automatic cadence 的有界同轮重试（`max_attempts=3`）不变；`on_demand` 本身不进 timer。
 
 `event` cadence 可选 `freshness_refresh_lead_seconds`（缺省为 0，当前生产配置不启用）。
 只有正常 success/empty 的重观测可以提前：非零值将间隔取为
