@@ -29,7 +29,7 @@ import { researchViewReducer } from "./researchReader.js";
 import { researchHref, researchLocation, researchSubjects } from "./researchDiscovery.js";
 import { ResearchHub } from "./ResearchHub.jsx";
 import { ResearchRecord } from "./ResearchRecord.jsx";
-import { createReadingPositions, isInPageNavigation, restoreLocationHashTarget } from "./researchHistory.js";
+import { createReadingPositions, isInPageNavigation, observeHashLocation, restoreLocationHashTarget } from "./researchHistory.js";
 import { preparationTutorials } from "./preparationTutorials.js";
 import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
 const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
@@ -873,9 +873,11 @@ export function App() {
       setRoute(nextRoute);
       setNavigationRevision((value) => value + 1);
     };
+    const stopHashTracking = observeHashLocation(window, (href) => { readingLocation.current = href; });
     window.addEventListener("popstate", syncRoute);
     return () => {
       hashTargetCleanup.current();
+      stopHashTracking();
       window.removeEventListener("popstate", syncRoute);
       window.history.scrollRestoration = previousRestoration;
     };
