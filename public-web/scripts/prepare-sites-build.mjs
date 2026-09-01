@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,15 @@ for (const file of [index, worker, hosting]) {
 mkdirSync(path.join(dist, "server"), { recursive: true });
 mkdirSync(path.join(dist, ".openai"), { recursive: true });
 copyFileSync(worker, path.join(dist, "server", "index.js"));
+copyFileSync(path.join(root, "worker", "email-identity.js"), path.join(dist, "server", "email-identity.js"));
+copyFileSync(path.join(root, "worker", "email-templates.js"), path.join(dist, "server", "email-templates.js"));
+copyFileSync(path.join(root, "worker", "identity-retention.js"), path.join(dist, "server", "identity-retention.js"));
+copyFileSync(path.join(root, "worker", "account-continuity.js"), path.join(dist, "server", "account-continuity.js"));
 copyFileSync(hosting, path.join(dist, ".openai", "hosting.json"));
+// Reuse the versioned admin build. The Worker serves its shell at /admin/;
+// assets remain under /app/. No cookie or credential enters these files.
+const adminBuild = path.resolve(root, "../static/app");
+if (!existsSync(path.join(adminBuild, "index.html"))) throw new Error("Missing versioned admin build; build frontend first");
+cpSync(adminBuild, path.join(dist, "client", "app"), { recursive: true });
 
 console.log("Prepared Sites build: dist/server/index.js and dist/.openai/hosting.json");

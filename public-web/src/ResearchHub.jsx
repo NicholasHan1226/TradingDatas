@@ -59,7 +59,7 @@ export function ResearchHub({ locale, view, onChange, featuredPaper, atlas, kind
         </div>
         <img className="research-editorial-art" src="/assets/research-editorial-architecture.webp" width="1024" height="1024" alt="" fetchPriority="high" />
       </section>
-      <div className="research-curated-paths">{[0, 2].map((index) => {
+      <div className="research-curated-paths">{[0, 1, 2].map((index) => {
         const path = atlas.paths[index];
         const href = `/research/paths/${readingPaths[index].id}`;
         return <a key={href} href={href} onClick={(event) => onNavigate(event, href)}><div><h2>{path.question}</h2><p>{path.data}</p></div><ArrowRight /></a>;

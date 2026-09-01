@@ -619,12 +619,14 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 4. 发布 immutable main SHA，依次验证登录 exchange、`/api/account/me`、usage、key list、
    create/disable 的后端权限语义，以及 `DELETE /api/account/session` 后再次读取为 `401`；
 5. 在浏览器确认响应 cookie 为 `HttpOnly; Secure; SameSite=Strict; Path=/api/account`，
-   Account 页面及持久化 `localStorage` 都不再持有原始 key。不得把前端显示“安全会话”当作
+   `localStorage`/`sessionStorage` 都不再持有原始 key。输入只用于本次交换，创建 API key
+   时的原始值仍按原合同只展示一次。不得把前端显示“安全会话”当作
    上述响应证据。
 
 任一项失败时，先移除或禁用这两个 Worker binding 使桥接回到显式 `503
-identity_gateway_unavailable`，再重新发布上一已验证公开站 SHA。前端只会回退为当前标签页
-`sessionStorage` 的兼容连接；不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
+identity_gateway_unavailable`，再按获批范围重新发布上一已验证公开站 SHA。当前前端不得
+回退为 direct-bearer 或浏览器存储密钥；同源清 Cookie 仍可用。回滚到旧版时需明确其
+旧兼容路径风险，不能把降级当成功。不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
 SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke 和审计仍是独立后续发布。
 
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
@@ -633,6 +635,114 @@ SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke
 作为事故证据，在相邻只读目录新增修正版；若修正版使用相对 payload 路径，必须从原
 payload 目录执行 `sha256sum -c /absolute/fix/PAYLOADS.sha256`，再进入修复目录校验
 sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
+
+## Resend account email preparation
+
+Owner selected Resend for account email; SMS has no provider and remains
+unavailable. Keep the existing `/login` and `/account`; do not add a second
+customer workspace. Identity implementation gates remain in
+[customer identity](design/customer-identity-commerce-v1.md).
+
+### Sending-domain configuration
+
+- Domain: `account.tradingdatas.com`; intended From:
+  `TradingDatas <login@account.tradingdatas.com>`.
+- Resend domain ID: `06e2de82-4db8-4ab2-9d9f-219cd647990c`.
+- Region: `ap-northeast-1`; sending enabled, receiving disabled.
+- Open and click tracking disabled for authentication mail.
+- Cloudflare zone: `tradingdatas.com`; only the following new records, DNS-only,
+  TTL Auto. The root Worker record and unrelated project domains are unchanged.
+
+| Type | Zone-relative name | Value |
+| --- | --- | --- |
+| TXT | `resend._domainkey.account` | Current public DKIM key returned by Resend Get Domain for the ID above |
+| TXT | `send.account` | `v=spf1 include:amazonses.com ~all` |
+| MX | `send.account` | Priority `10`, `feedback-smtp.ap-northeast-1.amazonses.com` |
+
+Use Resend's returned DKIM value, never a guessed key or one from another domain.
+Read existing exact-name records before adding; a conflicting value requires
+review rather than replacement. The return-path MX does not create an inbox for
+`login@account.tradingdatas.com`, and no root-domain MX/SPF change is required.
+
+### Verification and activation boundary
+
+Observed 2026-08-30 14:31 CST: Cloudflare showed all three records with the exact
+values returned by Resend, and public DNS queries returned the correct DKIM,
+SPF and priority-10 MX. A subsequent Cloudflare page reload retained exactly
+the three added mail records plus the original root Worker record. Queries to
+`1.1.1.1` returned all three values, and `8.8.8.8` also returned the correct MX.
+Fresh Resend Get Domain readback at 14:36 CST confirmed the domain and all three
+DKIM/MX/SPF record statuses `verified`. Sending remains enabled, receiving and
+tracking disabled. This verifies the sending domain, not a delivered message.
+
+Read-only verification commands:
+
+```bash
+dig +short TXT resend._domainkey.account.tradingdatas.com
+dig +short TXT send.account.tradingdatas.com
+dig +short MX send.account.tradingdatas.com
+```
+
+No email was sent, API key created/changed, Worker secret provisioned, website
+release deployed, identity database migrated, SMS enabled, or payment activated
+during domain preparation. A verified domain alone does not enable email login.
+Before activation, review identity storage and tenant ownership, implement
+one-use challenges and abuse controls, provision an approved least-privilege
+server-side sender secret, and verify delivery to an explicitly approved test
+recipient plus session/expiry/replay/isolation behavior. Never put the sender
+secret, user address, verification code or login link into logs or the bundle.
+
+The [email identity candidate](design/email-identity-v1.md) implements this flow
+inside the existing Login/Account with local D1 tests and synthetic mail. The
+dedicated account DB is now provisioned; its candidate Worker binding keeps the
+email enable flag explicitly false. Secret provisioning, exact-head release,
+retention enforcement, approved-recipient OTP delivery and runtime readback remain separate
+gates. No real message or Worker deployment occurred during this preparation.
+
+2026-08-30 follow-up: the earlier permission pause was respected. After the
+owner's renewed go-ahead, minimal account/user read and D1/Worker-script write
+OAuth succeeded. The local Node TLS trust-chain failure was resolved using the
+existing `/etc/ssl/cert.pem` for that command only; TLS verification was never
+disabled and no global trust/proxy setting changed. The new account-only DB was
+initialized and read back empty. Exact identifiers, commands, schema hash,
+rollback boundaries and checks are in the
+[provisioning checkpoint](reports/2026-08-30-email-identity-provisioning.md).
+Later on 2026-08-30 the owner supplied a private recipient and confirmed receiving
+the delivery test; the branded follow-up also has provider delivery evidence in
+the [language checkpoint](reports/2026-08-30-email-language-readiness.md). This is
+not an OTP/session test or administrator grant. Preserve all existing deployment
+credentials, customer keys and unrelated Resend resources; do not send further
+mail or open email login before the remaining gates pass.
+
+### Account-only retention candidate
+
+The approved active-store retention and rollback contract is
+[Account retention and deletion v1](design/identity-retention-v1.md). The candidate
+adds one empty request table/index via `public-web/worker/identity-retention-schema.sql`,
+after the original account schema, to the dedicated `tradingdatas-identity-v1`
+binding only. No remote migration has run in this follow-up. Never apply it to
+financial SQLite, existing API-token stores or another D1 resource.
+
+The configured UTC hourly cron is `17 * * * *`; `IDENTITY_RETENTION_ENABLED=false`
+makes each invocation a no-op and disables self-service deletion. Email activation
+is a separate false flag. Before enabling either, exact-head CI/review and Datas
+PM approval must pass; then verify the precise binding and additive schema,
+scheduled invocation, aggregate deletion/backlog outcome, failure visibility,
+current-user deletion and unaffected active sessions. A local cron test is not a
+live scheduling guarantee. Logs contain counts/booleans only, never PII or SQL errors.
+Bounded backlog produces a failed invocation, not false success; operations must
+investigate it and prove deadlines are met before claiming an operational SLA.
+
+Do not turn cleanup off when pausing new logins. If maintenance itself requires
+incident rollback, preserve its durable queue and perform approved account-only
+manual cleanup within the deadline; do not drop the additive table or restore
+deleted accounts. Backups/Time Travel and Resend logs remain separately scoped.
+
+Rollback is separate and must target only these three newly created DNS records
+and this Resend domain, after checking that no sender has begun using them.
+Do not delete unrelated DNS records, the root Worker binding, existing Resend
+domains, website sessions, customer keys or data-plane services. DNS rollback
+does not authorize credential rotation or deletion of any account data.
 
 ## 发布门禁
 
@@ -776,3 +886,42 @@ Polymarket 的新失败回执不能刷新成功捕获时间：使用 capture 内
 更新脚本需先记录现有字节 hash、备份到新的 root-only 路径、通过
 `bash -n` 与 `tests/test_collector_watch.py`，再原子安装并读回 hash；不改 timer 排期。
 回滚只恢复该备份脚本，保留既有日志和数据。读取日志应区分告警内容与工具执行错误。
+
+## Account continuity release preparation (2026-08-31 candidate)
+
+See [account/library contract](design/account-library-v1.md). This slice adds no
+data-plane service, provider request, collection timer, subscription or payment.
+All three new switches remain false: `ACCOUNT_CONNECTION_ENABLED`,
+`ACCOUNT_LIBRARY_ENABLED`, `ACCOUNT_ADMIN_ENABLED`. Email and retention release
+evidence remain separately verified, but new email login is fail-closed unless
+retention is also enabled. Disabling new email login must not disable cleanup,
+existing-session revocation, or logout. Do not deploy the old-code secret-preparation version
+`2b64f7d6-5b47-41c7-b704-b156abcc5a05` as the new application.
+
+After review, apply `public-web/worker/account-library-schema.sql` only to the
+dedicated identity D1 database, after its original and retention schemas. It adds
+personal references, user-bound encrypted key connections, a 500-reference limit,
+and triggers that remove the stored connection when a profile is disabled. Purging
+the profile cascades its personal references. The schema has not been applied
+remotely in this work. No account identity or existing key is automatically linked.
+
+Build `frontend` before `public-web`; commit generated `static/app` and public
+artifacts together. Public packaging copies that same admin asset tree to `/app/`;
+only `/admin/` uses the email-session gateway, and only when its flag is true.
+On the public Worker, direct `/app`, `/app/`, and `/app/index.html` requests are
+404 while `/app/assets/**` remains available to the gated `/admin/` shell. The
+standalone legacy Pages console remains a bearer-only fallback only on the
+separate administrator Pages origin. The backend's
+wildcard-CORS interface never receives identity cookies.
+
+Before activation: exact-head CI, independent review, PM go-ahead, explicit D1 and
+flag preflight, exact-source version upload preserving encrypted staged secrets,
+recipient-approved real OTP acceptance, same-identity Account/Admin readback,
+another user's denial and bookmark isolation. Test production API-grant expiry and
+revocation separately; synthetic previews are not customer or collection evidence.
+Rollback disables new feature flags and restores reviewed source while preserving
+D1 tables/triggers and staged secrets. Do not restore a self-service deletion route
+without the expected-identity check; disable deletion if such a rollback is required.
+Never remove schemas, cloud libraries, raw financial facts or legacy API keys as
+deployment cleanup. Key rotation invalidates encrypted connections and requires
+explicit reconnect; it is not performed automatically by the application.
