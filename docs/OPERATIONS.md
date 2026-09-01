@@ -631,6 +631,28 @@ SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke
 payload 目录执行 `sha256sum -c /absolute/fix/PAYLOADS.sha256`，再进入修复目录校验
 sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
 
+### 登录与非支付购买预览
+
+`/pricing` 打开 `/pricing/preview?plan=&period=`。六个组合只存在于 URL 与
+`public-web/src/pricing.js`；预览不写订单、不改 grants，也没有可打开收款的
+runtime flag。Actions 自动回读目前只覆盖 `/`、`/account/`、`/data/`、`/research/`、
+`/pricing/`。`/login` 与 `/pricing/preview` 依赖 Worker SPA fallback，必须在浏览器
+或 loopback harness 单独验收；`/pricing/` HTTP 200 不能证明预览或登录回跳可用。
+
+本地合成验收：
+
+```bash
+cd public-web
+npm run build
+node scripts/login-qa-server.mjs
+```
+
+打开 `http://127.0.0.1:5193/__qa`。harness 只绑定 loopback，不调用上游，只接受合成
+字符串。`?case=` 覆盖 `normal`、`invalid`、`unavailable`、`malformed`、
+`usage-failure`、`logout-retry`、`slow-login`、`slow-identity`、`identity-outage`、
+`expired`、`late-key`。并行第二实例使用 `TRADINGDATAS_QA_PORT=5194`。禁止把真实
+客户 key、Portal origin 或生产 cookie 送进该进程。显示价验收不等于商户开通。
+
 ## Resend account email preparation
 
 Owner selected Resend for account email; SMS has no provider and remains

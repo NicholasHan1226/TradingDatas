@@ -18,7 +18,7 @@ target product plane: canonical/PIT model + transparent Features -> versioned de
 ```
 
 - data plane 是数据身份、可用性、覆盖、freshness、quality 与 lineage 的唯一权威；
-- account/commerce plane 是价格、套餐映射、试用、续费、到期和支付结果的唯一权威；在该 plane 实现并读回前，相关页面只能标记 proposal；
+- account/commerce plane 是价格、套餐映射、试用、续费、到期和支付结果的唯一权威。已实现的是公开站入口与同站会话桥接，以及已批准的**显示价**与非支付购买预览；订单、收款、订阅写入和授权变更仍未实现，相关页面必须保持 paused/unavailable，不能把前端选择写成 live offer；
 - content plane 解释数据和教授准备方法，读取 data/account 投影但不反向修改 registry、facts、receipts、activation、entitlement 或 quota。
 - target product plane 只通过新合同建立 canonical/PIT 与透明 Feature 对象，并保留回链 provider-native facts/receipts；当前 `/v1` 和 SQLite 权威链不得被原地改写。
 
@@ -26,7 +26,27 @@ Recipe 是版本化准备合同，不是当前运行时 pipeline。它可以组�
 
 Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具和限制的透明衍生数据。它不能是 alpha、信号、排名或建议。Feature Plane 目前未实现，详情页与 manifest 只能标记为 target/product definition/planned。完整分层见 `docs/product/PRODUCT_PLANES.md`。
 
-公共路由和内部部署路径在实现前由 `docs/design/public-data-product-system-v1.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
+公共对象与视觉合同由 `docs/design/public-data-product-system-v1.md` 与 `docs/product/PUBLIC_SURFACE_MAP.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
+
+### 公开站控制面
+
+`public-web/` 在同一品牌下实现 Login / Pricing / Account，属于 account 控制面与内容面，不改变 data plane。
+
+```text
+/pricing  ->  /pricing/preview?plan=&period=  ->  /login?next=<allowlisted preview>
+          \                                    /
+           `->  /login  ->  /account
+```
+
+已实现、且必须以源码为准的行为：
+
+- `/login` 用访问密钥调用同站 `POST /api/account/session`，换取 8 小时 `HttpOnly; Secure; SameSite=Strict; Path=/api/account` cookie。没有 browser-storage 或 direct-bearer 回退。Phone 仍不可用。Email 是独立 gated 候选，见 `docs/design/email-identity-v1.md`。
+- 六个显示价组合集中在 `public-web/src/pricing.js`：月付 99 / 299 / 499 CNY，年付为十二月价九折（1,069.20 / 3,229.20 / 5,389.20）。`getPreviewState().canPay` 恒为 `false`，没有环境开关可打开收款。
+- `safeLoginDestination` 只接受 `/account` 或规范 `/pricing/preview?plan=&period=`。外链、`/api/*`、hash、重复 `next`、额外 query 一律回落到 `/account`。
+- 浏览器身份视图由 `getAccountViewState` 分为 `checking` / `signed_out` / `unavailable` / `authenticated`。登录 `401` 是无效密钥（`invalid_token`），其它 `401` 是会话缺失；用量 `5xx` 不得冒充退出。
+- Account Billing 标明不可用。预览不创建订单、不改 Portal 套餐或 dataset grants。
+
+`/checkout`、商户回调和 commerce ledger 仍不存在。Worker 对 `/api/commerce/*` 与 `/api/account/orders` 保持 fail-closed。生产是否启用会话桥接以 `STATUS.md` 与认证 readback 为准，不能由页面 200 或本地 QA 推断。合同见 `docs/API.md`、`docs/OPERATIONS.md` 与 `docs/design/payment-flow-preparation-v1.md`。
 
 ## 权威顺序
 

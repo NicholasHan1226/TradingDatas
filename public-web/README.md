@@ -84,6 +84,50 @@ npm run build
 npm run test:sites
 ```
 
+### Login return, view states, and QA pitfalls
+
+These rules are enforced by `src/accountSession.js` and `src/purchasePreview.js`.
+Do not “fix” a review finding by collapsing them.
+
+| Identity view | When it appears | Must not claim |
+| --- | --- | --- |
+| `checking` | `GET /api/account/me` in flight | signed-out prompt or cached plan |
+| `signed_out` | no session, or login `401` (`invalid_token`) | gateway outage |
+| `unavailable` | 403 / 429 / timeout / 5xx / malformed projection | the user signed out |
+| `authenticated` | valid `portal` or verified email identity | payment unlocked or grants changed |
+
+Login `?next=` accepts exactly one of `/account` or a canonical
+`/pricing/preview` with only `plan` (`basic` / `standard` / `flagship`) and
+`period` (`monthly` / `annual`). Duplicate `next`, hashes, extra query keys
+(`paid`, `order_id`, `tenant`), `/api/*`, and absolute URLs all fall back to
+`/account`.
+
+The loopback harness at `scripts/login-qa-server.mjs` is the only login UI check
+that may run without a reviewed production session. After `npm run build`:
+
+```bash
+node scripts/login-qa-server.mjs
+# optional second instance: TRADINGDATAS_QA_PORT=5194 node scripts/login-qa-server.mjs
+```
+
+Open `http://127.0.0.1:5193/__qa` and switch `?case=`:
+
+| Case | Expected UI |
+| --- | --- |
+| `normal` | synthetic Basic account; preview return keeps plan/period |
+| `invalid` | invalid-key copy, not an outage |
+| `unavailable` / `identity-outage` | retry, still not signed-out |
+| `malformed` | HTTP 200 without `tenant_id`/`tier` is unavailable |
+| `usage-failure` | stay signed in; usage panel retries |
+| `logout-retry` | first DELETE fails; UI must not claim sign-out |
+| `slow-login` / `slow-identity` | keep `checking`; ignore late results after a newer action |
+| `expired` | later `me` is 401; clear private panels |
+| `late-key` | a stale key-create response must not restore the previous account |
+
+Never paste a real access key into the harness. Cloudflare Actions readback of
+`/pricing/` does not prove `/login` or `/pricing/preview`. There is no Worker
+route that creates an order.
+
 ## Research library
 
 The 2026-08-31 candidate contains 200 distinct external research materials with
