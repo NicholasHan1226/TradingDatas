@@ -156,9 +156,25 @@ former persistent `localStorage` credential. See `docs/API.md` and
 `docs/OPERATIONS.md`; a code deploy alone is not evidence that the secure session
 path is active.
 
-Pushes to `main` that change `public-web/**` run the repository Cloudflare
-workflow. The workflow checks out the immutable source SHA, deploys the Worker,
-then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to return
-HTTP `200`, retain the requested effective URL, and contain the exact JavaScript
-asset referenced by that checkout. A local build or a successful upload alone is
-not production evidence.
+Pushes to `main` that change `public-web/**`, `static/**`, or
+`.github/workflows/deploy.yml` run that workflow (automerge and
+`workflow_dispatch` also pass an exact `expected_sha`). Both `deploy-admin` and
+`deploy-public` always run against the same immutable checkout; a `static/**`-only
+change still republishes this Worker.
+
+`deploy-public` publishes with `npx wrangler@4.127.1 deploy --config
+wrangler.jsonc --secrets-file`, then polls `/`, `/account/`, `/data/`,
+`/research/`, and `/pricing/` on `https://tradingdatas.com`. Each route must
+return HTTP `200`, keep the requested effective URL, include `<!doctype html>`,
+and contain the exact `/assets/*.js` filename from this checkout's
+`public-web/dist/client/index.html`. The job retries up to 12 times with a
+5-second pause because the custom hostname can briefly serve the previous
+Worker version after publish.
+
+A local build, a successful `wrangler deploy`, or a single curl is not
+production evidence. If the poll fails, the log is `Published asset <file> was
+not visible at <route> after 12 attempts.` That is a public-edge visibility
+failure for this SHA, not a session-bridge, admin-API, or data-plane fault. Do
+not `wrangler secret put` from the dashboard. Re-run the exact-SHA workflow
+only after the committed `dist/client` matches that SHA. Route/asset success
+does not prove `SESSION_ENCRYPTION_KEY` is active.

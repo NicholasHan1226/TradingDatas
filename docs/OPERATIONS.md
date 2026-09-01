@@ -580,6 +580,34 @@ snapshot（如 security master）及有界 calendar 可按 registry 默认排序
 修改 DNS、重启采集 timer 或清理 facts/receipts。回退后重新验证广州本地 `18084` 的
 `401`，再单独修复或恢复广州直连 Tunnel；公网主机名恢复前不能宣称控制台可用。
 
+## 公开站 Worker 发布读回
+
+`.github/workflows/deploy.yml` 在 `main` 的 `static/**`、`public-web/**` 或自身变更时，
+以及 automerge / 手工 `workflow_dispatch` 带 `expected_sha` 时，会同时跑 `deploy-admin`
+与 `deploy-public`。两个 job 都 checkout 同一 immutable `SOURCE_SHA`；没有按路径拆分，
+因此只改 `static/**` 仍会重发公开 Worker，只改 `public-web/**` 仍会重发管理台 Pages。
+
+`deploy-public` 在 `public-web` 工作目录用 `npx wrangler@4.127.1 deploy --config
+wrangler.jsonc --secrets-file` 把 `SESSION_ENCRYPTION_KEY` 与同一 Worker 版本原子发布，
+然后对 `https://tradingdatas.com` 的 `/`、`/account/`、`/data/`、`/research/`、
+`/pricing/` 轮询读回。期望资产文件名来自该 SHA 已提交的
+`public-web/dist/client/index.html` 中 `/assets/*.js`，不是 wrangler 日志或浏览器缓存。
+
+每条路由必须同时满足：HTTP `200`、`url_effective` 仍是请求的
+`https://tradingdatas.com${route}`、正文含 `<!doctype html>`、正文含上述精确文件名。
+每条路由最多 12 次、间隔 5 秒。自定义域名在 Worker 版本切换后可能短暂返回上一版本；
+单次 curl 200 或单次缺资产都不是失败或成功结论。
+
+12 次后仍未看见精确资产时，Actions 打印
+`Published asset <file> was not visible at <route> after 12 attempts.` 并 fail closed。
+不得把它写成会话桥接、管理 API、数据 API 或采集故障，也不得在 dashboard 做
+`secret put`、改 Token、改 timer，或把一次浏览器刷新写成该 SHA 已上线。路由/资产读回
+通过也不等于 `SESSION_ENCRYPTION_KEY` 已生效。合同由
+`tests/test_ci_contract.py::test_static_deploy_has_a_published_route_readback` 冻结。
+
+`deploy-admin` 仍只对 `https://tradingdatas-admin.pages.dev/` 做单次 doctype 读回，
+不轮询公开站 hashed asset。
+
 ## 公开站 Account 同站会话桥接
 
 `public-web/worker/index.js` 包含 `/api/account/*` 同站代理。仓库只提交非密钥上游
@@ -594,9 +622,7 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
    发布。临时文件必须由 trap 清理；密钥不能进入 shell history、仓库、Actions 输出、
    Worker vars 或运行报告。禁止
    恢复“先 `secret put`、后 deploy”的两版本顺序，因为未部署 latest version 会使 secret
-   edit 失败并阻断发布；
-   发布后的公开路由必须轮询到该 exact-main 构建的精确资产；Cloudflare 自定义域名在
-   Worker 版本切换后可能短暂返回上一版本，单次读回不作为失败或成功结论；
+   edit 失败并阻断发布。公开路由/资产读回见上一节，不把单次 curl 或桥接启用混为一谈；
 3. 确认 `public-web/wrangler.jsonc` 中的非密钥 Worker binding 为
    `ACCOUNT_API_BASE=https://td-admin-api.tradingagent.cc`，并确认该 origin 的无凭据 Portal
    readback 仍为 `401`；
