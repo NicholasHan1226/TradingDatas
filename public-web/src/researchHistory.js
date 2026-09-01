@@ -43,6 +43,12 @@ export function restoreLocationHashTarget({ windowObject = window, documentObjec
   return cleanup;
 }
 
+export function observeHashLocation(windowObject, onChange) {
+  const sync = () => onChange(windowObject.location.href);
+  windowObject.addEventListener("hashchange", sync);
+  return () => windowObject.removeEventListener("hashchange", sync);
+}
+
 export function createReadingPositions() {
   const entries = new Map();
   return {

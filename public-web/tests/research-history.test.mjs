@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createReadingPositions, isInPageNavigation, locationHashId, researchSectionTarget, restoreLocationHashTarget } from "../src/researchHistory.js";
+import { createReadingPositions, isInPageNavigation, locationHashId, observeHashLocation, researchSectionTarget, restoreLocationHashTarget } from "../src/researchHistory.js";
 
 test("article entry honors only valid research-section fragments", () => {
   assert.equal(researchSectionTarget("research/detecting-earnings-management", "#research-section-3"), "research-section-3");
@@ -52,6 +52,25 @@ test("cancelled lazy hash restoration cannot scroll after later navigation", () 
 
   assert.equal(disconnected, true);
   assert.equal(scrollCount, 0);
+});
+
+test("native hash changes keep the location baseline current for Back", () => {
+  let hashListener;
+  let removedListener;
+  let tracked = "https://tradingdatas.com/recipes/example/#tutorial-inputs";
+  const windowObject = {
+    location: { href: tracked },
+    addEventListener: (type, listener) => { if (type === "hashchange") hashListener = listener; },
+    removeEventListener: (type, listener) => { if (type === "hashchange") removedListener = listener; },
+  };
+  const stop = observeHashLocation(windowObject, (href) => { tracked = href; });
+  windowObject.location.href = "https://tradingdatas.com/recipes/example/#tutorial-downloads";
+  hashListener();
+
+  assert.equal(tracked, windowObject.location.href);
+  assert.equal(isInPageNavigation(tracked, "https://tradingdatas.com/recipes/example/#tutorial-inputs"), true);
+  stop();
+  assert.equal(removedListener, hashListener);
 });
 
 test("separate library visits retain their own positions through backward and forward traversal", () => {
