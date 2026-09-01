@@ -9,7 +9,7 @@ import { auditContent } from "../scripts/audit-research-content.mjs";
 test("six located fundamentals guides coexist with forty guides without altering core journeys", () => {
   assert.equal(Object.keys(batch).length, 6);
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 140);
+  assert.equal(Object.keys(researchReaderNotes).length, 160);
   assert.equal(new Set(Object.values(researchJourneys).flat().map(s => s.title)).size, 24);
   const paragraphs = new Set();
   for (const [title, guide] of Object.entries(batch)) {
@@ -33,9 +33,9 @@ test("six located fundamentals guides coexist with forty guides without altering
       assert.doesNotMatch(section.body.en, /[\u3400-\u9fff]/);
     }
   }
-  const audit = auditContent({today: "2026-08-31"});
+  const audit = auditContent({today: "2026-09-01"});
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 60);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 40);
 });
 
 test("edition, measurement direction and timing caveats survive public projection", () => {

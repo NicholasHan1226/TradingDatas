@@ -12,12 +12,12 @@ const pending = [
   "The Quality of Accruals and Earnings: The Role of Accrual Estimation Errors",
 ];
 
-test("15 supported extensions coexist with 140 guides, 200 works and one honest source gap", () => {
+test("15 supported extensions coexist with 160 guides, 200 works and one honest source gap", () => {
   assert.equal(Object.keys(researchGuideDepthExpansion).length, 15);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 140);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 139);
+  assert.equal(Object.keys(researchReaderNotes).length, 160);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 159);
   assert.deepEqual(Object.entries(researchReaderNotes).filter(([, g]) => g.sections.length === 4).map(([title]) => title).sort(), [...pending].sort());
   for (const title of pending) {
     assert.equal(researchReaderNotes[title], researchEditorial[title]);
@@ -61,7 +61,7 @@ test("extensions preserve original sections and integrate bilingual, individuall
       assert.doesNotMatch(section.body.en, /[\u3400-\u9fff]/);
     }
   }
-  assert.deepEqual(auditContent({ today: "2026-08-31" }).errors, []);
+  assert.deepEqual(auditContent({ today: "2026-09-01" }).errors, []);
 });
 
 test("working-copy caveats and estimator-specific adjustments survive public projection", () => {
