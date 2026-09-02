@@ -26,7 +26,12 @@ from provider_transport import (
     TUSHARE_DATA_PROVIDER,
     provider_transport_profile,
 )
-from dataset_registry import DatasetDefinition, DatasetField, DatasetRegistry
+from dataset_registry import (
+    DatasetDefinition,
+    DatasetField,
+    DatasetRegistry,
+    normalize_request_window,
+)
 from query_contract import (
     QueryAccessContext,
     QueryBudgetError,
@@ -924,8 +929,6 @@ def _row_receipt_proof_metadata(
             raise QueryServiceUnavailable("query service is unavailable")
         payload = _parse_provider_native_payload(row[0])
         if no_window:
-            if proof.request_window:
-                raise QueryServiceUnavailable("query service is unavailable")
             try:
                 through = datetime.fromisoformat(
                     _normalize_data_through(proof.data_through, dataset)
@@ -935,6 +938,42 @@ def _row_receipt_proof_metadata(
                 )
             except (TypeError, ValueError, QueryServiceUnavailable, ZoneInfoNotFoundError):
                 raise QueryServiceUnavailable("query service is unavailable") from None
+            if proof.request_window:
+                matching_bindings = tuple(
+                    binding
+                    for binding in active_bindings
+                    if binding.provider == proof.provider
+                )
+                if (
+                    len(matching_bindings) != 1
+                    or matching_bindings[0].request_window_policy is None
+                ):
+                    raise QueryServiceUnavailable("query service is unavailable")
+                policy = matching_bindings[0].request_window_policy
+                try:
+                    window = normalize_request_window(policy, proof.request_window)
+                    window_start = datetime.fromisoformat(
+                        _normalize_data_through(
+                            window[policy.range_start_key],
+                            dataset,
+                        )
+                    )
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                    QueryServiceUnavailable,
+                    ZoneInfoNotFoundError,
+                ):
+                    raise QueryServiceUnavailable(
+                        "query service is unavailable"
+                    ) from None
+                if (
+                    window_start.tzinfo is None
+                    or window_start.utcoffset() is None
+                    or window_start > event_time
+                ):
+                    raise QueryServiceUnavailable("query service is unavailable")
             if (
                 through.tzinfo is None
                 or through.utcoffset() is None
