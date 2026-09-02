@@ -149,7 +149,8 @@ metadata，不能只看 HTTP 状态码。
 
 对 `event` 与 `session_minute` 的 append-only 数据集，最新可信 refresh 若以
 `provider_error` 失败，`runtime_state` 必须立即投影为 `failed`、`degraded=true`，同时
-保留上一份完整成功的 `data_through` 供消费者判断可用历史。低频 append-only 数据集仍可
+保留上一份完整成功的 `data_through` 供消费者判断可用历史；连续失败超过 catalog 的
+最近收据窗口时，同样不得把仍可验证的上一成功水位静默改成 `null`。低频 append-only 数据集仍可
 在上一成功水位尚新鲜时保留既有读取状态；该低频容错不得用于隐藏高频源的最新失败。
 
 新鲜度按数据时间粒度计算：`YYYYMM` 水印覆盖完整月份，以该月末作为 SLA 参考。

@@ -1,8 +1,9 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-02 00:10 CST（A 股生产仍运行 immutable release
-`82246bc47d721511d4583f4edca71cd83c1327fd`；QuickSync 续费与公开运行规则已脱敏复核；
-Firecrawl 最新来源失败投影候选进入修复。短 SLA 提前刷新保持未启用）。
+最后更新：2026-09-02 09:12 CST（A 股生产运行 immutable release
+`9da2aab777dda1443a9d0db44066e2e2973c3860`；QuickSync 续费与公开运行规则已脱敏复核；
+Firecrawl 长故障水位与健康巡检账本兼容修复仍是本地候选，尚未合并或发布。短 SLA
+提前刷新保持未启用）。
 本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
@@ -16,12 +17,25 @@ Firecrawl 最新来源失败投影候选进入修复。短 SLA 提前刷新保�
 - 同页公开规则明确基础/标准/极速版最大速率分别为 120/600/1200 次每分钟，异常流量可降至
   60 或 0 次每分钟并在每日 0 点重置。页面没有声明当前 token 对应的速率档、每日总调用额度
   或并发上限；因此生产现有 per-run 预算不扩张，`freshness_refresh_lead_seconds` 继续为 0。
-- 过去 24 小时 `global.news.flash` 来源回执：CNBC 110 成功/52 失败，美联储 106 成功/25
-  失败，SEC 93 成功/29 失败；最新一轮 CNBC 与美联储成功、SEC `provider_error`。现有事件波次
-  保持单轮每分片一次、后续 timer 有界重试。本候选修正公共投影：event/session-minute 的最新
-  provider failure 立即显示 failed/degraded，同时保留上一完整成功水位，不再显示旧成功为当前健康。
-- `rt_min`/`rt_min_daily` 的当日分钟采集及 scale500 消费者仍须在 2026-09-02 A 股真实交易
-  时段完成 provider receipt、认证 catalog/query 和消费者 readback；夜间不制造盘中成功证据。
+- 09:11 的过去 24 小时 `global.news.flash` 来源物理回执：CNBC 81 success、30
+  provider_error、6 transport_error；美联储 74/7/1；SEC 37/36/3。最新一轮 CNBC 与
+  美联储成功、SEC `provider_error`。上一份三来源全部成功 execution 完成于
+  `2026-09-01T14:34:29Z`，之后已有 126 份物理回执，超出 catalog 每数据集最近 100 份窗口。
+  现有事件波次保持单轮每分片一次、后续 timer 有界重试。本候选让 event/session-minute
+  的最新 provider failure 继续显示 failed/degraded，同时从同一 active config 的完整历史
+  execution 恢复上一成功 `data_through`，不会把旧成功改写为当前健康。
+- 每日 `tradingdatas-collector-watch` 从 8 月 30 日起对滚动评估产生假告警：TA 已改为原子
+  目录 `entry-*/entry.json`，巡检仍只识别旧顶层 `entry-*.json`。本候选同时识别两种成功
+  条目，忽略空的失败暂存目录；它不修改、补写或伪造 TA 账本。生产巡检脚本尚未替换。
+- 09:18 的 TA 开盘初始化均实际成功：30 标的会话发布今日 Copilot 跟踪列表；隔离 scale
+  会话载入 3,187 标的，4 项因昨日收盘价缺失排除、2 项因上市未满 30 日 pending。两者都
+  明确为模拟、无执行权限，并报告预期与当前 catalog version 漂移；scale 验收仍是
+  `pending_two_live_snapshots`。`rt_min`/`rt_min_daily` 的当日 provider receipt、认证
+  catalog/query 及 09:42 后消费者读回仍未完成，不能用初始化成功代替盘中数据健康。
+- `fina_mainbz`、`stk_mins`、`top10_cb_holders`、`top10_floatholders` 当前 one-shot 合同会
+  展开完整来源 universe，预计分别产生约 598、5,973、1,163、598 次 provider 调用；manifest
+  不能任意截取单个代码。当前账号档位、并发和每日总额度仍无正式证据，且交易时段由分钟
+  采集保留，因此本轮不执行这 8,332 次调用。该安全阻断不等于四项权限失败或数据不可用。
 
 ## 邮箱身份本地候选（2026-08-30）
 

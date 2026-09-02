@@ -36,11 +36,32 @@ def test_malformed_capture_reports_inspection_alert(tmp_path):
     assert '[ALERT] polymarket-snapshot reason=invalid-receipts' in _run_patrol(tmp_path, pm)
 
 
-def _run_patrol(tmp_path, pm):
+def test_nested_rolling_evaluation_entry_is_current(tmp_path):
+    pm = tmp_path / 'polymarket'
+    (pm / 'captures').mkdir(parents=True)
+    now = datetime.now(timezone.utc)
+    receipt = {'capture_id': 'good', 'state': 'success', 'observed_at': now.isoformat(), 'market_count': 1, 'snapshot_count': 1}
+    capture = {'receipt': receipt, 'market_records': [{}], 'snapshot_records': [{}]}
+    (pm / 'captures/good.json').write_text(json.dumps(capture))
+
+    result = _run_patrol(tmp_path, pm, eval_layout='nested')
+
+    assert '[OK] rolling-eval latest=entry-nested age_h=0' in result
+
+
+def _run_patrol(tmp_path, pm, *, eval_layout='legacy'):
     log = tmp_path / 'patrol.log'
     re_dir = tmp_path / 'eval'
     re_dir.mkdir()
-    (re_dir / 'entry-test.json').write_text('{}')
+    if eval_layout == 'legacy':
+        (re_dir / 'entry-test.json').write_text('{}')
+    elif eval_layout == 'nested':
+        nested = re_dir / 'entry-nested'
+        nested.mkdir()
+        (nested / 'entry.json').write_text('{}')
+        (re_dir / 'entry-newer-empty').mkdir()
+    else:
+        raise ValueError(f'unknown eval layout: {eval_layout}')
     bindir = tmp_path / 'bin'
     bindir.mkdir()
     for name, body in {

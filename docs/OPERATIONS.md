@@ -147,6 +147,12 @@ source 对窗口内所有可识别的有效 execution 补齐兄弟收据，不�
 上下文猜测只有最旧一组被截断。初始窗口中的无效收据全部保留；初始读取及补读共用
 400,000 条原始读取预算，补读中重复命中的行也计入预算，超限立即 fail closed。
 
+`event`/`session_minute` 的最近窗口若只有失败且没有完整成功水位，catalog 才按当前
+config hash 对该 source 做一次定向历史查询，选取最新“全部物理收据均 success 且至少一条
+带 data_through”的 execution，并把精确 execution 重新交给普通 envelope、attempt、execution、
+variant 与 config validator。该回看只恢复上一成功水位；当前 terminal 仍取最新失败，不能
+把旧成功改写为当前健康。候选缺失、读取预算超限、精确收据数量不符或验证失败均 fail closed。
+
 随后按 envelope `source` 与 payload `dataset_id` 建立数据集相关行索引；跨数据集
 envelope/payload 不一致必须同时进入两个相关数据集，不能因性能索引而被跳过。经补齐
 并明确标记完整的物理 execution 必须从 `physical_call_index=0` 开始；重复、内部缺口、
@@ -885,7 +891,9 @@ Polymarket 的新失败回执不能刷新成功捕获时间：使用 capture 内
 非空 market/snapshot 数量；超过 26 小时无成功捕获、损坏回执或缺失成功捕获报 ALERT，
 最近六份去重回执至少四次失败报 WARN，同一次判断不得同时输出 OK。这仅是运行诊断，
 不取代 SQLite receipt、认证 API 或 activation/stable 门禁。既有 TA 账本告警保持独立，
-修复 TD 不会抹除或伪造 TA 结果。
+修复 TD 不会抹除或伪造 TA 结果。滚动评估账本的新鲜度检查同时识别旧版顶层
+`entry-*.json` 与当前原子目录 `entry-*/entry.json`；只含空暂存目录或失败退出的目录不算
+成功条目，显示名称使用条目目录名。
 
 更新脚本需先记录现有字节 hash、备份到新的 root-only 路径、通过
 `bash -n` 与 `tests/test_collector_watch.py`，再原子安装并读回 hash；不改 timer 排期。

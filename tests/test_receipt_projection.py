@@ -4936,6 +4936,71 @@ def test_high_frequency_append_only_latest_failure_remains_visible(
     assert projection.reasons == ("provider_error",)
 
 
+@pytest.mark.parametrize("cadence_class", ["event", "session_minute"])
+def test_catalog_high_frequency_failure_keeps_success_watermark_beyond_recent_window(
+    monkeypatch: pytest.MonkeyPatch,
+    cadence_class: str,
+) -> None:
+    conn = _memory_db()
+    dataset = replace(
+        _dataset(cadence_class=cadence_class),
+        point_in_time="append_only",
+        timezone="UTC",
+    )
+    registry = DatasetRegistry((dataset,))
+    _insert_receipt(
+        monkeypatch,
+        conn,
+        status="success",
+        attempt_id="catalog-high-frequency-last-success",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00",
+        data_through="2026-07-15T00:00:00+00:00",
+        dataset=dataset,
+    )
+    malformed_id = _insert_receipt(
+        monkeypatch,
+        conn,
+        status="failed",
+        attempt_id="catalog-high-frequency-malformed",
+        started_at="2026-07-15T00:01:01+00:00",
+        finished_at="2026-07-15T00:01:02+00:00",
+        data_through=None,
+        dataset=dataset,
+    )
+    conn.execute(
+        "UPDATE market_ingest_runs SET notes='not-json' WHERE run_id=?",
+        (malformed_id,),
+    )
+    latest_failed_id = None
+    for index in range(101):
+        observed = datetime(2026, 7, 15, 0, 2, tzinfo=timezone.utc) + timedelta(
+            seconds=index
+        )
+        latest_failed_id = _insert_receipt(
+            monkeypatch,
+            conn,
+            status="failed",
+            attempt_id=f"catalog-high-frequency-failure-{index:03d}",
+            started_at=observed.isoformat(),
+            finished_at=(observed + timedelta(milliseconds=500)).isoformat(),
+            data_through=None,
+            dataset=dataset,
+        )
+
+    entry = project_catalog_runtime(
+        conn,
+        registry,
+        now=datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    )["datasets"][dataset.dataset_id]
+
+    assert entry["state"] == "failed"
+    assert entry["degraded"] is True
+    assert entry["data_through"] == "2026-07-15T00:00:00+00:00"
+    assert entry["receipt_id"] == latest_failed_id
+    assert entry["reasons"] == ["provider_error"]
+
+
 def test_snapshot_retries_transient_epoch_skew_under_concurrent_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

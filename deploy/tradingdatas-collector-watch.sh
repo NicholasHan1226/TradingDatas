@@ -122,19 +122,33 @@ fi
 # 四十币滚动评估账本新鲜度（每日 05:37 产出；>26h 无新条目告警）
 RE_DIR=/var/lib/tradingagent/crypto-40-symbol-rolling-eval
 if [ -d "$RE_DIR" ]; then
-  RE_LATEST=$(ls -t "$RE_DIR"/entry-*.json 2>/dev/null | head -1 || true)
+  RE_LATEST=""
+  RE_LATEST_MTIME=-1
+  shopt -s nullglob
+  for RE_CANDIDATE in "$RE_DIR"/entry-*.json "$RE_DIR"/entry-*/entry.json; do
+    RE_CANDIDATE_MTIME=$(stat -c %Y "$RE_CANDIDATE" 2>/dev/null) || continue
+    if [ "$RE_CANDIDATE_MTIME" -gt "$RE_LATEST_MTIME" ]; then
+      RE_LATEST=$RE_CANDIDATE
+      RE_LATEST_MTIME=$RE_CANDIDATE_MTIME
+    fi
+  done
+  shopt -u nullglob
   if [ -z "$RE_LATEST" ]; then
     OUT+="[ALERT] rolling-eval no-entries dir=$RE_DIR
 "
     VERDICT="ALERT"
   else
-    RE_AGE_H=$(( ($(date +%s) - $(stat -c %Y "$RE_LATEST")) / 3600 ))
+    RE_ENTRY_LABEL=$(basename "$RE_LATEST")
+    if [ "$RE_ENTRY_LABEL" = "entry.json" ]; then
+      RE_ENTRY_LABEL=$(basename "$(dirname "$RE_LATEST")")
+    fi
+    RE_AGE_H=$(( ($(date +%s) - RE_LATEST_MTIME) / 3600 ))
     if [ "$RE_AGE_H" -gt 26 ]; then
-      OUT+="[ALERT] rolling-eval last_entry_age_h=$RE_AGE_H (>26h) entry=$(basename "$RE_LATEST")
+      OUT+="[ALERT] rolling-eval last_entry_age_h=$RE_AGE_H (>26h) entry=$RE_ENTRY_LABEL
 "
       VERDICT="ALERT"
     else
-      OUT+="[OK] rolling-eval latest=$(basename "$RE_LATEST") age_h=$RE_AGE_H
+      OUT+="[OK] rolling-eval latest=$RE_ENTRY_LABEL age_h=$RE_AGE_H
 "
     fi
   fi
