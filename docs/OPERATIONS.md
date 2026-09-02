@@ -84,6 +84,9 @@ failed、event、Crypto 和 config mismatch 不获得该保护。固定配置缺
 可以让同一已结束槽位出现在多个分别完整成功的 execution；查询只联合同一 active config、
 同一 provider 且精确 `data_through` 的已验证 receipt，使 append-only 事实保留其首次 receipt
 authority。请求逐行 proof 时，返回页仍须服从既有单一采集序列门禁，不能混合证明。
+receipt 携带窗口时，proof 还必须按同一 active provider 的 registry
+`request_window_policy` 完整验证，并证明窗口起始锚点不晚于行事件时间；不能因有 receipt id
+就跳过窗口格式、键集合、provider 或时序校验。
 
 `daily_reference` 的下一日期窗口只适用于 registry 声明为 `trade_calendar` 的已知未来事实，
 用于在 provider 已发布时提前写入下一交易日的 `is_open` / `pretrade_date`。其它日参考数据仍只

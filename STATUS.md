@@ -1,9 +1,9 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-02 10:29 CST（A 股生产运行 immutable release
-`9da2aab777dda1443a9d0db44066e2e2973c3860`；QuickSync 续费与公开运行规则已脱敏复核；
-Firecrawl 长故障水位与健康巡检账本兼容修复仍是本地候选，尚未合并或发布。短 SLA
-提前刷新保持未启用）。
+最后更新：2026-09-02 11:12 CST（A 股生产运行 immutable release
+`6ce9ec5da09d77ee0282ba93a66e46403466c239`；QuickSync 续费与公开运行规则已脱敏复核；
+Firecrawl 长故障水位、健康巡检账本路径与精确分钟重复 execution 修复已 exact-main 发布。
+短 SLA 提前刷新保持未启用）。
 本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
@@ -36,8 +36,14 @@ Firecrawl 长故障水位与健康巡检账本兼容修复仍是本地候选，�
   `rt_min_daily` 在 10:21 读回仍停在 10:10，按 300 秒 SLA 正确显示 stale。30 标的消费者
   从 09:42 起连续 7 次 fail closed；scale 消费者曾在 10:09 成功读到 09:35 的 487 行，
   10:12 又因精确槽位 503 进入安全 rollback/noop。根因是纠错 overlap 让同一槽位拥有多个
-  完整成功 execution，而查询错误要求全历史只存在一个 execution。PR #448 的追加候选已用
-  失败回归复现，并改为联合相同 active config/provider/槽位的完整成功 receipt；生产尚未修复。
+  完整成功 execution，而查询错误要求全历史只存在一个 execution。PR #449 已用失败回归
+  复现，并改为联合相同 active config/provider/槽位的完整成功 receipt；该修复已发布。
+- 11:12 发布后逐槽核对确认 10:15 本身没有事实行，保持 503 是正确 fail closed；10:20 的
+  30 标的无 proof 精确查询已返回 200。生产 receipt 合法携带 registry 要求的 `bar_time`
+  窗口，但逐行 proof 仍错误地只接受空窗口，导致同一 10:20 查询在消费者 proof 模式下
+  503。本候选改为按 active provider 的 `request_window_policy` 验证完整窗口，并拒绝晚于
+  行事件时间的锚点；合并与生产发布尚未完成。盘中仍存在 09:40、09:55、10:10、10:15、
+  10:35、10:45 等缺槽，来源轮次含 `config_error`/transport failure，连续健康尚未成立。
 - `fina_mainbz`、`stk_mins`、`top10_cb_holders`、`top10_floatholders` 当前 one-shot 合同会
   展开完整来源 universe，预计分别产生约 598、5,973、1,163、598 次 provider 调用；manifest
   不能任意截取单个代码。当前账号档位、并发和每日总额度仍无正式证据，且交易时段由分钟

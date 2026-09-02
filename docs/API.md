@@ -230,7 +230,9 @@ append-only payload 一旦变化仍按既有合同 fail closed。该规则不迁
 `session_minute` 的精确已结束槽位可能被纠错 overlap 在多个完整成功 execution 中重复
 观测。查询会联合同一 active config/provider 且 `data_through` 精确等于该槽位的已验证
 receipt，使事实行保留首次 receipt authority；任一 execution 不完整、配置/provider 混合或
-逐行证明跨采集序列时仍 fail closed。
+逐行证明跨采集序列时仍 fail closed。逐行证明允许 receipt 保留 registry 要求的窗口，
+但窗口必须完整通过同一 active provider 的 `request_window_policy`，且起始锚点不得晚于
+事实行的事件时间；未知键、错误格式、未来锚点或 provider 不匹配继续 fail closed。
 
 交易日历是已知未来事实的例外：`entity_type=trade_calendar` 可以返回 provider 已发布的下一
 交易日及其 `is_open` / `pretrade_date`。未来有效日期只保留在行字段；envelope 的

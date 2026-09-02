@@ -19,6 +19,7 @@ from dataset_registry import (
     DatasetField,
     DatasetRegistry,
     ProviderBinding,
+    RequestWindowPolicy,
     load_dataset_registry,
 )
 from query_contract import QueryAccessContext, QueryExecutionOptions, QueryRequest
@@ -599,6 +600,13 @@ def _minute_dataset(base: DatasetDefinition) -> DatasetDefinition:
             response_completeness=replace(
                 binding.response_completeness,
                 snapshot_field="time",
+            ),
+            request_window_policy=RequestWindowPolicy(
+                required_keys=("bar_time",),
+                formats=MappingProxyType({"bar_time": "local_datetime_seconds"}),
+                range_start_key="bar_time",
+                range_end_key="bar_time",
+                max_span_days=1,
             ),
         )
         for binding in base.provider_bindings
@@ -1441,7 +1449,7 @@ def test_no_window_session_minute_accepts_consistent_request_window(
         order=("time:asc", "symbol:asc"),
         limit=10,
         cursor=None,
-        include_receipt_proofs=False,
+        include_receipt_proofs=True,
     )
     result = service.execute(
         request,
@@ -1450,6 +1458,40 @@ def test_no_window_session_minute_accepts_consistent_request_window(
         request_id="request-minute-window-proof",
     )
     assert result["data"][0]["symbol"] == "MINUTE_WINDOW_A"
+    assert result["metadata"]["row_receipt_proofs"][0]["receipt_id"] == receipt
+
+    future_window_receipt = _insert_native_success_receipt(
+        monkeypatch,
+        conn,
+        minute,
+        execution_id="minute-window-after-event",
+        call_index=0,
+        page_offset=0,
+        request_window={"bar_time": "2026-07-17 11:45:00"},
+        data_through="2026-07-17 11:40:00",
+    )
+    _insert_row(
+        conn,
+        dataset_id=minute.dataset_id,
+        provider="provider-a",
+        row_key="minute-window-after-event",
+        payload={"symbol": "MINUTE_WINDOW_AFTER", "time": "2026-07-17 11:40:00"},
+        receipt_id=future_window_receipt,
+    )
+    conn.commit()
+    with pytest.raises(QueryServiceUnavailable):
+        service.execute(
+            replace(
+                request,
+                filters={
+                    "symbol": {"eq": "MINUTE_WINDOW_AFTER"},
+                    "time": {"eq": "2026-07-17 11:40:00"},
+                },
+            ),
+            access=native_harness["access"],
+            now=NOW,
+            request_id="request-minute-window-after-event",
+        )
 
 
 @pytest.mark.parametrize(
