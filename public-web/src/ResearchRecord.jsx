@@ -64,7 +64,6 @@ export function ResearchRecord({ paper, locale, topicLabel, kindLabel, related, 
         <section><h2>{zh ? "涉及的数据" : "Data in focus"}</h2><p>{researchData(paper, locale)}</p></section>
         {paper.readerLimits && <section><h2>{zh ? "阅读时留意" : "Keep in mind"}</h2><p>{paper.readerLimits[locale]}</p></section>}
         {paper.sourceNote && <p className="research-edition-note">{paper.sourceNote[locale]}</p>}
-        <p className="research-reader-attribution">{zh ? "本站导读；中文题名为编译。完整论述与结论请见原文。" : "Editorial reading guide. Refer to the original for the full argument and conclusions."}</p>
       </div>
       <aside className="research-reader-aside" aria-label={zh ? "延伸阅读" : "Further reading"}>
         <ResearchQuestionRoutes locale={locale} routes={questionRoutesFor(paper)} currentPaper={paper} onNavigate={onNavigate} />

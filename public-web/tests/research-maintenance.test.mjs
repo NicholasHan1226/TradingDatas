@@ -5,12 +5,12 @@ import { papers } from "../src/researchCatalog.js";
 import { researchReaderNotes } from "../src/researchReaderNotes.js";
 
 test("read-only maintenance distinguishes valid structure from editorial depth candidates", () => {
-  const report = auditContent({ today: "2026-08-31" });
+  const report = auditContent({ today: "2026-09-01" });
   assert.deepEqual(report.errors, []);
   assert.equal(report.records, 200);
-  assert.equal(report.guides, 140);
+  assert.equal(report.guides, 180);
   assert.equal(report.tutorials, 6);
-  assert.equal(report.review.filter(item => item.code === "summary_only").length, 60);
+  assert.equal(report.review.filter(item => item.code === "summary_only").length, 20);
   assert.equal(new Set(sourceUrls()).size, sourceUrls().length);
 });
 
@@ -31,7 +31,7 @@ test("review dates, source versions and repeated prose remain review items, neve
   const guides = structuredClone(researchReaderNotes), titles = Object.keys(guides);
   guides[titles[1]].sections[0].body = structuredClone(guides[titles[0]].sections[0].body);
   guides[titles[0]].reviewedAt = "2020-01-01";
-  const report = auditContent({ guides, today: "2026-08-31" });
+  const report = auditContent({ guides, today: "2026-09-01" });
   assert.ok(report.review.some(item => item.code === "repeated_paragraph"));
   assert.ok(report.review.some(item => item.code === "review_age"));
   assert.ok(!report.review.some(item => item.code === "check_reading_scope"));

@@ -40,7 +40,7 @@ test("all core journey continuations have specific bilingual connections and rec
 
 test("featured shelf has a bounded recent guide shelf and covers every core journey stage", () => {
   const guides = papers.filter((paper) => paper.readingNotes?.length >= 4);
-  assert.equal(guides.length, 140);
+  assert.equal(guides.length, 180);
   for (const steps of Object.values(researchJourneys)) for (const step of steps) {
     assert.ok(guides.some((paper) => paper.title === step.title), step.title);
   }

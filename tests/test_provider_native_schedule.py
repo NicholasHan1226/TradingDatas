@@ -1120,6 +1120,55 @@ def test_successful_event_window_waits_for_minimum_interval() -> None:
     ]
 
 
+def test_successful_event_interval_starts_with_frozen_request_window() -> None:
+    registry = _active_registry()
+    dataset = registry.resolve("global.news.flash")
+    binding = dataset.provider_bindings[0]
+    started_at = datetime(2026, 9, 1, 7, 0, tzinfo=ZoneInfo("UTC"))
+    finished_at = started_at + timedelta(minutes=10)
+    window = MappingProxyType(
+        {
+            "start_time": "2026-09-01 00:00:00",
+            "end_time": "2026-09-01 23:59:59",
+        }
+    )
+    history = ValidatedReceiptHistoryEntry(
+        dataset_id=dataset.dataset_id,
+        provider=binding.provider,
+        receipt_id="receipt:event-late-success",
+        status="success",
+        cohort_status="success",
+        started_at=started_at,
+        finished_at=finished_at,
+        request_window=window,
+        request_variant=MappingProxyType({}),
+        execution_id="execution:event-late-success",
+        config_hash=provider_ingest_config_hash(dataset, binding),
+        physical_call_index=0,
+        retry_index=0,
+    )
+    state = cadence_planner.PlannerState(
+        MappingProxyType(
+            {
+                (dataset.dataset_id, binding.provider): cadence_planner._DatasetState(
+                    (history,),
+                    (cadence_planner._Fact("20260901", {}, history.receipt_id),),
+                )
+            }
+        )
+    )
+
+    plans, skips = cadence_planner.plan_runs(
+        registry=DatasetRegistry((dataset,), query_defaults=registry.query_defaults),
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=state,
+        now=started_at + timedelta(seconds=901),
+    )
+
+    assert [plan.dataset_id for plan in plans] == [dataset.dataset_id]
+    assert not any(item.dataset_id == dataset.dataset_id for item in skips)
+
+
 def test_execute_derives_canonical_plan_roots_from_one_scheduler_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2205,6 +2254,11 @@ def test_failed_dataset_does_not_hide_later_terminal_results(tmp_path: Path) -> 
         (
             priority_rank[plan.priority],
             cadence_rank.get(plan.cadence_class, 2),
+            (
+                plan.freshness_sla_seconds
+                if plan.cadence_class == "event"
+                else 0
+            ),
             plan.dataset_id,
             index,
         )
@@ -3647,6 +3701,35 @@ def test_event_current_plan_precedes_low_frequency_current_plan() -> None:
             key=lambda item: (*cadence_planner._execution_order(item[1]), item[0]),
         )
     ] == ["cn.dataset.cn_schedule", "cn.dataset.balancesheet"]
+
+
+def test_shorter_event_freshness_sla_precedes_alphabetical_event_order() -> None:
+    plans = (
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.anns_d",
+            provider="tushare",
+            provider_api="anns_d",
+            cadence_class="event",
+            request_window={},
+            freshness_sla_seconds=86_400,
+        ),
+        scheduler.ScheduledRun(
+            dataset_id="cn.dataset.stk_holdernumber",
+            provider="tushare",
+            provider_api="stk_holdernumber",
+            cadence_class="event",
+            request_window={},
+            freshness_sla_seconds=900,
+        ),
+    )
+
+    assert [
+        plan.dataset_id
+        for _, plan in sorted(
+            enumerate(plans),
+            key=lambda item: (*cadence_planner._execution_order(item[1]), item[0]),
+        )
+    ] == ["cn.dataset.stk_holdernumber", "cn.dataset.anns_d"]
 
 
 def test_cadence_class_selection_is_generic_and_excludes_other_cadences(

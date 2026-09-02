@@ -94,8 +94,8 @@ Chinese/English editorial titles, orientations, data requirements and limitation
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 140 bilingual guides: 139 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 60 records are
+There are 180 bilingual guides: 179 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. The other 20 records are
 summary-only. The eight three-stage core journeys retain their 24 original works.
 `src/researchFiftyGuides.js` adds seven primary-source-located guides and
 `src/researchSixtyGuides.js` adds ten more; `src/researchSeventyGuides.js` and
@@ -104,7 +104,7 @@ per-work material selections (including intentional empty sets); unassigned
 records fail closed to no materials, never topic defaults. The 150 previously
 summary-only selections are in `src/researchSummaryMaterials.js`; this curation
 does not constitute 150 full-text reviews. See
-`../docs/design/research-140-guides-v16.md` for current source scope and acceptance.
+`../docs/design/research-180-guides-v17.md` for current source scope and acceptance.
 
 `src/researchNinetyGuides.js` and `src/researchHundredGuides.js` add twenty further
 bounded guides: eight asset-pricing, seven A-share/institutional-comparison and five
@@ -186,8 +186,8 @@ passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
 passages or author-issued supporting instructions. Subsequent batches expanded the
-current total to 140 guides, 139 with six sections. The latest batch is
-`researchBatchOne140.js`, following the historical 120-guide modules
+current total to 180 guides, 179 with six sections. The latest batch is
+`researchBatchThree180.js`, following the historical 120-guide modules
 `researchMicrostructure120.js`, `researchCrypto120.js` and
 `researchMacro120.js`. They retain edition-specific limits and the existing
 per-work preparation selections. Nelson/Siegel uses the 1985 NBER working paper,
@@ -263,7 +263,7 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 60 summary-only records, repeated/short paragraphs and
+candidates (including the 20 summary-only records, repeated/short paragraphs and
 limited reading scope). Optional HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only

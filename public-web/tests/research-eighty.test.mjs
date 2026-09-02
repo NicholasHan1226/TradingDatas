@@ -15,8 +15,8 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   assert.equal(Object.keys(additions).length, 20);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 140);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 139);
+  assert.equal(Object.keys(researchReaderNotes).length, 180);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 179);
   for (const [title, guide] of Object.entries(additions)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
     assert.equal(researchReaderNotes[title], guide);
@@ -37,7 +37,7 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   }
   const audit = auditContent();
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 60);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 20);
 });
 
 test("measurement, edition and source-access limits survive expansion", () => {
@@ -48,8 +48,11 @@ test("measurement, edition and source-access limits survive expansion", () => {
   assert.match(prose("Credit Spreads and Business Cycle Fluctuations"), /half the error variance/);
   assert.match(prose("In Search of Attention"), /zero/i);
   assert.match(prose("Measuring the Effects of Monetary Policy: A Factor-Augmented Vector Autoregressive \(FAVAR\) Approach"), /rule/);
-  assert.equal(researchReaderNotes["The Stationary Bootstrap"], undefined);
-  assert.equal(researchReaderNotes["Textual Analysis in Accounting and Finance: A Survey"], undefined);
+  for (const title of ["The Stationary Bootstrap", "Textual Analysis in Accounting and Finance: A Survey"]) {
+    assert.ok(researchReaderNotes[title]);
+    assert.equal(researchReaderNotes[title].reviewedAt, "2026-09-01");
+    assert.match(researchReaderNotes[title].evidenceScope, /primary source/i);
+  }
 });
 
 test("85 authored comparison pairs resolve to real works and have localized reasons", () => {

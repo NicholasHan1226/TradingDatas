@@ -177,16 +177,16 @@ def test_candidate_keeps_budgets_unchanged_and_does_not_repeat_early(registry):
     candidate = _schedule(600, explicit=True)
     assert candidate.rate_budgets == _schedule().rate_budgets
     case = _case(registry)
-    plans, skips = _plan(case, candidate, "21:20:00")
+    plans, skips = _plan(case, candidate, "21:19:59")
     assert plans == () and skips[0].state == "not_due"
 
 
 def test_refresh_interval_boundary_is_exact(registry):
     case = _case(registry)
     schedule = _schedule(600, explicit=True)
-    plans, skips = _plan(case, schedule, "21:22:36")
+    plans, skips = _plan(case, schedule, "21:19:59")
     assert plans == () and skips[0].state == "not_due"
-    plans, skips = _plan(case, schedule, "21:22:37")
+    plans, skips = _plan(case, schedule, "21:20:00")
     assert len(plans) == 1 and skips == ()
 
 

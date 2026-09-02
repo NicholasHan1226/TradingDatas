@@ -62,8 +62,11 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 `session_minute` 还必须同时命中 registry 的开市日历和配置的本地上午/下午窗口；
 午休与收盘后均为 `not_due`，不得为“补一根分钟线”继续请求上游。在同一计划优先级内，
 所有 `session_minute` 合同先执行，`event` 合同随后执行，其它 automatic 合同再按既有顺序执行；
-该排序只按 cadence class 决定，避免低频大批量采集把分钟或事件观测拖过 freshness SLA，
-不为某个 dataset、provider 或消费者增加专用分支。
+`event` 内部再按 registry 的 `freshness_sla_seconds` 从短到长、dataset ID 确定性排序。
+该排序只使用通用 cadence 与 freshness 合同，避免低频大批量或长 SLA 事件把分钟、短 SLA
+事件观测拖过 freshness SLA，不为某个 dataset、provider 或消费者增加专用分支。成功/空的
+`event` 下一轮最小间隔从该轮冻结请求窗口的 scheduler start 计时，而失败重试仍从完成时间计时；
+这样 provider/ingest 延迟不会被叠加成必然 stale 缺口，也不会让慢失败立即重试。
 
 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute`、`postclose_daily` 成功水位读取，在下一配置
 开窗前或配置工作日之外，以前一配置工作日的既有收盘锚点计算 freshness。开窗时间和
@@ -98,18 +101,24 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 耗尽共享账号/provider 预算并截断后续独立 dataset 或 `major_news` 来源。其它 cadence 的
 有界同轮重试策略不变。
 
+`event` 与 `session_minute` 的 append-only 数据集不使用“上一份新鲜成功掩盖最新
+provider_error”的低频容错。最新 refresh 失败时 catalog/query 立即显示 failed/degraded，
+但继续携带上一完整成功水位；消费者可据此区分“历史仍可读”和“当前刷新不健康”。
+
 `event` cadence 可选 `freshness_refresh_lead_seconds`（缺省为 0，当前生产配置不启用）。
 只有正常 success/empty 的重观测可以提前：非零值将间隔取为
 `min(minimum_interval_seconds, max(1, dataset.freshness_sla_seconds - lead))`；失败重试、
 窗口、receipt、SLA 与账号/provider/API 预算不变。该值必须为非 bool 整数，且
 `0 <= lead < minimum_interval_seconds`；其它 cadence 不允许非零值。提前量用于为 timer
 触发与排队留余量，不代表 provider 更新更频繁。启用前须核验实际新增调用量、当前账号
-每日额度与完整一轮运行时间；仅维持 per-run 上限不证明每日成本不增加。默认 0 保留旧行为。
+每日额度与完整一轮运行时间；仅维持 per-run 上限不证明每日成本不增加。正常 success/empty
+从 receipt 的请求开始时间计算重观测间隔，使冻结的请求窗口与 freshness 时钟一致；failed
+仍从完成时间计算重试间隔，避免慢失败刚结束就立即重试。
 
 回滚固定为先 `systemctl disable --now tradingdatas-provider-native-collect.timer`，再由已验证
 release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或 receipts。
 
-planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；failed 仍只按 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
+planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；该间隔从请求开始时间计算，failed 仍只按完成时间后的 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 

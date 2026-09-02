@@ -1936,18 +1936,21 @@ def _effective_latest_terminal(
 ) -> _CohortTerminal:
     """Return the current terminal, falling back to a fresh success history.
 
-    An append-only dataset accumulates immutable rows; a transient
+    A low-frequency append-only dataset accumulates immutable rows; a transient
     ``provider_error`` on the *latest* incremental attempt does not invalidate
     a still-fresh successful watermark.  Without this fallback a daily-dump
     dataset would stay ``failed`` for hours after one transient failure until
-    a new day publishes — hiding healthy history.  Structural failures
-    (validation/config drift) and any snapshot dataset still fail closed.
+    a new day publishes — hiding healthy history.  Event and session-minute
+    feeds must expose the latest failed refresh while retaining the last
+    successful data watermark. Structural failures (validation/config drift)
+    and any snapshot dataset still fail closed.
     """
 
     latest = _latest_run_terminal(dataset, authority_receipts)
     if (
         latest.status == "failed"
         and dataset.point_in_time == "append_only"
+        and dataset.cadence_class not in {"event", "session_minute"}
         and latest.errors == ("provider_error",)
         and last_success is not None
         and last_success.data_through is not None
