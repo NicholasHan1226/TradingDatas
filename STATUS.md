@@ -1,9 +1,9 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-02 11:12 CST（A 股生产运行 immutable release
-`6ce9ec5da09d77ee0282ba93a66e46403466c239`；QuickSync 续费与公开运行规则已脱敏复核；
-Firecrawl 长故障水位、健康巡检账本路径与精确分钟重复 execution 修复已 exact-main 发布。
-短 SLA 提前刷新保持未启用）。
+最后更新：2026-09-02 12:22 CST（A 股生产运行 immutable release
+`f74a26d705b4094126bc5663b63fec14ed75434a`，回滚点
+`6ce9ec5da09d77ee0282ba93a66e46403466c239`；PR #448/#449/#450 已合入、exact-main
+CI 通过并完成分层生产读回。短 SLA 提前刷新保持未启用）。
 本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
@@ -14,40 +14,39 @@ Firecrawl 长故障水位、健康巡检账本路径与精确分钟重复 execut
 - QuickSync 用户提供的在线测试页已从本机和新加坡服务器分别取得 HTTPS 200。页面的脱敏
   订阅元数据显示 `anns_d/news/research_report/rt_min/stk_auction/stk_mins/tushare_15000`
   有效至 `2026-09-27T16:04:00Z`，与本次续费一致；页面路径和内容含凭据，不能入库或提交。
-- 同页公开规则明确基础/标准/极速版最大速率分别为 120/600/1200 次每分钟，异常流量可降至
-  60 或 0 次每分钟并在每日 0 点重置。页面没有声明当前 token 对应的速率档、每日总调用额度
-  或并发上限；因此生产现有 per-run 预算不扩张，`freshness_refresh_lead_seconds` 继续为 0。
-- 09:11 的过去 24 小时 `global.news.flash` 来源物理回执：CNBC 81 success、30
-  provider_error、6 transport_error；美联储 74/7/1；SEC 37/36/3。最新一轮 CNBC 与
-  美联储成功、SEC `provider_error`。上一份三来源全部成功 execution 完成于
-  `2026-09-01T14:34:29Z`，之后已有 126 份物理回执，超出 catalog 每数据集最近 100 份窗口。
-  现有事件波次保持单轮每分片一次、后续 timer 有界重试。本候选让 event/session-minute
-  的最新 provider failure 继续显示 failed/degraded，同时从同一 active config 的完整历史
-  execution 恢复上一成功 `data_through`，不会把旧成功改写为当前健康。
-- 每日 `tradingdatas-collector-watch` 从 8 月 30 日起对滚动评估产生假告警：TA 已改为原子
-  目录 `entry-*/entry.json`，巡检仍只识别旧顶层 `entry-*.json`。本候选同时识别两种成功
-  条目，忽略空的失败暂存目录；它不修改、补写或伪造 TA 账本。生产巡检脚本尚未替换。
-- 09:18 的 TA 开盘初始化均实际成功：30 标的会话发布今日 Copilot 跟踪列表；隔离 scale
-  会话载入 3,187 标的，4 项因昨日收盘价缺失排除、2 项因上市未满 30 日 pending。两者都
-  明确为模拟、无执行权限，并报告预期与当前 catalog version 漂移；scale 验收仍是
-  `pending_two_live_snapshots`。`rt_min`/`rt_min_daily` 的当日 provider receipt、认证
-  catalog/query 及 09:42 后消费者读回仍未完成，不能用初始化成功代替盘中数据健康。
-- 后续盘中证据确认 `rt_min` 已到 10:20 且认证 query 为 ready/valid/complete；
-  `rt_min_daily` 在 10:21 读回仍停在 10:10，按 300 秒 SLA 正确显示 stale。30 标的消费者
-  从 09:42 起连续 7 次 fail closed；scale 消费者曾在 10:09 成功读到 09:35 的 487 行，
-  10:12 又因精确槽位 503 进入安全 rollback/noop。根因是纠错 overlap 让同一槽位拥有多个
-  完整成功 execution，而查询错误要求全历史只存在一个 execution。PR #449 已用失败回归
-  复现，并改为联合相同 active config/provider/槽位的完整成功 receipt；该修复已发布。
-- 11:12 发布后逐槽核对确认 10:15 本身没有事实行，保持 503 是正确 fail closed；10:20 的
-  30 标的无 proof 精确查询已返回 200。生产 receipt 合法携带 registry 要求的 `bar_time`
-  窗口，但逐行 proof 仍错误地只接受空窗口，导致同一 10:20 查询在消费者 proof 模式下
-  503。本候选改为按 active provider 的 `request_window_policy` 验证完整窗口，并拒绝晚于
-  行事件时间的锚点；合并与生产发布尚未完成。盘中仍存在 09:40、09:55、10:10、10:15、
-  10:35、10:45 等缺槽，来源轮次含 `config_error`/transport failure，连续健康尚未成立。
-- `fina_mainbz`、`stk_mins`、`top10_cb_holders`、`top10_floatholders` 当前 one-shot 合同会
-  展开完整来源 universe，预计分别产生约 598、5,973、1,163、598 次 provider 调用；manifest
-  不能任意截取单个代码。当前账号档位、并发和每日总额度仍无正式证据，且交易时段由分钟
-  采集保留，因此本轮不执行这 8,332 次调用。该安全阻断不等于四项权限失败或数据不可用。
+  同页公开规则给出基础/标准/极速版最大 120/600/1200 次每分钟，但没有声明当前 token
+  档位、每日总额度或并发上限；生产预算不扩张，四个预计共 8,332 次调用的完整 universe
+  one-shot 继续安全阻断，不把未执行误报成权限失败。
+- PR #448 已发布：event/session-minute 在最新 provider failure 时继续显示 failed/degraded，
+  同时从同一 active config 的完整历史 execution 保留上一成功 `data_through`。12:08 认证
+  catalog 显示 `global.news.flash` 为 failed/degraded、原因 `provider_error`，但水位仍为
+  `2026-09-01T14:27:31.489578Z`，覆盖 3,492 行；这证明水位保护生效，不代表上游恢复。
+- PR #448 的巡检账本兼容也已安装：同时识别旧顶层条目与 TA 原子目录
+  `entry-*/entry.json`，忽略空失败暂存目录。05:37 的滚动评估真实失败已在 11:16 以
+  `REAL_TRADING_ENABLED=false` 重跑成功。12:20 巡检 verdict=OK；六类 Crypto collector、
+  Polymarket、滚动评估与两路匿名 API 认证墙均 OK。provider-native 的过去 24 小时窗口仍为
+  WARN（2,675 success / 84 fail），因此不能声明所有数据源完全健康。
+- PR #449/#450 已发布：重复 execution 的同槽完整成功 receipt 允许联合证明；逐行 proof
+  按 active provider 的 `request_window_policy` 验证合法 `bar_time` 窗口，并拒绝晚于行事件
+  时间的锚点。12:11 后对 11:30 精确槽位的认证读回为 HTTP 200、30 行/30 标的/30 个
+  row receipt proofs，窗口 `bar_time=2026-09-02 11:25:00`，runtime success、quality valid、
+  freshness fresh。匿名 A 股与 Crypto catalog 均为 401。
+- 30 标的一般模拟消费者在 11:37 真实通过，接受 30/30，`real_trading_enabled=false`、
+  `execution_authority=false`。Scale500 在修复发布前的 10:12 已按安全合同锁定当天
+  `fallback30_selected`，原因 `minute_scale500_unclassified_httpstatuserror`；后续运行只做
+  rollback30 noop，不删除或改写当日 gate。它须由下一交易日新会话重新验收，当前不能写成
+  Scale500 已恢复。
+- 午间停写窗口已从 15,103,488,000 字节生产 SQLite 生成一致性快照
+  `/opt/investment-data/tradingdatas/maintenance/20260902T114500+0800/provider_native.snapshot.sqlite`；
+  离线 `PRAGMA quick_check` 返回 `ok`（676.488 秒），SHA-256 为
+  `260e6623be67449fd226970e367a24fe92ac63afc9d8e985fbd0f84efd4e8260`，快照与维护记录均
+  0600 保留。恢复后 timer enabled/active，12:10 轮次完成且 failed=0、terminal=0。
+- trusted `verify-current` 最终确认 commit `f74a26d7`、tree `6e5802df`、1,019 文件完整。
+  一次遗漏 `PYTHONDONTWRITEBYTECODE=1` 的诊断调用在 current 下生成了 1 个
+  `storage/__pycache__` 目录和 4 个 `.pyc`；已精确删除这 5 个 manifest 外对象，并用禁止
+  字节码的 rollback trusted verifier 重新取得 `verified=true`。没有覆盖 release 文件。
+- 盘中仍存在 09:40、09:55、10:10、10:15、10:35、10:45 等缺槽，来源轮次含
+  `config_error`/transport failure；11:30 当前槽成功不等于早盘连续健康或历史完整。
 
 ## 邮箱身份本地候选（2026-08-30）
 
