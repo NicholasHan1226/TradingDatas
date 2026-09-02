@@ -1,4 +1,8 @@
-# Research guide continuation: 180
+# Research guide continuation: 180 (superseded)
+
+Superseded by `docs/design/research-200-guides-v18.md` on 2026-09-02. This file
+is retained as the historical record for the 160-to-180 guide increment; it is
+not the current coverage or release-acceptance document.
 
 Date: 2026-09-01. Scope: public-web editorial candidate only; no provider,
 registry, collection, entitlement, runtime, or deployment change.
