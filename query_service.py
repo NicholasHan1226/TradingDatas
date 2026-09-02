@@ -1688,6 +1688,11 @@ def _exact_session_minute_receipt_ids(
     slot_value = slot.isoformat(
         timespec="microseconds" if slot.microsecond else "seconds"
     )
+    active_config_keys = {
+        (binding.provider, provider_ingest_config_hash(dataset, binding))
+        for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    }
     entries = [
         entry
         for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())
@@ -1696,31 +1701,25 @@ def _exact_session_minute_receipt_ids(
         and entry.data_through is not None
         and _normalize_data_through(entry.data_through, dataset) == slot_value
         and entry.finished_at <= now
+        and (entry.provider, entry.config_hash) in active_config_keys
     ]
-    executions = {entry.execution_id for entry in entries}
     providers = {entry.provider for entry in entries}
     configs = {entry.config_hash for entry in entries}
-    request_windows = {
-        json.dumps(
-            dict(entry.request_window),
-            ensure_ascii=True,
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        for entry in entries
-    }
     data_throughs = {
         _normalize_data_through(entry.data_through, dataset) for entry in entries
     }
     if (
-        len(executions) != 1
+        not entries
         or len(providers) != 1
         or len(configs) != 1
-        or len(request_windows) != 1
         or data_throughs != {slot_value}
     ):
         return ()
+    # Correction overlap can observe one closed bar in multiple independently
+    # complete executions.  Keep every validated receipt eligible so immutable
+    # append-only facts retain their original receipt authority; row proof
+    # classification below still rejects a returned page that mixes collection
+    # sequences when the caller requests per-row proofs.
     return tuple(sorted(entry.receipt_id for entry in entries))
 
 

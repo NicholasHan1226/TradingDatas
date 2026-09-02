@@ -855,6 +855,19 @@ def test_explicit_no_window_slot_selects_prior_success_over_latest_failed_cohort
             payload={"symbol": symbol, "time": slot},
             receipt_id=receipt_id,
         )
+    for call_index in range(6):
+        _insert_native_success_receipt(
+            monkeypatch,
+            conn,
+            minute,
+            execution_id="slot-overlap-success",
+            call_index=call_index,
+            page_offset=call_index,
+            request_window={},
+            data_through=slot,
+            started_at="2026-08-13T01:41:00+00:00",
+            finished_at=f"2026-08-13T01:42:{call_index:02d}+00:00",
+        )
     failed = _insert_native_failed_receipt(
         monkeypatch,
         conn,

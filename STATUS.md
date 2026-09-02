@@ -1,6 +1,6 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-02 09:12 CST（A 股生产运行 immutable release
+最后更新：2026-09-02 10:29 CST（A 股生产运行 immutable release
 `9da2aab777dda1443a9d0db44066e2e2973c3860`；QuickSync 续费与公开运行规则已脱敏复核；
 Firecrawl 长故障水位与健康巡检账本兼容修复仍是本地候选，尚未合并或发布。短 SLA
 提前刷新保持未启用）。
@@ -32,6 +32,12 @@ Firecrawl 长故障水位与健康巡检账本兼容修复仍是本地候选，�
   明确为模拟、无执行权限，并报告预期与当前 catalog version 漂移；scale 验收仍是
   `pending_two_live_snapshots`。`rt_min`/`rt_min_daily` 的当日 provider receipt、认证
   catalog/query 及 09:42 后消费者读回仍未完成，不能用初始化成功代替盘中数据健康。
+- 后续盘中证据确认 `rt_min` 已到 10:20 且认证 query 为 ready/valid/complete；
+  `rt_min_daily` 在 10:21 读回仍停在 10:10，按 300 秒 SLA 正确显示 stale。30 标的消费者
+  从 09:42 起连续 7 次 fail closed；scale 消费者曾在 10:09 成功读到 09:35 的 487 行，
+  10:12 又因精确槽位 503 进入安全 rollback/noop。根因是纠错 overlap 让同一槽位拥有多个
+  完整成功 execution，而查询错误要求全历史只存在一个 execution。PR #448 的追加候选已用
+  失败回归复现，并改为联合相同 active config/provider/槽位的完整成功 receipt；生产尚未修复。
 - `fina_mainbz`、`stk_mins`、`top10_cb_holders`、`top10_floatholders` 当前 one-shot 合同会
   展开完整来源 universe，预计分别产生约 598、5,973、1,163、598 次 provider 调用；manifest
   不能任意截取单个代码。当前账号档位、并发和每日总额度仍无正式证据，且交易时段由分钟
