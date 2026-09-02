@@ -1,9 +1,10 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-02 12:22 CST（A 股生产运行 immutable release
+最后更新：2026-09-02 13:52 CST（A 股生产运行代码基线
 `f74a26d705b4094126bc5663b63fec14ed75434a`，回滚点
-`6ce9ec5da09d77ee0282ba93a66e46403466c239`；PR #448/#449/#450 已合入、exact-main
-CI 通过并完成分层生产读回。短 SLA 提前刷新保持未启用）。
+`6ce9ec5da09d77ee0282ba93a66e46403466c239`；12:32 current 被并行发布通道切换到仅
+`STATUS.md` 变化的 exact-main 后继 `2983be59f21e697e2824e37df4d12bc52181a75f`，
+runtime 代码未变。PR #448/#449/#450 已合入并完成分层生产读回，短 SLA 提前刷新保持未启用）。
 本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
@@ -41,12 +42,20 @@ CI 通过并完成分层生产读回。短 SLA 提前刷新保持未启用）。
   离线 `PRAGMA quick_check` 返回 `ok`（676.488 秒），SHA-256 为
   `260e6623be67449fd226970e367a24fe92ac63afc9d8e985fbd0f84efd4e8260`，快照与维护记录均
   0600 保留。恢复后 timer enabled/active，12:10 轮次完成且 failed=0、terminal=0。
-- trusted `verify-current` 最终确认 commit `f74a26d7`、tree `6e5802df`、1,019 文件完整。
+- 13:05、13:15、13:25 的 `rt_min` 交替 `config_error` 已定位为 SQLite
+  `receipt database sidecars are stale`：主库 checkpoint 后的 mtime 比仍有未回填帧的 WAL
+  晚 12ms，严格 sidecar 绑定因此 fail closed。停写并停止 A 股 API/管理读端后执行
+  `PRAGMA wal_checkpoint(TRUNCATE)`，精确返回 `(0,0,0)`；服务恢复后一次新的 13:45
+  采集轮成功，sidecar 干净回收，resumable history 再次生成 20 个 batch。认证 query 随后
+  返回 success/valid/fresh、`data_through=13:45`、30 行/30 标的/30 proofs，timer 已恢复。
+- trusted `verify-current` 先确认代码基线 `f74a26d7`、tree `6e5802df`、1,019 文件完整；
+  并行发布后的 docs-only 后继 `2983be59` 也以 tree `502e5d33`、1,019 文件取得
+  `verified=true`，Git 对比仅 `STATUS.md`。
   一次遗漏 `PYTHONDONTWRITEBYTECODE=1` 的诊断调用在 current 下生成了 1 个
   `storage/__pycache__` 目录和 4 个 `.pyc`；已精确删除这 5 个 manifest 外对象，并用禁止
   字节码的 rollback trusted verifier 重新取得 `verified=true`。没有覆盖 release 文件。
 - 盘中仍存在 09:40、09:55、10:10、10:15、10:35、10:45 等缺槽，来源轮次含
-  `config_error`/transport failure；11:30 当前槽成功不等于早盘连续健康或历史完整。
+  `config_error`/transport failure；13:45 当前槽成功不等于早盘连续健康或历史完整。
 
 ## 邮箱身份本地候选（2026-08-30）
 
