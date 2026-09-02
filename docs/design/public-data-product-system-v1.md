@@ -356,8 +356,10 @@ Required modules:
 5. bounded API example with copy action and no real token;
 6. `Use with` relationships to other raw datasets;
 7. related Cookbook methods;
-8. package/add-on requirement and truthful availability;
-9. limitations, revision/as-of caveats, and licensing notes.
+8. explicitly authored external readings, where a source-specific data-material
+   relationship has been reviewed;
+9. package/add-on requirement and truthful availability;
+10. limitations, revision/as-of caveats, and licensing notes.
 
 The product-specific data contract and bounded query request are rendered
 inline on this detail page. They are not separate Docs drill-down destinations.
@@ -367,6 +369,13 @@ authoritative `dataset_id`, `schema_major`, and entitlement through
 
 `Use with` is a relationship guide, not a precomputed joined dataset or a claim
 of investment usefulness.
+
+An external reading is optional rather than a category default. It may appear
+only when its maintained research record explicitly names the relevant raw
+product or preparation method. The link is a route into learning material; it
+does not claim that the product reproduces the source's sample, conclusion, or
+result. An empty reading area is therefore intentional for products without a
+reviewed source-specific connection, including future alternative-data products.
 
 ### 5.4 Research methods (Cookbook/Recipes compatibility layer)
 
