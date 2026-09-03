@@ -148,10 +148,23 @@ failed 终态，或 8 次重选仍不能形成有效页时，仍返回 `503 serv
 metadata，不能只看 HTTP 状态码。
 
 对 `event` 与 `session_minute` 的 append-only 数据集，最新可信 refresh 若以
-`provider_error` 失败，`runtime_state` 必须立即投影为 `failed`、`degraded=true`，同时
-保留上一份完整成功的 `data_through` 供消费者判断可用历史；连续失败超过 catalog 的
-最近收据窗口时，同样不得把仍可验证的上一成功水位静默改成 `null`。低频 append-only 数据集仍可
-在上一成功水位尚新鲜时保留既有读取状态；该低频容错不得用于隐藏高频源的最新失败。
+`provider_error` 或 `config_error` 失败，catalog 的 `runtime_state` 必须立即投影为
+`failed`、`degraded=true`，同时保留上一份完整成功的 `data_through` 供消费者判断可用历史；
+连续失败超过 catalog 的最近收据窗口时，同样不得把仍可验证的上一成功水位静默改成
+`null`。低频 append-only 数据集仍可在上一成功水位尚新鲜时保留既有读取状态；该低频容错
+不得用于隐藏高频源的最新失败。Catalog 的 failed/config_error 不是把已入库
+`session_minute` 事实改写成空页的许可证。
+
+对无业务分区窗口的 `session_minute` 查询（`partition_field`/`as_of_field`/`range_field`
+均为空，且请求未带精确 `time=eq` 槽位），`POST /v1/query` 必须用上一完整成功窗口的
+receipt 投影当前页：已入库 append-only 行在 valid filters-dict 请求下返回
+`rows>0`，且该页 `quality.evidence` / `reasons` 不得继承最新 refresh 的
+`config_error`。若上一成功水位仍在 freshness SLA 内，该查询窗口为
+`runtime_state=success`；超过 SLA 则为 `stale`。没有上一完整成功水位时，
+`empty` 与 `config_error` 保持原状态与 `data=[]`，不得改写成 success。
+精确 `time=eq` 历史槽位仍只绑定该槽位的已验证 success receipts；槽位不存在则
+503 fail closed。这不把 empty 改写成 success，也不把最新 refresh 失败从 catalog
+上抹掉。
 
 新鲜度按数据时间粒度计算：`YYYYMM` 水印覆盖完整月份，以该月末作为 SLA 参考。
 对于 `market=CN`、`timezone=Asia/Shanghai` 的 `session_minute` 与 `postclose_daily`，
@@ -285,7 +298,9 @@ bar 时间不一致都只写该 batch 的失败 receipt，并保留已成功批�
 目录进程隔离为默认关闭的运行配置，不新增 route 或请求字段。启用后，认证、endpoint
 scope、分类授权、频率/日额度、租户并发仍先于目录任务执行。目录执行容量满、子进程
 身份不匹配、worker 或 IPC 失败返回既有 503 `service_unavailable`，不会返回旧快照、
-自动重放、调用上游或转到 query。正常任务仍完整使用一次新的 verified SQLite snapshot，
+自动重放、调用上游或转到 query。采集写锁或 WAL sidecar 瞬时不一致时，只读 snapshot
+在 2 秒内 fail closed 为同一 `503 service_unavailable`（retryable），不得把
+catalog/query worker 挂在长租约上，也不得把该 503 当作盲目重启许可证。正常任务仍完整使用一次新的 verified SQLite snapshot，
 分页、cursor、字段、响应字节预算及错误分类保持原合同。客户端断开不等于任务已经结束，
 其占用的租户/执行容量要等真实计算结束后释放。运维配置及关闭方式见
 [目录进程隔离](OPERATIONS.md#目录请求的可选进程隔离)。

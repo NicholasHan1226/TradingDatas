@@ -59,6 +59,7 @@ from storage.receipt_projection import (
     classify_row_receipt_proofs,
     open_verified_read_model_snapshot,
     project_dataset_runtime_evidence,
+    session_minute_query_window_evidence,
     validated_receipt_history_for_dataset,
 )
 
@@ -2388,7 +2389,7 @@ class QueryService:
                     dataset,
                     prepared,
                 )
-                evidence = project_dataset_runtime_evidence(
+                projected_evidence = project_dataset_runtime_evidence(
                     conn,
                     dataset,
                     now=validated_now,
@@ -2402,6 +2403,18 @@ class QueryService:
                     receipt_collection_window=receipt_collection_window,
                     request_partition=request_partition,
                     validation_cache=self._validation_cache,
+                )
+                # Exact historical slots keep their own receipt authority.
+                # The current in-session window (no time=eq) serves last
+                # success instead of inheriting the latest collect failure.
+                evidence = (
+                    projected_evidence
+                    if exact_session_minute_slot is not None
+                    else session_minute_query_window_evidence(
+                        dataset,
+                        projected_evidence,
+                        now=validated_now,
+                    )
                 )
                 exact_session_minute_receipt_ids = None
                 if exact_session_minute_slot is not None:

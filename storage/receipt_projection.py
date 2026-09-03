@@ -253,7 +253,10 @@ _EXPECTED_PROVIDER_DATASET_ROWS_TABLE_INFO = tuple(
     ) in enumerate(PROVIDER_DATASET_ROWS_COLUMNS)
 )
 _SQLITE_HEADER = b"SQLite format 3\x00"
-_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS = 10.0
+# Shared readers wait this long for the writer lease, then fail closed as
+# HTTP 503.  The catalog pair must stay conceptually under 15s; a 10s wait
+# on a two-worker pool during collect activation hung query workers.
+_SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS = 2.0
 _SNAPSHOT_READER_MAX_ATTEMPTS = 5
 _FileIdentity = tuple[int, int, int]
 _IngestRunRow = tuple[object, ...]
@@ -310,6 +313,7 @@ class DatasetRuntimeEvidence:
     current_receipt_ids: tuple[str, ...] = ()
     last_success_receipt_ids: tuple[str, ...] = ()
     as_of_success_receipt_ids: tuple[str, ...] = ()
+    last_success_observed_at: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.projection, DatasetRuntimeProjection):
@@ -334,6 +338,7 @@ class DatasetRuntimeEvidence:
             if (
                 self.last_success_providers
                 or self.last_success_data_through is not None
+                or self.last_success_observed_at is not None
             ):
                 raise ValueError("last-success evidence is inconsistent")
         elif (
@@ -347,6 +352,11 @@ class DatasetRuntimeEvidence:
             or not self.last_success_data_through
         ):
             raise ValueError("last_success_data_through is invalid")
+        if self.last_success_observed_at is not None and (
+            type(self.last_success_observed_at) is not str
+            or not self.last_success_observed_at
+        ):
+            raise ValueError("last_success_observed_at is invalid")
         for name, receipt_ids in (
             ("current_receipt_ids", self.current_receipt_ids),
             ("last_success_receipt_ids", self.last_success_receipt_ids),
@@ -2462,6 +2472,83 @@ def _is_cn_session_minute_lunch_break(
     )
 
 
+def _is_session_minute_no_window(dataset: DatasetDefinition) -> bool:
+    return bool(
+        dataset.cadence_class == "session_minute"
+        and dataset.partition_field is None
+        and dataset.as_of_field is None
+        and dataset.range_field is None
+    )
+
+
+def session_minute_query_window_evidence(
+    dataset: DatasetDefinition,
+    evidence: DatasetRuntimeEvidence,
+    *,
+    now: datetime,
+) -> DatasetRuntimeEvidence:
+    """Serve the last successful in-session window when the latest refresh failed.
+
+    Catalog keeps the latest failed refresh visible. A no-window
+    ``session_minute`` query still returns already-ingested append-only facts
+    from the last complete success. ``empty`` and ``config_error`` are never
+    rewritten as success when that last-success window does not exist.
+    """
+
+    if not isinstance(dataset, DatasetDefinition):
+        raise TypeError("dataset must be DatasetDefinition")
+    if not isinstance(evidence, DatasetRuntimeEvidence):
+        raise TypeError("evidence must be DatasetRuntimeEvidence")
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be a timezone-aware datetime")
+    if not _is_session_minute_no_window(dataset):
+        return evidence
+    if evidence.projection.state != "failed":
+        return evidence
+    if (
+        evidence.last_success_receipt_id is None
+        or evidence.last_success_data_through is None
+        or evidence.last_success_observed_at is None
+        or not evidence.last_success_providers
+        or not evidence.last_success_receipt_ids
+    ):
+        return evidence
+
+    now_utc = now.astimezone(timezone.utc)
+    try:
+        data_through_utc = _freshness_reference_in_utc(
+            evidence.last_success_data_through, dataset
+        )
+    except (AttributeError, ValueError):
+        return evidence
+    is_stale = (
+        dataset.cadence_class != "on_demand"
+        and _freshness_clock_in_utc(dataset, now_utc) - data_through_utc
+        > timedelta(seconds=dataset.freshness_sla_seconds)
+        and not _is_cn_session_minute_lunch_break(
+            dataset,
+            now_utc=now_utc,
+            data_through_utc=data_through_utc,
+        )
+    )
+    return replace(
+        evidence,
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset.dataset_id,
+            state="stale" if is_stale else "success",
+            degraded=is_stale,
+            data_through=evidence.last_success_data_through,
+            observed_at=evidence.last_success_observed_at,
+            receipt_id=evidence.last_success_receipt_id,
+            reasons=("freshness_sla_exceeded",) if is_stale else (),
+        ),
+        current_receipt_status="success",
+        current_providers=evidence.last_success_providers,
+        current_receipt_ids=evidence.last_success_receipt_ids,
+        current_provider_config_hashes=evidence.last_success_provider_config_hashes,
+    )
+
+
 def _project_dataset_runtime(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
@@ -3691,6 +3778,9 @@ def project_dataset_runtime_evidence(
             ()
             if evidence_as_of is None
             else tuple(sorted({receipt.receipt_id for receipt in as_of_successful}))
+        ),
+        last_success_observed_at=(
+            None if last_success is None else last_success.finished_at
         ),
     )
 

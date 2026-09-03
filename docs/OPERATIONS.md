@@ -108,8 +108,14 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 有界同轮重试策略不变。
 
 `event` 与 `session_minute` 的 append-only 数据集不使用“上一份新鲜成功掩盖最新
-provider_error”的低频容错。最新 refresh 失败时 catalog/query 立即显示 failed/degraded，
+provider_error”的低频容错。最新 refresh 失败时 catalog 立即显示 failed/degraded，
 但继续携带上一完整成功水位；消费者可据此区分“历史仍可读”和“当前刷新不健康”。
+无窗口 `session_minute` 的 `POST /v1/query`（例如 `cn.dataset.rt_min` 的
+filters-dict 当前窗）读取该上一成功窗口的已入库行，不得因最新
+`config_error`/`empty` 把有行的页改成 0 行，也不得把 empty/config_error 改写成
+success。采集写锁或 WAL sidecar 瞬时不一致时，只读快照在 2 秒内 fail closed 为
+可重试的 `503 service_unavailable`，不把 query/catalog worker 挂在 10 秒租约上，
+也不把 503 当作盲目重启许可证。
 
 `event` cadence 可选 `freshness_refresh_lead_seconds`（缺省为 0，当前生产配置不启用）。
 只有正常 success/empty 的重观测可以提前：非零值将间隔取为

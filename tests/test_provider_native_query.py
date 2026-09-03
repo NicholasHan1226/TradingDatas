@@ -2335,6 +2335,141 @@ def test_failed_current_cohort_hides_prior_and_partial_facts(
     assert response["metadata"]["reasons"] == ["variant_cohort_incomplete"]
 
 
+def test_session_minute_filters_dict_returns_rows_without_config_error(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    minute, _registry, service = _minute_service_harness(native_harness)
+    binding = minute.provider_bindings[0]
+    config_hash = _synthetic_ingest_config_hash(minute, binding)
+    success_id = _insert_native_success_receipt(
+        monkeypatch,
+        conn,
+        minute,
+        execution_id="rt-min-last-success",
+        call_index=0,
+        page_offset=0,
+        request_window={"bar_time": "2026-07-17 11:35:00"},
+        data_through="2026-07-17 11:40:00",
+        config_hash=config_hash,
+    )
+    _insert_row(
+        conn,
+        dataset_id=minute.dataset_id,
+        provider="provider-a",
+        row_key="rt-min-000001",
+        payload={
+            "symbol": "000001.SZ",
+            "time": "2026-07-17 11:40:00",
+            "trade_date": "20260717",
+        },
+        receipt_id=success_id,
+    )
+    conn.commit()
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=minute.dataset_id,
+            state="failed",
+            degraded=True,
+            data_through="2026-07-17 11:40:00",
+            observed_at="2026-07-17T03:50:00+00:00",
+            receipt_id="receipt-config-error",
+            reasons=("config_error",),
+        ),
+        current_receipt_status="failed",
+        current_providers=("provider-a",),
+        last_success_receipt_id=success_id,
+        last_success_providers=("provider-a",),
+        last_success_data_through="2026-07-17 11:40:00",
+        last_success_observed_at="2026-07-17T03:41:00+00:00",
+        current_receipt_ids=("receipt-config-error",),
+        last_success_receipt_ids=(success_id,),
+        current_provider_config_hashes=(("provider-a", config_hash),),
+        last_success_provider_config_hashes=(("provider-a", config_hash),),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *_args, **_kwargs: evidence,
+    )
+
+    response = service.execute(
+        QueryRequest(
+            dataset_id=minute.dataset_id,
+            schema_major=1,
+            fields=("symbol", "time"),
+            filters={"symbol": {"eq": "000001.SZ"}},
+            as_of=None,
+            order=("time:asc", "symbol:asc"),
+            limit=10,
+            cursor=None,
+        ),
+        access=native_harness["access"],
+        now=datetime(2026, 7, 17, 3, 45, tzinfo=timezone.utc),
+        request_id="request-rt-min-window",
+    )
+
+    assert response["data"] == [
+        {"symbol": "000001.SZ", "time": "2026-07-17 11:40:00"}
+    ]
+    assert "config_error" not in response["metadata"]["reasons"]
+    assert "config_error" not in response["metadata"]["quality"]["evidence"]
+    assert response["metadata"]["runtime_state"] == "success"
+    assert response["metadata"]["quality"]["valid"] is True
+    assert response["metadata"]["degraded"] is False
+
+
+def test_session_minute_config_error_without_last_success_stays_failed_empty(
+    native_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    minute, _registry, service = _minute_service_harness(native_harness)
+    evidence = DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=minute.dataset_id,
+            state="failed",
+            degraded=True,
+            data_through=None,
+            observed_at="2026-07-17T03:50:00+00:00",
+            receipt_id="receipt-config-error",
+            reasons=("config_error",),
+        ),
+        current_receipt_status="failed",
+        current_providers=("provider-a",),
+        last_success_receipt_id=None,
+        last_success_providers=(),
+        last_success_data_through=None,
+        current_receipt_ids=("receipt-config-error",),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "project_dataset_runtime_evidence",
+        lambda *_args, **_kwargs: evidence,
+    )
+
+    response = service.execute(
+        QueryRequest(
+            dataset_id=minute.dataset_id,
+            schema_major=1,
+            fields=("symbol", "time"),
+            filters={"symbol": {"eq": "000001.SZ"}},
+            as_of=None,
+            order=("time:asc", "symbol:asc"),
+            limit=10,
+            cursor=None,
+        ),
+        access=native_harness["access"],
+        now=datetime(2026, 7, 17, 3, 45, tzinfo=timezone.utc),
+        request_id="request-rt-min-config-error-empty",
+    )
+
+    assert response["data"] == []
+    assert response["metadata"]["runtime_state"] == "failed"
+    assert response["metadata"]["reasons"] == ["config_error"]
+    assert response["metadata"]["quality"]["valid"] is False
+
+
 def test_receipt_watermark_changes_when_cohort_membership_changes() -> None:
     dataset = _native_dataset()
     base = DatasetRuntimeEvidence(
