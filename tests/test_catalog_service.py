@@ -902,7 +902,11 @@ def test_catalog_rows_are_exact_provider_neutral_whitelists(
         "sortable",
         "operators",
     }
-    assert set(row["limits"]) == {"max_page_size", "max_lookback_days"}
+    assert row["limits"] == {
+        "max_page_size": 2,
+        "max_in_values": catalog_harness["registry"].query_defaults.max_in_values,
+        "max_lookback_days": 365,
+    }
     assert row["coverage"] == {
         "row_count": 0,
         "earliest_observed_at": None,
@@ -959,7 +963,11 @@ def test_catalog_contract_fingerprint_golden_vector_is_cross_repository_stable()
             "ts_code": ["in", "eq"],
         },
         "default_order": ["ts_code:asc", "trade_date:asc"],
-        "limits": {"max_page_size": 500, "max_lookback_days": 36500},
+        "limits": {
+            "max_page_size": 500,
+            "max_in_values": 500,
+            "max_lookback_days": 36500,
+        },
         "identity_fields": ["ts_code", "trade_date"],
     }
     material = {
@@ -980,7 +988,7 @@ def test_catalog_contract_fingerprint_golden_vector_is_cross_repository_stable()
     ).hexdigest()
 
     assert fingerprint == (
-        "2a64eade6402119d492ae339213af96865ad5125358ac45de576b5a71f1d9e07"
+        "2e2131aadf34dc21b7265c23ef01f7b5148a807deea3ad4d8f8235a8a1359eb2"
     )
 
 

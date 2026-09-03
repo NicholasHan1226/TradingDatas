@@ -73,7 +73,7 @@ When a request is ambiguous, show the relevant catalog choices and ask the user 
 每次取数必须遵循：
 1. 先调用 GET /v1/catalog，仅发现本账户可见的数据集。
 2. 从返回结果选择 dataset_id、整数 schema_major 和 selectable 字段，不使用网页产品 slug 或猜测的版本；仅在 queryability.queryable === true 时查询，否则停止并说明 queryability.reasons。
-3. 通过 POST /v1/query 发起有界请求。首次只取 limit=1，使用最小字段集与目录支持的时间筛选；不超过 limits.max_page_size，未给出的限制不得自造。
+3. 通过 POST /v1/query 发起有界请求。首次只取 limit=1，使用最小字段集与目录支持的时间筛选；分页不超过 `limits.max_page_size`，`in` 过滤值数量不超过 `limits.max_in_values`，未给出的限制不得自造。
 4. 分页只使用返回的 next_cursor；不得自造 offset，也不得改变条件后复用游标。
 5. 每次检查 metadata.state、runtime_state、degraded、freshness、quality、lineage、receipt_id、data_through、observed_at 和 reasons。HTTP 200 本身不证明数据可用。
 6. 遇到缺 receipt/lineage、partial、degraded、stale、paused、failed、unobserved、schema mismatch、401、403 或 429，明确报告限制并停止自动重试。429 遵循 Retry-After；不得绕过限频、改用其它 provider route、缓存或外部数据补齐。
@@ -92,7 +92,7 @@ version appends the shared first-query and HTTP-error checklist documented below
 First-query acceptance ({{PROMPT_VERSION}}):
 - This configures an HTTP-capable tool, not a claim of a deployed MCP server.
 - If the base URL is unconfigured or separate secret storage is unavailable, stop. Never guess a hostname or reuse browser cookies.
-- Require queryability.queryable === true; otherwise stop and report queryability.reasons. Use selectable fields and integer schema_major from the catalog, start at limit=1, and obey limits.max_page_size and supported time filters.
+- Require queryability.queryable === true; otherwise stop and report queryability.reasons. Use selectable fields and integer schema_major from the catalog, start at limit=1, obey limits.max_page_size and limits.max_in_values, and use only supported time filters.
 - HTTP 200 alone is not data readiness. One observation is not continuous stability, complete history, or point-in-time correctness.
 - On 401, 403, 429 or schema mismatch, report the cause and stop automatic retries. For 429 respect Retry-After; never bypass rate limits or substitute a provider route.
 ```

@@ -368,6 +368,8 @@ def _serialize_dataset(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
     runtime: Mapping[str, object],
+    *,
+    max_in_values: int,
 ) -> dict[str, object]:
     queryability = inspect_dataset_queryability(conn, dataset)
     filter_operators = {
@@ -405,6 +407,7 @@ def _serialize_dataset(
         "freshness_sla_seconds": dataset.freshness_sla_seconds,
         "limits": {
             "max_page_size": dataset.max_page_size,
+            "max_in_values": max_in_values,
             "max_lookback_days": dataset.max_lookback_days,
         },
         "point_in_time": dataset.point_in_time,
@@ -579,7 +582,12 @@ class CatalogService:
             has_more = len(candidates) > effective_limit
             selected = candidates[:effective_limit]
             data = [
-                _serialize_dataset(conn, dataset, runtime)
+                _serialize_dataset(
+                    conn,
+                    dataset,
+                    runtime,
+                    max_in_values=self._registry.query_defaults.max_in_values,
+                )
                 for dataset, runtime in selected
             ]
             next_cursor = None
