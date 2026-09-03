@@ -1,5 +1,52 @@
 # TradingDatas data catalog design QA
 
+## Product-to-learning continuity — 2026-09-02
+
+Scope is source and local-browser validation only. Dataset detail pages now make
+their authored learning context visible without turning external literature into
+a TradingDatas conclusion: related external reading and preparation methods are
+shown after the sample, before collection evidence, and state that they do not
+prove or reproduce a paper. Dataset save is an explicit browser-local action only
+when account-library state is ready; otherwise the control is visibly unavailable
+rather than simulating a saved result. Purchase previews defer method availability
+to Login while preserving the explicit no-order/no-entitlement boundary.
+
+Visual/functional checks completed locally:
+
+- Chinese product detail, light desktop: no horizontal overflow; learning path
+  retains the quiet editorial hierarchy and sits between sample and evidence.
+- Chinese product detail, dark mobile (390 × 844): no horizontal overflow;
+  reading links remain single-column and precede the collection history without
+  competing with the product contract.
+- The same detail in light appearance retains a transparent learning-path surface
+  and readable borders/text.
+- Annual Basic preview retains disabled payment, canonical selection and the
+  current Login wording; it states that sign-in creates neither an order nor data
+  access.
+
+### Design scorecard
+
+| Dimension | Score | Notes |
+| --- | ---: | --- |
+| Visual hierarchy | 18/20 | Product identity remains first; learning is a measured next step. |
+| Typography | 13/15 | Editorial labels and long paper titles remain scannable. |
+| Color and theme | 14/15 | Light/dark surfaces preserve contrast without re-colouring product identity. |
+| Spacing | 14/15 | The new module uses the existing evidence rhythm rather than a new card system. |
+| Interaction states | 7/10 | Save now fails closed; authenticated persistence still requires runtime validation. |
+| Accessibility | 9/10 | Native button semantics, disabled state and direct reading links are retained. |
+| Brand fit | 9/10 | Research stays an optional preparation layer, not a finance-terminal feature. |
+| Responsive behaviour | 5/5 | Checked on desktop and a narrow mobile viewport. |
+| **Total** | **89/100** | **Design-production candidate; not release evidence.** |
+
+Next iteration:
+
+1. Verify save/import/delete against the authenticated account-library service
+   after its independently approved deployment.
+2. Add authored product-to-research mappings for the remaining data families,
+   only where an editor can state the relationship without a research claim.
+3. Conduct keyboard and screen-reader traversal on the assembled production
+   build, including the unavailable and ready save states.
+
 ## Research editorial polish — 2026-08-31
 
 Candidate-only PR #400 continuation: all 43 effective bilingual guide bodies and

@@ -355,9 +355,14 @@ Required modules:
 4. quality, freshness, receipt, and lineage explanation;
 5. bounded API example with copy action and no real token;
 6. `Use with` relationships to other raw datasets;
-7. related Cookbook methods;
-8. package/add-on requirement and truthful availability;
-9. limitations, revision/as-of caveats, and licensing notes.
+7. authored links to relevant external Research records and related preparation
+   methods, shown as a learning path rather than a claim that the product
+   reproduces the paper, proves its conclusion, or produces a result;
+8. product-level bookmark control. Before authenticated library authority is
+   available it remains explicitly browser-local; no product page may imply
+   account sync merely because it offers a save action;
+9. package/add-on requirement and truthful availability;
+10. limitations, revision/as-of caveats, and licensing notes.
 
 The product-specific data contract and bounded query request are rendered
 inline on this detail page. They are not separate Docs drill-down destinations.

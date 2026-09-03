@@ -19,7 +19,7 @@ export function PurchasePreview({ locale, selection, accountState, navigate, onR
   const accountCopy = {
     checking: [zh ? "正在验证账户" : "Checking account", zh ? "验证完成前不展示账户状态，无需重复登录。" : "Wait for session verification. You do not need to sign in again."],
     unavailable: [zh ? "账户连接暂不可用" : "Account connection unavailable", zh ? "可以继续查看价格；连接故障不会被当作退出登录。" : "You can still review prices. A connection failure is not a sign-out."],
-    signed_out: [zh ? "先看清楚，再登录。" : "Review first. Sign in when ready.", zh ? "已有访问密钥可登录后返回这里。新用户的邮箱、手机号注册尚未开放。" : "Existing access-key holders can sign in and return here. Email and phone registration are not open yet."],
+    signed_out: [zh ? "先看清楚，再登录。" : "Review first. Sign in when ready.", zh ? "登录页会显示当前可用的验证方式；登录不会创建订单或授予数据权限。" : "The sign-in page shows the currently available verification methods. Signing in creates no order and grants no data access."],
     authenticated: [zh ? "账户已连接" : "Account connected", zh ? "这里只预览所选套餐，不会变更当前套餐、有效期或数据授权。" : "This is a preview of your selection. Your current plan, expiry, and data access stay unchanged."],
   }[state.identity];
   return <section className="purchase-preview" aria-labelledby="purchase-title">
