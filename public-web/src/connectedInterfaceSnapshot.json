@@ -1204,7 +1204,7 @@
     {
       "activation": "active",
       "apiName": "adj_factor",
-      "cadence": "daily_reference",
+      "cadence": "postclose_daily",
       "category": "market-reference",
       "datasetId": "cn.dataset.adj_factor",
       "entitlement": "active",
@@ -1634,7 +1634,7 @@
     {
       "activation": "active",
       "apiName": "stk_limit",
-      "cadence": "daily_reference",
+      "cadence": "postclose_daily",
       "category": "market-reference",
       "datasetId": "cn.dataset.stk_limit",
       "entitlement": "active",

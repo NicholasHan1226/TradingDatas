@@ -326,7 +326,7 @@ def test_reviewed_contracts_are_preserved_and_unreviewed_are_honestly_paused_rea
         "fixed_field_matches": {},
         "reject_at_row_limit": True,
     }
-    assert unreviewed["cadence_class"] == "daily_reference"
+    assert unreviewed["cadence_class"] == "postclose_daily"
     assert unreviewed["freshness_sla_seconds"] == 86400
     assert unreviewed["request_template"] == {"trade_date": "${window.trade_date}"}
     assert unreviewed["request_variants"] == [{}]

@@ -258,6 +258,12 @@ uv run --python 3.12 --with-requirements requirements.txt \
 bounded backfill 逐段补齐。固定未来天数不能被当成 provider 能力事实：只有
 registry 明确声明、transport 实际观测且独立回归覆盖的日历窗口才能受控请求下一日。
 future-empty 响应必须按既有完整性合同诚实处理，不能把其它日参考数据推进到未来。
+`cn.dataset.stk_limit` 与 `cn.dataset.adj_factor` 保持 `activation_state=active`，并从
+`daily_reference` 改到 `postclose_daily`：00:30 日参考会请求当日尚未发布的 `trade_date`
+分区、留下 trusted-empty，且 `backfill_start_policy=none` 不会在数据出现后再采该日。
+empty 回执仍是 empty，不是 success；成功只能来自收盘后开市日窗口。其余
+`registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、news.flash、
+daily_basic、margin*、cashflow、express、forecast、rt_etf_min*）保持暂停。
 
 ## 国际新闻原始发布时间与精度
 
