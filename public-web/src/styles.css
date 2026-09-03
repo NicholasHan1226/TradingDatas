@@ -1057,6 +1057,24 @@ button { color: inherit; }
 .collection-readiness .stability-block { gap: 6px; }
 .dataset-product-stage { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
 .dataset-product-stage > span:last-child { color: var(--faint); font: 9px/1.5 "IBM Plex Mono", monospace; }
+.dataset-bookmark { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; margin-top: 17px; padding: 0 11px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font: 11px/1 var(--sans); cursor: pointer; transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease; }
+.dataset-bookmark:hover { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 6%, transparent); color: var(--blue); }
+.dataset-bookmark:active { transform: translateY(1px); }
+.dataset-bookmark.is-saved { border-color: color-mix(in srgb, var(--blue) 44%, var(--line)); color: var(--blue); }
+.dataset-bookmark:disabled { cursor: not-allowed; opacity: .58; }
+.dataset-bookmark:disabled:hover { border-color: var(--line); background: transparent; color: var(--muted); }
+.dataset-bookmark svg { width: 14px; height: 14px; }
+.dataset-learning-path { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 38px; padding: 42px 0; border-bottom: 1px solid var(--line); }
+.dataset-learning-heading .mono-kicker { margin: 0 0 12px; }
+.dataset-learning-heading h2 { max-width: 360px; margin: 0; font-size: clamp(25px, 2.6vw, 34px); line-height: 1.08; letter-spacing: -.045em; }
+.dataset-learning-heading p { max-width: 410px; margin: 16px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.dataset-learning-list { border-top: 1px solid var(--line); }
+.dataset-learning-list > a { display: grid; grid-template-columns: minmax(0, 1fr) 18px; gap: 5px 16px; align-items: center; min-height: 86px; padding: 16px 0; border-bottom: 1px solid var(--line-soft); color: inherit; text-decoration: none; }
+.dataset-learning-list > a > span { grid-column: 1; color: var(--aqua); font: 8px/1.2 "IBM Plex Mono", monospace; letter-spacing: .04em; }
+.dataset-learning-list > a > strong { grid-column: 1; overflow: hidden; font-size: 14px; font-weight: 500; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-learning-list > a > small { grid-column: 1; overflow: hidden; color: var(--faint); font-size: 10px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-learning-list > a > svg { grid-column: 2; grid-row: 1 / 4; color: var(--muted); transition: transform 120ms ease, color 120ms ease; }
+.dataset-learning-list > a:hover > svg { transform: translateX(3px); color: var(--blue); }
 .collection-disclosure-roadmap { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 22px; align-items: start; padding: 22px 14px; border-bottom: 1px solid var(--line); }
 .collection-disclosure-roadmap > span { color: var(--faint); font: 9px/1.5 "IBM Plex Mono", monospace; text-transform: uppercase; }
 .collection-disclosure-roadmap > div { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1434,6 +1452,7 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
   .dataset-product-identity h1 { font-size: 38px; }
   .dataset-product-identity p, .dataset-product-identity .dataset-tags { grid-column: 1 / -1; }
   .dataset-inline-access { grid-template-columns: 1fr; }
+  .dataset-learning-path { grid-template-columns: 1fr; gap: 24px; padding-block: 32px; }
   .dataset-contract-inline { padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .dataset-query-inline { padding-left: 0; }
   .dataset-history { grid-template-columns: 1fr; gap: 24px; }

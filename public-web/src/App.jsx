@@ -367,7 +367,7 @@ function DatasetSample({ item, locale, compact = false }) {
   );
 }
 
-function DatasetProductDetail({ item, locale, onNavigate }) {
+function DatasetProductDetail({ item, locale, onNavigate, saved = false, bookmarkState = "checking", onToggleBookmark = () => {} }) {
   const [queryCopyState, setQueryCopyState] = useState('idle');
   const queryCopyGeneration = useRef(0);
   useEffect(() => { ++queryCopyGeneration.current; setQueryCopyState('idle'); return () => { ++queryCopyGeneration.current; }; }, [item?.id, locale]);
@@ -377,6 +377,13 @@ function DatasetProductDetail({ item, locale, onNavigate }) {
   const sameCategory = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family === item.family);
   const otherCategories = productManifest.objects.datasets.filter((candidate) => candidate.id !== item.id && candidate.family !== item.family);
   const related = [...sameCategory, ...otherCategories].slice(0, 3);
+  // These are authored navigation links, not an inferred citation graph or a
+  // claim that this product reproduces a paper's dataset or conclusion.
+  const relatedResearch = papers.filter((paper) => paper.related?.datasets?.includes(item.id)).slice(0, 3);
+  const relatedMethodIds = [...new Set(relatedResearch.flatMap((paper) => paper.related?.recipes || []))].slice(0, 2);
+  const relatedMethods = relatedMethodIds
+    .map((id) => productManifest.objects.recipes.find((candidate) => candidate.id === id))
+    .filter(Boolean);
   const queryExample = buildQueryTemplate();
   const evidence = evidenceView(item, locale);
   const copyQueryExample = async () => {
@@ -400,6 +407,7 @@ function DatasetProductDetail({ item, locale, onNavigate }) {
               <p>{item.description[locale]}</p>
               <div className="dataset-tags">{item.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
               <div className="dataset-product-stage"><MaturityTag status={item.status} locale={locale} /><span>{locale === "zh" ? "产品阶段 · 与采集历史证据分开表达" : "Product stage · separate from collection evidence"}</span></div>
+              <button type="button" className={`dataset-bookmark ${saved ? "is-saved" : ""}`} aria-pressed={saved} disabled={bookmarkState !== "ready"} onClick={onToggleBookmark}>{bookmarkState === "ready" ? <BookmarkSimple weight={saved ? "fill" : "regular"} /> : <Clock weight="regular" />}{saved ? (locale === "zh" ? "已收藏数据产品" : "Saved to bookmarks") : bookmarkState === "checking" ? (locale === "zh" ? "正在准备收藏" : "Preparing bookmarks") : bookmarkState === "unavailable" ? (locale === "zh" ? "收藏暂不可用" : "Bookmarks unavailable") : (locale === "zh" ? "收藏数据产品" : "Save data product")}</button>
             </div>
           </div>
           <section className="dataset-inline-access" aria-label={locale === "zh" ? "数据合同与查询示例" : "Data contract and query example"}>
@@ -425,6 +433,13 @@ function DatasetProductDetail({ item, locale, onNavigate }) {
             </div>
           </section>
           <DatasetSample item={item} locale={locale} />
+          {(relatedResearch.length || relatedMethods.length) && <section className="dataset-learning-path" aria-labelledby="dataset-learning-title">
+            <div className="dataset-learning-heading"><span className="mono-kicker">RESEARCH / PREPARATION</span><h2 id="dataset-learning-title">{locale === "zh" ? "从原始材料继续阅读。" : "Continue from the raw material."}</h2><p>{locale === "zh" ? "这些外部研究与准备方法帮助你理解数据的使用语境、时间边界与检查方式；它们不是 TradingDatas 的结论，也不代表本产品复现了论文数据。" : "These external readings and preparation methods help frame use, timing, and checks. They are not TradingDatas conclusions and do not imply this product reproduces a paper's data."}</p></div>
+            <div className="dataset-learning-list">
+              {relatedResearch.map((paper) => <a key={paper.id} href={`/research/${paper.id}`} onClick={(event) => onNavigate(event, `/research/${paper.id}`)}><span>{locale === "zh" ? "外部研究" : "EXTERNAL READING"}</span><strong>{researchTitle(paper, locale)}</strong><small>{paper.authors} · {researchYear(paper, locale)}</small><ArrowRight /></a>)}
+              {relatedMethods.map((method) => <a key={method.id} href={`/recipes/${method.id}`} onClick={(event) => onNavigate(event, `/recipes/${method.id}`)}><span>{locale === "zh" ? "准备方法" : "PREPARATION METHOD"}</span><strong>{method.title[locale]}</strong><small>{method.detail}</small><ArrowRight /></a>)}
+            </div>
+          </section>}
           <section className="dataset-history">
             <div><span className="mono-kicker">COLLECTION EVIDENCE</span><h2>{locale === "zh" ? "公开采集稳定性与缺口" : "Public collection stability and gaps"}</h2></div>
             <StabilityTrack item={item} locale={locale} showStage={false} />
@@ -462,8 +477,8 @@ function AlternativeProductList({ locale, onNavigate, compact = false, limit }) 
   </a>)}</div>;
 }
 
-function ProductObjectDetail({ type, item, locale, onNavigate }) {
-  if (type === "datasets") return <DatasetProductDetail item={item} locale={locale} onNavigate={onNavigate} />;
+function ProductObjectDetail({ type, item, locale, onNavigate, saved, bookmarkState, onToggleBookmark }) {
+  if (type === "datasets") return <DatasetProductDetail item={item} locale={locale} onNavigate={onNavigate} saved={saved} bookmarkState={bookmarkState} onToggleBookmark={onToggleBookmark} />;
   const typeLabel = type === "datasets" ? (locale === "zh" ? "数据集" : "Dataset") : type === "features" ? (locale === "zh" ? "透明特征" : "Transparent feature") : (locale === "zh" ? "数据 Recipe" : "Data recipe");
   const title = item?.title?.[locale] || (locale === "zh" ? "对象未找到" : "Object not found");
   const facts = type === "datasets" ? [
@@ -637,6 +652,7 @@ export function App() {
   const accountChecking = accountViewState === "checking";
   const libraryContextMatches = !accountChecking && accountViewState !== "unavailable" && (library.mode === "cloud" ? library.userId === accountData?.user_id : !(accountData?.identity_kind === "email" && accountData.capabilities?.library));
   const bookmarks = libraryContextMatches ? library.keys : [];
+  const bookmarkState = libraryContextMatches && library.status === "ready" ? "ready" : libraryContextMatches ? "checking" : "unavailable";
   useEffect(() => { void bookmarkLibrary.setContext(accountData,accountViewState); }, [bookmarkLibrary,accountViewState,accountData?.user_id,accountData?.capabilities?.library]);
   const accountPrivateSection = ["overview", "subscription", "usage", "keys", "security", "billing"].includes(accountSection);
   const accountEntryLabel = accountChecking ? (locale === "zh" ? "正在验证账户…" : "Checking account…") : accountViewState === "unavailable" ? (locale === "zh" ? "重试账户连接" : "Retry account connection") : accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in");
@@ -1494,7 +1510,7 @@ export function App() {
           </div>
         </main>}
 
-        {primaryRoute === "datasets" && <ProductObjectDetail type="datasets" item={selectedDataset} locale={locale} onNavigate={navigate} />}
+        {primaryRoute === "datasets" && <ProductObjectDetail type="datasets" item={selectedDataset} locale={locale} onNavigate={navigate} saved={selectedDataset ? bookmarks.includes(`dataset:${selectedDataset.id}`) : false} bookmarkState={bookmarkState} onToggleBookmark={() => selectedDataset && toggleBookmark(`dataset:${selectedDataset.id}`)} />}
 
         {primaryRoute === "data" && routeSlug === "sources" && <DataSourceLandscapePage locale={locale} onNavigate={navigate} />}
 

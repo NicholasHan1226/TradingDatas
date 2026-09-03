@@ -169,6 +169,44 @@ _RECENT_INGEST_RUN_QUERY = _RECEIPT_QUERY.replace(
 WHERE rn <= ?""",
 )
 
+_LATEST_ALL_SUCCESS_EXECUTION_QUERY = """
+WITH normalized AS (
+    SELECT finished_at, status,
+           CASE
+               WHEN typeof(notes) = 'text' AND json_valid(notes)
+               THEN notes ELSE NULL
+           END AS notes_json
+    FROM market_ingest_runs
+    WHERE source = ?
+), parsed AS (
+    SELECT finished_at, status,
+           json_extract(notes_json, '$.attempt_id') AS attempt_id,
+           json_extract(notes_json, '$.data_through') AS data_through
+    FROM normalized
+    WHERE json_type(notes_json) = 'object'
+      AND json_extract(notes_json, '$.config_hash') = ?
+), executions AS (
+    SELECT CASE
+               WHEN instr(attempt_id, ':provider-call:') > 0
+               THEN substr(attempt_id, 1, instr(attempt_id, ':provider-call:') - 1)
+               ELSE attempt_id
+           END AS execution_id,
+           MAX(finished_at) AS latest_finished_at,
+           COUNT(*) AS receipt_count,
+           SUM(CASE WHEN status = 'success' THEN 0 ELSE 1 END) AS nonsuccess_count,
+           SUM(CASE WHEN typeof(data_through) = 'text' AND data_through != ''
+                    THEN 1 ELSE 0 END) AS watermark_count
+    FROM parsed
+    WHERE typeof(attempt_id) = 'text' AND attempt_id != ''
+    GROUP BY execution_id
+)
+SELECT execution_id, receipt_count
+FROM executions
+WHERE nonsuccess_count = 0 AND watermark_count > 0
+ORDER BY latest_finished_at DESC, execution_id DESC
+LIMIT 1
+"""
+
 
 def _receipt_query_by_run_ids(receipt_ids: tuple[str, ...]) -> str:
     if not receipt_ids:
@@ -1184,6 +1222,56 @@ def _scan_ingest_run_rows_by_execution_ids(
         if execution_id in expected:
             selected.append(scanned)
     return tuple(selected)
+
+
+def _scan_latest_all_success_execution_rows(
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    *,
+    read_budget: _ReceiptReadBudget,
+) -> tuple[_ScannedIngestRunRow, ...]:
+    """Recover one older complete-success candidate for a lost watermark.
+
+    The normal catalog path deliberately keeps only the newest 100 receipts per
+    dataset.  A prolonged event/session-minute outage can push the previous
+    successful watermark outside that window even though the latest failure
+    must remain visible.  Search the indexed source history only in that rare
+    case, then feed the exact candidate execution back through the ordinary
+    immutable-receipt validation path.
+    """
+
+    if not isinstance(conn, sqlite3.Connection):
+        raise TypeError("conn must be sqlite3.Connection")
+    if not isinstance(dataset, DatasetDefinition):
+        raise TypeError("dataset must be a DatasetDefinition")
+    if not isinstance(binding, ProviderBinding):
+        raise TypeError("binding must be a ProviderBinding")
+    if not isinstance(read_budget, _ReceiptReadBudget):
+        raise TypeError("read_budget must be a _ReceiptReadBudget")
+    candidate = conn.execute(
+        _LATEST_ALL_SUCCESS_EXECUTION_QUERY,
+        (dataset.dataset_id, provider_ingest_config_hash(dataset, binding)),
+    ).fetchone()
+    if candidate is None:
+        return ()
+    execution_id, expected_count = candidate
+    if (
+        type(execution_id) is not str
+        or not execution_id
+        or type(expected_count) is not int
+        or expected_count <= 0
+    ):
+        raise RuntimeProjectionError("historical success candidate is invalid")
+    rows = _scan_ingest_run_rows_by_execution_ids(
+        conn,
+        dataset.dataset_id,
+        (execution_id,),
+        read_budget=read_budget,
+    )
+    if len(rows) != expected_count:
+        raise RuntimeProjectionError("historical success candidate is incomplete")
+    return rows
 
 
 def _is_valid_unmapped_tushare_attempt(
@@ -3681,6 +3769,82 @@ def _project_registry_datasets(
             if row.raw not in seen_rows:
                 expanded.append(row)
                 seen_rows.add(row.raw)
+    # Event and session-minute failures stay current, but their most recent
+    # successful data watermark must not disappear merely because a long
+    # outage produced more than the per-dataset seed window.  Run one targeted
+    # historical lookup only when the complete recent authority contains no
+    # successful watermark; the recovered execution still passes the same
+    # envelope, config, attempt, execution, and cohort validation below.
+    for dataset_id, source_rows in by_source.items():
+        if len(source_rows) < _MAX_INGEST_RUN_SCAN_ROWS_PER_DATASET:
+            continue
+        dataset = registry.resolve(dataset_id)
+        if dataset.cadence_class not in {"event", "session_minute"}:
+            continue
+        bindings = _active_bindings(dataset)
+        if len(bindings) != 1:
+            continue
+        binding = bindings[0]
+        dataset_rows = tuple(
+            row
+            for row in expanded
+            if row.raw[9] == dataset_id
+            or (
+                row.payload is not None
+                and row.payload.get("dataset_id") == dataset_id
+            )
+        )
+        recent_receipts, recent_invalid = _trusted_receipts_for_evidence(
+            dataset,
+            now=now,
+            known_dataset_ids=known_dataset_ids,
+            rows=dataset_rows,
+            expected_binding=binding,
+            validation_cache=validation_cache,
+        )
+        if recent_invalid:
+            continue
+        config_hash_cache: dict[tuple[int, int], str] = {}
+        recent_authority = [
+            receipt
+            for receipt in recent_receipts
+            if _receipt_matches_active_config(
+                receipt,
+                dataset,
+                binding,
+                config_hash_cache,
+            )
+        ]
+        if _success_watermark_receipt(recent_authority, dataset) is not None:
+            continue
+        historical = _scan_latest_all_success_execution_rows(
+            conn,
+            dataset,
+            binding,
+            read_budget=read_budget,
+        )
+        if not historical:
+            continue
+        recovered_execution_ids: set[str] = set()
+        for row in historical:
+            validated = _validate_receipt_row_memoized(
+                row,
+                dataset,
+                known_dataset_ids,
+                now,
+                binding,
+                validation_cache,
+            )
+            if isinstance(validated, _Receipt):
+                recovered_execution_ids.add(validated.execution_id)
+            if row.raw not in seen_rows:
+                expanded.append(row)
+                seen_rows.add(row.raw)
+        if recovered_execution_ids:
+            complete_execution_ids[dataset_id] = frozenset(
+                set(complete_execution_ids.get(dataset_id, frozenset()))
+                | recovered_execution_ids
+            )
     rows = tuple(expanded)
     related_rows: dict[str, list[_ScannedIngestRunRow]] = {
         dataset_id: [] for dataset_id in known_dataset_ids

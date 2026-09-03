@@ -16,12 +16,12 @@ function user(db, id, disabled = null) {
 function session(db, id, uid, expires, revoked = null) {
   db.sqlite.prepare('INSERT INTO identity_sessions VALUES (?,?,?,?,?)').run(id, uid, now - 100, expires, revoked);
 }
-test('maintenance is opt-in and does not need delivery secrets; configuration stays disabled', async () => {
+test('maintenance is explicitly configured and does not need delivery secrets', async () => {
   assert.deepEqual(await runIdentityMaintenance({}, now), { state: 'disabled' });
   await assert.rejects(runIdentityMaintenance({ IDENTITY_RETENTION_ENABLED: 'true' }, now), /identity_maintenance_unavailable/);
   const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url)));
-  assert.equal(config.vars.IDENTITY_RETENTION_ENABLED, 'false');
-  assert.equal(config.vars.EMAIL_LOGIN_ENABLED, 'false');
+  assert.equal(config.vars.IDENTITY_RETENTION_ENABLED, 'true');
+  assert.equal(config.vars.EMAIL_LOGIN_ENABLED, 'true');
   assert.deepEqual(config.triggers.crons, ['17 * * * *']);
 });
 test('expiry cleanup preserves active sessions, challenges and all non-requested profiles', async () => {

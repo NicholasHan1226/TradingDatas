@@ -80,7 +80,13 @@ failed、event、Crypto 和 config mismatch 不获得该保护。固定配置缺
 
 读取已结束的精确分钟槽位时，receipt cohort 的 `request_window` 可以保留该 dataset
 合同要求的窗口（例如 `bar_time`）；同一 execution 内必须保持窗口、provider、config
-和 `data_through` 一致，不能用空窗口或跨窗口 receipt 冒充当前槽位证据。
+和 `data_through` 一致，不能用空窗口或跨窗口 receipt 冒充当前槽位证据。纠错 overlap
+可以让同一已结束槽位出现在多个分别完整成功的 execution；查询只联合同一 active config、
+同一 provider 且精确 `data_through` 的已验证 receipt，使 append-only 事实保留其首次 receipt
+authority。请求逐行 proof 时，返回页仍须服从既有单一采集序列门禁，不能混合证明。
+receipt 携带窗口时，proof 还必须按同一 active provider 的 registry
+`request_window_policy` 完整验证，并证明窗口起始锚点不晚于行事件时间；不能因有 receipt id
+就跳过窗口格式、键集合、provider 或时序校验。
 
 `daily_reference` 的下一日期窗口只适用于 registry 声明为 `trade_calendar` 的已知未来事实，
 用于在 provider 已发布时提前写入下一交易日的 `is_open` / `pretrade_date`。其它日参考数据仍只
@@ -146,6 +152,12 @@ catalog 先取每个 envelope `source` 最近 100 条收据作为初始窗口。
 source 对窗口内所有可识别的有效 execution 补齐兄弟收据，不能根据尚未完整验证的时间
 上下文猜测只有最旧一组被截断。初始窗口中的无效收据全部保留；初始读取及补读共用
 400,000 条原始读取预算，补读中重复命中的行也计入预算，超限立即 fail closed。
+
+`event`/`session_minute` 的最近窗口若只有失败且没有完整成功水位，catalog 才按当前
+config hash 对该 source 做一次定向历史查询，选取最新“全部物理收据均 success 且至少一条
+带 data_through”的 execution，并把精确 execution 重新交给普通 envelope、attempt、execution、
+variant 与 config validator。该回看只恢复上一成功水位；当前 terminal 仍取最新失败，不能
+把旧成功改写为当前健康。候选缺失、读取预算超限、精确收据数量不符或验证失败均 fail closed。
 
 随后按 envelope `source` 与 payload `dataset_id` 建立数据集相关行索引；跨数据集
 envelope/payload 不一致必须同时进入两个相关数据集，不能因性能索引而被跳过。经补齐
@@ -246,6 +258,12 @@ uv run --python 3.12 --with-requirements requirements.txt \
 bounded backfill 逐段补齐。固定未来天数不能被当成 provider 能力事实：只有
 registry 明确声明、transport 实际观测且独立回归覆盖的日历窗口才能受控请求下一日。
 future-empty 响应必须按既有完整性合同诚实处理，不能把其它日参考数据推进到未来。
+`cn.dataset.stk_limit` 与 `cn.dataset.adj_factor` 保持 `activation_state=active`，并从
+`daily_reference` 改到 `postclose_daily`：00:30 日参考会请求当日尚未发布的 `trade_date`
+分区、留下 trusted-empty，且 `backfill_start_policy=none` 不会在数据出现后再采该日。
+empty 回执仍是 empty，不是 success；成功只能来自收盘后开市日窗口。其余
+`registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、news.flash、
+daily_basic、margin*、cashflow、express、forecast、rt_etf_min*）保持暂停。
 
 ## 国际新闻原始发布时间与精度
 
@@ -885,7 +903,9 @@ Polymarket 的新失败回执不能刷新成功捕获时间：使用 capture 内
 非空 market/snapshot 数量；超过 26 小时无成功捕获、损坏回执或缺失成功捕获报 ALERT，
 最近六份去重回执至少四次失败报 WARN，同一次判断不得同时输出 OK。这仅是运行诊断，
 不取代 SQLite receipt、认证 API 或 activation/stable 门禁。既有 TA 账本告警保持独立，
-修复 TD 不会抹除或伪造 TA 结果。
+修复 TD 不会抹除或伪造 TA 结果。滚动评估账本的新鲜度检查同时识别旧版顶层
+`entry-*.json` 与当前原子目录 `entry-*/entry.json`；只含空暂存目录或失败退出的目录不算
+成功条目，显示名称使用条目目录名。
 
 更新脚本需先记录现有字节 hash、备份到新的 root-only 路径、通过
 `bash -n` 与 `tests/test_collector_watch.py`，再原子安装并读回 hash；不改 timer 排期。

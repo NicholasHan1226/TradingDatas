@@ -355,9 +355,13 @@ Required modules:
 4. quality, freshness, receipt, and lineage explanation;
 5. bounded API example with copy action and no real token;
 6. `Use with` relationships to other raw datasets;
-7. related Cookbook methods;
-8. explicitly authored external readings, where a source-specific data-material
-   relationship has been reviewed;
+7. related Cookbook methods plus authored links to relevant external Research
+   records, where each source-specific data-material relationship has been
+   reviewed; show these as a learning path rather than a claim that the product
+   reproduces the paper, proves its conclusion, or produces a result;
+8. product-level bookmark control. Before authenticated library authority is
+   available it remains explicitly browser-local; no product page may imply
+   account sync merely because it offers a save action;
 9. package/add-on requirement and truthful availability;
 10. limitations, revision/as-of caveats, and licensing notes.
 

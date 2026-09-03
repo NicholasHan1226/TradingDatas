@@ -1,8 +1,10 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-02 00:10 CST（A 股生产仍运行 immutable release
-`82246bc47d721511d4583f4edca71cd83c1327fd`；QuickSync 续费与公开运行规则已脱敏复核；
-Firecrawl 最新来源失败投影候选进入修复。短 SLA 提前刷新保持未启用）。
+最后更新：2026-09-02 13:52 CST（A 股生产运行代码基线
+`f74a26d705b4094126bc5663b63fec14ed75434a`，回滚点
+`6ce9ec5da09d77ee0282ba93a66e46403466c239`；12:32 current 被并行发布通道切换到仅
+`STATUS.md` 变化的 exact-main 后继 `2983be59f21e697e2824e37df4d12bc52181a75f`，
+runtime 代码未变。PR #448/#449/#450 已合入并完成分层生产读回，短 SLA 提前刷新保持未启用）。
 本文只保留当前可替换摘要；历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见
 [`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
@@ -13,15 +15,47 @@ Firecrawl 最新来源失败投影候选进入修复。短 SLA 提前刷新保�
 - QuickSync 用户提供的在线测试页已从本机和新加坡服务器分别取得 HTTPS 200。页面的脱敏
   订阅元数据显示 `anns_d/news/research_report/rt_min/stk_auction/stk_mins/tushare_15000`
   有效至 `2026-09-27T16:04:00Z`，与本次续费一致；页面路径和内容含凭据，不能入库或提交。
-- 同页公开规则明确基础/标准/极速版最大速率分别为 120/600/1200 次每分钟，异常流量可降至
-  60 或 0 次每分钟并在每日 0 点重置。页面没有声明当前 token 对应的速率档、每日总调用额度
-  或并发上限；因此生产现有 per-run 预算不扩张，`freshness_refresh_lead_seconds` 继续为 0。
-- 过去 24 小时 `global.news.flash` 来源回执：CNBC 110 成功/52 失败，美联储 106 成功/25
-  失败，SEC 93 成功/29 失败；最新一轮 CNBC 与美联储成功、SEC `provider_error`。现有事件波次
-  保持单轮每分片一次、后续 timer 有界重试。本候选修正公共投影：event/session-minute 的最新
-  provider failure 立即显示 failed/degraded，同时保留上一完整成功水位，不再显示旧成功为当前健康。
-- `rt_min`/`rt_min_daily` 的当日分钟采集及 scale500 消费者仍须在 2026-09-02 A 股真实交易
-  时段完成 provider receipt、认证 catalog/query 和消费者 readback；夜间不制造盘中成功证据。
+  同页公开规则给出基础/标准/极速版最大 120/600/1200 次每分钟，但没有声明当前 token
+  档位、每日总额度或并发上限；生产预算不扩张，四个预计共 8,332 次调用的完整 universe
+  one-shot 继续安全阻断，不把未执行误报成权限失败。
+- PR #448 已发布：event/session-minute 在最新 provider failure 时继续显示 failed/degraded，
+  同时从同一 active config 的完整历史 execution 保留上一成功 `data_through`。12:08 认证
+  catalog 显示 `global.news.flash` 为 failed/degraded、原因 `provider_error`，但水位仍为
+  `2026-09-01T14:27:31.489578Z`，覆盖 3,492 行；这证明水位保护生效，不代表上游恢复。
+- PR #448 的巡检账本兼容也已安装：同时识别旧顶层条目与 TA 原子目录
+  `entry-*/entry.json`，忽略空失败暂存目录。05:37 的滚动评估真实失败已在 11:16 以
+  `REAL_TRADING_ENABLED=false` 重跑成功。12:20 巡检 verdict=OK；六类 Crypto collector、
+  Polymarket、滚动评估与两路匿名 API 认证墙均 OK。provider-native 的过去 24 小时窗口仍为
+  WARN（2,675 success / 84 fail），因此不能声明所有数据源完全健康。
+- PR #449/#450 已发布：重复 execution 的同槽完整成功 receipt 允许联合证明；逐行 proof
+  按 active provider 的 `request_window_policy` 验证合法 `bar_time` 窗口，并拒绝晚于行事件
+  时间的锚点。12:11 后对 11:30 精确槽位的认证读回为 HTTP 200、30 行/30 标的/30 个
+  row receipt proofs，窗口 `bar_time=2026-09-02 11:25:00`，runtime success、quality valid、
+  freshness fresh。匿名 A 股与 Crypto catalog 均为 401。
+- 30 标的一般模拟消费者在 11:37 真实通过，接受 30/30，`real_trading_enabled=false`、
+  `execution_authority=false`。Scale500 在修复发布前的 10:12 已按安全合同锁定当天
+  `fallback30_selected`，原因 `minute_scale500_unclassified_httpstatuserror`；后续运行只做
+  rollback30 noop，不删除或改写当日 gate。它须由下一交易日新会话重新验收，当前不能写成
+  Scale500 已恢复。
+- 午间停写窗口已从 15,103,488,000 字节生产 SQLite 生成一致性快照
+  `/opt/investment-data/tradingdatas/maintenance/20260902T114500+0800/provider_native.snapshot.sqlite`；
+  离线 `PRAGMA quick_check` 返回 `ok`（676.488 秒），SHA-256 为
+  `260e6623be67449fd226970e367a24fe92ac63afc9d8e985fbd0f84efd4e8260`，快照与维护记录均
+  0600 保留。恢复后 timer enabled/active，12:10 轮次完成且 failed=0、terminal=0。
+- 13:05、13:15、13:25 的 `rt_min` 交替 `config_error` 已定位为 SQLite
+  `receipt database sidecars are stale`：主库 checkpoint 后的 mtime 比仍有未回填帧的 WAL
+  晚 12ms，严格 sidecar 绑定因此 fail closed。停写并停止 A 股 API/管理读端后执行
+  `PRAGMA wal_checkpoint(TRUNCATE)`，精确返回 `(0,0,0)`；服务恢复后一次新的 13:45
+  采集轮成功，sidecar 干净回收，resumable history 再次生成 20 个 batch。认证 query 随后
+  返回 success/valid/fresh、`data_through=13:45`、30 行/30 标的/30 proofs，timer 已恢复。
+- trusted `verify-current` 先确认代码基线 `f74a26d7`、tree `6e5802df`、1,019 文件完整；
+  并行发布后的 docs-only 后继 `2983be59` 也以 tree `502e5d33`、1,019 文件取得
+  `verified=true`，Git 对比仅 `STATUS.md`。
+  一次遗漏 `PYTHONDONTWRITEBYTECODE=1` 的诊断调用在 current 下生成了 1 个
+  `storage/__pycache__` 目录和 4 个 `.pyc`；已精确删除这 5 个 manifest 外对象，并用禁止
+  字节码的 rollback trusted verifier 重新取得 `verified=true`。没有覆盖 release 文件。
+- 盘中仍存在 09:40、09:55、10:10、10:15、10:35、10:45 等缺槽，来源轮次含
+  `config_error`/transport failure；13:45 当前槽成功不等于早盘连续健康或历史完整。
 
 ## 邮箱身份本地候选（2026-08-30）
 

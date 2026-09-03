@@ -6,7 +6,7 @@ export const researchSummaryMaterials = {
   "Optimal Execution of Portfolio Transactions": {},
   "Price Momentum and Trading Volume": {"recipes":["adjusted-price-series"]},
   "Media Coverage and the Cross-section of Stock Returns": {"datasets":["cn-news-flashes"],"recipes":["document-version-ledger"]},
-  "CSI 300 Index Methodology": {},
+  "CSI 300 Index Methodology": {"datasets":["cn-index-constituents"]},
   "SSE Statistical Yearbook": {},
   "Findings Regarding the Market Events of May 6, 2010": {},
   "Staff Report on Equity and Options Market Structure Conditions in Early 2021": {},

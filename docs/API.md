@@ -149,7 +149,8 @@ metadata，不能只看 HTTP 状态码。
 
 对 `event` 与 `session_minute` 的 append-only 数据集，最新可信 refresh 若以
 `provider_error` 失败，`runtime_state` 必须立即投影为 `failed`、`degraded=true`，同时
-保留上一份完整成功的 `data_through` 供消费者判断可用历史。低频 append-only 数据集仍可
+保留上一份完整成功的 `data_through` 供消费者判断可用历史；连续失败超过 catalog 的
+最近收据窗口时，同样不得把仍可验证的上一成功水位静默改成 `null`。低频 append-only 数据集仍可
 在上一成功水位尚新鲜时保留既有读取状态；该低频容错不得用于隐藏高频源的最新失败。
 
 新鲜度按数据时间粒度计算：`YYYYMM` 水印覆盖完整月份，以该月末作为 SLA 参考。
@@ -225,6 +226,13 @@ success rows。
 后续重叠窗口覆盖。`current_snapshot` 数据集仍把相同 payload 的重观测绑定到最新 receipt；
 append-only payload 一旦变化仍按既有合同 fail closed。该规则不迁移或反写既有历史事实，
 也不把后采 backfill 伪装成历史可得。
+
+`session_minute` 的精确已结束槽位可能被纠错 overlap 在多个完整成功 execution 中重复
+观测。查询会联合同一 active config/provider 且 `data_through` 精确等于该槽位的已验证
+receipt，使事实行保留首次 receipt authority；任一 execution 不完整、配置/provider 混合或
+逐行证明跨采集序列时仍 fail closed。逐行证明允许 receipt 保留 registry 要求的窗口，
+但窗口必须完整通过同一 active provider 的 `request_window_policy`，且起始锚点不得晚于
+事实行的事件时间；未知键、错误格式、未来锚点或 provider 不匹配继续 fail closed。
 
 交易日历是已知未来事实的例外：`entity_type=trade_calendar` 可以返回 provider 已发布的下一
 交易日及其 `is_open` / `pretrade_date`。未来有效日期只保留在行字段；envelope 的
