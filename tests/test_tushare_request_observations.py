@@ -171,10 +171,10 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert len(set(api_names)) == 190
     assert observations["counts"] == {
         "interfaces": 190,
-        "probe_executable": 141,
-        "probe_blocked": 49,
-        "ingest_contract_ready": 126,
-        "ingest_contract_blocked": 64,
+        "probe_executable": 142,
+        "probe_blocked": 48,
+        "ingest_contract_ready": 127,
+        "ingest_contract_blocked": 63,
         "row_limit_ingest_contract_blocked": 15,
     }
     assert observations["counts"] == {
@@ -552,10 +552,10 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 141,
-        "blocked": 49,
-        "ingest_contract_ready": 126,
-        "ingest_contract_blocked": 64,
+        "executable": 142,
+        "blocked": 48,
+        "ingest_contract_ready": 127,
+        "ingest_contract_blocked": 63,
     }
 
     daily = _entry(plan, "daily")
@@ -579,9 +579,9 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     )
 
     daily_basic = _entry(plan, "daily_basic")
-    assert daily_basic["probe_state"] == "blocked"
-    assert daily_basic["probe_block_reasons"] == ["required_parameter_unresolved"]
-    assert daily_basic["params"] == {}
+    assert daily_basic["probe_state"] == "executable"
+    assert daily_basic["probe_block_reasons"] == []
+    assert daily_basic["params"] == {"trade_date": "20260718"}
 
     rt_min = _entry(plan, "rt_min")
     assert rt_min["probe_state"] == "executable"
@@ -616,10 +616,10 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     plan = _compile_plan(dataset_field_values=[seed])
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 157,
-        "blocked": 33,
-        "ingest_contract_ready": 142,
-        "ingest_contract_blocked": 48,
+        "executable": 158,
+        "blocked": 32,
+        "ingest_contract_ready": 143,
+        "ingest_contract_blocked": 47,
     }
     express = _entry(plan, "express")
     assert express["probe_state"] == "executable"
@@ -740,8 +740,8 @@ def test_probe_plan_rejects_seed_schema_drift_and_blocked_producer() -> None:
     producer = _entry(observations, "stock_basic")
     producer["probe_state"] = "blocked"
     producer["probe_block_reasons"] = ["request_anchor_unresolved"]
-    observations["counts"]["probe_executable"] = 140
-    observations["counts"]["probe_blocked"] = 50
+    observations["counts"]["probe_executable"] = 141
+    observations["counts"]["probe_blocked"] = 49
     seed["schema_version"] = "2.0.0"
     with pytest.raises(RuntimeContractCompilationError, match="producer.*executable"):
         _compile_plan(
@@ -932,6 +932,7 @@ def test_runtime_compiler_rejects_content_drift_behind_frozen_authority_sha(
         ("unknown_source", "parameter source"),
         ("unknown_transform", "parameter transform"),
         ("required_true_unmapped", "required provider parameter"),
+        ("either_or_unmapped", "二选一 parameter"),
         ("required_unknown_executable", "unknown official requiredness"),
         ("executable_with_reason", "probe_state=executable"),
         ("blocked_without_reason", "probe_state=blocked"),
@@ -949,6 +950,8 @@ def test_request_observation_contract_fails_closed(
         _entry(observations, "daily")["parameters"]["trade_date"]["transform"] = "date"
     elif mutation == "required_true_unmapped":
         _entry(observations, "fut_basic")["parameters"] = {}
+    elif mutation == "either_or_unmapped":
+        _entry(observations, "daily_basic")["parameters"] = {}
     elif mutation == "required_unknown_executable":
         item = _entry(observations, "fund_company")
         item["probe_state"] = "executable"

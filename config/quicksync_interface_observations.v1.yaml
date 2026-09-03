@@ -428,6 +428,7 @@ active_evidence:
   cn_pmi: server-evidence/20260727T091112Z-periodic-window-probe-r2
   cn_ppi: server-evidence/20260727T091112Z-periodic-window-probe-r2
   daily: server-evidence/20260719T0415Z-0be6f83-stock-daily-v3
+  daily_basic: server-evidence/20260825T-daily-basic-trade-date-only
   daily_info: server-evidence/20260722TQkgWsk-1def337-provider-native
   dc_concept: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   dc_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe

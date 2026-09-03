@@ -4248,7 +4248,6 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.bse_mapping",
         "cn.dataset.cb_price_chg",
         "cn.dataset.ci_index_member",
-        "cn.dataset.daily_basic",
         "cn.dataset.dc_concept_cons",
         "cn.dataset.dc_member",
         "cn.dataset.etf_mins",
@@ -4307,6 +4306,7 @@ _REACTIVATED_TRADE_DATE_SNAPSHOTS = (
     "cn.dataset.stk_limit",
     "cn.dataset.adj_factor",
 )
+_DAILY_BASIC_DATASET_ID = "cn.dataset.daily_basic"
 
 
 def test_stk_limit_and_adj_factor_stay_active_and_plan_postclose(
@@ -4356,6 +4356,100 @@ def test_stk_limit_and_adj_factor_stay_active_and_plan_postclose(
     skipped = {item.dataset_id: item.state for item in result.skipped}
     assert skipped.get("cn.dataset.stk_limit") != "paused"
     assert skipped.get("cn.dataset.adj_factor") != "paused"
+
+
+def test_daily_basic_is_active_and_plans_postclose_trade_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    paused = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].activation_state == "paused"
+    }
+    assert paused == _PAUSED_DATASET_IDS
+    assert _DAILY_BASIC_DATASET_ID not in paused
+    dataset = registry.resolve(_DAILY_BASIC_DATASET_ID)
+    binding = dataset.provider_bindings[0]
+    assert dataset.cadence_class == "postclose_daily"
+    assert binding.activation_state == "active"
+    assert binding.entitlement_state == "active"
+    assert binding.probe_state == "executable"
+    assert binding.fanout is not None
+    assert binding.fanout.strategy == "none"
+    assert dict(binding.request_template) == {"trade_date": "${window.trade_date}"}
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    automatic = scheduler.run_schedule(
+        registry=registry,
+        schedule=schedule,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        cadence_class="postclose_daily",
+    )
+    planned = {
+        plan.dataset_id: dict(plan.request_window)
+        for plan in automatic.plans
+        if plan.dataset_id == _DAILY_BASIC_DATASET_ID
+    }
+    assert planned == {_DAILY_BASIC_DATASET_ID: {"trade_date": "20260720"}}
+    skipped = {item.dataset_id: item.state for item in automatic.skipped}
+    assert skipped.get(_DAILY_BASIC_DATASET_ID) != "paused"
+
+    wave = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="direct_wave_1",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+    assert _DAILY_BASIC_DATASET_ID not in {plan.dataset_id for plan in wave.plans}
+
+
+def test_daily_basic_empty_receipts_are_not_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        if plan.dataset_id == _DAILY_BASIC_DATASET_ID:
+            return scheduler.DatasetResult(plan.dataset_id, plan.provider, "empty", 3)
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+        cadence_class="postclose_daily",
+    )
+    executed = {
+        item.dataset_id: item.state
+        for item in result.executed
+        if item.dataset_id == _DAILY_BASIC_DATASET_ID
+    }
+    assert executed == {_DAILY_BASIC_DATASET_ID: "empty"}
+    assert "success" not in executed.values()
 
 
 def test_stk_limit_and_adj_factor_empty_receipts_are_not_success(

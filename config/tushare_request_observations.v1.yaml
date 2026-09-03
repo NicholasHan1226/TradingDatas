@@ -10,13 +10,13 @@ provenance:
     sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: a9d4afc482729ecdae9da8f95f35ac5ef35797e6d28cd61cfe996f2000d087f3
+    sha256: 52dc112d47364cb649bbfc217a95deeff06ae2ba058c50c1c3637cca346f56b1
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: e7aaebb7ca72ad5ae23fca777807cc509ad9a42caa641d698ad3c610367ec9da
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 5585424325629b968fd648d7482dbca92df13521cd26e646e2208be465d6aa6e
+    sha256: 4a68e759fcefb99cae832797a16b585a1277aef2ab8de23b12f28c8aa57f95a4
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -68,10 +68,10 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 141
-  probe_blocked: 49
-  ingest_contract_ready: 126
-  ingest_contract_blocked: 64
+  probe_executable: 142
+  probe_blocked: 48
+  ingest_contract_ready: 127
+  ingest_contract_blocked: 63
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -733,20 +733,19 @@ entries:
   - gaps
   transport_observation_class: schema_subset
   request_shape: snapshot_or_date_range
-  # The official document marks ts_code "Y (二选一)" while trade_date alone is
-  # accepted by the provider (2026-08-25 direct probes: trade_date-only returns
-  # the full-market day; multi-code batches return empty or are cut off), so
-  # the entity fanout is dropped and the doc-required parameter stays unmapped.
-  probe_state: blocked
-  probe_block_reasons:
-  - required_parameter_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - required_parameter_unresolved
+  # Official ts_code is "Y (二选一)" while trade_date is N.  2026-08-25
+  # trade_date-only probes returned the full-market day; multi-code ts_code
+  # batches returned empty or were cut off.  Cadence is already
+  # postclose_daily (15:00-17:00 publish window), so this is not the
+  # daily_reference-before-publish trusted-empty pattern.  Empty ≠ success.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
   unresolved_parameter_keys: []
   parameters:
     trade_date:
-      source: run_clock
+      source: scheduled_partition
       transform: yyyymmdd
       offset_seconds: 0
   row_limit_observation: null
