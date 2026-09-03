@@ -5,7 +5,12 @@ source_snapshot_id: tushare-official-document-contracts.v1
 source_snapshot_canonical_sha256: 6de2a7b8dfb1d75e5f15375773c9863f14fdba23f6dbfa56b8b597b1a5b5d22f
 entries:
 - api_name: adj_factor
-  cadence_class: daily_reference
+  # trade_date snapshot published with the daily bar after close.  The
+  # 00:30 daily_reference sweep requested today's unpublished partition,
+  # recorded trusted-empty, and never retried that date after rows existed
+  # (last SUCCESS ~2026-08-06, empty since).  Empty remains empty; success
+  # requires a post-close open-day window.  Keep activation_state=active.
+  cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: e8ce97d2e7f3998d2c564235e8c696edf1973dac7bd1a3fa878ce6dbd6ee2f35
   reason_code: reviewed_contract_exact
@@ -820,7 +825,11 @@ entries:
   source_document_sha256: ca05439b3aebc6b3e264cdfc682a47e392cce668561a19c41d28d5d4fe025f55
   reason_code: no_document_frequency_evidence
 - api_name: stk_limit
-  cadence_class: daily_reference
+  # Same 00:30 trusted-empty cover as adj_factor: daily_reference requested
+  # today's unpublished 涨跌停 partition and treated empty as covered.
+  # postclose_daily keeps the existing daily snapshot contract, uses the
+  # trade calendar, and collects after 16:30 on open days.  Empty ≠ success.
+  cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: 81b85ae2a018d4898006ca4239cff719bf221216b90c8f102aa3e7be68ffd8e4
   reason_code: reviewed_contract_exact

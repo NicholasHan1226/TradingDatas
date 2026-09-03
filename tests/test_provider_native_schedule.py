@@ -2201,11 +2201,11 @@ def test_missing_calendar_skips_postclose_without_guessing_market_holidays(
     skipped = {item.dataset_id: item.state for item in result.skipped}
     assert skipped["cn.equity.daily"] == "calendar_unavailable"
     assert skipped["cn.dataset.sw_daily"] == "calendar_unavailable"
+    assert skipped["cn.dataset.adj_factor"] == "calendar_unavailable"
+    assert skipped["cn.dataset.stk_limit"] == "calendar_unavailable"
     expected_without_calendar = {
-        "cn.dataset.adj_factor",
         "cn.dataset.index_classify",
         "cn.dataset.stk_auction",
-        "cn.dataset.stk_limit",
         "cn.dataset.suspend_d",
         "cn.equity.security_master",
     }
@@ -2986,7 +2986,7 @@ def test_daily_reference_non_calendar_does_not_plan_future_partition(
         execute=False,
     )
     plans = [
-        plan for plan in result.plans if plan.dataset_id == "cn.dataset.adj_factor"
+        plan for plan in result.plans if plan.dataset_id == "cn.dataset.etf_share_size"
     ]
 
     assert plans
@@ -3658,7 +3658,12 @@ def test_session_minute_current_plan_precedes_other_current_plans(
     _database(db_path)
     now = datetime(2026, 7, 28, 9, 35, tzinfo=ZoneInfo("Asia/Shanghai"))
     with sqlite3.connect(db_path) as conn:
-        _seed_calendar(monkeypatch, conn, registry, {now.date(): True})
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 27): True, now.date(): True},
+        )
         conn.commit()
 
     state = scheduler.load_planner_state(db_path, registry, now=now)
@@ -4236,6 +4241,165 @@ def test_breadth_observed_20260815_fund_portfolio_dry_run_plans_exactly_one(
     assert dict(plan.request_window) == {"ann_date": "20260814"}
 
 
+_PAUSED_DATASET_IDS = frozenset(
+    {
+        "cn.dataset.bak_daily",
+        "cn.dataset.bc_otcqt",
+        "cn.dataset.bse_mapping",
+        "cn.dataset.cb_price_chg",
+        "cn.dataset.ci_index_member",
+        "cn.dataset.daily_basic",
+        "cn.dataset.dc_concept_cons",
+        "cn.dataset.dc_member",
+        "cn.dataset.etf_mins",
+        "cn.dataset.etf_sh_cons",
+        "cn.dataset.etf_sz_cons",
+        "cn.dataset.forecast",
+        "cn.dataset.ft_mins",
+        "cn.dataset.fund_adj",
+        "cn.dataset.fund_basic",
+        "cn.dataset.fund_company",
+        "cn.dataset.fund_daily",
+        "cn.dataset.fund_manager",
+        "cn.dataset.fund_nav",
+        "cn.dataset.fut_daily",
+        "cn.dataset.fut_holding",
+        "cn.dataset.fut_trade_cal",
+        "cn.dataset.fut_weekly_detail",
+        "cn.dataset.fut_wsr",
+        "cn.dataset.hm_list",
+        "cn.dataset.idx_mins",
+        "cn.dataset.index_basic",
+        "cn.dataset.index_daily",
+        "cn.dataset.index_member_all",
+        "cn.dataset.index_weekly",
+        "cn.dataset.index_weight",
+        "cn.dataset.kpl_concept_cons",
+        "cn.dataset.mkt_idx_bmk",
+        "cn.dataset.monetary_policy",
+        "cn.dataset.npr",
+        "cn.dataset.opt_basic",
+        "cn.dataset.opt_daily",
+        "cn.dataset.opt_mins",
+        "cn.dataset.pledge_detail",
+        "cn.dataset.rt_etf_k",
+        "cn.dataset.rt_etf_min",
+        "cn.dataset.rt_etf_min_daily",
+        "cn.dataset.rt_etf_sz_iopv",
+        "cn.dataset.rt_fut_min",
+        "cn.dataset.rt_idx_k",
+        "cn.dataset.rt_idx_min",
+        "cn.dataset.rt_k",
+        "cn.dataset.rt_sw_k",
+        "cn.dataset.sge_basic",
+        "cn.dataset.stk_nineturn",
+        "cn.dataset.stk_premarket",
+        "cn.dataset.stock_company",
+        "cn.dataset.stock_hsgt",
+        "cn.dataset.sw_mins",
+        "cn.dataset.ths_index",
+        "cn.dataset.ths_member",
+        "cn.dataset.yc_cb",
+        "cn.news.flash",
+    }
+)
+_REACTIVATED_TRADE_DATE_SNAPSHOTS = (
+    "cn.dataset.stk_limit",
+    "cn.dataset.adj_factor",
+)
+
+
+def test_stk_limit_and_adj_factor_stay_active_and_plan_postclose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    paused = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].activation_state == "paused"
+    }
+    assert paused == _PAUSED_DATASET_IDS
+    assert set(_REACTIVATED_TRADE_DATE_SNAPSHOTS).isdisjoint(paused)
+    for dataset_id in _REACTIVATED_TRADE_DATE_SNAPSHOTS:
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == "postclose_daily"
+        assert binding.activation_state == "active"
+        assert binding.entitlement_state == "active"
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="direct_wave_1",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+    planned = {
+        plan.dataset_id: dict(plan.request_window)
+        for plan in result.plans
+        if plan.dataset_id in _REACTIVATED_TRADE_DATE_SNAPSHOTS
+    }
+    assert set(planned) == set(_REACTIVATED_TRADE_DATE_SNAPSHOTS)
+    assert planned["cn.dataset.stk_limit"] == {"trade_date": "20260720"}
+    assert planned["cn.dataset.adj_factor"] == {"trade_date": "20260720"}
+    skipped = {item.dataset_id: item.state for item in result.skipped}
+    assert skipped.get("cn.dataset.stk_limit") != "paused"
+    assert skipped.get("cn.dataset.adj_factor") != "paused"
+
+
+def test_stk_limit_and_adj_factor_empty_receipts_are_not_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        if plan.dataset_id in _REACTIVATED_TRADE_DATE_SNAPSHOTS:
+            return scheduler.DatasetResult(
+                plan.dataset_id, plan.provider, "empty", 3
+            )
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+        activation_wave="direct_wave_1",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+    executed = {
+        item.dataset_id: item.state
+        for item in result.executed
+        if item.dataset_id in _REACTIVATED_TRADE_DATE_SNAPSHOTS
+    }
+    assert executed == {
+        "cn.dataset.stk_limit": "empty",
+        "cn.dataset.adj_factor": "empty",
+    }
+    assert "success" not in executed.values()
+
+
 def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -> None:
     registry_payload = TARGET_REGISTRY.read_bytes()
     schedule_payload = SCHEDULE_CONFIG.read_bytes()
@@ -4277,9 +4441,14 @@ def test_formal_direct_wave_1_is_hash_bound_and_disjoint_from_existing_pilot() -
 
 def test_formal_direct_wave_1_dry_run_plans_every_selected_dataset(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
+    registry = _active_registry()
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
     expected = {
         "cn.dataset.adj_factor",
         "cn.dataset.stk_auction",

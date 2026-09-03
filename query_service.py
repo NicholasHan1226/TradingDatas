@@ -26,7 +26,12 @@ from provider_transport import (
     TUSHARE_DATA_PROVIDER,
     provider_transport_profile,
 )
-from dataset_registry import DatasetDefinition, DatasetField, DatasetRegistry
+from dataset_registry import (
+    DatasetDefinition,
+    DatasetField,
+    DatasetRegistry,
+    normalize_request_window,
+)
 from query_contract import (
     QueryAccessContext,
     QueryBudgetError,
@@ -924,8 +929,6 @@ def _row_receipt_proof_metadata(
             raise QueryServiceUnavailable("query service is unavailable")
         payload = _parse_provider_native_payload(row[0])
         if no_window:
-            if proof.request_window:
-                raise QueryServiceUnavailable("query service is unavailable")
             try:
                 through = datetime.fromisoformat(
                     _normalize_data_through(proof.data_through, dataset)
@@ -935,6 +938,42 @@ def _row_receipt_proof_metadata(
                 )
             except (TypeError, ValueError, QueryServiceUnavailable, ZoneInfoNotFoundError):
                 raise QueryServiceUnavailable("query service is unavailable") from None
+            if proof.request_window:
+                matching_bindings = tuple(
+                    binding
+                    for binding in active_bindings
+                    if binding.provider == proof.provider
+                )
+                if (
+                    len(matching_bindings) != 1
+                    or matching_bindings[0].request_window_policy is None
+                ):
+                    raise QueryServiceUnavailable("query service is unavailable")
+                policy = matching_bindings[0].request_window_policy
+                try:
+                    window = normalize_request_window(policy, proof.request_window)
+                    window_start = datetime.fromisoformat(
+                        _normalize_data_through(
+                            window[policy.range_start_key],
+                            dataset,
+                        )
+                    )
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                    QueryServiceUnavailable,
+                    ZoneInfoNotFoundError,
+                ):
+                    raise QueryServiceUnavailable(
+                        "query service is unavailable"
+                    ) from None
+                if (
+                    window_start.tzinfo is None
+                    or window_start.utcoffset() is None
+                    or window_start > event_time
+                ):
+                    raise QueryServiceUnavailable("query service is unavailable")
             if (
                 through.tzinfo is None
                 or through.utcoffset() is None
@@ -1688,6 +1727,11 @@ def _exact_session_minute_receipt_ids(
     slot_value = slot.isoformat(
         timespec="microseconds" if slot.microsecond else "seconds"
     )
+    active_config_keys = {
+        (binding.provider, provider_ingest_config_hash(dataset, binding))
+        for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    }
     entries = [
         entry
         for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())
@@ -1696,31 +1740,25 @@ def _exact_session_minute_receipt_ids(
         and entry.data_through is not None
         and _normalize_data_through(entry.data_through, dataset) == slot_value
         and entry.finished_at <= now
+        and (entry.provider, entry.config_hash) in active_config_keys
     ]
-    executions = {entry.execution_id for entry in entries}
     providers = {entry.provider for entry in entries}
     configs = {entry.config_hash for entry in entries}
-    request_windows = {
-        json.dumps(
-            dict(entry.request_window),
-            ensure_ascii=True,
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        for entry in entries
-    }
     data_throughs = {
         _normalize_data_through(entry.data_through, dataset) for entry in entries
     }
     if (
-        len(executions) != 1
+        not entries
         or len(providers) != 1
         or len(configs) != 1
-        or len(request_windows) != 1
         or data_throughs != {slot_value}
     ):
         return ()
+    # Correction overlap can observe one closed bar in multiple independently
+    # complete executions.  Keep every validated receipt eligible so immutable
+    # append-only facts retain their original receipt authority; row proof
+    # classification below still rejects a returned page that mixes collection
+    # sequences when the caller requests per-row proofs.
     return tuple(sorted(entry.receipt_id for entry in entries))
 
 

@@ -1154,7 +1154,7 @@ contracts:
     as_of_format: yyyymmdd
     range_field: trade_date
     partition_field: trade_date
-    cadence_class: daily_reference
+    cadence_class: postclose_daily
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: append_only
@@ -1677,7 +1677,7 @@ contracts:
     as_of_format: yyyymmdd
     range_field: trade_date
     partition_field: trade_date
-    cadence_class: daily_reference
+    cadence_class: postclose_daily
     timezone: Asia/Shanghai
     freshness_sla_seconds: 86400
     point_in_time: current_snapshot
