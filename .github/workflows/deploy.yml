@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_sha:
-        description: Exact main commit to publish after a Controller-gated auto-merge
+        description: Exact main commit to publish after a Datas PM pm-merge-approved merge
         required: true
         type: string
 

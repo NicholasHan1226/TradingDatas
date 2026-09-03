@@ -29,6 +29,16 @@ Foreign-market literature is comparative context, not an expansion of TD's live
 collection scope. The catalogue is not a systematic or exhaustive literature
 review, and inclusion is not endorsement of a conclusion or trading strategy.
 
+### Current editorial projection
+
+The checked candidate contains 200 distinct source identities, 180 bilingual
+guides (179 six-section guides and one four-section abstract-based orientation),
+and 20 summary-only records. These are content-structure counts only: they do
+not assert 180 complete paper reviews, replication, source availability, runtime
+data coverage, or production publication. Earlier `research-*-guides` design
+records retain their historical batch counts; the current cumulative boundary is
+[`research-180-guides-v17.md`](../design/research-180-guides-v17.md).
+
 ## Sources and verification
 
 `researchBibliography.json` stores normalized identity fields returned by

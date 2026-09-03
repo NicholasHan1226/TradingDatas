@@ -15,14 +15,17 @@ npm install
 npm run dev
 ```
 
-The prototype includes the confirmed public-home visual direction, responsive
-Data/Features/Recipes/Research/Pricing/Docs navigation, a task-oriented Data catalog with
-the connected-interface index, collection-history ledger, reviewed candidate-source landscape and phased integration roadmap, and
-alternative-data ordering proposal, an external-paper/industry-research/case
-library with internal detail records, transparent Feature definitions, versioned
-Recipe examples, three base-data request-rate tiers with confirmed monthly/annual
-price display (checkout not yet available), a platform-wide
-searchable Docs hub with article routes, independent history-aware product pages, a grouped Account workspace
+The prototype includes the confirmed public-home visual direction and the compact
+`Data / Research / Pricing` floating navigation. Global search spans data,
+external research, methods and documentation; compatibility routes for Features,
+Recipes and Docs remain directly addressable but are not equal-weight navigation.
+It includes a task-oriented Data catalog with a contract/config interface index,
+dated historical observations, a reviewed candidate-source landscape and phased
+integration roadmap, plus an alternative-data ordering proposal. Research is an
+external-paper/industry-research/case library with internal detail records;
+methods are progressively disclosed through Recipes. Pricing contains three
+base-data request-rate tiers with confirmed monthly/annual display (checkout is
+not available). Account is a grouped workspace
 containing `zh-CN`/`en` and system/light/dark settings, and a client-only Agent
 setup prompt flow. `src/productManifest.js` is explicitly a design contract;
 Feature/PIT/commerce states are not runtime claims. Unbound dataset pages show
@@ -86,7 +89,7 @@ npm run test:sites
 
 ## Research library
 
-The 2026-08-31 candidate contains 200 distinct external research materials with
+The current candidate contains 200 distinct external research materials with
 Chinese/English editorial titles, orientations, data requirements and limitations.
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
@@ -184,10 +187,11 @@ are in `src/researchEditorial.js` and `src/researchEditorialExpansion.js`;
 passages, without changing the eight core three-stage reading sequences.
 `src/researchDeepReads.js` deepens eight of them, and
 `src/researchGuideDepthExpansion.js` extends fifteen more using inspected primary
-passages or author-issued supporting instructions. Subsequent batches above bring
-the current total to 120 guides, 119 with six sections. The latest modules are
-`researchMicrostructure120.js`, `researchCrypto120.js` and `researchMacro120.js`
-(seven, seven and six guides). They retain edition-specific limits and the existing
+passages or author-issued supporting instructions. Subsequent batches expanded the
+current total to 180 guides, 179 with six sections. The latest batch is
+`researchBatchThree180.js`, following the historical 120-guide modules
+`researchMicrostructure120.js`, `researchCrypto120.js` and
+`researchMacro120.js`. They retain edition-specific limits and the existing
 per-work preparation selections. Nelson/Siegel uses the 1985 NBER working paper,
 explicitly distinct from its 1987 journal citation. Dechow/Dichev retains four
 abstract-based sections pending usable full-text evidence; section counts do not
@@ -195,8 +199,10 @@ certify complete reading. Eight subject
 sequences and sixteen explanatory connections live in `src/researchJourneys.js`.
 Each sequence has three guides, including intentional cross-subject readings.
 Core articles show their position and previous/next reading with authored reasons;
-`src/researchConnections.js` adds 85 authored comparison pairs across 121 works,
-covering all 120 guides. Each article shows up to three bilingual
+`src/researchConnections.js` adds 85 authored comparison pairs across 121 works.
+Those comparisons cover the original 120-guide cohort; later guides remain
+discoverable through their topic and source links rather than inheriting a
+comparison claim. Each article shows up to three bilingual
 comparison reasons, excluding its existing previous/next links. These are editorial
 contrasts, not inferred citation edges, agreement or evidence rankings. They work
 from discovery metadata during body loading/error and preserve the core reading
@@ -347,13 +353,13 @@ Optional
 local workerd/D1 verification and the production approval gates are documented in
 [Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
 harness are not public assets. The dedicated remote account DB has been initialized;
-the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` but explicitly keeps
-`EMAIL_LOGIN_ENABLED="false"`. On August 31, sender/pepper secrets were privately
-prepared in an **undeployed** Worker version; the live version and identity binding
-were not changed. See the [private provisioning checkpoint](../docs/reports/2026-08-31-identity-private-provisioning.md)
-for the exact version and release gates. Do not deploy that old-code preparation
-version as the email implementation or assume its secrets survive a later upload.
-SMS and payments stay unavailable.
+the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` and enables the paired
+email-login/retention flags while keeping connection, library and admin flags off.
+A September 1 dashboard readback confirmed the live binding plus encrypted identity,
+Resend and session-key secret names; at that readback all runtime capability flags
+were still false. Do not use secret presence as delivery proof or assume a later
+upload preserves settings without an exact-head deployment and readback. SMS and
+payments stay unavailable.
 
 New email challenge/verification readiness also requires
 `IDENTITY_RETENTION_ENABLED="true"`. Existing verified sessions, revocation,
@@ -368,10 +374,11 @@ has already finished. Legacy API keys, financial data and browser-local bookmark
 are outside this account-only action. The owner-approved active-store maxima are
 24 hours for expired OTP records, seven days for invalid sessions, and 30 days
 after a profile deletion request. See [retention contract](../docs/design/identity-retention-v1.md).
-The new hourly maintenance job is gated by `IDENTITY_RETENTION_ENABLED="false"`;
-both it and email login remain off. `worker/identity-retention-schema.sql` is an
-additive migration for the dedicated account DB only, applied and read back on
-August 31 with zero users/sessions/deletion requests and no foreign-key violations.
+The new hourly maintenance job is gated by `IDENTITY_RETENTION_ENABLED="true"` in
+the candidate, so an exact deployed version must be read back before email login is
+called active. `worker/identity-retention-schema.sql` is an additive migration for
+the dedicated account DB only, applied and read back on August 31 with zero
+users/sessions/deletion requests and no foreign-key violations.
 Tests/harnesses apply it after `worker/identity-schema.sql` to disposable stores.
 No change here deploys a timer, deletes real users, or enables linked-account deletion.
 
