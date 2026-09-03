@@ -1332,7 +1332,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "daily_basic",
       "cadence": "postclose_daily",
       "category": "market-reference",

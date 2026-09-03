@@ -261,9 +261,15 @@ future-empty 响应必须按既有完整性合同诚实处理，不能把其它�
 `cn.dataset.stk_limit` 与 `cn.dataset.adj_factor` 保持 `activation_state=active`，并从
 `daily_reference` 改到 `postclose_daily`：00:30 日参考会请求当日尚未发布的 `trade_date`
 分区、留下 trusted-empty，且 `backfill_start_policy=none` 不会在数据出现后再采该日。
-empty 回执仍是 empty，不是 success；成功只能来自收盘后开市日窗口。其余
-`registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、news.flash、
-daily_basic、margin*、cashflow、express、forecast、rt_etf_min*）保持暂停。
+empty 回执仍是 empty，不是 success；成功只能来自收盘后开市日窗口。
+`cn.dataset.daily_basic` 的 cadence 本来就是 `postclose_daily`（官方 15:00–17:00
+发布窗口），0 SUCCESS 不是同一 trusted-empty 问题。它被 `ts_code` 官方
+`Y (二选一)` 卡住：多代码 fanout 在 QuickSync 上返回 empty，trade_date-only
+才返回全日全市场行。当前合同改为 trade_date snapshot、`scheduled_partition`、
+`fanout=none`，并单独恢复 `activation_state=active`。历史 empty 回执仍是 empty，
+不是 success。其余 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、
+index_daily、news.flash、margin*、cashflow、express、forecast、rt_etf_min*）
+保持暂停。
 
 ## 国际新闻原始发布时间与精度
 

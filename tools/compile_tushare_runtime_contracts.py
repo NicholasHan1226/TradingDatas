@@ -72,6 +72,7 @@ _INPUT_REQUIRED_VALUES: Mapping[str, bool | None] = {
     "N": False,
     "": None,
 }
+_EITHER_OR_MARK = "二选一"
 _POLICY_KEYS = frozenset(
     {
         "version",
@@ -971,12 +972,21 @@ def _request_observation_index(
             entry["unresolved_parameter_keys"],
             label=f"{label}.unresolved_parameter_keys",
         )
-        official_inputs = {
-            _text(item.get("name"), f"{api_name}.input field"): item.get("required")
+        official_fields = [
+            item
             for item in _list(
                 official_document.get("input_fields"), f"{api_name}.input_fields"
             )
             if isinstance(item, dict)
+        ]
+        official_inputs = {
+            _text(item.get("name"), f"{api_name}.input field"): item.get("required")
+            for item in official_fields
+        }
+        either_or_names = {
+            _text(item.get("name"), f"{api_name}.input field")
+            for item in official_fields
+            if _field_is_either_or(item)
         }
         parameters = _mapping(entry["parameters"], f"{label}.parameters")
         unknown_parameters = sorted(set(parameters) - set(official_inputs))
@@ -1007,13 +1017,26 @@ def _request_observation_index(
             entry.get("pagination_max_pages", 1),
             f"{label}.pagination_max_pages",
         )
+        # Official "Y (二选一)" is not independently required.  Sibling 二选一
+        # APIs already mark both alternatives N; daily_basic marks ts_code Y
+        # and trade_date N.  Mapping either documented alternative is enough.
         required_true = {
-            name for name, required in official_inputs.items() if required == "Y"
+            name
+            for name, required in official_inputs.items()
+            if required == "Y" and name not in either_or_names
         }
         missing_required = sorted(required_true - set(normalized_parameters))
         if missing_required and probe_state != "blocked":
             raise RuntimeContractCompilationError(
                 f"{api_name} required provider parameter is unmapped"
+            )
+        if (
+            probe_state != "blocked"
+            and either_or_names
+            and either_or_names.isdisjoint(normalized_parameters)
+        ):
+            raise RuntimeContractCompilationError(
+                f"{api_name} 二选一 parameter is unmapped"
             )
         required_unknown = {
             name for name, required in official_inputs.items() if required == ""
@@ -1340,6 +1363,11 @@ def _field_contracts(document: Mapping[str, Any]) -> list[dict[str, object]]:
     return fields
 
 
+def _field_is_either_or(field: Mapping[str, Any]) -> bool:
+    description = field.get("description")
+    return isinstance(description, str) and _EITHER_OR_MARK in description
+
+
 def _input_field_contracts(document: Mapping[str, Any]) -> list[dict[str, object]]:
     api_name = _text(document.get("api_name"), "document.api_name")
     fields: list[dict[str, object]] = []
@@ -1370,12 +1398,15 @@ def _input_field_contracts(document: Mapping[str, Any]) -> list[dict[str, object
             raise RuntimeContractCompilationError(
                 f"{api_name} input field {name} has unsupported required marker"
             )
+        independently_required = _INPUT_REQUIRED_VALUES[required]
+        if independently_required is True and _field_is_either_or(field):
+            independently_required = False
         seen.add(name)
         fields.append(
             {
                 "name": name,
                 "declared_source_type": declared_type,
-                "required": _INPUT_REQUIRED_VALUES[required],
+                "required": independently_required,
             }
         )
     return fields
