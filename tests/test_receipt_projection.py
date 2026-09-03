@@ -35,6 +35,7 @@ from storage.ingest_receipts import (
 )
 from storage.receipt_projection import (
     DatasetRuntimeEvidence,
+    DatasetRuntimeProjection,
     ReceiptJournalEntry,
     RuntimeProjectionError,
     load_interface_runtime_report,
@@ -42,6 +43,7 @@ from storage.receipt_projection import (
     project_dataset_runtime,
     project_dataset_runtime_evidence,
     project_registry_runtime,
+    session_minute_query_window_evidence,
     validated_receipt_journal_entries,
     validated_row_receipt_proofs,
 )
@@ -3748,6 +3750,15 @@ def test_snapshot_reader_lock_wait_beyond_bound_fails_closed(
                 future.result(timeout=1.0)
 
 
+def test_snapshot_reader_lock_timeout_stays_inside_catalog_pair_budget() -> None:
+    assert projection_module._SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS <= 2.0
+    assert (
+        projection_module._SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS
+        * projection_module._SNAPSHOT_READER_MAX_ATTEMPTS
+        < 15.0
+    )
+
+
 def _snapshot_select_one(db_path: Path) -> tuple[object, ...]:
     with projection_module.open_verified_read_model_snapshot(db_path) as conn:
         return tuple(conn.execute("SELECT 1").fetchone())
@@ -4814,6 +4825,7 @@ def test_dataset_runtime_evidence_uses_one_scan_and_preserves_typed_lineage(
     assert evidence.last_success_receipt_id == success_id
     assert evidence.last_success_providers == ("tushare",)
     assert evidence.last_success_data_through == "20260715"
+    assert evidence.last_success_observed_at == "2026-07-15T00:01:00+00:00"
     with pytest.raises(FrozenInstanceError):
         evidence.current_receipt_status = "success"  # type: ignore[misc]
 
@@ -4934,6 +4946,99 @@ def test_high_frequency_append_only_latest_failure_remains_visible(
     assert projection.data_through == "2026-07-15T00:00:00+00:00"
     assert projection.receipt_id == failed_id
     assert projection.reasons == ("provider_error",)
+
+
+def _session_minute_query_dataset() -> DatasetDefinition:
+    return replace(
+        _dataset(cadence_class="session_minute", freshness_sla_seconds=600),
+        as_of_field=None,
+        as_of_format=None,
+        range_field=None,
+        partition_field=None,
+        point_in_time="append_only",
+    )
+
+
+def _failed_config_error_evidence(
+    dataset_id: str,
+    *,
+    last_success_receipt_id: str | None = "receipt-last-success",
+    last_success_data_through: str | None = "2026-07-17 11:40:00",
+    last_success_observed_at: str | None = "2026-07-17T03:41:00+00:00",
+) -> DatasetRuntimeEvidence:
+    has_success = last_success_receipt_id is not None
+    return DatasetRuntimeEvidence(
+        projection=DatasetRuntimeProjection(
+            dataset_id=dataset_id,
+            state="failed",
+            degraded=True,
+            data_through=last_success_data_through,
+            observed_at="2026-07-17T03:50:00+00:00",
+            receipt_id="receipt-config-error",
+            reasons=("config_error",),
+        ),
+        current_receipt_status="failed",
+        current_providers=("tushare",),
+        last_success_receipt_id=last_success_receipt_id,
+        last_success_providers=("tushare",) if has_success else (),
+        last_success_data_through=last_success_data_through,
+        last_success_receipt_ids=(last_success_receipt_id,) if has_success else (),
+        last_success_observed_at=last_success_observed_at,
+        current_receipt_ids=("receipt-config-error",),
+        current_provider_config_hashes=(("tushare", CONFIG_HASH),),
+        last_success_provider_config_hashes=(
+            (("tushare", CONFIG_HASH),) if has_success else ()
+        ),
+    )
+
+
+def test_session_minute_query_window_uses_last_success_without_config_error() -> None:
+    dataset = _session_minute_query_dataset()
+    evidence = _failed_config_error_evidence(dataset.dataset_id)
+    window = session_minute_query_window_evidence(
+        dataset,
+        evidence,
+        now=datetime(2026, 7, 17, 3, 45, tzinfo=timezone.utc),
+    )
+
+    assert window.projection.state == "success"
+    assert window.projection.degraded is False
+    assert window.projection.reasons == ()
+    assert window.projection.receipt_id == "receipt-last-success"
+    assert window.projection.data_through == "2026-07-17 11:40:00"
+    assert window.current_receipt_status == "success"
+    assert window.current_receipt_ids == ("receipt-last-success",)
+
+
+def test_session_minute_query_window_does_not_rewrite_empty_or_bare_config_error() -> None:
+    dataset = _session_minute_query_dataset()
+    bare = _failed_config_error_evidence(
+        dataset.dataset_id,
+        last_success_receipt_id=None,
+        last_success_data_through=None,
+        last_success_observed_at=None,
+    )
+    assert session_minute_query_window_evidence(
+        dataset,
+        bare,
+        now=datetime(2026, 7, 17, 3, 45, tzinfo=timezone.utc),
+    ) is bare
+
+    empty = replace(
+        bare,
+        projection=replace(
+            bare.projection,
+            state="empty",
+            degraded=False,
+            reasons=("provider_returned_no_rows",),
+        ),
+        current_receipt_status="empty",
+    )
+    assert session_minute_query_window_evidence(
+        dataset,
+        empty,
+        now=datetime(2026, 7, 17, 3, 45, tzinfo=timezone.utc),
+    ) is empty
 
 
 @pytest.mark.parametrize("cadence_class", ["event", "session_minute"])
