@@ -23,6 +23,18 @@ test("keeps connected contract counts explicit and non-inflated", async () => {
   assert.equal(connectedCoverage.find((item) => item.id === "firecrawl-news").pausedCount, 1);
 });
 
+test("keeps pre-runtime domestic candidates separate from runtime contracts", async () => {
+  const snapshot = JSON.parse(
+    await readFile(new URL("../src/discoveryInterfaceSnapshot.json", import.meta.url), "utf8"),
+  );
+  assert.equal(snapshot.authority, "capability_scope_only");
+  assert.equal(snapshot.candidates.length, 25);
+  assert.deepEqual(snapshot.candidates.find((item) => item.apiName === "dc_hot"), {
+    apiName: "dc_hot", contractState: "review_required",
+  });
+  assert.equal(snapshot.candidates.some((item) => Object.hasOwn(item, "datasetId")), false);
+});
+
 test("candidate sources carry official evidence, rights state, and a roadmap phase", () => {
   const phaseIds = new Set(roadmapPhases.map((phase) => phase.id));
   assert.equal(landscapeMeta.status, "research_registry");
@@ -42,6 +54,8 @@ test("candidate sources progressively disclose roadmap phases without a second s
   assert.match(app, /sourceCandidates\.filter\(\(source\) => source\.phase === sourcePhase\)/);
   assert.match(app, /source-phase-control/);
   assert.match(app, /source-contract-index/);
+  assert.match(app, /source-discovery-groups/);
+  assert.match(app, /PRE-RUNTIME CANDIDATES/);
   assert.match(app, /contractState === "all"/);
   assert.match(app, /item\.activation === contractState/);
   assert.match(app, /Global search still finds a specific source/);

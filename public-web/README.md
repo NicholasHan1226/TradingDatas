@@ -54,6 +54,8 @@ registry changes:
 ```bash
 python scripts/build-connected-interface-snapshot.py
 python scripts/build-connected-interface-snapshot.py --check
+python scripts/build-discovery-interface-snapshot.py
+python scripts/build-discovery-interface-snapshot.py --check
 ```
 
 ## Checks
