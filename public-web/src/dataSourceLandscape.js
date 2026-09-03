@@ -44,14 +44,14 @@ export const connectedCoverage = [
     market: "CN / GLOBAL",
     family: "news-events",
     contractCount: 2,
-    activeCount: 2,
-    pausedCount: 0,
+    activeCount: 1,
+    pausedCount: 1,
     unit: "pipelines",
     collection: "configured",
     evidence: "provider-native registry",
     note: {
-      zh: "境内与全球新闻页面采集各 1 条；来源许可与页面条款仍按站点逐项审核。",
-      en: "One domestic and one global news-page pipeline; source licensing remains a per-site review.",
+      zh: "境内与全球新闻页面采集各 1 条；全球合同配置为 active，境内页面仍暂停。来源许可与页面条款仍按站点逐项审核。",
+      en: "One domestic and one global news-page pipeline; the global contract is configured active and the domestic page remains paused. Source licensing stays a per-site review.",
     },
   },
 ];

@@ -18,7 +18,9 @@ test("keeps connected contract counts explicit and non-inflated", async () => {
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare").length, 190);
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "firecrawl").length, 2);
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare" && item.activation === "active").length, 133);
+  assert.equal(snapshot.interfaces.filter((item) => item.provider === "firecrawl" && item.activation === "active").length, 1);
   assert.equal(connectedCoverage.find((item) => item.id === "binance-public").contractCount, 6);
+  assert.equal(connectedCoverage.find((item) => item.id === "firecrawl-news").pausedCount, 1);
 });
 
 test("candidate sources carry official evidence, rights state, and a roadmap phase", () => {
@@ -39,12 +41,16 @@ test("candidate sources progressively disclose roadmap phases without a second s
   assert.match(app, /sourcePhase === "all"/);
   assert.match(app, /sourceCandidates\.filter\(\(source\) => source\.phase === sourcePhase\)/);
   assert.match(app, /source-phase-control/);
+  assert.match(app, /source-contract-index/);
+  assert.match(app, /contractState === "all"/);
+  assert.match(app, /item\.activation === contractState/);
   assert.match(app, /Global search still finds a specific source/);
 });
 
 test("public source maintenance guidance matches the reviewed snapshot", async () => {
   const guide = await readFile(new URL("../../docs/product/DATA_SOURCE_LANDSCAPE.md", import.meta.url), "utf8");
   assert.match(guide, /133 configured active; 57 paused/);
+  assert.match(guide, /compact material-family\s+index/);
   assert.match(guide, /## Updating the public snapshot/);
   assert.match(guide, /landscapeMeta\.reviewedAt/);
 });

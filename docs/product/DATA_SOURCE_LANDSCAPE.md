@@ -28,6 +28,12 @@ current-health claims. `activation=active` means enabled registry
 configuration; it does not replace same-day SQLite receipts, quality/freshness
 projection or authenticated `catalog/query` readback.
 
+The public source page presents that snapshot as a compact material-family
+index. Readers can filter the registry contracts by `active` or `paused` and
+expand a family to inspect its API name, dataset ID and cadence. This is a
+discovery view of every registered interface, not a data-product entitlement,
+collection-health dashboard or sellability statement.
+
 ## Current contract counts
 
 | Surface | Contract coverage | Boundary |
