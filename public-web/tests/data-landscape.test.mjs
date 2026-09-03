@@ -35,6 +35,21 @@ test("keeps pre-runtime domestic candidates separate from runtime contracts", as
   assert.equal(snapshot.candidates.some((item) => Object.hasOwn(item, "datasetId")), false);
 });
 
+test("keeps paused-contract preflight separate from observation and access", async () => {
+  const snapshot = JSON.parse(
+    await readFile(new URL("../src/pausedContractPreflightSnapshot.json", import.meta.url), "utf8"),
+  );
+  assert.equal(snapshot.authority, "compiled_contract_preflight_only");
+  const ready = snapshot.groups.find((group) => group.id === "ready_for_bounded_https_probe");
+  const seedRequired = snapshot.groups.find((group) => group.id === "requires_seed_receipt");
+  assert.equal(ready.interfaces.length, 5);
+  assert.deepEqual(ready.interfaces.find((item) => item.apiName === "forecast"), {
+    apiName: "forecast", datasetId: "cn.dataset.forecast",
+  });
+  assert.equal(seedRequired.interfaces.length, 4);
+  assert.equal(snapshot.warning.includes("no provider call"), true);
+});
+
 test("candidate sources carry official evidence, rights state, and a roadmap phase", () => {
   const phaseIds = new Set(roadmapPhases.map((phase) => phase.id));
   assert.equal(landscapeMeta.status, "research_registry");
@@ -55,6 +70,8 @@ test("candidate sources progressively disclose roadmap phases without a second s
   assert.match(app, /source-phase-control/);
   assert.match(app, /source-contract-index/);
   assert.match(app, /source-discovery-groups/);
+  assert.match(app, /source-preflight-groups/);
+  assert.match(app, /PRE-FLIGHT QUEUE/);
   assert.match(app, /PRE-RUNTIME CANDIDATES/);
   assert.match(app, /contractState === "all"/);
   assert.match(app, /item\.activation === contractState/);

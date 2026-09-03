@@ -39,6 +39,7 @@ import { pageMetadata, applyPageMetadata } from "./pageMetadata.js";
 const TutorialPage = lazy(() => import("./TutorialPage.jsx"));
 import connectedInterfaceSnapshot from "./connectedInterfaceSnapshot.json";
 import discoveryInterfaceSnapshot from "./discoveryInterfaceSnapshot.json";
+import pausedContractPreflightSnapshot from "./pausedContractPreflightSnapshot.json";
 import {
   collectionHistory,
   connectedCoverage,
@@ -556,6 +557,10 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
     missing_official_contract: locale === "zh" ? "缺正式官方合同" : "Official contract missing",
     review_required: locale === "zh" ? "合同待评审" : "Contract review required",
   })[state] || state;
+  const preflightLabel = (state) => ({
+    ready_for_bounded_https_probe: locale === "zh" ? "可进入受控 HTTPS 验证" : "Ready for bounded HTTPS validation",
+    requires_seed_receipt: locale === "zh" ? "先补可信 seed receipt" : "Trusted seed receipt required first",
+  })[state] || state;
 
   return (
     <section className="data-source-page">
@@ -593,17 +598,22 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
         </details>)}</div>
       </section>
       <section className="source-evidence-section">
-        <div className="section-heading compact-heading"><span className="mono-kicker">03 / OBSERVATION HISTORY</span><h2>{locale === "zh" ? "历史只说明当时发生了什么。" : "History only states what happened then."}</h2></div>
+        <div className="section-heading compact-heading"><span className="mono-kicker">03 / PRE-FLIGHT QUEUE</span><h2>{locale === "zh" ? "下一轮验证，先从已合同化接口开始。" : "Start the next proof run with contracted interfaces."}</h2><p>{locale === "zh" ? "这是从冻结合同编译出的静态预检结果，不执行 provider 请求，也不代表已观测、可访问或可销售。" : "A static preflight compiled from frozen contracts. It makes no provider request and does not mean observed, accessible, or sellable."}</p></div>
+        <div className="source-preflight-groups">{pausedContractPreflightSnapshot.groups.map((group) => <article key={group.id}><header><span>{preflightLabel(group.id)}</span><strong>{group.interfaces.length}</strong></header><div>{group.interfaces.map((item) => <div key={item.apiName}><code>{item.apiName}</code><small>{item.datasetId}</small></div>)}</div></article>)}</div>
+        <p className="source-preflight-boundary"><ShieldCheck weight="duotone" />{locale === "zh" ? "只有受控 HTTPS 验证、provider → SQLite receipt 和认证 catalog/query 回读都成立后，接口才可能从 paused 进入已观测状态。" : "A paused interface may move to observed only after bounded HTTPS validation, a provider-to-SQLite receipt, and authenticated catalog/query readback."}</p>
+      </section>
+      <section className="source-evidence-section">
+        <div className="section-heading compact-heading"><span className="mono-kicker">04 / OBSERVATION HISTORY</span><h2>{locale === "zh" ? "历史只说明当时发生了什么。" : "History only states what happened then."}</h2></div>
         <div className="source-history-list">{collectionHistory.map((event) => <article key={`${event.date}-${event.provider}`}><time>{event.date}</time><ClockCounterClockwise size={17} /><div><strong>{event.title[locale]}</strong><p>{event.detail[locale]}</p><small>{event.provider} · {event.status.replaceAll("_", " ")}</small></div></article>)}</div>
       </section>
       <section className="source-evidence-section">
-        <div className="section-heading compact-heading"><span className="mono-kicker">04 / PRE-RUNTIME CANDIDATES</span><h2>{locale === "zh" ? "下一批国内接口，先把缺口说清楚。" : "The next domestic interfaces, with their gaps stated first."}</h2><p>{locale === "zh" ? `${discoveryInterfaceSnapshot.candidates.length} 个当前境内只读候选尚未进入 runtime registry。它们没有被分配 dataset ID、字段、频率或用户访问权；先完成正式合同与受控 HTTPS 验证，才可能进入下一步。` : `${discoveryInterfaceSnapshot.candidates.length} current domestic read-only candidates are not in the runtime registry. They have no assigned dataset ID, fields, cadence, or customer access; a formal contract and bounded HTTPS validation come first.`}</p></div>
+        <div className="section-heading compact-heading"><span className="mono-kicker">05 / PRE-RUNTIME CANDIDATES</span><h2>{locale === "zh" ? "下一批国内接口，先把缺口说清楚。" : "The next domestic interfaces, with their gaps stated first."}</h2><p>{locale === "zh" ? `${discoveryInterfaceSnapshot.candidates.length} 个当前境内只读候选尚未进入 runtime registry。它们没有被分配 dataset ID、字段、频率或用户访问权；先完成正式合同与受控 HTTPS 验证，才可能进入下一步。` : `${discoveryInterfaceSnapshot.candidates.length} current domestic read-only candidates are not in the runtime registry. They have no assigned dataset ID, fields, cadence, or customer access; a formal contract and bounded HTTPS validation come first.`}</p></div>
         <div className="source-discovery-groups">{discoveryGroups.map(([state, candidates]) => <article key={state}><header><span>{discoveryStateLabel(state)}</span><strong>{candidates.length}</strong></header><div>{candidates.map((candidate) => <code key={candidate.apiName}>{candidate.apiName}</code>)}</div></article>)}</div>
         <p className="source-discovery-boundary"><ShieldCheck weight="duotone" />{locale === "zh" ? "这些是能力目录候选，不是已接入接口；MCP 可见性、页面展示或计划本身都不会产生 entitlement、采集或销售资格。" : "These are capability-scope candidates, not connected interfaces. MCP visibility, a public listing, or a plan never creates entitlement, collection, or sellability."}</p>
       </section>
       <section className="source-evidence-section">
         <div className="source-candidate-heading">
-          <div className="section-heading compact-heading"><span className="mono-kicker">05 / CANDIDATE SOURCES</span><h2>{locale === "zh" ? "候选来源保持轻量可读。" : "Candidate sources, kept lightweight."}</h2><p>{locale === "zh" ? "默认展示当前优先来源；其它阶段可在原位查看。全站搜索仍用于发现具体来源。" : "Start with current priorities; review other phases in place. Global search still finds a specific source."}</p></div>
+          <div className="section-heading compact-heading"><span className="mono-kicker">06 / CANDIDATE SOURCES</span><h2>{locale === "zh" ? "候选来源保持轻量可读。" : "Candidate sources, kept lightweight."}</h2><p>{locale === "zh" ? "默认展示当前优先来源；其它阶段可在原位查看。全站搜索仍用于发现具体来源。" : "Start with current priorities; review other phases in place. Global search still finds a specific source."}</p></div>
           <div className="source-phase-control" role="group" aria-label={locale === "zh" ? "候选来源阶段" : "Candidate source phase"}>
             {phaseOptions.map((phase) => {
               const count = phase.id === "all" ? sourceCandidates.length : sourceCandidates.filter((source) => source.phase === phase.id).length;
@@ -617,7 +627,7 @@ function DataSourceLandscapePage({ locale, onNavigate }) {
         <div className="source-candidate-list">{visibleCandidates.map((source) => <article key={source.id}><div><span>{familyLabels[source.family]?.[locale] || source.family}</span><strong>{source.name}</strong><small>{source.region} · {source.access.replaceAll("_", " ")}</small></div><p>{source.materials}</p><div><span>{source.stage.replaceAll("_", " ")}</span><small>{source.rights.replaceAll("_", " ")}</small></div><a href={source.officialUrl} target="_blank" rel="noreferrer" aria-label={`${source.name} official source`}><ArrowSquareOut /></a></article>)}</div>
       </section>
       <section className="source-evidence-section source-roadmap-section">
-        <div className="section-heading compact-heading"><span className="mono-kicker">06 / INTEGRATION ROADMAP</span><h2>{locale === "zh" ? "按证据门槛，而不是接口数量推进。" : "Progress by evidence gates, not interface count."}</h2></div>
+        <div className="section-heading compact-heading"><span className="mono-kicker">07 / INTEGRATION ROADMAP</span><h2>{locale === "zh" ? "按证据门槛，而不是接口数量推进。" : "Progress by evidence gates, not interface count."}</h2></div>
         <div className="source-roadmap-grid">{roadmapPhases.map((phase) => <article key={phase.id}><span>{phase.id} · {phase.horizon[locale]}</span><h3>{phase.title[locale]}</h3><ol>{phase.gates.map((gate) => <li key={gate}>{gate}</li>)}</ol></article>)}</div>
         <p className="source-roadmap-boundary"><ShieldCheck weight="duotone" />{locale === "zh" ? "只有明确再分发权、provider-native 验证、正式 receipt 与认证 API 回读都成立的数据，才可能进入可售范围。" : "Only data with clear redistribution rights, provider-native validation, formal receipts, and authenticated API readback may enter a sellable scope."}</p>
       </section>

@@ -1,0 +1,53 @@
+{
+  "authority": "compiled_contract_preflight_only",
+  "groups": [
+    {
+      "id": "ready_for_bounded_https_probe",
+      "interfaces": [
+        {
+          "apiName": "forecast",
+          "datasetId": "cn.dataset.forecast"
+        },
+        {
+          "apiName": "fut_daily",
+          "datasetId": "cn.dataset.fut_daily"
+        },
+        {
+          "apiName": "opt_basic",
+          "datasetId": "cn.dataset.opt_basic"
+        },
+        {
+          "apiName": "pledge_detail",
+          "datasetId": "cn.dataset.pledge_detail"
+        },
+        {
+          "apiName": "stk_nineturn",
+          "datasetId": "cn.dataset.stk_nineturn"
+        }
+      ]
+    },
+    {
+      "id": "requires_seed_receipt",
+      "interfaces": [
+        {
+          "apiName": "etf_mins",
+          "datasetId": "cn.dataset.etf_mins"
+        },
+        {
+          "apiName": "ft_mins",
+          "datasetId": "cn.dataset.ft_mins"
+        },
+        {
+          "apiName": "index_daily",
+          "datasetId": "cn.dataset.index_daily"
+        },
+        {
+          "apiName": "index_weight",
+          "datasetId": "cn.dataset.index_weight"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "warning": "This static preflight snapshot makes no provider call and proves neither observation, collection, customer access, nor sellability."
+}

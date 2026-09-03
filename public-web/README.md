@@ -56,6 +56,10 @@ python scripts/build-connected-interface-snapshot.py
 python scripts/build-connected-interface-snapshot.py --check
 python scripts/build-discovery-interface-snapshot.py
 python scripts/build-discovery-interface-snapshot.py --check
+uv run --python 3.12 --with-requirements ../requirements.txt \
+  python scripts/build-paused-contract-preflight-snapshot.py
+uv run --python 3.12 --with-requirements ../requirements.txt \
+  python scripts/build-paused-contract-preflight-snapshot.py --check
 ```
 
 ## Checks
