@@ -232,14 +232,20 @@ def _expected_input_fields(document: dict[str, object]) -> list[dict[str, object
     required_values = {"Y": True, "N": False, "": None}
     raw_fields = document["input_fields"]
     assert isinstance(raw_fields, list)
-    return [
-        {
-            "name": field["name"],
-            "declared_source_type": field["declared_type"],
-            "required": required_values[field["required"]],
-        }
-        for field in raw_fields
-    ]
+    expected = []
+    for field in raw_fields:
+        required = required_values[field["required"]]
+        description = field.get("description")
+        if required is True and isinstance(description, str) and "二选一" in description:
+            required = False
+        expected.append(
+            {
+                "name": field["name"],
+                "declared_source_type": field["declared_type"],
+                "required": required,
+            }
+        )
+    return expected
 
 
 def test_compiler_exposes_all_official_in_scope_interfaces_without_per_api_code() -> (

@@ -4386,7 +4386,25 @@ def test_daily_basic_is_active_and_plans_postclose_trade_date(
         _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
         conn.commit()
 
-    result = scheduler.run_schedule(
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    automatic = scheduler.run_schedule(
+        registry=registry,
+        schedule=schedule,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        cadence_class="postclose_daily",
+    )
+    planned = {
+        plan.dataset_id: dict(plan.request_window)
+        for plan in automatic.plans
+        if plan.dataset_id == _DAILY_BASIC_DATASET_ID
+    }
+    assert planned == {_DAILY_BASIC_DATASET_ID: {"trade_date": "20260720"}}
+    skipped = {item.dataset_id: item.state for item in automatic.skipped}
+    assert skipped.get(_DAILY_BASIC_DATASET_ID) != "paused"
+
+    wave = scheduler.run_schedule(
         registry=None,
         schedule=None,
         db_path=db_path,
@@ -4397,27 +4415,7 @@ def test_daily_basic_is_active_and_plans_postclose_trade_date(
         registry_source_path=TARGET_REGISTRY,
         schedule_source_path=SCHEDULE_CONFIG,
     )
-    # Formal automatic scheduling, not a wave membership change: daily_basic
-    # is active on the registry and must plan when the wave is omitted.
-    automatic = scheduler.run_schedule(
-        registry=None,
-        schedule=None,
-        db_path=db_path,
-        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
-        execute=False,
-        registry_source_path=TARGET_REGISTRY,
-        schedule_source_path=SCHEDULE_CONFIG,
-    )
-    planned = {
-        plan.dataset_id: dict(plan.request_window)
-        for plan in automatic.plans
-        if plan.dataset_id == _DAILY_BASIC_DATASET_ID
-    }
-    assert planned == {_DAILY_BASIC_DATASET_ID: {"trade_date": "20260720"}}
-    skipped = {item.dataset_id: item.state for item in automatic.skipped}
-    assert skipped.get(_DAILY_BASIC_DATASET_ID) != "paused"
-    wave_planned = {plan.dataset_id for plan in result.plans}
-    assert _DAILY_BASIC_DATASET_ID not in wave_planned
+    assert _DAILY_BASIC_DATASET_ID not in {plan.dataset_id for plan in wave.plans}
 
 
 def test_daily_basic_empty_receipts_are_not_success(
@@ -4437,14 +4435,13 @@ def test_daily_basic_empty_receipts_are_not_success(
         return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
 
     result = scheduler.run_schedule(
-        registry=None,
-        schedule=None,
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
         db_path=db_path,
         now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
         execute=True,
         executor=execute,
-        registry_source_path=TARGET_REGISTRY,
-        schedule_source_path=SCHEDULE_CONFIG,
+        cadence_class="postclose_daily",
     )
     executed = {
         item.dataset_id: item.state

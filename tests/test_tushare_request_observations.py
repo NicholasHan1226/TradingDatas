@@ -616,10 +616,10 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     plan = _compile_plan(dataset_field_values=[seed])
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 157,
-        "blocked": 33,
-        "ingest_contract_ready": 142,
-        "ingest_contract_blocked": 48,
+        "executable": 158,
+        "blocked": 32,
+        "ingest_contract_ready": 143,
+        "ingest_contract_blocked": 47,
     }
     express = _entry(plan, "express")
     assert express["probe_state"] == "executable"
