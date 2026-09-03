@@ -5,8 +5,8 @@
   "compatibility_date": "2026-08-29",
   "vars": {
     "ACCOUNT_API_BASE": "https://td-admin-api.tradingagent.cc",
-    "EMAIL_LOGIN_ENABLED": "false",
-    "IDENTITY_RETENTION_ENABLED": "false",
+    "EMAIL_LOGIN_ENABLED": "true",
+    "IDENTITY_RETENTION_ENABLED": "true",
     "ACCOUNT_CONNECTION_ENABLED": "false",
     "ACCOUNT_LIBRARY_ENABLED": "false",
     "ACCOUNT_ADMIN_ENABLED": "false"
