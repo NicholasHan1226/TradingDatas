@@ -1,12 +1,67 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-05 00:35 CST（认证 catalog/query 读回 + ann_date 事件族冻结；
-本地 / GitHub / 广州 immutable `current` / runtime / receipt 分开记录）。
-审计时刻仓库 `origin/main` 为
-`d6e90fe6e423df4f149e76182d2d4db23ba204b6`（#471）。本页合入后 GitHub HEAD
-会再前进一步，仍是文档层，**不**构成新的 GZ 发布。#454–#463 已在该
-`current` 上运行。历史决策见 [`docs/adr/`](docs/adr/)，本轮读回见
+最后更新：2026-09-05 01:05 CST（Datas PM 口径锁定 + 00:28 读回 +
+三面园艺收口；文档层，**不**构成数据面目的变更或新的 GZ 发布）。
+历史决策见 [`docs/adr/`](docs/adr/)，本轮读回见
 [`docs/reports/2026-09-05-ann-date-event-readback.md`](docs/reports/2026-09-05-ann-date-event-readback.md)。
+运维正文见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)「Datas PM 接入口径」。
+Daily acceptance = GZ running SHA + 适用时 dual catalog <15s + proving
+receipts，不是 GitHub tip。
+
+## 2026-09-05 Datas PM 接入口径（文档锁定）
+
+Haofei / Datas PM 2026-09-05 Asia/Shanghai 口径已写入核心入口：
+`docs/OPERATIONS.md`（运维正文与硬线）、`ROADMAP.md` / `STATUS.md`（计划与
+接入成功口径）、`README.md` / `AGENTS.md`（能力分层与 onboarding）、
+`docs/ARCHITECTURE.md` / `docs/API.md` / `docs/AUTHORITY_AND_HISTORY.md` /
+`CONTRIBUTING.md`（去掉“等完美源 / 额外 release gate / empty=未完成”
+的误读）。#373 仍是 GitHub 上的周计划 issue，本仓库不另建平行计划文件。
+本页不 mass-unpause，不改 registry/runtime/config。
+
+- 上游晚发、缺行、限频、文档≠现实、间歇 `provider_error` 是**外部
+  blocker**，单独列出；合同正确时不停止下一可接接口，也不计为进度 slip /
+  未完成。
+- 优先最小诚实合同（request shape + cadence + empty ≠ success）。不得为
+  “等源变好”新增 cadence class、VIP transport、完整性重写、worker 上调或
+  catalog 超时变更。
+- 双认证 catalog **<15s** 仍是既有部署安全门，不发明额外 release gate。
+  盘中生产行为变更默认 **WIP=1**，但 vendor emptiness 不得冻结队列。
+- 我们拥有 registry/shape、cadence/planner、fanout、activation、merge→GZ
+  cut，以及 vendor 实际返回行时的非空 SUCCESS。我们不拥有把 vendor 数据
+  变好、伪造非空、把 empty 写成 success，或等源“变稳定”再发。
+- 对齐 Tushare 的是 dataset/coverage **菜单**，不是其 ad-hoc API 交付模型。
+  TradingDatas 仍是 agent-first catalog+query 事实层。empty ≠ success；合同
+  正确时的 empty / `provider_error` 是外部事实，不是重设计理由。
+- 正确合同上 GZ 后，vendor-side empty/`provider_error` 只记短外部-blocker
+  行并继续下一可接接口；仅内部 shape/cadence 错误才重开。
+- **Daily acceptance = actual GZ deployment, not GitHub merge alone.**
+  Merge 而未 GZ cut = incomplete。每日汇报 / 验收 = GZ running SHA +
+  适用时 dual catalog <15s + proving receipts（vendor 返回行时非空
+  SUCCESS）。本页 / `main` tip 单独不是验收。
+- **可执行排期（不得因源质量滑期）：** 核心可接 2026-09-11；其余
+  vendor-reachable 2026-09-18；fund / fut / opt 另波；硬底线 2026-10-09
+  前全部可积已上 GZ 或已单列外部 blocker。节奏约每个交易日 2–3 个接口。
+
+文档 tip 的 GZ cut 可以做，但不改变数据面目的，也不把本页写成已验收。Pages 未改
+`static/**` / `public-web/**`，不应触发。下方 00:28 读回与 2026-09-04
+园艺段落仍是当时分层读回，不因本口径重写。
+
+## 2026-09-05 01:05 CST 三面园艺收口
+
+- **本地：** extra worktree 6 个已归档后回收（脏 `work/` / `qa/` 进
+  `~/Archives/Finance-worktrees/20260905/untracked/`，独有提交进
+  `archive/20260905/*` 与 bundle）。canonical 工作树 clean。gone 本地
+  分支已删。`~/td-cut-staging`、`/tmp/td-cleanup-20260904-*`、Finance
+  层 July leftover 已移出工作区。
+- **GitHub：** 已合远端 `docs/ann-date-event-readback-20260905` 与
+  `docs/garden-source-sync-20260905` 已删。未合独有远端保留。#395 保持
+  draft。本页合入后 GitHub tip 再前进，仍是文档层。
+- **广州 files：** 01:00 CST 读回 `current` 与 crypto `current` 均为
+  `d73dbb58`（#473 文档 tip，00:55 已切），`verify-current`
+  `verified=true`（`file_count=1051`，`tree=c5009899…`）。本轮**不再**
+  为文档 tip 切 GZ。`/tmp/td-*` 诊断已清；Aug 18 `TradingDatasSource-demo-90`
+  已移到 `/opt/investment/_archive/`。`TradingDatasSource` 与 releases
+  未删。Daily acceptance 仍是该 running SHA + catalog/receipt，不是本页。
 
 ## 2026-09-05 00:28–00:35 CST 认证读回与事件族冻结
 
@@ -27,6 +82,7 @@
   `response_completeness_unverified` 为 degraded。income 最新窗合法 empty 时
   默认 query 0 行，不是采集失败。不声明全宇宙 stable。
 - 本轮**没有**改 registry/Python、**没有** exact-main / switch-current。
+  #473 已把该读回合入 `main`；本页合入后 GitHub tip 再前进，仍是文档层。
 
 ## 2026-09-04 21:35 CST 三面园艺与验收
 

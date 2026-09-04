@@ -14,7 +14,7 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的公共金融数�
 
 用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 表达技术数据身份。账户权限是 endpoint scope、分类 allowlist 与运行限额的交集；后端已在 catalog/query 两条路径强制执行 `data_categories`，管理员控制台可配置，Account 只展示当前密钥真实生效的分类。旧 Token 缺字段时保留原访问范围，显式空列表不授权任何数据集。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
 
-接口接入按广度优先推进：每批 valid rows/receipts 立即入库积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级并排队修正该 dataset，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的能力保持显式暂停。`stable` 仍按 dataset 独立验证，但不是全部接口继续接入的总门禁。
+接口接入按广度优先推进：每批 valid rows/receipts 立即入库积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级并排队修正该 dataset，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的能力保持显式暂停。`stable` 仍按 dataset 独立验证，但不是全部接口继续接入的总门禁。上游晚发、缺行、限频、文档≠现实或间歇 `provider_error` 是外部 blocker，单独列出；合同正确时不计入进度 slip / 未完成，也不冻结下一可接接口。empty ≠ success；不得伪造非空或等源“变稳定”再发。每日验收是 GZ `current` + 适用时 dual catalog <15s + proving receipts，不是 GitHub merge 或 `STATUS.md` tip。排期底线 2026-09-11 / 2026-09-18 / fund·fut·opt 另波 / 2026-10-09，不得因源质量滑期。完整口径见 [docs/OPERATIONS.md](docs/OPERATIONS.md)「Datas PM 接入口径」。
 
 当前接入必须区分两个身份：`provider=tushare` 定义数据集与 provider-native payload，`transport_service=quicksync` 定义服务器实际连接、认证、权限返回、错误码和流控。Tushare 官方文档只作为 dataset/schema/cadence 参考；生产不能再按 `api.tushare.pro` 官方直连假设运行。
 
@@ -42,7 +42,7 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 | `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 明确标注的内部只读试用与受预算约束的观察期采集 | 连续健康、历史 PIT、稳定生产声明 |
 | `stable` | 跨适用 cadence 连续成功，且适用 TA/Copilot 已 readback | 稳定生产能力声明与相应常规运行 | 覆盖所有无关消费者或未适用 cadence |
 
-缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制稳定生产声明和无界扩容，不单独阻断已受控启用的隔离只读观察采集。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。
+缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制稳定生产声明和无界扩容，不单独阻断已受控启用的隔离只读观察采集。合同正确时的 empty / `provider_error` 是外部 blocker，不是 `observed`/`stable` 工程未完成，也不得冻结下一可接接口。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。empty ≠ success，不得伪造非空。
 
 ## 普通数据集零代码接入
 
@@ -191,7 +191,8 @@ uv run --python 3.12 --with-requirements requirements.txt \
 
 报告不会输出 token、SQLite 路径或 provider payload。没有正式 API 快照、或根版本/目录/hash、
 query envelope 的 dataset、`degraded`、receipt、时间/lineage 任一绑定不一致时，结果保持
-`observed_isolated_only`，不能替代生产验收。
+`observed_isolated_only`，不能替代生产验收。报告里的 empty / vendor-side `provider_error`
+在合同正确时是外部 blocker，不是 onboarding 未完成，也不得据此冻结下一可接接口。
 
 外部账户、再分发、缓存和公共服务必须逐数据分类完成上游条款书面核验、账户隔离与生产 readback；不能由当前 API 可调用性、公共产品定位或单次 provider 成功推导授权。
 

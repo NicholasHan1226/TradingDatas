@@ -429,7 +429,98 @@ exit code `3` 与并发 busy code `75` 都视为完成；validation 与 provider
 
 `tools/report_dataset_onboarding_status.py` 只读取已验证的 SQLite 快照、runtime registry 与可选的脱敏 formal API snapshot；不得调用 provider、写数据库或触碰 API/timer。可选的 `config/readiness_partition_audit.v1.json` 预注册少量已经完成的精确分区，汇总 receipt、provider、行数、身份空值/重复、上限与 terminal-empty 事实。它不是采集 manifest，也不会激活、调度或提升数据集。
 
-普通读取仍仅按 receipt authority 做单遍历。只有 onboarding、合同漂移、事故恢复和每日 scrub 才执行独立双遍历验证。合法 empty 只证明该观察窗口没有数据；历史读取默认仍为 `observation_only`，除非另有 immutable receipt、as-of、first-seen 与 revision-vintage 的完整证据，不能据此声称 PIT 或非空完整性。
+普通读取仍仅按 receipt authority 做单遍历。只有 onboarding、合同漂移、事故恢复和每日 scrub 才执行独立双遍历验证。合法 empty 只证明该观察窗口没有数据；历史读取默认仍为 `observation_only`，除非另有 immutable receipt、as-of、first-seen 与 revision-vintage 的完整证据，不能据此声称 PIT 或非空完整性。合同正确时的 empty / `provider_error` 是外部 blocker，不是 onboarding 未完成，也不得冻结下一可接接口；见下文「Datas PM 接入口径」。
+
+## Datas PM 接入口径（2026-09-05 Asia/Shanghai）
+
+Haofei / Datas PM 锁定的计划与运维口径。不新增流程框架、不改数据面合同、
+不做 mass-unpause。产品身份仍是 agent-first `catalog/query` 事实层。
+
+硬线（必须按字面执行）：
+
+- **Vendor/input quality is immutable external.** 上游晚发、缺行、限频、
+  文档≠现实、间歇 `provider_error` 是外部输入，我们改不了，也不当工程缺口。
+- **Correct contract + empty/`provider_error` = external blocker; log it and
+  MOVE ON** to the next connectable interface.
+- **Do not over-engineer or add gates** beyond the existing dual-auth catalog
+  **<15s** deploy check.
+- **empty ≠ success remains**（no fake fills）。
+- **Do not freeze the queue for source quality.**
+- **Daily acceptance = actual GZ deployment, not GitHub merge alone.**
+  Merge without GZ cut is incomplete. 每日汇报 / 验收必须以 **GZ running
+  SHA** + 适用时的 **dual catalog <15s** + **proving receipts**（vendor
+  实际返回行时的非空 SUCCESS）为准。`STATUS.md` / `main` tip 单独不是验收。
+- **Schedule must be executable under the vendor-external policy.** 核心可接
+  接口 2026-09-11 前；其余 vendor-reachable 2026-09-18 前；fund / fut / opt
+  另波。硬底线：2026-10-09 前全部可积接口已上 GZ，或已单列外部 blocker。
+  节奏约每个交易日 2–3 个接口。不得因 vendor quality 滑期。
+
+### 每日验收（GZ，不是 GitHub merge）
+
+GitHub merge、CI 绿、`STATUS.md` 更新、`main` tip 都不是当日验收。数据面
+当日完成必须同时具备：
+
+1. 目标 SHA 已切到 GZ `current`（A 股 / 适用平面分别读回）；
+2. 若本次是 catalog 变更：双认证 `GET /v1/catalog` 冷启动/重启对 **<15s**
+   （warm-only 不算）；
+3. proving receipts：vendor 实际返回行时必须是非空 SUCCESS；合同正确时的
+   empty / `provider_error` 记短外部-blocker 行，**不是**未完成，也不得
+   因此停发下一可接接口。
+
+Merge 而未做 GZ cut = incomplete。文档 tip 的 GZ cut 可以做，但不把
+`STATUS.md` 写成已验收。
+
+### 可执行排期（不得因源质量滑期）
+
+| 节点 | 必须完成 | 不得拿来滑期 |
+| --- | --- | --- |
+| 2026-09-11 | 核心可接接口已上 GZ（合同正确 + 已 cut） | vendor empty / `provider_error` |
+| 2026-09-18 | 其余 vendor-reachable 接口已上 GZ 或已单列外部 blocker | 等源“变稳定” |
+| 另波 | fund / fut / opt，不占用上述核心/可达窗口 | 与核心波混排或互相等待 |
+| 2026-10-09 | 全部可积接口已上 GZ，或已列出外部 blocker | 把外部 blocker 写成工程未完成 |
+
+节奏：约每个交易日 2–3 个可接接口。WIP=1 仍是盘中生产行为默认，但
+vendor emptiness **不得**冻结队列。本表不是 mass-unpause。
+
+### 外部输入质量（单独列，不计入未完成）
+
+Tushare 及任何 provider 的晚发、缺行、限频、文档≠现实、间歇
+`provider_error` 是**外部 blocker**，不是工程未完成。必须与内部缺口分开
+记录。合同正确时，它们不得停止下一可接接口的 onboarding，也不得计为进度
+slip / 未完成。
+
+### 最小合同，禁止过度设门
+
+优先能产出诚实 receipt 的最小合同：request shape + cadence + empty ≠
+success。除非否则无法得到 SUCCESS，否则不得新增 cadence class、VIP
+transport、完整性重写、worker 上调或 catalog 超时放宽。
+
+双认证 catalog **<15s** 仍是既有部署安全门（冷启动/重启对；warm-only
+不算），不是新的发布框架，也不为文档或无关接口发明额外 release gate。
+
+盘中生产行为变更默认 **WIP=1**。vendor emptiness / 外部 `provider_error`
+**不得**冻结队列：记一行外部 blocker 后继续下一可接接口。
+
+### 我们拥有 vs 不拥有
+
+我们拥有：registry / request shape、cadence / planner class、fanout、
+activation、merge → GZ cut、以及 vendor 实际返回行时的非空 SUCCESS。
+
+我们不拥有：把 vendor 数据变好、伪造非空、把 empty 写成 success、或等源
+“变稳定”再发下一可接接口。
+
+### 交付模型
+
+对齐 Tushare 的是 dataset / coverage **菜单**，不是 Tushare 的 ad-hoc API
+调用交付模型。TradingDatas 仍是 agent-first catalog+query 事实层。empty
+receipt 不是 success；合同正确时的 empty / `provider_error` 是外部事实，
+不是重设计理由。
+
+### 速度规则
+
+正确合同已上 GZ 后：若 receipt 为 empty 或 `provider_error` 且分类为
+vendor-side，**继续下一可接接口**，只保留短外部-blocker 行。仅当失败是
+内部（错误 shape / cadence）时才重开该接口。本口径不是 mass-unpause。
 
 ## Release 与回滚身份
 
@@ -992,6 +1083,15 @@ does not authorize credential rotation or deletion of any account data.
 ## 发布门禁
 
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。
+
+双认证 `GET /v1/catalog` **<15s**（冷启动/重启对；warm-only 不算）是既有
+部署安全门，不是额外发布框架。**Daily acceptance = actual GZ deployment,
+not GitHub merge alone.** Merge without GZ cut is incomplete。每日汇报 /
+验收看 GZ running SHA + 适用时的 dual catalog 门 + proving receipts，不看
+`STATUS.md` / `main` tip。文档 tip 的 GZ cut 可以做，但不构成数据面
+目的变更；Pages 只在 `static/**` / `public-web/**` 变化时触发。盘中生产行为
+变更默认 WIP=1；vendor emptiness 不得冻结下一可接接口，见上文
+「Datas PM 接入口径」。
 
 旧 `api.tushare.pro` official-direct release 只保留代码与回滚证据，不得启动为生产采集 runtime；修正版必须 fresh 验证 QuickSync endpoint/TLS、禁止 redirect、权限码分类、200 次/60 秒账号门禁、并发 4、单一 deadline、仅 pre-send DNS failover 和 impaired API readback。历史 190 接口本机矩阵、222 静态能力目录或分钟吞吐证明都不能替代服务器 provider -> SQLite -> receipt -> API readback；每日额度未知时仍不启用自动历史回填。
 

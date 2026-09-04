@@ -14,6 +14,7 @@
 | service/timer/effective release | 服务器本轮直接 readback | `STATUS.md` 可记录最近摘要 |
 | 长期架构和接口 | `docs/ARCHITECTURE.md` / `docs/API.md` | 稳定说明 |
 | 发布和恢复规则 | `docs/OPERATIONS.md` | 操作合同 |
+| 接口接入 / 外部 blocker / 采集成功口径 | `docs/OPERATIONS.md`「Datas PM 接入口径」 | 解释我们拥有什么；不把 vendor empty 写成未完成 |
 | 长期决策 | `docs/adr/` | 决策原因、约束和后果 |
 | 一次性验收、事故、迁移证据 | `docs/reports/` | 日期化人工可读记录 |
 | 普通代码修改历史 | Git commits | 不重复写事件日志 |
@@ -56,7 +57,7 @@ observed
 stable
 ```
 
-晋级只影响内部只读数据能力和既有预算内的调度资格。provider 权限、请求预算、完整性、数据质量和资源安全仍是硬边界；单个 dataset 失败只降级该 dataset，不应阻塞其它独立数据能力。
+晋级只影响内部只读数据能力和既有预算内的调度资格。provider 权限、请求预算、我们自己的 receipt 完整性（empty ≠ success，不得伪造非空）和资源安全仍是硬边界。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，不是晋级未完成，也不阻塞下一可接接口。单个 dataset 失败只降级该 dataset。
 
 ## GitHub Actions
 

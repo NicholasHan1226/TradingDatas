@@ -30,6 +30,8 @@ cd event-calendar && python3 -m http.server 8011
 
 1. `cn.dataset.forecast` 已改为 `event` + ts_code-only fanout 并单独激活；
    需 GZ 切到含该合同的 head 后才能产生非空 SUCCESS（empty ≠ success）；
+   合同正确后的 empty / vendor `provider_error` 是外部 blocker，记一行后
+   继续下一可接接口，不冻结队列；
 2. `cn.dataset.share_float` / `cn.dataset.disclosure_date` 因 ann_date 分区在每日
    00:30 扫描中恒得「可信为空」，2026-08 起分区冻结 → 已由 PR #304 把两者改为
    event 节律修复；合并部署并回补缺口后即恢复产出。

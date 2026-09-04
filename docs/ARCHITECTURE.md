@@ -200,7 +200,7 @@ empty/failed 的 receipt 语义，也不把 HTTP 200 或预算余量当成覆盖
 
 可写 ingest/collect 连接在 `BEGIN IMMEDIATE` 之前请求 `PRAGMA journal_mode=WAL`，busy timeout 仍为既有 180 秒。catalog/query 的已验证只读快照在存在 WAL sidecar 时使用 `mode=ro` 而不带 `immutable=1`；无 sidecar 的 rollback-journal 库仍可使用 `immutable=1`。WAL sidecar 不是业务表，不改变两对象规则。快照在共享 authority lock 内以文件身份、SQLite pragma 与 append-only receipt 最新行做双连接 epoch 核对；不得按请求对完整 receipt 历史做聚合扫描。生产 journal 切换仍是停写窗口内的后续运维步骤，不是代码合入即切库。
 
-empty、failed、permission denied、rate limited、validation failed 和 storage failed 必须分开记录。未知字段保留并标记 schema drift，不能静默删除。
+empty、failed、permission denied、rate limited、validation failed 和 storage failed 必须分开记录。未知字段保留并标记 schema drift，不能静默删除。**empty ≠ success**，不得伪造非空。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，记一行后 MOVE ON 到下一可接接口，不得把源质量当成工程未完成，也不得因此发明额外 release gate（既有双认证 catalog <15s 部署门除外）。完整口径见 `docs/OPERATIONS.md`「Datas PM 接入口径」。
 
 runtime 投影把“最新可信 scheduler run 的当前状态”和“全部完整 success cohort 的最大 `data_through`”分开计算。旧 backfill 后采不能让 dataset watermark 回退；同一 scheduler run 有多个 window 时，任一 window failed/incomplete 使 run failed，否则由目标 window 最大的 cohort 决定当前状态。watermark lineage 绑定该 cohort 的完整 member receipt IDs，不能由一个 sibling receipt 代表整个 cohort。无窗口 `session_minute` 查询读取上一完整成功窗口的已入库行，不把最新 refresh 的 `config_error`/`empty` 改写成当前页质量，也不把 empty/config_error 伪装成 success；catalog 仍暴露最新失败。只读 snapshot 在采集写锁或 sidecar 瞬时不一致时于 2 秒内 fail closed 为 503，避免挂住 catalog/query worker。
 

@@ -191,7 +191,9 @@ failed 终态，或 8 次重选仍不能形成有效页时，仍返回 `503 serv
 `paused`、`failed`、`stale`。`metadata.state` 是面向读取方的可用状态：新鲜且
 完整的 `success` 映射为 `ready`，合同未验证时可叠加为 `partial`，但客观状态仍保留在
 `runtime_state`。HTTP 200 不得掩盖 dataset 级 degraded 状态；消费者必须逐数据集读取
-metadata，不能只看 HTTP 状态码。
+metadata，不能只看 HTTP 状态码。**empty ≠ success**；合同正确时的 empty /
+`provider_error` 是外部输入事实，不是 TradingDatas 工程未完成，也不是把 empty
+改写成 success 的许可证。接入排期口径见 `docs/OPERATIONS.md`「Datas PM 接入口径」。
 
 对 `event` 与 `session_minute` 的 append-only 数据集，最新可信 refresh 若以
 `provider_error` 或 `config_error` 失败，catalog 的 `runtime_state` 必须立即投影为
