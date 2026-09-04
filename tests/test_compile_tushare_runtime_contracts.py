@@ -109,6 +109,7 @@ def test_cadence_policy_has_exact_sorted_coverage_and_projects_each_contract() -
         "session_minute",
         "postclose_daily",
         "daily_reference",
+        "prior_open_morning",
         "weekly",
         "monthly",
         "quarterly_reporting",
@@ -351,8 +352,8 @@ def test_reviewed_margin_contracts_bind_real_day_partition_identities() -> None:
         "margin_secs": ["trade_date", "ts_code"],
     }
     expected_cadence = {
-        "margin": "daily_reference",
-        "margin_detail": "daily_reference",
+        "margin": "prior_open_morning",
+        "margin_detail": "prior_open_morning",
         "margin_secs": "postclose_daily",
     }
     for api_name, primary_key in expected_keys.items():

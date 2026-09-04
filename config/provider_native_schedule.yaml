@@ -105,6 +105,38 @@ cadences:
       base_delay_seconds: 60
       max_delay_seconds: 900
       jitter_seconds: 60
+  prior_open_morning:
+    # T+1 morning publish: after 08:30 the current window is the previous
+    # open trade_date.  daily_reference 00:30 and postclose_daily 16:30 both
+    # still request today, which is unpublished until the next morning.
+    automatic: true
+    availability_after_local: "08:30"
+    weekdays: [1, 2, 3, 4, 5]
+    incremental_mode: request_shape
+    partition_frequency: open_day
+    calendar:
+      dataset_id: cn.market.trade_calendar
+      date_field: cal_date
+      open_field: is_open
+      open_values: [1]
+      previous_open_date_field: pretrade_date
+    minimum_interval_seconds: 86400
+    failure_retry_seconds: 900
+    correction_overlap_days: 0
+    correction_overlap_bars: 1
+    backfill_start_policy: none
+    backfill_lookback_days: 0
+    backfill_start_date: null
+    backfill_chunk_span_days: 1
+    future_horizon_days: 0
+    max_backfill_chunks_per_run: 3
+    rate_budget_class: standard
+    current_open_day_lag: 1
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 60
+      max_delay_seconds: 900
+      jitter_seconds: 60
   daily_reference:
     automatic: true
     availability_after_local: "00:30"

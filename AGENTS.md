@@ -66,7 +66,7 @@ provider registry
 - 请求差异只通过四种通用 request shape、variants、fanout、pagination 和 budgets 声明。
 - 只有 transport/auth/pagination 协议真实不同，才增加 provider-level adapter。
 - provider payload 必须无损保留；未知字段标记 schema drift，不能静默删除或改写。
-- **复杂度止损：** 新一批普通 Tushare dataset 先用批量 matrix + registry/config 完成；只有证明现有四种 request shape、八种 cadence class 和通用 SQLite adapter 无法表达时，才允许讨论 Python 改动，并须先记录可复现的配置表达缺口。
+- **复杂度止损：** 新一批普通 Tushare dataset 先用批量 matrix + registry/config 完成；只有证明现有四种 request shape、九种 cadence class 和通用 SQLite adapter 无法表达时，才允许讨论 Python 改动，并须先记录可复现的配置表达缺口。
 - **采集前门禁：** `activation=active` 不是采集成功，也不能替代 planner 验证。每个自动采集候选必须先从同一 registry 做 dry-run，证明选中 dataset、窗口和频率会生成非零计划；`on_demand` 只能保持按需查询语义，不能被 wave、timer 或文档误称为自动采集。
 
 ## 固定接口
@@ -157,7 +157,7 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 
 ## 频率与回填
 
-只允许八种通用 cadence class：`session_minute`、`postclose_daily`、`daily_reference`、`weekly`、`monthly`、`quarterly_reporting`、`event`、`on_demand`。
+只允许九种通用 cadence class：`session_minute`、`postclose_daily`、`daily_reference`、`prior_open_morning`、`weekly`、`monthly`、`quarterly_reporting`、`event`、`on_demand`。`prior_open_morning` 在本地 08:30 之后请求上一开市日；它表达交易所次日早晨发布的 T+1 日频窗口，不是 dataset 专用分支。
 
 `on_demand` 数据集在 receipt 投影中永远不判 stale（success 与 empty 观测均豁免 freshness SLA）：按需查询语义没有刷新预期，`freshness_sla_seconds` 是 registry 通用字段而非刷新承诺。投影的 attempt/execution 完整性校验必须在 `data_through_in_future` 过滤之前的完整 receipt 集合上执行；否则同 execution 中被 future 过滤移除的行会造成 call_index 断档，级联误报 `receipt_execution_inconsistent` 掩盖真实根因（生产 `cn.news.flash` 曾因此误报）。
 

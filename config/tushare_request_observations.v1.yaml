@@ -13,10 +13,10 @@ provenance:
     sha256: a22f268ae542517eece006361c6a5068ffbd06188946d7d72f12b413596e6603
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
-    sha256: 2920defece8e06fbdd3bef70f66551bd5b2c29edce76a6eb1e26194eff27c82b
+    sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 82cb678dad812f77c0399135bc4a94175568142f9e9ddefbea78fb942726ad9a
+    sha256: 00c7374160746184c0ba9989353d8726fd2cbe6f2cd907955b1a0144209800cd
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -2092,9 +2092,8 @@ entries:
   - all
   - gaps
   # Official T+1 08:30 previous-day publish.  trade_date-only snapshot
-  # is the right request shape; 00:30 daily_reference still empties
-  # today's unpublished partition.  Empty ≠ success.  No cadence-class
-  # swap produces rows without a previous-open-day-after-08:30 window.
+  # is the right request shape.  prior_open_morning requests the
+  # previous open trade_date after 08:30.  Empty ≠ success.
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
   probe_state: executable
@@ -2112,7 +2111,8 @@ entries:
   scope_labels:
   - all
   - gaps
-  # Same T+1 08:30 previous-day publish as margin.  Empty ≠ success.
+  # Same T+1 08:30 previous-day publish as margin.  prior_open_morning
+  # requests the previous open trade_date after 08:30.  Empty ≠ success.
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
   probe_state: executable
