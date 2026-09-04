@@ -1,10 +1,42 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-04 21:35 CST（Finance 三面园艺；本地 / GitHub / 广州
-immutable `current` / runtime 分开记录）。审计时刻 `origin/main` 为
-`4e98eaa602425cae31aea117928e237d5dd7dd48`（#470）。本页合入后 GitHub HEAD
-会再前进一步，仍是文档层，**不**构成新的 GZ 发布。历史决策见
+最后更新：2026-09-05 00:12 CST（残留园艺：Source 快进；本地 / GitHub / 广州
+immutable `current` / source checkout / runtime 分开记录）。审计时刻
+`origin/main` 为 `d6e90fe6e423df4f149e76182d2d4db23ba204b6`（#471）。本页合入后
+GitHub HEAD 会再前进一步，仍是文档层，**不**构成新的 GZ 发布。历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见 [`docs/reports/`](docs/reports/)。
+
+## 2026-09-05 00:12 CST 残留园艺
+
+- **本地 / GitHub：** canonical `main` 仍是 `d6e90fe6`（#471），
+  `git rev-list --left-right --count HEAD...origin/main` = `0 0`，工作树
+  clean。未合 #395。本轮没有再做 exact-main / switch-current。
+- **生产 files：** `marketgraph-main` 上
+  `/opt/investment/releases/tradingdatas/current` 与
+  `tradingdatas-crypto/current` 均为
+  `d6e90fe6e423df4f149e76182d2d4db23ba204b6`。symlink 时间是 2026-09-04
+  21:57 CST，**早于本轮**；本轮只读回，未切指针。`verify-current` JSON：
+  `verified=true`，`file_count=1050`，
+  `tree=215f9fe634d0c57ea261f7496701aa13bd0659d0`。
+- **源码 checkout：** `/opt/investment/TradingDatasSource` 已从
+  `facf0bfc` fast-forward 到 `d6e90fe6`，`git status` clean，
+  `HEAD == origin/main`。通道是 **root** + 文档化只读 deploy key
+  `/etc/ssh/tradingdatas-deploy/github_ed25519`（comment
+  `tradingdatas-source-readonly-20260803`，`0600 root:root`，目录
+  `0700`）。checkout owner 仍是 `marketgraph`。这不是生产 switch-current。
+- **marketgraph fetch 仍失败：** 目录 `0700` 使 `marketgraph` 读不到
+  IdentityFile；`UserKnownHostsFile` 因此表现为 “No ED25519 host key”。
+  `known_hosts` 文件本身已含 GitHub 官方三把 host key（与
+  docs.github.com / Mac `known_hosts` 一致）。未 chmod/chown key，也未
+  disable `StrictHostKeyChecking`。若要让 `marketgraph` 自己 fetch，须
+  Nicholas 批准把该**文档化 deploy key**改为该用户可读。
+- **开放 PR：** 仅 #395 (`fix/crypto-funding-settlement-mark-20260830`)
+  draft，保持不合。
+- **工作树：** 仍 7 个（canonical、3 dirty、2 unique tmp、
+  `research-library-200-v1`）。`~/td-cut-staging/` 未删。
+- **Cloudflare Pages：** 最近一次成功仍是 `57c20aa0`（#468，run
+  33870299754）。本页只改 `STATUS.md`，不触发 Pages，也不声称邮箱登录已对
+  真实用户开放。
 
 ## 2026-09-04 21:35 CST 三面园艺与验收
 
