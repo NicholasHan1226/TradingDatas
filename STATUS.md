@@ -2,7 +2,7 @@
 
 最后更新：2026-09-04（仓库卫生与 GitHub 对齐；**不是**广州 GZ exact-main
 发布或认证 readback）。`origin/main` HEAD 为
-`5c1a72c9a59806370296978b727262a3054d48ca`（#464）。
+`74bb2b297239253c69fc1b0f384ac27d1479a71b`（#469）。
 上次文档记录的 A 股生产运行代码基线仍是
 `f74a26d705b4094126bc5663b63fec14ed75434a`（2026-09-02 13:52 CST，回滚点
 `6ce9ec5da09d77ee0282ba93a66e46403466c239`；当日 docs-only 后继 `2983be59`）。
@@ -12,7 +12,7 @@ GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器�
 
 ## 2026-09-04 仓库卫生与 GitHub 对齐
 
-- **GitHub `main`：** `5c1a72c9`（#464）。9 月 3–4 日采集/query 合同已合入
+- **GitHub `main`：** `74bb2b29`（#469）。9 月 3–4 日采集/query 合同已合入
   #454–#463；同日后续 squash 合入 #446
   (`928765031f7647a38f5b12646ac54c661b5e5ba0`)、#416
   (`58db624a1095de5f3bfcc3896c744eb5af857857`)、#438
@@ -22,9 +22,10 @@ GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器�
   (`3a8d821350c53891343c106993fd6bcbbdd00afc`)、#465
   (`27f69fcdf5ce283d23e2be65ae6ee78c2d4acc1d`)、#468
   (`57c20aa04ae3b4ca0a1f60de61dde2883a274447`)、#464
-  (`5c1a72c9a59806370296978b727262a3054d48ca`)。这些是源码/文档/公共站合入，
+  (`5c1a72c9a59806370296978b727262a3054d48ca`)、#469
+  (`74bb2b297239253c69fc1b0f384ac27d1479a71b`)。这些是源码/文档/公共站合入，
   **仓库看不到** GZ exact-main 发布或认证 catalog/query readback，本页不声称
-  生产已切到 `5c1a72c9`。
+  生产已切到 `74bb2b29`。
 - **A 股 GZ：** 上次文档基线仍是 `f74a26d`（2026-09-02）。#454–#463 的采集/query
   合同若要在生产生效，须在 `marketgraph-main` 另走 exact-main immutable release
   （`docs/OPERATIONS.md`「发布通道选择」：本地已验证 clean commit → immutable
@@ -32,7 +33,7 @@ GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器�
   service/消费者 readback）。#467/#468 是文档；#446/#466/#465 是公共站。合入
   不会自动部署 GZ，本环境无 SSH，本页不假装已发布。
 - **Cloudflare：** Actions `Deploy to Cloudflare Pages` 最近一次成功 run 仍落在
-  `57c20aa0`（#468）；#464 只改 `STATUS.md`，未触发新的 Pages 发布。此前
+  `57c20aa0`（#468）；#464/#469 只改 `STATUS.md`，未触发新的 Pages 发布。此前
   `27f69fcd`（#465）、`3a8d8213`（#466）、`bffa3b0c`（#438）、`92876503`
   （#446）也都 success。Actions 成功不是独立业务 readback，也不证明邮箱登录
   已对真实用户开放。
@@ -41,15 +42,17 @@ GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器�
 - **本轮已关并被取代：** #456→#465，#447→#466，#429/#427/#436→#468。冲突文档
   草稿上一轮已关 12 个。**仍开且不合：** #395
   （`fix/crypto-funding-settlement-mark-20260830`，funding settlement 决策
-  handoff，Datas PM 未选路径，保持 draft）。本页只记录 #464 落地后的仓库事实。
+  handoff，Datas PM 未选路径，保持 draft）。本页只记录 #469 落地后的仓库事实。
 - **分支卫生：** 上一轮删除远程分支 80 条，并在合入后删除源分支
   `codex/research-library-200-v1`、`cursor/docs-remaining-1996`、
   `cursor/product-learning-paths-fix-1996`、
   `cursor/interface-onboarding-fix-1996`、`cursor/ops-docs-remaining-1996`
-  以及已合文档草稿源。2026-09-04 再核 `git fetch --prune`：上述源分支、
+  以及已合文档草稿源。2026-09-04 `git fetch --prune`：上述源分支、
   `cursor/engineering-documentation-updates-*`、`codex/interface-onboarding-v1`、
-  `codex/product-learning-paths-v1` 已不在 origin；无新增可删的已合残留。
-  未动 recovery/wire/controller/release 快照，也未删吃不准的关闭功能分支。
+  `codex/product-learning-paths-v1`、`cursor/hygiene-audit-1996`（#469 源）
+  已不在 origin。再核 38 条 UNMERGED 远程全部 `ahead>0`，无新增可删的已合残留。
+  未动 recovery/wire/controller/release/agent/archive/snapshot 快照，也未删
+  吃不准的关闭功能分支。
 - **无开放 PR 的未合入远程分支仍保留（默认不合 main）：**
   - 发布/回滚/快照/恢复前缀：`recovery/td-*`（3）、`wire/pm-snapshot-dataset*`（2）、
     `nicholashan/release-full-universe`、`agent/bootstrap-core-production-deploy`、
@@ -521,7 +524,7 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 5. 已合入远程源分支已在 2026-09-04 删除（80 条）。无开放 PR 的未合入远程分支
    仍保留 recovery/agent/wire/release 与吃不准的关闭 PR 分支；
    `fix/rt-min-daily-scan-budget`、`fix/firecrawl-bare-time-anchor` 仍在 origin，
-   不是合入候选。#446/#464/#465/#466/#467/#468 已合入 main；仅 #395 仍开着。
+   不是合入候选。#446/#464/#465/#466/#467/#468/#469 已合入 main；仅 #395 仍开着。
 6. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
    报告；普通变更由 Git history 追溯。
 7. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
