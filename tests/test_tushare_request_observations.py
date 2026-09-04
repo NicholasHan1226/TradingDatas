@@ -456,9 +456,13 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
         "income",
         "pledge_stat",
     )
+    # cashflow / express left the ann_date continuation: official ts_code is
+    # independently required (not 二选一), and date + 1-code fanout stayed
+    # empty.  Empty ≠ success.  Undated ts_code-only matches pledge_stat.
+    undated_report_family = {"cashflow", "express", "pledge_stat"}
     for api_name in report_family:
         expected_progress = {"cursor_contract_version": 2, "max_batches_per_run": 1}
-        if api_name != "pledge_stat":  # Undated snapshots keep the existing cursor.
+        if api_name not in undated_report_family:
             expected_progress.update(
                 progress_mode="partition_continuation",
                 continuation_max_age_days=31,
@@ -469,6 +473,10 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
         assert _contract(bundle, api_name)["cadence_class"] == "event"
         assert _contract(bundle, api_name)["resumable_fanout"] == expected_progress
         assert _contract(bundle, api_name)["fanout"]["batch_size"] == 1
+        if api_name in undated_report_family:
+            assert "ann_date" not in _entry(observations, api_name)["parameters"]
+            assert _contract(bundle, api_name)["request_template"] == {}
+            assert _contract(bundle, api_name)["request_window_policy"] is None
     assert _entry(observations, "cb_share")["resumable_fanout"] == {
         "cursor_contract_version": 2,
         "max_batches_per_run": 1,
@@ -624,7 +632,11 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     express = _entry(plan, "express")
     assert express["probe_state"] == "executable"
     assert express["probe_block_reasons"] == []
-    assert express["params"]["ts_code"] == "600000.SH"
+    assert express["params"] == {"ts_code": "600000.SH"}
+    cashflow = _entry(plan, "cashflow")
+    assert cashflow["probe_state"] == "executable"
+    assert cashflow["probe_block_reasons"] == []
+    assert cashflow["params"] == {"ts_code": "600000.SH"}
     assert "600000.SH" not in yaml.safe_dump(plan["provenance"])
     assert plan["provenance"]["seed_authorities"] == [
         {

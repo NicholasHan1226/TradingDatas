@@ -75,7 +75,9 @@ entries:
   source_document_sha256: a8aaeb3b8515fbedafccbfd24bec7a0a281582049b8f7a090a054f9d60a5e67b
   reason_code: no_document_frequency_evidence
 - api_name: cashflow
-  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  # Official ts_code is independently required.  ann_date + 1-code fanout
+  # produced trusted-empty (date reset before universe sweep).  Empty ≠
+  # success.  Keep event cadence; request is now ts_code-only (pledge_stat).
   cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 38c507182d7ce1b4e7dd0289a1ff559ff1929fea0e33248e3061596f01e25135
@@ -274,7 +276,9 @@ entries:
   source_document_sha256: 0fab4415b86b33e770b82756df4206cedea024e9f32064862c7bdab644022156
   reason_code: doc_explicit_daily_reference
 - api_name: express
-  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  # Official ts_code is independently required.  ann_date + 1-code fanout
+  # produced trusted-empty (date reset before universe sweep).  Empty ≠
+  # success.  Keep event cadence; request is now ts_code-only (pledge_stat).
   cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 5331510b6cc64a8aca6f6f747aeb5221e887238e6b327e71537a73b7d999affe

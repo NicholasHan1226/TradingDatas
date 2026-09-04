@@ -1653,6 +1653,45 @@ def test_wave7_high_fanout_exact3_is_active_automatic_and_resumable() -> None:
     assert daily_basic["fanout"]["strategy"] == "none"
 
 
+def test_cashflow_and_express_use_undated_ts_code_fanout() -> None:
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    datasets = {
+        dataset["provider_bindings"][0]["api_name"]: dataset
+        for dataset in registry["datasets"]
+    }
+    for api_name in ("cashflow", "express"):
+        dataset = datasets[api_name]
+        binding = dataset["provider_bindings"][0]
+        assert dataset["cadence_class"] == "event"
+        assert binding["activation_state"] == "active"
+        assert binding["probe_state"] == "executable"
+        assert binding["ingest_contract_state"] == "ready"
+        assert binding["request_template"] == {}
+        assert binding["request_window_policy"] is None
+        assert binding["fanout"] == {
+            "strategy": "dataset_field",
+            "parameter": "ts_code",
+            "source_dataset_id": "cn.equity.security_master",
+            "source_field": "ts_code",
+            "batch_size": 1,
+        }
+        assert binding["resumable_fanout"] == {
+            "cursor_contract_version": 2,
+            "max_batches_per_run": 1,
+        }
+    paused = {
+        dataset["dataset_id"]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["activation_state"] == "paused"
+    }
+    assert "cn.dataset.forecast" in paused
+    assert "cn.news.flash" in paused
+    assert "cn.dataset.cashflow" not in paused
+    assert "cn.dataset.express" not in paused
+
+
 def test_wave7_nowindow_and_seed_unlock_rt_min_daily_activation() -> None:
     observations = _observations()
     active_evidence = observations["active_evidence"]
