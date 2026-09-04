@@ -287,8 +287,18 @@ empty 仍是 empty，不是 success。当前合同去掉可选日期过滤，改
 是 `Y (二选一)`；原先 `on_demand` + paused 不会自动采集。当前合同改为
 `event` cadence 与 ann_date-only snapshot（`fanout=none`），并单独恢复
 `activation_state=active`。历史 empty 回执仍是 empty，不是 success。
-其余 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、
-news.flash、margin*、rt_etf_min*）保持暂停。
+`cn.dataset.margin`、`cn.dataset.margin_detail` 与 `cn.dataset.margin_secs`
+已经是 `activation_state=active`，不是 `registry_activation_paused`。
+三者都是 trade_date-only snapshot。`margin` / `margin_detail` 官方是
+次日 08:30 更新上一日数据：`daily_reference` 00:30 会请求当日尚未发布的
+分区并留下 trusted-empty，`postclose_daily` 16:30 请求的仍是当日（同样
+未发布）。empty 仍是 empty，不是 success。现有八种 cadence 都无法表达
+“上一开市日、08:30 之后”的 steady-state 窗口，因此这两行保持
+`daily_reference`；SUCCESS 需要更大的 cadence/planner 变更，不是本批
+registry 能完成的。`margin_secs` 官方是每日盘前更新当日标的，00:30
+同样会 trusted-empty；当前合同改为 `postclose_daily`，在开市日 16:30
+之后采集已发布的盘前名单。其余 `registry_activation_paused` 行（含
+fund_*、fut_*、opt_*、index_daily、news.flash、rt_etf_min*）保持暂停。
 
 ## 国际新闻原始发布时间与精度
 
