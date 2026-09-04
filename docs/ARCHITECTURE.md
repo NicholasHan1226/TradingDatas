@@ -153,6 +153,14 @@ registry 的 `entitlement` 是 provider-neutral 技术状态。对当前 Tushare
 
 Tushare 官方接口说明给出的积分门槛、单次行数、分钟频次和每日总量只适用于官方合同参考，不能自动套用到 QuickSync。activation 与 scheduler budget 必须由 QuickSync 文档、真实有界探测和人工审核共同确定。当前受控证据只证明健康单一 HTTPS 节点的小响应 request-start 能力至少 200 次/分钟、并发 4；`main` 中的 200 次/60 秒和并发 4 是本地保护门禁，不是供应商合同额度或已部署 production 配置。混合大响应、每日额度与 DNS failover 仍未知，逐接口权限继续由真实矩阵决定。任何并发都要受 transport 账号级与 API 级预算共同约束，不能因为单次调用成功自动扩大。
 
+采集重试按 cadence 配置，不是全局固定三次。collector 同轮 `retry.max_attempts` 会经
+`request_gate` 计入该 cadence 的账号/provider/API 预算；planner 的
+`failure_retry_seconds` 只决定失败分片何时再次变为可执行。`event` cadence 当前关闭同轮
+重试（`max_attempts=1`），把瞬时失败交给下一轮 timer，避免共享预算被前序分片的重试风暴
+耗尽并截断后续 fanout。其它 automatic cadence 仍使用有界同轮重试。这不改变
+empty/failed 的 receipt 语义，也不把 HTTP 200 或预算余量当成覆盖完整。运维诊断见
+`docs/OPERATIONS.md`。
+
 ## 通用存储
 
 所有 provider-native 数据进入同一类通用事实表。provider 返回的 payload 必须无损保留；技术列不能覆盖 provider 字段。每个真实写事务必须同时提交 success receipt；rollback 后不得留下 success。对 `current_snapshot`，上游再次返回相同 payload 时，事实的 payload 与数据 revision 不变，但同一事务会把其 provenance 绑定到新的 success receipt；因此当前合同只能依赖本轮重新验证的事实，不能借用旧合同 receipt，也不会因 SQLite 的 payload 去重而丢失 scheduler authority。
