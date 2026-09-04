@@ -2,7 +2,7 @@
 
 最后更新：2026-09-04（仓库卫生与 GitHub 对齐；**不是**广州 GZ exact-main
 发布或认证 readback）。`origin/main` HEAD 为
-`8435ac074b0a9887f65b5b05fc2e15ce6097007d`（#463，2026-09-04 18:11 CST）。
+`57c20aa04ae3b4ca0a1f60de61dde2883a274447`（#468）。
 上次文档记录的 A 股生产运行代码基线仍是
 `f74a26d705b4094126bc5663b63fec14ed75434a`（2026-09-02 13:52 CST，回滚点
 `6ce9ec5da09d77ee0282ba93a66e46403466c239`；当日 docs-only 后继 `2983be59`）。
@@ -12,34 +12,41 @@ GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器�
 
 ## 2026-09-04 仓库卫生与 GitHub 对齐
 
-- **GitHub `main`：** `8435ac07`。9 月 3–4 日已合入 #454（stk_limit/adj_factor）、
-  #455（daily_basic）、#457（rt_min query）、#458（catalog in-filter）、
-  #459（cashflow/express）、#460（forecast/fina_audit event）、#461/#462（margin 族）、
-  #463（forecast ts_code-only fanout）。这些是源码/合同合入，**仓库看不到** GZ
-  exact-main 发布或认证 catalog/query readback，本页不声称生产已切到 `8435ac07`。
+- **GitHub `main`：** `57c20aa0`（#468）。9 月 3–4 日采集/query 合同已合入
+  #454–#463；同日后续 squash 合入 #446
+  (`928765031f7647a38f5b12646ac54c661b5e5ba0`)、#416
+  (`58db624a1095de5f3bfcc3896c744eb5af857857`)、#438
+  (`bffa3b0c139525b14302c7c34b0dd97064623bcb`)、#409
+  (`e2622aa63f98135374113a15dcbefdeaab63fc72`)、#467
+  (`be6ba5718b79977cbc94bbc706fbf66c7d4dc77b`)、#466
+  (`3a8d821350c53891343c106993fd6bcbbdd00afc`)、#465
+  (`27f69fcdf5ce283d23e2be65ae6ee78c2d4acc1d`)、#468
+  (`57c20aa04ae3b4ca0a1f60de61dde2883a274447`)。这些是源码/文档/公共站合入，
+  **仓库看不到** GZ exact-main 发布或认证 catalog/query readback，本页不声称
+  生产已切到 `57c20aa0`。
 - **A 股 GZ：** 上次文档基线仍是 `f74a26d`（2026-09-02）。#454–#463 的采集/query
-  合同若要在生产生效，须另走 exact-main immutable release；合入不会自动部署。
+  合同若要在生产生效，须在 `marketgraph-main` 另走 exact-main immutable release
+  （`docs/OPERATIONS.md`「发布通道选择」：本地已验证 clean commit → immutable
+  staging → manifest/rollback → `switch-current` → `verify-current` →
+  service/消费者 readback）。#467/#468 是文档；#446/#466/#465 是公共站。合入
+  不会自动部署 GZ，本环境无 SSH，本页不假装已发布。
 - **Cloudflare：** Actions `Deploy to Cloudflare Pages` 最近一次成功 run 落在
-  `ac458530`（#462）；`deploy-admin` 与 `deploy-public` 均为 success。#463 未改
-  `static/**` / `public-web/**`，不必为该 commit 再发 Pages。Actions 成功不是独立
-  业务 readback，也不证明邮箱登录已对真实用户开放。
+  `27f69fcd`（#465）；`deploy-admin` 与 `deploy-public` 均为 success，含公开
+  路由/静态资源 readback。同一 workflow 此前已对 `3a8d8213`（#466）、
+  `bffa3b0c`（#438）、`92876503`（#446）成功。Actions 成功不是独立业务
+  readback，也不证明邮箱登录已对真实用户开放。
 - **#350 / #378：** 调度合同已由 PR #378（`cursor/on-demand-schedule-350-ef7c`，
   2026-08-29）合入 main，不是「待合入」。9 月 2 日文档基线 `f74a26d` 在该合入之后。
-- **开放 PR 仍等 Datas PM / `pm-merge`，本次未合并：** #446
-  （`codex/research-library-200-v1`）、#447（`codex/product-learning-paths-v1`）、
-  #456（`codex/interface-onboarding-v1`，冲突）。19 个文档草稿 PR 仍开着，未关。
-- **分支卫生（2026-09-04）：** 删除远程分支 80 条：76 条 `git branch -r --merged
-  origin/main` 残留，外加 squash/过期 4 条
-  （`cursor/forecast-ts-code-fanout-6819` #463、
-  `fix/retry-transient-provider-errors-and-diagnostics` #358、
-  `codex/status-09695`、已被 v2 取代的
-  `codex/public-anonymous-account-readback-v1`）。`git push --delete` 无失败。
-  未动 `main` 与上述三个非草稿开放 PR 头。
-- **41 条无开放 PR 的未合入远程分支：** 删了上列 4 条；其余 37 条保留（另加 22 个
-  开放 PR 头）。保留原因见本节末。这些不是合入候选。
-- **工作树：** 本轮云环境只有 `/workspace` 在 `main` 的干净检出；未 reset 文档提到的
-  本地分叉 `cbde095`，未碰生产。
-- **保留的无 PR 未合入远程分支（37）及原因：**
+- **本轮已关并被取代：** #456→#465，#447→#466，#429/#427/#436→#468。冲突文档
+  草稿上一轮已关 12 个。**仍开且不合：** #395
+  （`fix/crypto-funding-settlement-mark-20260830`，funding settlement 决策
+  handoff，保持 draft）。本 PR（#464）只改本页。
+- **分支卫生：** 上一轮删除远程分支 80 条。本轮合入后删除源分支
+  `codex/research-library-200-v1`、`cursor/docs-remaining-1996`、
+  `cursor/product-learning-paths-fix-1996`、
+  `cursor/interface-onboarding-fix-1996`、`cursor/ops-docs-remaining-1996`
+  以及已合文档草稿源。未动 recovery/wire/controller/release 快照。
+- **无开放 PR 的未合入远程分支仍保留（默认不合 main）：**
   - 发布/回滚/快照/恢复前缀：`recovery/td-*`（3）、`wire/pm-snapshot-dataset*`（2）、
     `nicholashan/release-full-universe`、`agent/bootstrap-core-production-deploy`、
     `agent/production-reference-contracts-v1`、`archive/daily-info-contract-pr37-20260801`、
@@ -55,12 +62,16 @@ GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器�
     `codex/raw-probe-summary-minimal`、`codex/td-activate-5-probe-interfaces-20260817`、
     `codex/td-ci-shard-20260817`、`codex/td-fix-red-main-20260816`、
     `codex/td-reconcile-firecrawl-supplemental-test-20260816`、
+    `codex/interface-onboarding-v1`、`codex/product-learning-paths-v1`、
     `feat/frontend-theme-dark`、`fix/cn-session-freshness-20260828`、
-    `fix/firecrawl-bare-time-anchor`、`fix/rt-min-daily-scan-budget`。
+    `fix/firecrawl-bare-time-anchor`、`fix/rt-min-daily-scan-budget`、
+    以及已关文档草稿 `cursor/engineering-documentation-updates-*`。
   - 无关联 PR、吃不准：`codex/ashare-event-partition-success-receipt-union`、
     `codex/crypto-config-hash-asof-compat`、`codex/rtmin-500-atomic-v2`、
     `codex/rtmin500-readback-time-fix`、`codex/transport-failure-observability`、
     `demo/index-basic-onboarding`。
+- **工作树：** 本轮云环境只有 `/workspace`；未 reset 文档提到的本地分叉
+  `cbde095`，未碰生产文件、timer 或凭据。
 
 ## 2026-09-02 残余健康收口
 
