@@ -446,6 +446,41 @@ Haofei / Datas PM 锁定的计划与运维口径。不新增流程框架、不�
   **<15s** deploy check.
 - **empty ≠ success remains**（no fake fills）。
 - **Do not freeze the queue for source quality.**
+- **Daily acceptance = actual GZ deployment, not GitHub merge alone.**
+  Merge without GZ cut is incomplete. 每日汇报 / 验收必须以 **GZ running
+  SHA** + 适用时的 **dual catalog <15s** + **proving receipts**（vendor
+  实际返回行时的非空 SUCCESS）为准。`STATUS.md` / `main` tip 单独不是验收。
+- **Schedule must be executable under the vendor-external policy.** 核心可接
+  接口 2026-09-11 前；其余 vendor-reachable 2026-09-18 前；fund / fut / opt
+  另波。硬底线：2026-10-09 前全部可积接口已上 GZ，或已单列外部 blocker。
+  节奏约每个交易日 2–3 个接口。不得因 vendor quality 滑期。
+
+### 每日验收（GZ，不是 GitHub merge）
+
+GitHub merge、CI 绿、`STATUS.md` 更新、`main` tip 都不是当日验收。数据面
+当日完成必须同时具备：
+
+1. 目标 SHA 已切到 GZ `current`（A 股 / 适用平面分别读回）；
+2. 若本次是 catalog 变更：双认证 `GET /v1/catalog` 冷启动/重启对 **<15s**
+   （warm-only 不算）；
+3. proving receipts：vendor 实际返回行时必须是非空 SUCCESS；合同正确时的
+   empty / `provider_error` 记短外部-blocker 行，**不是**未完成，也不得
+   因此停发下一可接接口。
+
+Merge 而未做 GZ cut = incomplete。文档 tip 的 GZ cut 可以做，但不把
+`STATUS.md` 写成已验收。
+
+### 可执行排期（不得因源质量滑期）
+
+| 节点 | 必须完成 | 不得拿来滑期 |
+| --- | --- | --- |
+| 2026-09-11 | 核心可接接口已上 GZ（合同正确 + 已 cut） | vendor empty / `provider_error` |
+| 2026-09-18 | 其余 vendor-reachable 接口已上 GZ 或已单列外部 blocker | 等源“变稳定” |
+| 另波 | fund / fut / opt，不占用上述核心/可达窗口 | 与核心波混排或互相等待 |
+| 2026-10-09 | 全部可积接口已上 GZ，或已列出外部 blocker | 把外部 blocker 写成工程未完成 |
+
+节奏：约每个交易日 2–3 个可接接口。WIP=1 仍是盘中生产行为默认，但
+vendor emptiness **不得**冻结队列。本表不是 mass-unpause。
 
 ### 外部输入质量（单独列，不计入未完成）
 
@@ -1050,7 +1085,10 @@ does not authorize credential rotation or deletion of any account data.
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。
 
 双认证 `GET /v1/catalog` **<15s**（冷启动/重启对；warm-only 不算）是既有
-部署安全门，不是额外发布框架。文档 tip 的 GZ cut 可以做，但不构成数据面
+部署安全门，不是额外发布框架。**Daily acceptance = actual GZ deployment,
+not GitHub merge alone.** Merge without GZ cut is incomplete。每日汇报 /
+验收看 GZ running SHA + 适用时的 dual catalog 门 + proving receipts，不看
+`STATUS.md` / `main` tip。文档 tip 的 GZ cut 可以做，但不构成数据面
 目的变更；Pages 只在 `static/**` / `public-web/**` 变化时触发。盘中生产行为
 变更默认 WIP=1；vendor emptiness 不得冻结下一可接接口，见上文
 「Datas PM 接入口径」。

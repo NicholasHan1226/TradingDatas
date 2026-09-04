@@ -44,6 +44,8 @@ provider
 - 优先最小诚实合同（request shape + cadence + empty≠success）。不得为“等源变好”新增 cadence class、VIP transport、完整性重写、worker 上调或 catalog 超时变更；双认证 catalog <15s 仍是既有部署安全门。
 - 我们拥有 registry/shape、cadence/planner、fanout、activation、merge→GZ cut，以及 vendor 实际返回行时的非空 SUCCESS。我们不拥有把 vendor 数据变好、伪造非空、把 empty 写成 success，或等源“变稳定”再发下一可接接口。
 - 正确合同上 GZ 后，vendor-side empty/`provider_error` 只记短外部-blocker 行并继续下一可接接口；仅内部 shape/cadence 错误才重开。盘中生产行为变更默认 WIP=1，但 vendor emptiness 不得冻结队列。完整口径见 `docs/OPERATIONS.md`「Datas PM 接入口径」。
+- **Daily acceptance = actual GZ deployment, not GitHub merge alone.** Merge 而未 GZ cut = incomplete。每日汇报 / 验收 = GZ running SHA + 适用时 dual catalog <15s + proving receipts（vendor 返回行时非空 SUCCESS）。`STATUS.md` / `main` tip 单独不是验收。
+- **可执行排期（vendor-external，不得因源质量滑期）：** 核心可接接口 2026-09-11 前；其余 vendor-reachable 2026-09-18 前；fund / fut / opt 另波；硬底线 2026-10-09 前全部可积已上 GZ 或已单列外部 blocker。节奏约每个交易日 2–3 个接口。
 
 ## Phase 0 — clean-slate 基础
 
@@ -69,7 +71,7 @@ provider
 - 当前数据优先，历史回填只使用版本化、有预算上限、可中断续跑的 manifest；
 - activation wave 在执行前必须能从同一 registry 生成非零且有界的计划，但不要求人工逐项批准。
 
-退出条件不是“所有接口都 stable”，而是：每个已进入运行范围的数据集都有明确合同或明确 blocker；已证明可用的数据集能够持续采集和供内部消费者使用。vendor-side empty / `provider_error` 算明确外部 blocker，不算工程未完成，也不阻塞下一可接接口。
+退出条件不是“所有接口都 stable”，而是：每个已进入运行范围的数据集都有明确合同或明确 blocker；已证明可用的数据集能够持续采集和供内部消费者使用。vendor-side empty / `provider_error` 算明确外部 blocker，不算工程未完成，也不阻塞下一可接接口。Phase 1 的可执行日期底线见上节：2026-09-11 / 2026-09-18 / fund·fut·opt 另波 / 2026-10-09；不得因 vendor quality 滑期。GitHub merge 不是 Phase 1 完成；GZ `current` + proving receipts 才是。
 
 ## Phase 2 — 内部服务与自动恢复
 

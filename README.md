@@ -14,7 +14,7 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的公共金融数�
 
 用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 表达技术数据身份。账户权限是 endpoint scope、分类 allowlist 与运行限额的交集；后端已在 catalog/query 两条路径强制执行 `data_categories`，管理员控制台可配置，Account 只展示当前密钥真实生效的分类。旧 Token 缺字段时保留原访问范围，显式空列表不授权任何数据集。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
 
-接口接入按广度优先推进：每批 valid rows/receipts 立即入库积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级并排队修正该 dataset，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的能力保持显式暂停。`stable` 仍按 dataset 独立验证，但不是全部接口继续接入的总门禁。上游晚发、缺行、限频、文档≠现实或间歇 `provider_error` 是外部 blocker，单独列出；合同正确时不计入进度 slip / 未完成，也不冻结下一可接接口。empty ≠ success；不得伪造非空或等源“变稳定”再发。完整口径见 [docs/OPERATIONS.md](docs/OPERATIONS.md)「Datas PM 接入口径」。
+接口接入按广度优先推进：每批 valid rows/receipts 立即入库积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级并排队修正该 dataset，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的能力保持显式暂停。`stable` 仍按 dataset 独立验证，但不是全部接口继续接入的总门禁。上游晚发、缺行、限频、文档≠现实或间歇 `provider_error` 是外部 blocker，单独列出；合同正确时不计入进度 slip / 未完成，也不冻结下一可接接口。empty ≠ success；不得伪造非空或等源“变稳定”再发。每日验收是 GZ `current` + 适用时 dual catalog <15s + proving receipts，不是 GitHub merge 或 `STATUS.md` tip。排期底线 2026-09-11 / 2026-09-18 / fund·fut·opt 另波 / 2026-10-09，不得因源质量滑期。完整口径见 [docs/OPERATIONS.md](docs/OPERATIONS.md)「Datas PM 接入口径」。
 
 当前接入必须区分两个身份：`provider=tushare` 定义数据集与 provider-native payload，`transport_service=quicksync` 定义服务器实际连接、认证、权限返回、错误码和流控。Tushare 官方文档只作为 dataset/schema/cadence 参考；生产不能再按 `api.tushare.pro` 官方直连假设运行。
 

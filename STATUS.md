@@ -31,8 +31,15 @@ Haofei / Datas PM 2026-09-05 Asia/Shanghai 口径已写入核心入口：
   正确时的 empty / `provider_error` 是外部事实，不是重设计理由。
 - 正确合同上 GZ 后，vendor-side empty/`provider_error` 只记短外部-blocker
   行并继续下一可接接口；仅内部 shape/cadence 错误才重开。
+- **Daily acceptance = actual GZ deployment, not GitHub merge alone.**
+  Merge 而未 GZ cut = incomplete。每日汇报 / 验收 = GZ running SHA +
+  适用时 dual catalog <15s + proving receipts（vendor 返回行时非空
+  SUCCESS）。本页 / `main` tip 单独不是验收。
+- **可执行排期（不得因源质量滑期）：** 核心可接 2026-09-11；其余
+  vendor-reachable 2026-09-18；fund / fut / opt 另波；硬底线 2026-10-09
+  前全部可积已上 GZ 或已单列外部 blocker。节奏约每个交易日 2–3 个接口。
 
-文档 tip 的 GZ cut 可以做，但不改变数据面目的。Pages 未改
+文档 tip 的 GZ cut 可以做，但不改变数据面目的，也不把本页写成已验收。Pages 未改
 `static/**` / `public-web/**`，不应触发。下方 2026-09-04 园艺与更早段落
 仍是当时分层读回，不因本口径重写。
 

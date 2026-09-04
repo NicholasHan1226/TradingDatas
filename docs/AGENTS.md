@@ -25,4 +25,4 @@
 - 不记录 opening gate、交易、资金、持仓、风险、预测市场、DuckDB 或旧专用 route 为当前能力。Crypto 只可在独立 Binance 运行面合同中记录为隔离的只读 provider；它不改变公共 API、也不是交易能力。
 - 临时测试数字写入 `STATUS.md`；长期合同写入架构、API 或运维文档。
 - Git 历史足以追溯已删除旧计划；当前树不保留重复历史说明。
-- 接口接入与采集成功口径以 `OPERATIONS.md`「Datas PM 接入口径」为准：Vendor/input quality is immutable external；correct contract + empty/`provider_error` = 记一行后 MOVE ON；empty ≠ success（no fake fills）；不得为源质量发明 catalog <15s 以外的 release gate，也不得冻结队列。
+- 接口接入与采集成功口径以 `OPERATIONS.md`「Datas PM 接入口径」为准：Vendor/input quality is immutable external；correct contract + empty/`provider_error` = 记一行后 MOVE ON；empty ≠ success（no fake fills）；不得为源质量发明 catalog <15s 以外的 release gate，也不得冻结队列。每日验收是 GZ cut 不是 GitHub merge；排期底线 2026-09-11 / 2026-09-18 / fund·fut·opt 另波 / 2026-10-09，不得因源质量滑期。
