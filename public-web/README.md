@@ -94,9 +94,9 @@ Chinese/English editorial titles, orientations, data requirements and limitation
 These are attributed reading records, not 200 internally authored papers or
 full-text translations. Bibliographic verification is not a full-text review,
 replication, redistribution licence or production data-availability claim.
-There are 180 bilingual guides: 179 have six located sections, while Dechow/Dichev
-remains a four-section abstract-based orientation. The other 20 records are
-summary-only. The eight three-stage core journeys retain their 24 original works.
+There are 200 bilingual guides: 199 have six located sections, while Dechow/Dichev
+remains a four-section abstract-based orientation. No record is summary-only. The
+eight three-stage core journeys retain their 24 original works.
 `src/researchFiftyGuides.js` adds seven primary-source-located guides and
 `src/researchSixtyGuides.js` adds ten more; `src/researchSeventyGuides.js` and
 `src/researchEightyGuides.js` each add ten bounded primary-source guides. All 200 records now use explicit
@@ -104,16 +104,18 @@ per-work material selections (including intentional empty sets); unassigned
 records fail closed to no materials, never topic defaults. The 150 previously
 summary-only selections are in `src/researchSummaryMaterials.js`; this curation
 does not constitute 150 full-text reviews. See
-`../docs/design/research-180-guides-v17.md` for current source scope and acceptance.
+`../docs/design/research-200-guides-v18.md` for current source scope and acceptance.
 
 `src/researchNinetyGuides.js` and `src/researchHundredGuides.js` add twenty further
 bounded guides: eight asset-pricing, seven A-share/institutional-comparison and five
 alternative-data records. They retain the earlier three preparation links and
 seventeen intentional empty selections (75 linked records / 125 empty overall).
 `src/researchComparisonExpansion.js` adds 36 explicit comparisons after the earlier
-29, preserving their priority. Every guide has a comparison even after core-path
-neighbors are excluded. The v15 packet separates executable checks, blocked real
-browser acceptance, independent Datas PM approval and production release.
+29, preserving their priority. Later guide batches and
+`src/researchComparisons200.js` bring the library to 101 authored comparisons;
+every guide in the final completion batch has one. The v18 packet separates
+executable checks, visual browser acceptance, CI, publication and production
+release.
 
 Production discovery retains both languages, stable IDs and `guideSectionCount`
 but excludes article bodies. `ResearchArticle.jsx` requests one bilingual body
@@ -263,8 +265,8 @@ npm run audit:research -- --metadata --limit=10 --offset=0 --timeout-ms=8000
 ```
 
 The default is offline. Structural errors are separate from editorial review
-candidates (including the 20 summary-only records, repeated/short paragraphs and
-limited reading scope). Optional HTTPS link checks use system `curl`, at most two
+candidates (including repeated/short paragraphs and limited reading scope). Optional
+HTTPS link checks use system `curl`, at most two
 concurrent requests, timeout/response-size limits and verified TLS; HEAD falls
 back to a bounded GET for 405/501. Publisher metadata checks are serial, DOI-only
 and capped at 50 records per invocation. They flag registered title/author/year/

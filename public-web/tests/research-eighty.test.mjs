@@ -15,8 +15,8 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   assert.equal(Object.keys(additions).length, 20);
   assert.equal(papers.length, 200);
   assert.equal(new Set(papers.map(p => p.id)).size, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 180);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 179);
+  assert.equal(Object.keys(researchReaderNotes).length, 200);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 199);
   for (const [title, guide] of Object.entries(additions)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
     assert.equal(researchReaderNotes[title], guide);
@@ -37,7 +37,7 @@ test("two disjoint batches add twenty bounded bilingual guides within the same 2
   }
   const audit = auditContent();
   assert.deepEqual(audit.errors, []);
-  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 20);
+  assert.equal(audit.review.filter(r => r.code === "summary_only").length, 0);
 });
 
 test("measurement, edition and source-access limits survive expansion", () => {
@@ -55,8 +55,8 @@ test("measurement, edition and source-access limits survive expansion", () => {
   }
 });
 
-test("85 authored comparison pairs resolve to real works and have localized reasons", () => {
-  assert.equal(researchConnections.length, 85);
+test("101 authored comparison pairs resolve to real works and have localized reasons", () => {
+  assert.equal(researchConnections.length, 101);
   const seen = new Set();
   for (const pair of researchConnections) {
     assert.notEqual(pair.left, pair.right);
@@ -81,11 +81,8 @@ test("all twenty additions have bounded comparisons using metadata only", () => 
   assert.deepEqual(comparisonReadings(catalog.find(p => p.title === "Time Series Momentum"), []), []);
 });
 
-test("a guide without an authored comparison falls back to a summary-only companion in the public index", () => {
+test("complete guides do not fabricate a summary-only comparison fallback", () => {
   const catalog = papers.map(projectResearchIndex);
-  const guide = catalog.find((paper) => paper.guideSectionCount >= 4 && !researchConnections.some((item) => item.left === paper.title || item.right === paper.title));
-  assert.ok(guide);
-  const readings = comparisonReadings(guide, catalog);
-  assert.ok(readings.length);
-  assert.ok(readings.every((item) => !item.paper.guideSectionCount));
+  assert.ok(catalog.every((paper) => paper.guideSectionCount >= 4));
+  assert.deepEqual(comparisonReadings({ id: "missing", title: "Uncurated work", guideSectionCount: 6 }, catalog), []);
 });

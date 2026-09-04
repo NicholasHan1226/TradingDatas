@@ -17,8 +17,9 @@ import { researchMacro120 } from "./researchMacro120.js";
 import { researchBatchOne140 } from "./researchBatchOne140.js";
 import { researchBatchTwo160 } from "./researchBatchTwo160.js";
 import { researchBatchThree180 } from "./researchBatchThree180.js";
+import { researchBatchFour200 } from "./researchBatchFour200.js";
 // Source-backed editorial notes, separate from internal preparation/QA profiles.
-export const researchReaderNotes = { ...researchEditorial, ...researchDeepReads, ...researchGuideDepthExpansion, ...researchAdditionalGuides, ...researchFundamentalsMicrostructureGuides, ...researchMethodsMarketsGuides, ...researchCorporateGuides, ...researchFiftyGuides, ...researchSixtyGuides, ...researchSeventyGuides, ...researchEightyGuides, ...researchNinetyGuides, ...researchHundredGuides, ...researchMicrostructure120, ...researchCrypto120, ...researchMacro120, ...researchBatchOne140, ...researchBatchTwo160, ...researchBatchThree180 };
+export const researchReaderNotes = { ...researchEditorial, ...researchDeepReads, ...researchGuideDepthExpansion, ...researchAdditionalGuides, ...researchFundamentalsMicrostructureGuides, ...researchMethodsMarketsGuides, ...researchCorporateGuides, ...researchFiftyGuides, ...researchSixtyGuides, ...researchSeventyGuides, ...researchEightyGuides, ...researchNinetyGuides, ...researchHundredGuides, ...researchMicrostructure120, ...researchCrypto120, ...researchMacro120, ...researchBatchOne140, ...researchBatchTwo160, ...researchBatchThree180, ...researchBatchFour200 };
 
 export const sourceSpecificReaderLimits = {
   "Modeling and Forecasting Realized Volatility": { en: "Sampling frequency, trading sessions, and microstructure noise affect realized-volatility measurement.", zh: "采样频率、交易时段与微观结构噪声会影响已实现波动率的测量。" },

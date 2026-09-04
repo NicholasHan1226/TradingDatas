@@ -33,7 +33,7 @@ test("accrual orientation stays bounded to the accessible abstract and names fir
     assert.equal(section.reference.url, guide.evidenceUrl);
   }
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 180);
+  assert.equal(Object.keys(researchReaderNotes).length, 200);
 });
 
 test("internal-note guard covers visible headings, summaries and limits, not just paragraphs", () => {

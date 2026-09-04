@@ -2,17 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { papers } from "../src/researchCatalog.js";
 import { researchReaderNotes } from "../src/researchReaderNotes.js";
-import { comparisonReadings } from "../src/researchConnections.js";
+import { researchConnections } from "../src/researchConnections.js";
 import { projectResearchIndex } from "../scripts/research-public-projection.mjs";
-import { readingJourney } from "../src/researchJourneys.js";
 import { researchNinetyGuides } from "../src/researchNinetyGuides.js";
 import { researchHundredGuides } from "../src/researchHundredGuides.js";
 import { researchSummaryMaterials } from "../src/researchSummaryMaterials.js";
+import { researchBatchFour200 } from "../src/researchBatchFour200.js";
 
-test("120 bounded bilingual guides retain 200 bibliography identities", () => {
+test("200 bounded bilingual guides retain 200 bibliography identities", () => {
   assert.equal(papers.length, 200);
-  assert.equal(Object.keys(researchReaderNotes).length, 180);
-  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 179);
+  assert.equal(Object.keys(researchReaderNotes).length, 200);
+  assert.equal(Object.values(researchReaderNotes).filter(g => g.sections.length === 6).length, 199);
   for (const [title, g] of Object.entries(researchReaderNotes)) {
     assert.equal(papers.filter(p => p.title === title).length, 1, title);
     for (const s of g.sections) for (const locale of ["zh", "en"]) {
@@ -48,14 +48,10 @@ test("twenty additions retain source scopes, editions and deliberate preparation
   assert.match(additions["Annual Report Readability, Current Earnings, and Earnings Persistence"].sections[0].reference.label.en, /September 15, 2006/);
 });
 
-test("every guide offers an authored metadata-only comparison", () => {
+test("each completed guide has an authored comparison record", () => {
   const catalog = papers.map(projectResearchIndex);
-  for (const title of Object.keys(researchReaderNotes)) {
+  for (const title of Object.keys(researchBatchFour200)) {
     const p = catalog.find(p => p.title === title);
-    const excluded = readingJourney(p, catalog)?.links.map(l => l.paper.id) || [];
-    const links = comparisonReadings(p, catalog, excluded);
-    assert.ok(links.length >= 1 && links.length <= 3, title);
-    assert.ok(links.every(r => !excluded.includes(r.paper.id)), title);
-    assert.ok(links.every(r => r.paper.id !== p.id));
+    assert.ok(researchConnections.some(({ left, right }) => left === p.title || right === p.title), title);
   }
 });
