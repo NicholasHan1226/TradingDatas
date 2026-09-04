@@ -31,10 +31,9 @@ GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器�
   service/消费者 readback）。#467/#468 是文档；#446/#466/#465 是公共站。合入
   不会自动部署 GZ，本环境无 SSH，本页不假装已发布。
 - **Cloudflare：** Actions `Deploy to Cloudflare Pages` 最近一次成功 run 落在
-  `27f69fcd`（#465）；`deploy-admin` 与 `deploy-public` 均为 success，含公开
-  路由/静态资源 readback。同一 workflow 此前已对 `3a8d8213`（#466）、
-  `bffa3b0c`（#438）、`92876503`（#446）成功。Actions 成功不是独立业务
-  readback，也不证明邮箱登录已对真实用户开放。
+  `57c20aa0`（#468）；此前 `27f69fcd`（#465）、`3a8d8213`（#466）、
+  `bffa3b0c`（#438）、`92876503`（#446）也都 success。Actions 成功不是独立
+  业务 readback，也不证明邮箱登录已对真实用户开放。
 - **#350 / #378：** 调度合同已由 PR #378（`cursor/on-demand-schedule-350-ef7c`，
   2026-08-29）合入 main，不是「待合入」。9 月 2 日文档基线 `f74a26d` 在该合入之后。
 - **本轮已关并被取代：** #456→#465，#447→#466，#429/#427/#436→#468。冲突文档
@@ -519,7 +518,7 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 5. 已合入远程源分支已在 2026-09-04 删除（80 条）。无开放 PR 的未合入远程分支
    仍保留 recovery/agent/wire/release 与吃不准的关闭 PR 分支；
    `fix/rt-min-daily-scan-budget`、`fix/firecrawl-bare-time-anchor` 仍在 origin，
-   不是合入候选。开放 PR #446/#447/#456 等 Datas PM，本次未合并。
+   不是合入候选。#446/#465/#466/#467/#468 已合入 main；仅 #395 仍开着。
 6. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
    报告；普通变更由 Git history 追溯。
 7. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
