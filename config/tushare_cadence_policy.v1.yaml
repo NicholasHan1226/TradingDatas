@@ -549,17 +549,35 @@ entries:
   source_document_sha256: a467f14e2e8cdf109c9d8aebf93d26894661130bb34e96e08c6e893a71a57211
   reason_code: reviewed_contract_exact
 - api_name: margin
+  # Official: 交易所于每天8点30左右更新上一日数据.  Already
+  # activation_state=active.  daily_reference 00:30 requests today's
+  # unpublished trade_date, records trusted-empty, and
+  # backfill_start_policy=none never retries that date (last SUCCESS
+  # ~2026-07-29).  postclose_daily would still request today after
+  # 16:30, which is also unpublished (T+1 08:30).  Empty ≠ success.
+  # SUCCESS needs a previous-open-day-after-08:30 window the eight
+  # cadence classes cannot express.  Keep daily_reference; do not
+  # pretend a cadence swap produces rows.
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: c0843ebeebda7ef71e75b67e88d959a5390077eb6c10b7c6e0d70b1aa55c8fb6
   reason_code: reviewed_contract_exact
 - api_name: margin_detail
+  # Same official T+1 08:30 previous-day publish as margin.  Already
+  # active.  Same trusted-empty cover.  Empty ≠ success.  Not the
+  # #454 same-day-after-close pattern.  Keep daily_reference.
   cadence_class: daily_reference
   freshness_sla_seconds: 86400
   source_document_sha256: 2545053ff91ee46e10cff4699baed7357bb498b35c51d59bf3240d7f7bed5274
   reason_code: reviewed_contract_exact
 - api_name: margin_secs
-  cadence_class: daily_reference
+  # Official: 每天盘前更新 (same-day list before open).  Already
+  # activation_state=active.  daily_reference 00:30 requests today's
+  # unpublished 盘前 partition and treats empty as covered.  Empty ≠
+  # success.  postclose_daily keeps the trade_date snapshot, uses the
+  # trade calendar, and collects after 16:30 on open days, after 盘前
+  # publish.  Keep activation_state=active.
+  cadence_class: postclose_daily
   freshness_sla_seconds: 86400
   source_document_sha256: 879badbdf09ff989d418119015d79821af7676775620b5fa6fa2accefaf33870
   reason_code: reviewed_contract_exact

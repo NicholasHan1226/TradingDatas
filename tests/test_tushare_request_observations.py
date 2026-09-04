@@ -497,6 +497,19 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
     assert _contract(bundle, "forecast")["fanout"]["strategy"] == "none"
     assert "ann_date" in _entry(observations, "forecast")["parameters"]
     assert "ts_code" not in _entry(observations, "forecast")["parameters"]
+    # Live ids stay trade_date-only snapshots.  margin / margin_detail are
+    # official T+1 08:30 previous-day publishes, so postclose still empties
+    # today.  Empty ≠ success.  margin_secs is 盘前 and can succeed after
+    # 16:30 on an open day.
+    assert _contract(bundle, "margin")["cadence_class"] == "daily_reference"
+    assert _contract(bundle, "margin_detail")["cadence_class"] == "daily_reference"
+    assert _contract(bundle, "margin_secs")["cadence_class"] == "postclose_daily"
+    for api_name in ("margin", "margin_detail", "margin_secs"):
+        assert _contract(bundle, api_name)["request_template"] == {
+            "trade_date": "${window.trade_date}"
+        }
+        assert _contract(bundle, api_name)["fanout"]["strategy"] == "none"
+        assert "trade_date" in _entry(observations, api_name)["parameters"]
 
     default_observations = deepcopy(observations)
     _entry(default_observations, "express")["parameters"]["ts_code"].pop(

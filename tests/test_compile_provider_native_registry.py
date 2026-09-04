@@ -1746,6 +1746,41 @@ def test_forecast_and_fina_audit_use_success_capable_event_contracts() -> None:
     assert len(paused) == 55
 
 
+def test_margin_family_keeps_live_ids_and_only_margin_secs_is_postclose() -> None:
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    datasets = {
+        dataset["dataset_id"]: dataset for dataset in registry["datasets"]
+    }
+    expected = {
+        "cn.dataset.margin": ("margin", "daily_reference"),
+        "cn.dataset.margin_detail": ("margin_detail", "daily_reference"),
+        "cn.dataset.margin_secs": ("margin_secs", "postclose_daily"),
+    }
+    for dataset_id, (api_name, cadence) in expected.items():
+        dataset = datasets[dataset_id]
+        binding = dataset["provider_bindings"][0]
+        assert binding["api_name"] == api_name
+        assert dataset["cadence_class"] == cadence
+        assert binding["activation_state"] == "active"
+        assert binding["entitlement_state"] == "active"
+        assert binding["probe_state"] == "executable"
+        assert binding["ingest_contract_state"] == "ready"
+        assert binding["request_template"] == {"trade_date": "${window.trade_date}"}
+        assert binding["fanout"] == {"strategy": "none"}
+    paused = {
+        dataset["dataset_id"]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["activation_state"] == "paused"
+    }
+    assert set(expected).isdisjoint(paused)
+    assert "cn.dataset.fund_daily" in paused
+    assert "cn.dataset.index_daily" in paused
+    assert "cn.dataset.pledge_detail" in paused
+    assert len(paused) == 55
+
+
 def test_wave7_nowindow_and_seed_unlock_rt_min_daily_activation() -> None:
     observations = _observations()
     active_evidence = observations["active_evidence"]

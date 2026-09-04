@@ -350,10 +350,16 @@ def test_reviewed_margin_contracts_bind_real_day_partition_identities() -> None:
         "margin_detail": ["trade_date", "ts_code"],
         "margin_secs": ["trade_date", "ts_code"],
     }
+    expected_cadence = {
+        "margin": "daily_reference",
+        "margin_detail": "daily_reference",
+        "margin_secs": "postclose_daily",
+    }
     for api_name, primary_key in expected_keys.items():
         contract = by_api[api_name]
         assert contract["schema_version"] == "2.0.0"
         assert contract["primary_key"] == primary_key
+        assert contract["cadence_class"] == expected_cadence[api_name]
         assert contract["as_of_field"] == "trade_date"
         assert contract["range_field"] == "trade_date"
         assert contract["partition_field"] == "trade_date"

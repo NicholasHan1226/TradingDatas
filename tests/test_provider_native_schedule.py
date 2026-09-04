@@ -4321,6 +4321,16 @@ _CASHFLOW_EXPRESS_DATASET_IDS = (
 )
 _FORECAST_DATASET_ID = "cn.dataset.forecast"
 _FINA_AUDIT_DATASET_ID = "cn.dataset.fina_audit"
+_MARGIN_DATASET_IDS = (
+    "cn.dataset.margin",
+    "cn.dataset.margin_detail",
+    "cn.dataset.margin_secs",
+)
+_MARGIN_T1_BLOCKED_DATASET_IDS = (
+    "cn.dataset.margin",
+    "cn.dataset.margin_detail",
+)
+_MARGIN_SECS_DATASET_ID = "cn.dataset.margin_secs"
 
 
 def test_stk_limit_and_adj_factor_stay_active_and_plan_postclose(
@@ -4647,6 +4657,129 @@ def test_forecast_and_fina_audit_empty_receipts_are_not_success(
         execute=True,
         executor=execute,
         cadence_class="event",
+    )
+    executed = {
+        item.dataset_id: item.state
+        for item in result.executed
+        if item.dataset_id in target_ids
+    }
+    assert executed == {dataset_id: "empty" for dataset_id in target_ids}
+    assert "success" not in executed.values()
+
+
+def test_margin_family_stays_active_and_only_margin_secs_plans_postclose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    paused = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].activation_state == "paused"
+    }
+    assert paused == _PAUSED_DATASET_IDS
+    assert set(_MARGIN_DATASET_IDS).isdisjoint(paused)
+    for dataset_id in _MARGIN_DATASET_IDS:
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.dataset_id == dataset_id
+        assert binding.activation_state == "active"
+        assert binding.entitlement_state == "active"
+        assert binding.probe_state == "executable"
+        assert binding.fanout is not None
+        assert binding.fanout.strategy == "none"
+        assert dict(binding.request_template) == {"trade_date": "${window.trade_date}"}
+    assert registry.resolve("cn.dataset.margin").cadence_class == "daily_reference"
+    assert registry.resolve("cn.dataset.margin_detail").cadence_class == (
+        "daily_reference"
+    )
+    assert registry.resolve(_MARGIN_SECS_DATASET_ID).cadence_class == "postclose_daily"
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        activation_wave="breadth_observed_20260815",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
+    )
+    planned = {
+        plan.dataset_id: (plan.cadence_class, dict(plan.request_window))
+        for plan in result.plans
+        if plan.dataset_id in _MARGIN_DATASET_IDS
+    }
+    assert planned == {
+        "cn.dataset.margin": ("daily_reference", {"trade_date": "20260720"}),
+        "cn.dataset.margin_detail": ("daily_reference", {"trade_date": "20260720"}),
+        "cn.dataset.margin_secs": ("postclose_daily", {"trade_date": "20260720"}),
+    }
+    skipped = {item.dataset_id: item.state for item in result.skipped}
+    for dataset_id in _MARGIN_DATASET_IDS:
+        assert skipped.get(dataset_id) != "paused"
+    assert skipped.get("cn.news.flash") == "paused"
+    assert skipped.get("cn.dataset.fund_daily") == "paused"
+    assert skipped.get("cn.dataset.index_daily") == "paused"
+
+
+def test_margin_and_margin_detail_t1_publish_is_a_cadence_blocker() -> None:
+    registry = _active_registry()
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    daily = schedule.cadences["daily_reference"]
+    postclose = schedule.cadences["postclose_daily"]
+    assert daily.availability_after_local.hour == 0
+    assert daily.availability_after_local.minute == 30
+    assert daily.backfill_start_policy == "none"
+    assert postclose.availability_after_local.hour == 16
+    assert postclose.availability_after_local.minute == 30
+    assert postclose.backfill_start_policy == "none"
+    assert postclose.correction_overlap_days == 0
+    for dataset_id in _MARGIN_T1_BLOCKED_DATASET_IDS:
+        dataset = registry.resolve(dataset_id)
+        assert dataset.cadence_class == "daily_reference"
+        assert dataset.empty_data_policy == "allowed"
+        binding = dataset.provider_bindings[0]
+        assert binding.activation_state == "active"
+        assert dict(binding.request_template) == {"trade_date": "${window.trade_date}"}
+
+
+def test_margin_family_empty_receipts_are_not_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    target_ids = set(_MARGIN_DATASET_IDS)
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        if plan.dataset_id in target_ids:
+            return scheduler.DatasetResult(plan.dataset_id, plan.provider, "empty", 3)
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    result = scheduler.run_schedule(
+        registry=None,
+        schedule=None,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+        activation_wave="breadth_observed_20260815",
+        activation_wave_manifest=ACTIVATION_WAVES,
+        registry_source_path=TARGET_REGISTRY,
+        schedule_source_path=SCHEDULE_CONFIG,
     )
     executed = {
         item.dataset_id: item.state

@@ -164,7 +164,7 @@
     {
       "activation": "active",
       "apiName": "margin_secs",
-      "cadence": "daily_reference",
+      "cadence": "postclose_daily",
       "category": "flow-positioning",
       "datasetId": "cn.dataset.margin_secs",
       "entitlement": "active",
