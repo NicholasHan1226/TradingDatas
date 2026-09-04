@@ -61,6 +61,21 @@ schema 2 候选同样只移除缺失的 `trade_time_desc` 响应字段，保留 
 runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor watermark，采集
 增量不会使未过期的 catalog cursor 失效。
 
+每个 catalog row 的 `limits` 是该数据集的查询预算投影，不是账号套餐额度，也不是
+覆盖或 freshness 证明。当前固定三键：
+
+- `limits.max_page_size`：单页 `limit` 上限（dataset 合同；当前 A 股 registry 默认 500）
+- `limits.max_in_values`：任一 `filters.<field>.in` 数组长度上限（来自同一 registry
+  的 `query_defaults.max_in_values`，当前默认 500）。#458 起写入每一行，避免消费者把
+  “目录未声明”误判为“禁止 `in` 过滤”
+- `limits.max_lookback_days`：可请求回看天数上限（dataset 合同；当前 A 股 registry
+  默认 36500）
+
+消费者必须从认证 catalog 读回实际值，不得硬编码仓库默认值。Git 合入 #458 不等于
+广州 GZ 已切换；生产是否露出 `max_in_values` 仍须 exact-main 发布后的认证 catalog
+readback。`limits` 不含 `max_selected_fields`；显式 `fields` 数量预算只在 query
+合同中强制。
+
 ## POST /v1/query
 
 每一页返回的行都必须在同一只读 SQLite 快照内通过自身 `receipt_id` 的身份、
@@ -121,7 +136,7 @@ failed 终态，或 8 次重选仍不能形成有效页时，仍返回 `503 serv
 }
 ```
 
-省略 `fields` 或传空数组时返回完整 provider-native payload；显式字段、过滤和排序必须受 registry allowlist 与预算限制。
+省略 `fields` 或传空数组时返回完整 provider-native payload；显式字段、过滤和排序必须受 registry allowlist 与预算限制。`limit` 不得超过该行 `limits.max_page_size`；任一 `filters.<field>.in` 不得超过 `limits.max_in_values`；显式 `fields` 数量不得超过 registry `query_defaults.max_selected_fields`（当前默认 100，不出现在 catalog `limits`）。超预算返回 HTTP 413、`error.code=budget_exceeded`，`retryable=false`，不得截断后继续。未知字段或非法算子仍是 400 `invalid_request`。
 
 响应至少包含：
 
