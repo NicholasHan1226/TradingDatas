@@ -1,10 +1,32 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-04 21:35 CST（Finance 三面园艺；本地 / GitHub / 广州
-immutable `current` / runtime 分开记录）。审计时刻 `origin/main` 为
-`4e98eaa602425cae31aea117928e237d5dd7dd48`（#470）。本页合入后 GitHub HEAD
-会再前进一步，仍是文档层，**不**构成新的 GZ 发布。历史决策见
-[`docs/adr/`](docs/adr/)，事故与验收复盘见 [`docs/reports/`](docs/reports/)。
+最后更新：2026-09-05 00:35 CST（认证 catalog/query 读回 + ann_date 事件族冻结；
+本地 / GitHub / 广州 immutable `current` / runtime / receipt 分开记录）。
+审计时刻仓库 `origin/main` 为
+`d6e90fe6e423df4f149e76182d2d4db23ba204b6`（#471）。本页合入后 GitHub HEAD
+会再前进一步，仍是文档层，**不**构成新的 GZ 发布。#454–#463 已在该
+`current` 上运行。历史决策见 [`docs/adr/`](docs/adr/)，本轮读回见
+[`docs/reports/2026-09-05-ann-date-event-readback.md`](docs/reports/2026-09-05-ann-date-event-readback.md)。
+
+## 2026-09-05 00:28–00:35 CST 认证读回与事件族冻结
+
+- **生产 files：** `current` =
+  `d6e90fe6e423df4f149e76182d2d4db23ba204b6`，`verify-current`
+  `verified=true`（`file_count=1050`，`tree=215f9fe6…`）。匿名 catalog **401**；
+  认证 catalog **200**，192 项：success 81 / empty 47 / paused 56 /
+  unobserved 4 / stale 3 / failed 1（`global.news.flash`）。
+- **冻结家族：** `income` / `balancesheet` / `cashflow` / `express` /
+  `fina_indicator` / `fina_audit`（已有 `partition_continuation`，
+  `max_batches_per_run=1`）。**不**选 `rt_min_daily`（success/valid，
+  2026-09-04 unique batches 380/1195）。
+- **跨周期：** income `20260830` unique success/empty `batch_index` **297/5976**
+  （2026-08-30 报告为 10/5971）。T0→T1 timer：income receipts 5850→5851，
+  最新窗从 `20260905` 切回 continuation `20260904`。
+- **认证 query：** cashflow / fina_audit HTTP 200、5 行、lineage complete、
+  receipt 绑定，`data_through=2026-09-04T16:29:04.997081Z`；quality 因
+  `response_completeness_unverified` 为 degraded。income 最新窗合法 empty 时
+  默认 query 0 行，不是采集失败。不声明全宇宙 stable。
+- 本轮**没有**改 registry/Python、**没有** exact-main / switch-current。
 
 ## 2026-09-04 21:35 CST 三面园艺与验收
 
@@ -557,11 +579,15 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 下一步
 
-1. #350/#378 调度合同已合入 main（2026-08-29）。9 月 2 日文档基线 `f74a26d`
-   之后的 Git 历史包含该合入；这不等于 9 月 3–4 日 #454–#463 已发布到 GZ。
-   `top10_floatholders` 仍 parked（无 ann_date 窗，不是本批同一 cadence 决策）。
-   全宇宙覆盖靠 resumable_fanout 跨周期收敛，不是单轮扫完。
-   #454–#463 若要在 A 股生产生效，须另做 exact-main 发布与认证 readback。
+1. #350/#378 与 #454–#463 已在 GZ `current=d6e90fe6` 上运行；2026-09-05
+   00:28–00:35 CST 认证 catalog/query 已读回，见
+   [`docs/reports/2026-09-05-ann-date-event-readback.md`](docs/reports/2026-09-05-ann-date-event-readback.md)。
+   冻结的 ann_date 事件族靠既有 `partition_continuation` 跨周期收敛
+   （`20260830` 已观察到 297/5976 unique batches），**不是**「未发 GZ」、
+   也不是单轮扫完。不要为加速而改 `max_batches_per_run`（会换 config hash、
+   丢掉已开始日期的续采身份）。`top10_floatholders` 仍是 on_demand /
+   unobserved（无 ann_date 窗，不是本族）。income 最新空窗时默认 query 0 行
+   保持诚实 empty，不单独立项改 query 合同。
 2. 依 #354 新诊断字段观察 firecrawl 失败类别分布（timeout / refused / other），
    决定 timeout_ms 上调或换源；顺手改进 validation_failed 的空
    `validation_reasons` 缺口。
