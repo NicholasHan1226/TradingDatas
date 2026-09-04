@@ -203,6 +203,13 @@ release 的固定 schedule policy：配置开窗前或非配置工作日，以�
 
 catalog 和 query 只读 SQLite。缺数据库、缺表、缺 receipt、损坏或 metadata 不一致时 fail closed；不得同步调用 provider 或回退旧文件/旧数据库。
 
+query 的权威在同一只读快照内分两层，不能互相替代：
+
+1. **dataset 级 runtime 投影**：catalog/query 的 freshness、quality、`metadata.receipt_id` 与 `lineage` 来自当前可信 receipt cohort。最新成功回执只能描述当前 run，不能给历史行改写 provenance。
+2. **页级行回执校验**：每个成功返回页上的每一行必须用自身 `receipt_id` 通过 dataset/provider、success 状态与完整采集序列校验。缺失、畸形、跨 provider 或不完整 execution 一律 `503 service_unavailable`，不得把最新 dataset 回执套到该行上，也不得在 `lineage.complete=true` 后继续返回该行。空页没有行回执可校验。
+
+可选 `include_receipt_proofs` 只决定是否输出 `metadata.row_receipt_proofs`，并额外要求整页来自单一采集序列；它不开关第 2 层校验。默认查询仍允许同页混合多个有效历史 execution。合同与 503 语义见 `docs/API.md`；运维诊断见 `docs/OPERATIONS.md`。
+
 API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。
 
 ## 运行面隔离与未来扩展
