@@ -654,7 +654,7 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     forecast = _entry(plan, "forecast")
     assert forecast["probe_state"] == "executable"
     assert forecast["probe_block_reasons"] == []
-    assert forecast["params"] == {"ann_date": "20260718"}
+    assert forecast["params"] == {"ann_date": "20260721"}
     assert "600000.SH" not in yaml.safe_dump(plan["provenance"])
     assert plan["provenance"]["seed_authorities"] == [
         {

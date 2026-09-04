@@ -823,7 +823,7 @@ def test_partial_https_evidence_promotes_only_its_verified_cohort() -> None:
         bindings[api_name]["activation_state"] == "active"
         for api_name in active_evidence
     )
-    assert bindings["forecast"]["activation_state"] == "paused"
+    assert bindings["pledge_detail"]["activation_state"] == "paused"
 
 
 def test_partial_https_evidence_rejects_executable_coverage_drift() -> None:
@@ -869,7 +869,7 @@ def test_raw_probe_evidence_promotes_only_its_verified_cohort() -> None:
         for dataset in registry["datasets"]
     }
     assert bindings["major_news"]["activation_state"] == "active"
-    assert bindings["forecast"]["activation_state"] == "paused"
+    assert bindings["pledge_detail"]["activation_state"] == "paused"
 
 
 def _raw_cb_dependent_evidence(
@@ -1049,7 +1049,7 @@ def test_raw_probe_evidence_executable_scope_promotes_fresh_eligible_api_only() 
     # The raw result is a strict executable subset; unrelated prior active
     # evidence remains active even though it is absent from this cohort.
     assert bindings["major_news"]["activation_state"] == "active"
-    assert bindings["forecast"]["activation_state"] == "paused"
+    assert bindings["pledge_detail"]["activation_state"] == "paused"
 
 
 def test_raw_probe_evidence_executable_scope_rejects_non_executable_result_api() -> None:
@@ -1239,7 +1239,7 @@ def test_raw_probe_evidence_accepts_a_plan_subset_of_executable_contracts() -> N
         for dataset in registry["datasets"]
     }
     assert bindings["major_news"]["activation_state"] == "active"
-    assert bindings["forecast"]["activation_state"] == "paused"
+    assert bindings["pledge_detail"]["activation_state"] == "paused"
 
 
 def test_raw_probe_evidence_rejects_sparse_summary_count_drift() -> None:
@@ -1742,7 +1742,7 @@ def test_forecast_and_fina_audit_use_success_capable_event_contracts() -> None:
     assert "cn.dataset.forecast" not in paused
     assert "cn.dataset.fina_audit" not in paused
     assert "cn.dataset.fund_daily" in paused
-    assert "cn.news.flash" in paused
+    assert "cn.dataset.pledge_detail" in paused
     assert len(paused) == 55
 
 
