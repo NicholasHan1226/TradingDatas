@@ -2625,6 +2625,7 @@ def test_schedule_config_has_no_dataset_or_provider_api_lists() -> None:
         "session_minute",
         "postclose_daily",
         "daily_reference",
+        "prior_open_morning",
         "weekly",
         "monthly",
         "quarterly_reporting",
@@ -2643,6 +2644,9 @@ def test_schedule_config_has_no_dataset_or_provider_api_lists() -> None:
     )
     assert schedule.cadences["postclose_daily"].calendar is not None
     assert schedule.cadences["postclose_daily"].backfill_chunk_span_days == 1
+    assert schedule.cadences["prior_open_morning"].calendar is not None
+    assert schedule.cadences["prior_open_morning"].current_open_day_lag == 1
+    assert schedule.cadences["prior_open_morning"].availability_after_local.hour == 8
     assert schedule.cadences["daily_reference"].future_horizon_days == 1
     assert schedule.cadences["on_demand"].automatic is False
 
@@ -4068,7 +4072,11 @@ def test_breadth_observed_20260815_is_hash_bound_and_contract_ready() -> None:
     for dataset_id in wave.dataset_ids:
         dataset = registry.resolve(dataset_id)
         binding = dataset.provider_bindings[0]
-        assert dataset.cadence_class in {"daily_reference", "postclose_daily"}
+        assert dataset.cadence_class in {
+            "daily_reference",
+            "postclose_daily",
+            "prior_open_morning",
+        }
         assert dataset.primary_key
         assert dataset.partition_field == "trade_date"
         assert binding.entitlement_state == "active"
@@ -4089,7 +4097,12 @@ def test_breadth_observed_20260815_dry_run_plans_each_dataset(
     _database(db_path)
     registry = _active_registry()
     with sqlite3.connect(db_path) as conn:
-        _seed_calendar(monkeypatch, conn, registry, {date(2026, 8, 14): True})
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 8, 13): True, date(2026, 8, 14): True},
+        )
         conn.commit()
 
     result = scheduler.run_schedule(
@@ -4667,7 +4680,7 @@ def test_forecast_and_fina_audit_empty_receipts_are_not_success(
     assert "success" not in executed.values()
 
 
-def test_margin_family_stays_active_and_only_margin_secs_plans_postclose(
+def test_margin_family_stays_active_and_t1_plans_prior_open_morning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4689,16 +4702,21 @@ def test_margin_family_stays_active_and_only_margin_secs_plans_postclose(
         assert binding.fanout is not None
         assert binding.fanout.strategy == "none"
         assert dict(binding.request_template) == {"trade_date": "${window.trade_date}"}
-    assert registry.resolve("cn.dataset.margin").cadence_class == "daily_reference"
+    assert registry.resolve("cn.dataset.margin").cadence_class == "prior_open_morning"
     assert registry.resolve("cn.dataset.margin_detail").cadence_class == (
-        "daily_reference"
+        "prior_open_morning"
     )
     assert registry.resolve(_MARGIN_SECS_DATASET_ID).cadence_class == "postclose_daily"
 
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
     with sqlite3.connect(db_path) as conn:
-        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 17): True, date(2026, 7, 20): True},
+        )
         conn.commit()
 
     result = scheduler.run_schedule(
@@ -4718,8 +4736,8 @@ def test_margin_family_stays_active_and_only_margin_secs_plans_postclose(
         if plan.dataset_id in _MARGIN_DATASET_IDS
     }
     assert planned == {
-        "cn.dataset.margin": ("daily_reference", {"trade_date": "20260720"}),
-        "cn.dataset.margin_detail": ("daily_reference", {"trade_date": "20260720"}),
+        "cn.dataset.margin": ("prior_open_morning", {"trade_date": "20260717"}),
+        "cn.dataset.margin_detail": ("prior_open_morning", {"trade_date": "20260717"}),
         "cn.dataset.margin_secs": ("postclose_daily", {"trade_date": "20260720"}),
     }
     skipped = {item.dataset_id: item.state for item in result.skipped}
@@ -4730,11 +4748,66 @@ def test_margin_family_stays_active_and_only_margin_secs_plans_postclose(
     assert skipped.get("cn.dataset.index_daily") == "paused"
 
 
-def test_margin_and_margin_detail_t1_publish_is_a_cadence_blocker() -> None:
+def test_margin_t1_requests_previous_open_day_only_after_0830(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {
+                date(2026, 7, 16): True,
+                date(2026, 7, 17): True,
+                date(2026, 7, 20): True,
+                date(2026, 7, 21): True,
+            },
+        )
+        conn.commit()
+
+    def _planned(now: datetime) -> dict[str, tuple[str, dict[str, str]]]:
+        result = scheduler.run_schedule(
+            registry=None,
+            schedule=None,
+            db_path=db_path,
+            now=now,
+            execute=False,
+            activation_wave="breadth_observed_20260815",
+            activation_wave_manifest=ACTIVATION_WAVES,
+            registry_source_path=TARGET_REGISTRY,
+            schedule_source_path=SCHEDULE_CONFIG,
+        )
+        return {
+            plan.dataset_id: (plan.cadence_class, dict(plan.request_window))
+            for plan in result.plans
+            if plan.dataset_id in _MARGIN_T1_BLOCKED_DATASET_IDS
+        }
+
+    # Calendar receipt is 2026-07-20T00:00Z.  Use the next open morning so
+    # the calendar is already in the past.  Tuesday 08:00 must not request
+    # Monday (published at 08:30); Tuesday 08:31 must request Monday.
+    before = _planned(datetime(2026, 7, 21, 8, 0, tzinfo=ZoneInfo("Asia/Shanghai")))
+    after = _planned(datetime(2026, 7, 21, 8, 31, tzinfo=ZoneInfo("Asia/Shanghai")))
+    assert before == {
+        "cn.dataset.margin": ("prior_open_morning", {"trade_date": "20260717"}),
+        "cn.dataset.margin_detail": ("prior_open_morning", {"trade_date": "20260717"}),
+    }
+    assert after == {
+        "cn.dataset.margin": ("prior_open_morning", {"trade_date": "20260720"}),
+        "cn.dataset.margin_detail": ("prior_open_morning", {"trade_date": "20260720"}),
+    }
+
+
+def test_margin_and_margin_detail_prior_open_morning_is_after_0830() -> None:
     registry = _active_registry()
     schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
     daily = schedule.cadences["daily_reference"]
     postclose = schedule.cadences["postclose_daily"]
+    prior = schedule.cadences["prior_open_morning"]
     assert daily.availability_after_local.hour == 0
     assert daily.availability_after_local.minute == 30
     assert daily.backfill_start_policy == "none"
@@ -4742,9 +4815,14 @@ def test_margin_and_margin_detail_t1_publish_is_a_cadence_blocker() -> None:
     assert postclose.availability_after_local.minute == 30
     assert postclose.backfill_start_policy == "none"
     assert postclose.correction_overlap_days == 0
+    assert prior.availability_after_local.hour == 8
+    assert prior.availability_after_local.minute == 30
+    assert prior.current_open_day_lag == 1
+    assert prior.partition_frequency == "open_day"
+    assert prior.backfill_start_policy == "none"
     for dataset_id in _MARGIN_T1_BLOCKED_DATASET_IDS:
         dataset = registry.resolve(dataset_id)
-        assert dataset.cadence_class == "daily_reference"
+        assert dataset.cadence_class == "prior_open_morning"
         assert dataset.empty_data_policy == "allowed"
         binding = dataset.provider_bindings[0]
         assert binding.activation_state == "active"
@@ -4759,7 +4837,12 @@ def test_margin_family_empty_receipts_are_not_success(
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
     with sqlite3.connect(db_path) as conn:
-        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        _seed_calendar(
+            monkeypatch,
+            conn,
+            registry,
+            {date(2026, 7, 17): True, date(2026, 7, 20): True},
+        )
         conn.commit()
 
     target_ids = set(_MARGIN_DATASET_IDS)

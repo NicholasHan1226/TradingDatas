@@ -551,22 +551,18 @@ entries:
 - api_name: margin
   # Official: 交易所于每天8点30左右更新上一日数据.  Already
   # activation_state=active.  daily_reference 00:30 requests today's
-  # unpublished trade_date, records trusted-empty, and
-  # backfill_start_policy=none never retries that date (last SUCCESS
-  # ~2026-07-29).  postclose_daily would still request today after
-  # 16:30, which is also unpublished (T+1 08:30).  Empty ≠ success.
-  # SUCCESS needs a previous-open-day-after-08:30 window the eight
-  # cadence classes cannot express.  Keep daily_reference; do not
-  # pretend a cadence swap produces rows.
-  cadence_class: daily_reference
+  # unpublished trade_date; postclose_daily 16:30 still requests today.
+  # prior_open_morning asks the previous open trade_date after 08:30.
+  # Empty ≠ success.  Historical trusted-empty partitions stay empty.
+  cadence_class: prior_open_morning
   freshness_sla_seconds: 86400
   source_document_sha256: c0843ebeebda7ef71e75b67e88d959a5390077eb6c10b7c6e0d70b1aa55c8fb6
   reason_code: reviewed_contract_exact
 - api_name: margin_detail
   # Same official T+1 08:30 previous-day publish as margin.  Already
-  # active.  Same trusted-empty cover.  Empty ≠ success.  Not the
-  # #454 same-day-after-close pattern.  Keep daily_reference.
-  cadence_class: daily_reference
+  # active.  Empty ≠ success.  Not the #454 same-day-after-close
+  # pattern.  Same prior_open_morning window as margin.
+  cadence_class: prior_open_morning
   freshness_sla_seconds: 86400
   source_document_sha256: 2545053ff91ee46e10cff4699baed7357bb498b35c51d59bf3240d7f7bed5274
   reason_code: reviewed_contract_exact

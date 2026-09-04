@@ -41,6 +41,7 @@ CADENCE_CLASSES = frozenset(
         "session_minute",
         "postclose_daily",
         "daily_reference",
+        "prior_open_morning",
         "weekly",
         "monthly",
         "quarterly_reporting",
@@ -73,11 +74,13 @@ _CADENCE_KEYS = frozenset(
         "max_backfill_chunks_per_run",
         "rate_budget_class",
         "retry",
+        "current_open_day_lag",
     }
 )
 _REQUIRED_CADENCE_KEYS = _CADENCE_KEYS - {
     "session_windows_local",
     "freshness_refresh_lead_seconds",
+    "current_open_day_lag",
 }
 _PRIORITY = {"current": 0, "backfill": 1, "correction": 2}
 _ACTIVATION_WAVE_ROOT_KEYS = frozenset({"version", "input_hashes", "waves"})
@@ -161,6 +164,7 @@ class CadencePolicy:
     rate_budget_class: str
     retry: RetryPolicy
     freshness_refresh_lead_seconds: int = 0
+    current_open_day_lag: int = 0
 
 
 @dataclass(frozen=True)
@@ -468,7 +472,7 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
         )
     raw_cadences = _mapping(root["cadences"], "schedule.cadences")
     if set(raw_cadences) != CADENCE_CLASSES:
-        raise ValueError("schedule must declare the eight cadence classes")
+        raise ValueError("schedule must declare exactly the supported cadence classes")
     cadences: dict[str, CadencePolicy] = {}
     for name, raw in raw_cadences.items():
         value = _mapping(raw, f"cadence {name}")
@@ -581,6 +585,16 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
             raise ValueError(
                 "freshness refresh lead requires event cadence and is below its interval"
             )
+        current_open_day_lag = _integer(
+            value.get("current_open_day_lag", 0),
+            "current_open_day_lag",
+        )
+        if current_open_day_lag > 5:
+            raise ValueError("current_open_day_lag is invalid")
+        if current_open_day_lag and (
+            calendar is None or frequency != "open_day"
+        ):
+            raise ValueError("current_open_day_lag requires open_day calendar")
         cadences[name] = CadencePolicy(
             automatic,
             _clock(value["availability_after_local"], "availability_after_local"),
@@ -612,6 +626,7 @@ def load_schedule_bytes(payload: bytes) -> Schedule:
             rate_class,
             retry,
             refresh_lead,
+            current_open_day_lag,
         )
     return Schedule(
         _integer(
@@ -850,6 +865,35 @@ def _latest_available(now: datetime, policy: CadencePolicy) -> date:
     )
     while day.isoweekday() not in policy.weekdays:
         day -= timedelta(days=1)
+    return day
+
+
+def _apply_open_day_lag(
+    available: date,
+    policy: CadencePolicy,
+    calendar: Mapping[date, bool] | None,
+) -> date | None:
+    """Shift the current partition to the Nth previous open calendar day.
+
+    ``current_open_day_lag=1`` is the T+1 morning publish: after the local
+    availability clock, the latest published partition is the previous open
+    session, not today. Missing prior open days fail closed.
+    """
+
+    lag = policy.current_open_day_lag
+    if lag == 0:
+        return available
+    if calendar is None:
+        raise ValueError("current_open_day_lag requires calendar")
+    remaining = lag
+    day = available
+    earliest = min(calendar)
+    while remaining > 0:
+        day -= timedelta(days=1)
+        if day < earliest:
+            return None
+        if calendar.get(day) is True:
+            remaining -= 1
     return day
 
 
@@ -1334,6 +1378,13 @@ def _continuation_plans(
     progress = binding.resumable_fanout
     assert progress is not None and binding.request_window_policy is not None
     available = _latest_available(now.astimezone(ZoneInfo(dataset.timezone)), policy)
+    calendar = _calendar(registry, state, policy)
+    if policy.calendar is not None and not calendar:
+        return (), "calendar_unavailable"
+    lagged = _apply_open_day_lag(available, policy, calendar)
+    if lagged is None:
+        return (), "calendar_unavailable"
+    available = lagged
     window_policy = binding.request_window_policy
     key = window_policy.range_start_key
     current_window = _window(binding, available, available)
@@ -1492,6 +1543,13 @@ def _dataset_plans(
             dataset, binding, policy, MappingProxyType({}), "current"
         ), "planned"
     available = _latest_available(local_now, policy)
+    calendar = _calendar(registry, state, policy)
+    if policy.calendar is not None and not calendar:
+        return (), "calendar_unavailable"
+    lagged = _apply_open_day_lag(available, policy, calendar)
+    if lagged is None:
+        return (), "calendar_unavailable"
+    available = lagged
     # The registry, not a dataset name or provider API branch, declares the
     # bounded known-future window.  Its value is capped by the cadence policy;
     # ordinary datasets therefore remain at the current available date.
@@ -1504,13 +1562,10 @@ def _dataset_plans(
         else policy.backfill_start_date or available
     )
     end = available + timedelta(days=future_horizon_days)
-    calendar = _calendar(registry, state, policy)
     desired = tuple(
         _planning_anchor(day, binding)
         for day in _desired(start, end, policy, calendar)
     )
-    if policy.calendar is not None and not calendar:
-        return (), "calendar_unavailable"
     covered = {
         _fact_partition(fact.partition_value, binding)
         for fact in current.facts

@@ -144,7 +144,7 @@
     {
       "activation": "active",
       "apiName": "margin",
-      "cadence": "daily_reference",
+      "cadence": "prior_open_morning",
       "category": "flow-positioning",
       "datasetId": "cn.dataset.margin",
       "entitlement": "active",
@@ -154,7 +154,7 @@
     {
       "activation": "active",
       "apiName": "margin_detail",
-      "cadence": "daily_reference",
+      "cadence": "prior_open_morning",
       "category": "flow-positioning",
       "datasetId": "cn.dataset.margin_detail",
       "entitlement": "active",

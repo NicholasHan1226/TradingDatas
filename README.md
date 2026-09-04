@@ -135,7 +135,7 @@ HTTPS provider -> SQLite -> receipt -> API readback，也不能代表新增 32 �
 
 190 个正式合同的 cadence authority 是
 `config/tushare_cadence_policy.v1.yaml`。它按 `api_name` 精确覆盖每个官方文档合同，
-逐项绑定 `source_document_sha256`，并只声明八种通用 cadence class、正 freshness SLA
+逐项绑定 `source_document_sha256`，并只声明九种通用 cadence class、正 freshness SLA
 和可审计 reason code。运行合同编译器拒绝缺失、重复、未知、未排序或文档哈希漂移的策略项；
 reason code 还必须属于固定安全闭集，并与声明的 cadence class 语义一致；自由文本、未知码和
 伪造的 reviewed-exact 绑定一律 fail closed。

@@ -1746,7 +1746,7 @@ def test_forecast_and_fina_audit_use_success_capable_event_contracts() -> None:
     assert len(paused) == 55
 
 
-def test_margin_family_keeps_live_ids_and_only_margin_secs_is_postclose() -> None:
+def test_margin_family_keeps_live_ids_and_t1_uses_prior_open_morning() -> None:
     registry = compile_provider_native_registry(
         _bundle(), observations_document=_observations()
     )
@@ -1754,8 +1754,8 @@ def test_margin_family_keeps_live_ids_and_only_margin_secs_is_postclose() -> Non
         dataset["dataset_id"]: dataset for dataset in registry["datasets"]
     }
     expected = {
-        "cn.dataset.margin": ("margin", "daily_reference"),
-        "cn.dataset.margin_detail": ("margin_detail", "daily_reference"),
+        "cn.dataset.margin": ("margin", "prior_open_morning"),
+        "cn.dataset.margin_detail": ("margin_detail", "prior_open_morning"),
         "cn.dataset.margin_secs": ("margin_secs", "postclose_daily"),
     }
     for dataset_id, (api_name, cadence) in expected.items():

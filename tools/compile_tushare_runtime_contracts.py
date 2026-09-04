@@ -107,6 +107,7 @@ _CADENCE_CLASSES = frozenset(
         "session_minute",
         "postclose_daily",
         "daily_reference",
+        "prior_open_morning",
         "weekly",
         "monthly",
         "quarterly_reporting",

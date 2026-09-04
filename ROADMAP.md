@@ -60,7 +60,7 @@ provider
 - 普通 Tushare dataset 只通过 registry/config 接入；
 - 统一支持四类 request shape：`snapshot_or_date_range`、`entity_fanout`、`dimension_fanout`、`event_or_intraday_window`；
 - 统一处理 pagination、variants、fanout、rate budget、retry、freshness 和 completeness；
-- 统一使用八类 cadence：`session_minute`、`postclose_daily`、`daily_reference`、`weekly`、`monthly`、`quarterly_reporting`、`event`、`on_demand`；
+- 统一使用九类 cadence：`session_minute`、`postclose_daily`、`daily_reference`、`prior_open_morning`、`weekly`、`monthly`、`quarterly_reporting`、`event`、`on_demand`；
 - 当前数据优先，历史回填只使用版本化、有预算上限、可中断续跑的 manifest；
 - activation wave 在执行前必须能从同一 registry 生成非零且有界的计划，但不要求人工逐项批准。
 
