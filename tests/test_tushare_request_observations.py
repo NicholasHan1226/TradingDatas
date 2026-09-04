@@ -171,10 +171,10 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert len(set(api_names)) == 190
     assert observations["counts"] == {
         "interfaces": 190,
-        "probe_executable": 142,
-        "probe_blocked": 48,
-        "ingest_contract_ready": 127,
-        "ingest_contract_blocked": 63,
+        "probe_executable": 141,
+        "probe_blocked": 49,
+        "ingest_contract_ready": 126,
+        "ingest_contract_blocked": 64,
         "row_limit_ingest_contract_blocked": 15,
     }
     assert observations["counts"] == {
@@ -488,15 +488,26 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
     assert _contract(bundle, "cb_share")["cadence_class"] == "event"
     assert _contract(bundle, "cb_basic")["cadence_class"] == "daily_reference"
     assert "resumable_fanout" not in _contract(bundle, "cb_basic")
-    # Official forecast is 二选一.  Date-only snapshot + event cadence;
-    # on_demand never scheduled so it stayed at 0 SUCCESS.  Empty ≠ success.
+    # Regular forecast is official single-stock history; forecast_vip is the
+    # all-names date/period API and is not this transport.  GZ ac458530
+    # ann_date-only returned provider_error / 0 rows.  Empty ≠ success.
+    # ts_code-only fanout matches pledge_stat / cashflow / express / fina_audit.
     assert _contract(bundle, "forecast")["cadence_class"] == "event"
-    assert _contract(bundle, "forecast")["request_template"] == {
-        "ann_date": "${window.ann_date}"
+    assert _contract(bundle, "forecast")["request_template"] == {}
+    assert _contract(bundle, "forecast")["request_window_policy"] is None
+    assert _contract(bundle, "forecast")["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.equity.security_master",
+        "source_field": "ts_code",
+        "batch_size": 1,
     }
-    assert _contract(bundle, "forecast")["fanout"]["strategy"] == "none"
-    assert "ann_date" in _entry(observations, "forecast")["parameters"]
-    assert "ts_code" not in _entry(observations, "forecast")["parameters"]
+    assert _contract(bundle, "forecast")["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+    assert "ann_date" not in _entry(observations, "forecast")["parameters"]
+    assert "ts_code" in _entry(observations, "forecast")["parameters"]
     # Live ids stay trade_date-only snapshots.  margin / margin_detail are
     # official T+1 08:30 previous-day publishes; prior_open_morning requests
     # the previous open trade_date after 08:30.  Empty ≠ success.
@@ -583,10 +594,10 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 142,
-        "blocked": 48,
-        "ingest_contract_ready": 127,
-        "ingest_contract_blocked": 63,
+        "executable": 141,
+        "blocked": 49,
+        "ingest_contract_ready": 126,
+        "ingest_contract_blocked": 64,
     }
 
     daily = _entry(plan, "daily")
@@ -667,7 +678,7 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     forecast = _entry(plan, "forecast")
     assert forecast["probe_state"] == "executable"
     assert forecast["probe_block_reasons"] == []
-    assert forecast["params"] == {"ann_date": "20260721"}
+    assert forecast["params"] == {"ts_code": "600000.SH"}
     assert "600000.SH" not in yaml.safe_dump(plan["provenance"])
     assert plan["provenance"]["seed_authorities"] == [
         {
@@ -783,8 +794,8 @@ def test_probe_plan_rejects_seed_schema_drift_and_blocked_producer() -> None:
     producer = _entry(observations, "stock_basic")
     producer["probe_state"] = "blocked"
     producer["probe_block_reasons"] = ["request_anchor_unresolved"]
-    observations["counts"]["probe_executable"] = 141
-    observations["counts"]["probe_blocked"] = 49
+    observations["counts"]["probe_executable"] = 140
+    observations["counts"]["probe_blocked"] = 50
     seed["schema_version"] = "2.0.0"
     with pytest.raises(RuntimeContractCompilationError, match="producer.*executable"):
         _compile_plan(

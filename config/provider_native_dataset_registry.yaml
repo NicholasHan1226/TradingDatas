@@ -11849,23 +11849,22 @@ datasets:
     - name: type
       declared_source_type: str
       required: false
-    request_shape: snapshot_or_date_range
-    request_template:
-      ann_date: ${window.ann_date}
+    request_shape: entity_fanout
+    request_template: {}
     request_variants:
     - {}
     fanout:
-      strategy: none
+      strategy: dataset_field
+      parameter: ts_code
+      source_dataset_id: cn.equity.security_master
+      source_field: ts_code
+      batch_size: 1
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
-    request_window_policy:
-      required_keys:
-      - ann_date
-      formats:
-        ann_date: yyyymmdd
-      range_start_key: ann_date
-      range_end_key: ann_date
-      max_span_days: 1
+    request_window_policy: null
     response_completeness: null
     requested_fields: []
     max_batch_bytes: 67108864

@@ -303,11 +303,10 @@ entries:
   source_document_sha256: c71ef9b216b9f4431f7c643511729839e536ac7528a83e998d3bca2a37aa6bc9
   reason_code: no_document_frequency_evidence
 - api_name: forecast
-  # Official ts_code / ann_date are Y (二选一).  on_demand never schedules,
-  # so the interface stayed paused with 0 SUCCESS.  Announcements publish
-  # throughout the day (same window as disclosure_date / share_float);
-  # daily_reference 00:30 would trusted-empty the just-started date.
-  # Empty ≠ success.  Event + ann_date-only snapshot; no fanout.
+  # Regular forecast is official single-stock history (forecast_vip is the
+  # all-names date/period API and is not this transport).  GZ ac458530
+  # ann_date-only 20260904 returned provider_error / 0 rows.  Empty ≠
+  # success.  Keep event cadence; request is now ts_code-only (pledge_stat).
   cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: b0fa96c98b8ca40eec91374c907d8f605f23733b6d6c1b020e0f2f97a1a75869
