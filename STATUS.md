@@ -1,16 +1,64 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-04（仓库卫生与 GitHub 对齐；**不是**广州 GZ exact-main
-发布或认证 readback）。`origin/main` HEAD 为
-`74bb2b297239253c69fc1b0f384ac27d1479a71b`（#469）。
-上次文档记录的 A 股生产运行代码基线仍是
-`f74a26d705b4094126bc5663b63fec14ed75434a`（2026-09-02 13:52 CST，回滚点
-`6ce9ec5da09d77ee0282ba93a66e46403466c239`；当日 docs-only 后继 `2983be59`）。
-GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器、SQLite receipt 和认证
-`catalog/query` readback 为准。历史决策见 [`docs/adr/`](docs/adr/)，事故与验收复盘见
-[`docs/reports/`](docs/reports/)。
+最后更新：2026-09-04 21:35 CST（Finance 三面园艺；本地 / GitHub / 广州
+immutable `current` / runtime 分开记录）。审计时刻 `origin/main` 为
+`4e98eaa602425cae31aea117928e237d5dd7dd48`（#470）。本页合入后 GitHub HEAD
+会再前进一步，仍是文档层，**不**构成新的 GZ 发布。历史决策见
+[`docs/adr/`](docs/adr/)，事故与验收复盘见 [`docs/reports/`](docs/reports/)。
+
+## 2026-09-04 21:35 CST 三面园艺与验收
+
+- **本地：** canonical `main` 已从 `5c1a72c9`（#464）fast-forward 到
+  `4e98eaa6`（#470），`git rev-list --left-right --count HEAD...origin/main`
+  = `0 0`，工作树 clean。未提交的 20:40 STATUS 段落已丢弃：它声称
+  本地==`5c1a72c` 且无未提交变更、服务器 `current` 仍是 `5c1a72c`，与本轮
+  fetch / SSH 事实不符。
+- **GitHub：** `origin/main` = `4e98eaa6`（#470，docs-only STATUS）。其前一
+  提交 `74bb2b29` 为 #469，同样只改 STATUS。开放 PR 仅 #395
+  (`fix/crypto-funding-settlement-mark-20260830`)，draft，保持不合。
+  38 条 UNMERGED 远程仍 `ahead>0`；未删 recovery/wire/controller/release/
+  agent/archive 快照，也未合吃不准分支。
+- **生产 files：** `marketgraph-main` 上
+  `/opt/investment/releases/tradingdatas/current` 与
+  `tradingdatas-crypto/current` 均为相对指针
+  `4e98eaa602425cae31aea117928e237d5dd7dd48`（21:23 CST 已切）。
+  `verify-current` JSON：`verified=true`，`file_count=1050`，
+  `tree=4b93feada93645f7e92e5bd8a0d43b2f1dad72e5`。本轮**没有**再做
+  exact-main 发布：files 已等于审计时刻的 origin/main，且 #469/#470 为
+  docs-only 后继。GitHub 合并不等于发布；此处是独立 SSH pointer +
+  manifest 读回。
+- **生产 runtime：** `tradingdatas-v1-internal` /
+  `tradingdatas-crypto-v1-internal` / `tradingdatas-admin` =
+  `active/enabled`；`provider-native-collect.timer` = `active/enabled`，
+  对应 service `activating/start`（长任务，Result=success、NRestarts=0）；
+  `collector-watch.timer` = `active`，最近一次 oneshot `Result=success`
+  （20:59 CST 结束，不是 failed）。未重启任何 unit。本页不做认证
+  `catalog/query` 业务 readback。
+- **源码 checkout：** `/opt/investment/TradingDatasSource` 仍在
+  `facf0bfc`，显示 behind origin/main 501。`git fetch` 因
+  `github_ed25519` 对 `marketgraph` 不可读 + `github.com` host key
+  校验失败而中止；未强行改 key / known_hosts，也未把 source checkout
+  当成生产。
+- **Cloudflare Pages：** 最近一次成功 `Deploy to Cloudflare Pages` 仍是
+  `57c20aa0`（#468，run 33870299754，19:56 CST）。#469/#470 只改
+  `STATUS.md`，未触发 Pages。不声称邮箱登录已对真实用户开放。
+- **工作树：** 清理前 54 个；本轮删除 47 个 clean 且已是 origin/main
+  祖先的 feature/release/cut worktree（含
+  `/Users/nicholashan/td-cut-staging/wt-e2622aa` 与
+  `/Users/nicholashan/td-cut-work/c2bd5c44...`）。保留 7 个：canonical、
+  3 个 dirty（`collection-progress` / `coverage-quality` 的未跟踪
+  `work/`，`product-content-design` 的未跟踪 `qa/`）、2 个 unique tmp
+  （`td-interface-onboarding` 3 独有提交、`td-product-learning-paths` 2
+  独有提交）、1 个 unique `research-library-200-v1`（4 独有提交）。
+  另保留 `~/td-cut-staging/` 下 176MiB 发布 tar/json 证据，未删。
+- **本地分支：** 删除 75 条 remote-gone 且已是 origin/main 祖先的本地
+  分支。保留 unique / dirty worktree 分支与 archive refs。
 
 ## 2026-09-04 仓库卫生与 GitHub 对齐
+
+> 下列 GitHub 卫生记录保留为当日下午事实。广州 files / runtime 以上方
+> 21:35 CST SSH 读回为准：当时 `current` 已是 `4e98eaa6`，不再把
+> `f74a26d` 写成当前生产指针。
 
 - **GitHub `main`：** `74bb2b29`（#469）。9 月 3–4 日采集/query 合同已合入
   #454–#463；同日后续 squash 合入 #446
