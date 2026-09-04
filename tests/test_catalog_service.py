@@ -992,6 +992,22 @@ def test_catalog_contract_fingerprint_golden_vector_is_cross_repository_stable()
     )
 
 
+def test_api_md_documents_catalog_limits_and_query_field_budget() -> None:
+    """#458 published limits.max_in_values; API.md is the consumer contract."""
+
+    api_md = Path("docs/API.md").read_text(encoding="utf-8")
+    for token in (
+        "limits.max_page_size",
+        "limits.max_in_values",
+        "limits.max_lookback_days",
+        "max_selected_fields",
+        "budget_exceeded",
+    ):
+        assert token in api_md
+    assert "limits 不含 `max_selected_fields`" in api_md
+    assert "广州 GZ 已切换" in api_md
+
+
 def test_visibility_accepts_exact_grants_only_without_broad_scopes(
     catalog_harness: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
