@@ -28,11 +28,31 @@ current-health claims. `activation=active` means enabled registry
 configuration; it does not replace same-day SQLite receipts, quality/freshness
 projection or authenticated `catalog/query` readback.
 
+The public source page presents that snapshot as a compact material-family
+index. Readers can filter the registry contracts by `active` or `paused` and
+expand a family to inspect its API name, dataset ID and cadence. This is a
+discovery view of every registered interface, not a data-product entitlement,
+collection-health dashboard or sellability statement.
+
+It also projects the current domestic, read-only, `current` capabilities that
+are not in the runtime registry because they are `missing_official_contract` or
+`review_required`. This pre-runtime list deliberately contains only an API name
+and contract-review state; it must not invent a dataset ID, fields, cadence,
+entitlement, collection state or customer access for a candidate.
+
+The same page includes a compact paused-contract preflight queue. It is derived
+from the frozen contract compiler and only identifies paused, active-entitlement
+contracts that are ready for a bounded HTTPS validation or still need a trusted
+seed receipt. It makes no provider call and must never be read as an observation,
+collection, access or sellability claim.
+
 ## Current contract counts
 
 | Surface | Contract coverage | Boundary |
 |---|---:|---|
 | Tushare through QuickSync | 190 interfaces; 135 configured active; 55 paused | Configuration, not a continuous-health claim |
+| Tushare pre-runtime domestic candidates | 25 current domestic read-only capabilities | Formal contract or contract review required; not registry interfaces |
+| Paused-contract preflight queue | 4 ready for bounded HTTPS validation; 4 require a trusted seed receipt | Static contract preflight, not a provider call or observation |
 | Firecrawl | 2 page-collection pipelines | Per-site rights remain source-specific |
 | Binance public market data | 6 data families across a fixed 40-symbol universe, producing 240 dataset objects | 240 objects are not 240 upstream APIs |
 | Tushare domestic discovery scope | 222 read-data capabilities | 32 discovery-only additions are not runtime contracts |
