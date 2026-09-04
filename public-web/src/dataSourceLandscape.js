@@ -12,14 +12,14 @@ export const connectedCoverage = [
     market: "CN",
     family: "china-markets",
     contractCount: 190,
-    activeCount: 133,
-    pausedCount: 57,
+    activeCount: 135,
+    pausedCount: 55,
     unit: "interfaces",
     collection: "configured",
     evidence: "provider-native registry",
     note: {
-      zh: "190 个标准化运行合同；133 个配置为 active。active 不等于每个接口都已连续稳定采集。",
-      en: "190 normalized runtime contracts; 133 are configured active. Active does not mean every interface has continuous healthy collection.",
+      zh: "190 个标准化运行合同；135 个配置为 active。active 不等于每个接口都已连续稳定采集。",
+      en: "190 normalized runtime contracts; 135 are configured active. Active does not mean every interface has continuous healthy collection.",
     },
   },
   {

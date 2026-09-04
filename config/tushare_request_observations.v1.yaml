@@ -10,13 +10,13 @@ provenance:
     sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 52dc112d47364cb649bbfc217a95deeff06ae2ba058c50c1c3637cca346f56b1
+    sha256: a22f268ae542517eece006361c6a5068ffbd06188946d7d72f12b413596e6603
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: e7aaebb7ca72ad5ae23fca777807cc509ad9a42caa641d698ad3c610367ec9da
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 408ceee45ab8bb6504c993ffcedbc500ba92065dd539f47f5e4d3633cc47bbd4
+    sha256: b831dbc65808d3b7ab4714d33e365572bef6cdf9a6119f82dc0e132f7d638499
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -1045,6 +1045,11 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: entity_fanout
+  # Official ts_code is independently required (Y), not 二选一.  QuickSync
+  # rejects ann_date-only (20002).  Single ts_code + current ann_date is
+  # empty except on that stock's announce day; the date resets before the
+  # 5971-code sweep finishes, so receipts stay empty.  Empty ≠ success.
+  # Drop the optional date filter; ts_code-only fanout matches pledge_stat.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
@@ -1053,10 +1058,6 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    ann_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
     ts_code:
       source: dataset_field
       dataset_id: cn.equity.security_master
@@ -1066,9 +1067,6 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
-    progress_mode: partition_continuation
-    continuation_max_age_days: 31
-    partition_date_field: ann_date
   row_limit_observation: null
 - api_name: fina_indicator
   scope_labels:
@@ -1139,6 +1137,10 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # Official ts_code / ann_date are Y (二选一).  Date-only snapshot returns
+  # that day's announcements; ts_code fanout is the wrong 二选一 side.
+  # on_demand never schedules, so the row stayed paused with 0 SUCCESS.
+  # Empty ≠ success.  Keep ann_date-only; cadence moves to event.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready

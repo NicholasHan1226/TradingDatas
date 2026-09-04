@@ -1827,6 +1827,7 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
     assert {
         "cn.dataset.disclosure_date",
         "cn.dataset.share_float",
+        "cn.dataset.forecast",
     } <= planned
     # #350: cb_basic is daily_reference (1 empty-param snapshot); the report
     # family plus cb_share leave on_demand via event so the timer plans them.
@@ -1850,6 +1851,7 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
     undated_report_family = {
         "cn.dataset.cashflow",
         "cn.dataset.express",
+        "cn.dataset.fina_audit",
         "cn.dataset.pledge_stat",
     }
     continuation_family = report_family - undated_report_family
@@ -4260,7 +4262,6 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.etf_mins",
         "cn.dataset.etf_sh_cons",
         "cn.dataset.etf_sz_cons",
-        "cn.dataset.forecast",
         "cn.dataset.ft_mins",
         "cn.dataset.fund_adj",
         "cn.dataset.fund_basic",
@@ -4318,6 +4319,8 @@ _CASHFLOW_EXPRESS_DATASET_IDS = (
     "cn.dataset.cashflow",
     "cn.dataset.express",
 )
+_FORECAST_DATASET_ID = "cn.dataset.forecast"
+_FINA_AUDIT_DATASET_ID = "cn.dataset.fina_audit"
 
 
 def test_stk_limit_and_adj_factor_stay_active_and_plan_postclose(
@@ -4516,6 +4519,141 @@ def test_cashflow_and_express_empty_receipts_are_not_success(
     assert executed == {
         dataset_id: "empty" for dataset_id in _CASHFLOW_EXPRESS_DATASET_IDS
     }
+    assert "success" not in executed.values()
+
+
+def test_forecast_is_active_and_plans_event_ann_date_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    paused = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].activation_state == "paused"
+    }
+    assert paused == _PAUSED_DATASET_IDS
+    assert _FORECAST_DATASET_ID not in paused
+    dataset = registry.resolve(_FORECAST_DATASET_ID)
+    binding = dataset.provider_bindings[0]
+    assert dataset.cadence_class == "event"
+    assert binding.activation_state == "active"
+    assert binding.entitlement_state == "active"
+    assert binding.probe_state == "executable"
+    assert binding.fanout is not None
+    assert binding.fanout.strategy == "none"
+    assert dict(binding.request_template) == {"ann_date": "${window.ann_date}"}
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): False})
+        conn.commit()
+
+    automatic = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        cadence_class="event",
+    )
+    planned = {
+        plan.dataset_id: dict(plan.request_window)
+        for plan in automatic.plans
+        if plan.dataset_id == _FORECAST_DATASET_ID
+    }
+    assert planned == {_FORECAST_DATASET_ID: {"ann_date": "20260720"}}
+    skipped = {item.dataset_id: item.state for item in automatic.skipped}
+    assert skipped.get(_FORECAST_DATASET_ID) != "paused"
+    assert skipped.get("cn.news.flash") == "paused"
+    assert skipped.get("cn.dataset.fund_daily") == "paused"
+
+
+def test_fina_audit_is_active_and_plans_undated_ts_code_fanout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    paused = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].activation_state == "paused"
+    }
+    assert paused == _PAUSED_DATASET_IDS
+    assert _FINA_AUDIT_DATASET_ID not in paused
+    dataset = registry.resolve(_FINA_AUDIT_DATASET_ID)
+    binding = dataset.provider_bindings[0]
+    assert dataset.cadence_class == "event"
+    assert binding.activation_state == "active"
+    assert binding.entitlement_state == "active"
+    assert binding.probe_state == "executable"
+    assert binding.fanout is not None
+    assert binding.fanout.strategy == "dataset_field"
+    assert binding.fanout.batch_size == 1
+    assert dict(binding.request_template) == {}
+    assert binding.request_window_policy is None
+    assert binding.resumable_fanout is not None
+    assert binding.resumable_fanout.progress_mode == "complete_window"
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    automatic = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        cadence_class="event",
+    )
+    planned = {
+        plan.dataset_id: dict(plan.request_window)
+        for plan in automatic.plans
+        if plan.dataset_id == _FINA_AUDIT_DATASET_ID
+    }
+    assert planned == {_FINA_AUDIT_DATASET_ID: {}}
+    skipped = {item.dataset_id: item.state for item in automatic.skipped}
+    assert skipped.get(_FINA_AUDIT_DATASET_ID) != "paused"
+    assert skipped.get("cn.news.flash") == "paused"
+
+
+def test_forecast_and_fina_audit_empty_receipts_are_not_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    target_ids = {_FORECAST_DATASET_ID, _FINA_AUDIT_DATASET_ID}
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        if plan.dataset_id in target_ids:
+            return scheduler.DatasetResult(plan.dataset_id, plan.provider, "empty", 3)
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+        cadence_class="event",
+    )
+    executed = {
+        item.dataset_id: item.state
+        for item in result.executed
+        if item.dataset_id in target_ids
+    }
+    assert executed == {dataset_id: "empty" for dataset_id in target_ids}
     assert "success" not in executed.values()
 
 

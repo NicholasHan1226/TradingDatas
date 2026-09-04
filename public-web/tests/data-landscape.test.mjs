@@ -17,7 +17,7 @@ test("keeps connected contract counts explicit and non-inflated", async () => {
   assert.equal(snapshot.interfaces.length, 192);
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare").length, 190);
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "firecrawl").length, 2);
-  assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare" && item.activation === "active").length, 133);
+  assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare" && item.activation === "active").length, 135);
   assert.equal(connectedCoverage.find((item) => item.id === "binance-public").contractCount, 6);
 });
 
@@ -44,7 +44,7 @@ test("candidate sources progressively disclose roadmap phases without a second s
 
 test("public source maintenance guidance matches the reviewed snapshot", async () => {
   const guide = await readFile(new URL("../../docs/product/DATA_SOURCE_LANDSCAPE.md", import.meta.url), "utf8");
-  assert.match(guide, /133 configured active; 57 paused/);
+  assert.match(guide, /135 configured active; 55 paused/);
   assert.match(guide, /## Updating the public snapshot/);
   assert.match(guide, /landscapeMeta\.reviewedAt/);
 });
