@@ -227,7 +227,7 @@ query 的权威在同一只读快照内分两层，不能互相替代：
 
 可选 `include_receipt_proofs` 只决定是否输出 `metadata.row_receipt_proofs`，并额外要求整页来自单一采集序列；它不开关第 2 层校验。默认查询仍允许同页混合多个有效历史 execution。合同与 503 语义见 `docs/API.md`；运维诊断见 `docs/OPERATIONS.md`。
 
-API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。
+API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。catalog 每一行的 `limits` 只投影 `max_page_size`、`max_in_values` 与 `max_lookback_days`；query 另强制 `max_selected_fields`。这些是查询预算，不是套餐额度或覆盖证明。合同见 `docs/API.md`。
 
 ## 运行面隔离与未来扩展
 

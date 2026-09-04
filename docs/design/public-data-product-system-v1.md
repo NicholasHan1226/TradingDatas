@@ -357,8 +357,9 @@ Required modules:
 4. quality, freshness, receipt, and lineage explanation;
 5. bounded API example with copy action and no real token;
 6. `Use with` relationships to other raw datasets;
-7. authored links to relevant external Research records and related preparation
-   methods, shown as a learning path rather than a claim that the product
+7. related Cookbook methods plus authored links to relevant external Research
+   records, where each source-specific data-material relationship has been
+   reviewed; show these as a learning path rather than a claim that the product
    reproduces the paper, proves its conclusion, or produces a result;
 8. product-level bookmark control. Before authenticated library authority is
    available it remains explicitly browser-local; no product page may imply
@@ -374,6 +375,13 @@ authoritative `dataset_id`, `schema_major`, and entitlement through
 
 `Use with` is a relationship guide, not a precomputed joined dataset or a claim
 of investment usefulness.
+
+An external reading is optional rather than a category default. It may appear
+only when its maintained research record explicitly names the relevant raw
+product or preparation method. The link is a route into learning material; it
+does not claim that the product reproduces the source's sample, conclusion, or
+result. An empty reading area is therefore intentional for products without a
+reviewed source-specific connection, including future alternative-data products.
 
 ### 5.4 Research methods (Cookbook/Recipes compatibility layer)
 
