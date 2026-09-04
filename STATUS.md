@@ -1,14 +1,66 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-02 13:52 CST（A 股生产运行代码基线
-`f74a26d705b4094126bc5663b63fec14ed75434a`，回滚点
-`6ce9ec5da09d77ee0282ba93a66e46403466c239`；12:32 current 被并行发布通道切换到仅
-`STATUS.md` 变化的 exact-main 后继 `2983be59f21e697e2824e37df4d12bc52181a75f`，
-runtime 代码未变。PR #448/#449/#450 已合入并完成分层生产读回，短 SLA 提前刷新保持未启用）。
-本文只保留当前可替换摘要；历史决策见
-[`docs/adr/`](docs/adr/)，事故与验收复盘见
-[`docs/reports/`](docs/reports/)。当前运行事实仍以本轮服务器、SQLite receipt 和认证
-`catalog/query` readback 为准。
+最后更新：2026-09-04（仓库卫生与 GitHub 对齐；**不是**广州 GZ exact-main
+发布或认证 readback）。`origin/main` HEAD 为
+`8435ac074b0a9887f65b5b05fc2e15ce6097007d`（#463，2026-09-04 18:11 CST）。
+上次文档记录的 A 股生产运行代码基线仍是
+`f74a26d705b4094126bc5663b63fec14ed75434a`（2026-09-02 13:52 CST，回滚点
+`6ce9ec5da09d77ee0282ba93a66e46403466c239`；当日 docs-only 后继 `2983be59`）。
+GitHub 合并不等于生产已切换。当前运行事实仍以本轮服务器、SQLite receipt 和认证
+`catalog/query` readback 为准。历史决策见 [`docs/adr/`](docs/adr/)，事故与验收复盘见
+[`docs/reports/`](docs/reports/)。
+
+## 2026-09-04 仓库卫生与 GitHub 对齐
+
+- **GitHub `main`：** `8435ac07`。9 月 3–4 日已合入 #454（stk_limit/adj_factor）、
+  #455（daily_basic）、#457（rt_min query）、#458（catalog in-filter）、
+  #459（cashflow/express）、#460（forecast/fina_audit event）、#461/#462（margin 族）、
+  #463（forecast ts_code-only fanout）。这些是源码/合同合入，**仓库看不到** GZ
+  exact-main 发布或认证 catalog/query readback，本页不声称生产已切到 `8435ac07`。
+- **A 股 GZ：** 上次文档基线仍是 `f74a26d`（2026-09-02）。#454–#463 的采集/query
+  合同若要在生产生效，须另走 exact-main immutable release；合入不会自动部署。
+- **Cloudflare：** Actions `Deploy to Cloudflare Pages` 最近一次成功 run 落在
+  `ac458530`（#462）；`deploy-admin` 与 `deploy-public` 均为 success。#463 未改
+  `static/**` / `public-web/**`，不必为该 commit 再发 Pages。Actions 成功不是独立
+  业务 readback，也不证明邮箱登录已对真实用户开放。
+- **#350 / #378：** 调度合同已由 PR #378（`cursor/on-demand-schedule-350-ef7c`，
+  2026-08-29）合入 main，不是「待合入」。9 月 2 日文档基线 `f74a26d` 在该合入之后。
+- **开放 PR 仍等 Datas PM / `pm-merge`，本次未合并：** #446
+  （`codex/research-library-200-v1`）、#447（`codex/product-learning-paths-v1`）、
+  #456（`codex/interface-onboarding-v1`，冲突）。19 个文档草稿 PR 仍开着，未关。
+- **分支卫生（2026-09-04）：** 删除远程分支 80 条：76 条 `git branch -r --merged
+  origin/main` 残留，外加 squash/过期 4 条
+  （`cursor/forecast-ts-code-fanout-6819` #463、
+  `fix/retry-transient-provider-errors-and-diagnostics` #358、
+  `codex/status-09695`、已被 v2 取代的
+  `codex/public-anonymous-account-readback-v1`）。`git push --delete` 无失败。
+  未动 `main` 与上述三个非草稿开放 PR 头。
+- **41 条无开放 PR 的未合入远程分支：** 删了上列 4 条；其余 37 条保留（另加 22 个
+  开放 PR 头）。保留原因见本节末。这些不是合入候选。
+- **工作树：** 本轮云环境只有 `/workspace` 在 `main` 的干净检出；未 reset 文档提到的
+  本地分叉 `cbde095`，未碰生产。
+- **保留的无 PR 未合入远程分支（37）及原因：**
+  - 发布/回滚/快照/恢复前缀：`recovery/td-*`（3）、`wire/pm-snapshot-dataset*`（2）、
+    `nicholashan/release-full-universe`、`agent/bootstrap-core-production-deploy`、
+    `agent/production-reference-contracts-v1`、`archive/daily-info-contract-pr37-20260801`、
+    `codex/td-calendar-prod-release`、`codex/restore-futures-*`（2）、
+    `controller/pr388-deploy-surface-repair-20260830`、
+    `controller/restore-controller-automerge-gate-20260830`、
+    `fix/deploy-readback-case-20260823`、`fix/empty-wal-sidecar-snapshot-20260828`、
+    `fix/moneyflow-ths-snapshot-dedup`。
+  - 关闭但未合入、吃不准是否仍有独立提交：`chore/agents-merge-gate`、
+    `codex/align-agent-first-authority-20260816`、
+    `codex/controller-governance-convergence-20260816-r2`、
+    `codex/crypto-catalog-runtime-projection`、`codex/major-news-config-v1`、
+    `codex/raw-probe-summary-minimal`、`codex/td-activate-5-probe-interfaces-20260817`、
+    `codex/td-ci-shard-20260817`、`codex/td-fix-red-main-20260816`、
+    `codex/td-reconcile-firecrawl-supplemental-test-20260816`、
+    `feat/frontend-theme-dark`、`fix/cn-session-freshness-20260828`、
+    `fix/firecrawl-bare-time-anchor`、`fix/rt-min-daily-scan-budget`。
+  - 无关联 PR、吃不准：`codex/ashare-event-partition-success-receipt-union`、
+    `codex/crypto-config-hash-asof-compat`、`codex/rtmin-500-atomic-v2`、
+    `codex/rtmin500-readback-time-fix`、`codex/transport-failure-observability`、
+    `demo/index-basic-onboarding`。
 
 ## 2026-09-02 残余健康收口
 
@@ -408,7 +460,7 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 - **A 股 / Tushare 数据面：** 有效 immutable release 为 `cf988f9`（2026-08-26 23:07 CST
   由 Controller 切换，回滚点 `21d0318`）；18082 API service active、通用 collector timer
-  enabled。#350 调度合同已在源码完成、尚未 exact-main 发布：`cb_basic` 改为
+  enabled。#350 调度合同已由 PR #378 合入 main（不是待合入）；`cb_basic` 改为
   `daily_reference`（每轮 1 个空参快照）；income/balancesheet/cashflow/express/
   fina_indicator/fina_audit/pledge_stat 与 `cb_share` 离开 `on_demand`，改为
   `event`（与 `stk_holdernumber`/`disclosure_date` 的 ann_date 窗一致）并复用
@@ -441,9 +493,11 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 下一步
 
-1. #350 调度合同已在源码完成（PR 待合入）：exact-main 发布后做生产触发与
-   catalog/query 回读。`top10_floatholders` 仍 parked（无 ann_date 窗，不是本批
-   同一 cadence 决策）。全宇宙覆盖靠 resumable_fanout 跨周期收敛，不是单轮扫完。
+1. #350/#378 调度合同已合入 main（2026-08-29）。9 月 2 日文档基线 `f74a26d`
+   之后的 Git 历史包含该合入；这不等于 9 月 3–4 日 #454–#463 已发布到 GZ。
+   `top10_floatholders` 仍 parked（无 ann_date 窗，不是本批同一 cadence 决策）。
+   全宇宙覆盖靠 resumable_fanout 跨周期收敛，不是单轮扫完。
+   #454–#463 若要在 A 股生产生效，须另做 exact-main 发布与认证 readback。
 2. 依 #354 新诊断字段观察 firecrawl 失败类别分布（timeout / refused / other），
    决定 timeout_ms 上调或换源；顺手改进 validation_failed 的空
    `validation_reasons` 缺口。
@@ -451,8 +505,10 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
    先解 dependency_seed_receipt_unresolved。
 4. #327 WAL 代码已落地（可写 open 请求 WAL；生产 journal 切换仍待 write-pause +
    exact-main，本仓不自动部署 GZ）。
-5. 归档候选交 Controller 收口（rt-min-daily-scan-budget 分支、rolling-simulation
-   残留、ta-365/366、fix/firecrawl-bare-time-anchor 210c02e、约 60 陈旧分支）。
+5. 已合入远程源分支已在 2026-09-04 删除（80 条）。无开放 PR 的未合入远程分支
+   仍保留 recovery/agent/wire/release 与吃不准的关闭 PR 分支；
+   `fix/rt-min-daily-scan-budget`、`fix/firecrawl-bare-time-anchor` 仍在 origin，
+   不是合入候选。开放 PR #446/#447/#456 等 Datas PM，本次未合并。
 6. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
    报告；普通变更由 Git history 追溯。
 7. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
