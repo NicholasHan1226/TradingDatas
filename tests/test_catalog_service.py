@@ -1004,7 +1004,7 @@ def test_api_md_documents_catalog_limits_and_query_field_budget() -> None:
         "budget_exceeded",
     ):
         assert token in api_md
-    assert "limits 不含 `max_selected_fields`" in api_md
+    assert "`limits` 不含 `max_selected_fields`" in api_md
     assert "广州 GZ 已切换" in api_md
 
 
