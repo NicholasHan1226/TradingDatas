@@ -57,7 +57,7 @@ observed
 stable
 ```
 
-晋级只影响内部只读数据能力和既有预算内的调度资格。provider 权限、请求预算、完整性、数据质量和资源安全仍是硬边界；单个 dataset 失败只降级该 dataset，不应阻塞其它独立数据能力。
+晋级只影响内部只读数据能力和既有预算内的调度资格。provider 权限、请求预算、我们自己的 receipt 完整性（empty ≠ success，不得伪造非空）和资源安全仍是硬边界。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，不是晋级未完成，也不阻塞下一可接接口。单个 dataset 失败只降级该 dataset。
 
 ## GitHub Actions
 

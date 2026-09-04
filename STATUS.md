@@ -7,10 +7,13 @@
 
 ## 2026-09-05 Datas PM 接入口径（文档锁定）
 
-Haofei / Datas PM 2026-09-05 Asia/Shanghai 口径已写入
-`docs/OPERATIONS.md`、`ROADMAP.md`、`README.md` 与 `AGENTS.md`。#373 仍是
-GitHub 上的周计划 issue，本仓库不另建平行计划文件。本页不 mass-unpause，
-不改 registry/runtime/config。
+Haofei / Datas PM 2026-09-05 Asia/Shanghai 口径已写入核心入口：
+`docs/OPERATIONS.md`（运维正文与硬线）、`ROADMAP.md` / `STATUS.md`（计划与
+接入成功口径）、`README.md` / `AGENTS.md`（能力分层与 onboarding）、
+`docs/ARCHITECTURE.md` / `docs/API.md` / `docs/AUTHORITY_AND_HISTORY.md` /
+`CONTRIBUTING.md`（去掉“等完美源 / 额外 release gate / empty=未完成”
+的误读）。#373 仍是 GitHub 上的周计划 issue，本仓库不另建平行计划文件。
+本页不 mass-unpause，不改 registry/runtime/config。
 
 - 上游晚发、缺行、限频、文档≠现实、间歇 `provider_error` 是**外部
   blocker**，单独列出；合同正确时不停止下一可接接口，也不计为进度 slip /

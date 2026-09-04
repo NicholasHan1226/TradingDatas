@@ -36,7 +36,7 @@ provider
 - `contract_ready` 允许继续开发、集成和候选发布；一个数据集失败不阻断其它独立数据集。
 - `observed` 由真实 provider -> SQLite receipt -> authenticated API readback 的客观证据自动形成。
 - `stable` 由适用 cadence 的连续成功和消费者 readback 自动形成；满足冻结规则即可自动晋级，不需要人工确认。
-- 自动晋级只能扩大“内部只读数据可用性”和既有预算内的调度范围，不能绕过 provider 权限、资源预算、数据完整性或安全边界。
+- 自动晋级只能扩大“内部只读数据可用性”和既有预算内的调度范围，不能绕过 provider 权限、资源预算、我们自己的 receipt 完整性（empty ≠ success）或安全边界。Vendor/input quality is immutable external，不得把上游 completeness 当成晋级或排期门禁。
 - GitHub Actions 是可选验证渠道，不是生产上线门禁。Actions 不可用时，以本地/服务器确定性测试、候选 release 校验和生产 runtime readback 作为发布证据。
 - 公共 Data/Features/Recipes/Research/Pricing/Docs/Account 可以在合同层和前端候选中独立推进，但不得在运行面、commerce、授权、再分发和 production readback 完成前伪装为 live，也不得阻断既有数据持续运行。
 - **Datas PM 2026-09-05：** 对齐 Tushare 的是 dataset/coverage 菜单，不是其 ad-hoc API 交付模型。TradingDatas 仍是 agent-first catalog+query 事实层；empty ≠ success。

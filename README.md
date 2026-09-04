@@ -42,7 +42,7 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 | `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 明确标注的内部只读试用与受预算约束的观察期采集 | 连续健康、历史 PIT、稳定生产声明 |
 | `stable` | 跨适用 cadence 连续成功，且适用 TA/Copilot 已 readback | 稳定生产能力声明与相应常规运行 | 覆盖所有无关消费者或未适用 cadence |
 
-缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制稳定生产声明和无界扩容，不单独阻断已受控启用的隔离只读观察采集。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。
+缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制稳定生产声明和无界扩容，不单独阻断已受控启用的隔离只读观察采集。合同正确时的 empty / `provider_error` 是外部 blocker，不是 `observed`/`stable` 工程未完成，也不得冻结下一可接接口。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。empty ≠ success，不得伪造非空。
 
 ## 普通数据集零代码接入
 
@@ -191,7 +191,8 @@ uv run --python 3.12 --with-requirements requirements.txt \
 
 报告不会输出 token、SQLite 路径或 provider payload。没有正式 API 快照、或根版本/目录/hash、
 query envelope 的 dataset、`degraded`、receipt、时间/lineage 任一绑定不一致时，结果保持
-`observed_isolated_only`，不能替代生产验收。
+`observed_isolated_only`，不能替代生产验收。报告里的 empty / vendor-side `provider_error`
+在合同正确时是外部 blocker，不是 onboarding 未完成，也不得据此冻结下一可接接口。
 
 外部账户、再分发、缓存和公共服务必须逐数据分类完成上游条款书面核验、账户隔离与生产 readback；不能由当前 API 可调用性、公共产品定位或单次 provider 成功推导授权。
 

@@ -54,7 +54,7 @@ provider registry
 - `observed`：在受控窗口取得一次真实 provider -> SQLite receipt -> 固定 `catalog/query` 回读。它允许明确标注的内部只读试用，以及在既有 provider 预算、隔离运行面和 fail-closed 语义内持续积累观察证据；单次结果不等于连续健康或历史 PIT。
 - `stable`：按该数据集适用 cadence 连续成功，且需要消费的 TA/Copilot 已完成受控 readback。它才是稳定生产能力的称谓；不要求无关消费者或尚未适用的 cadence 一并完成。
 
-`stable` 缺失只能阻止稳定生产声明、无界扩容或相应发布切换，不能单独阻止已受控启用的隔离只读采集、后续普通数据集的 registry/config、编译、测试、候选 PR，或 TA 的受控消费开发。观察期 timer 的启用不是 `stable` 声明，仍受 provider 权限/预算、SQLite receipt、认证 API 回读和 fail-closed 完整性约束。任何层级都不得由 HTTP 200、历史记录、代码合入或任务卡伪造。
+`stable` 缺失只能阻止稳定生产声明、无界扩容或相应发布切换，不能单独阻止已受控启用的隔离只读采集、后续普通数据集的 registry/config、编译、测试、候选 PR，或 TA 的受控消费开发。观察期 timer 的启用不是 `stable` 声明，仍受 provider 权限/预算、SQLite receipt、认证 API 回读和 fail-closed 完整性约束。任何层级都不得由 HTTP 200、历史记录、代码合入或任务卡伪造。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，不是该层未完成，也不得冻结下一可接接口或发明额外 release gate。
 
 ## Tushare 复用
 
@@ -169,7 +169,7 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 
 普通接口接入按同一批次推进：先批量探测并分类权限/参数/空响应，再按 data class 批量冻结 cadence 与 window，随后用同一个 runner 做有界入库和 API readback。不得为单个 API 单独创建任务流、测试栈、service、timer、route 或发布流程。
 
-当前交付采用广度优先：valid rows 与 receipts 立即保留和积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级该 dataset 并形成后续修正，不阻断下一独立批次。locked、excluded、unknown 或 required params 未解决的 dataset 显式暂停。稳定性继续按 dataset 独立积累，不能被用作延迟全部接口接入的全局门禁。
+当前交付采用广度优先：valid rows 与 receipts 立即保留和积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级该 dataset。合同正确时记外部 blocker 后 MOVE ON，不把源质量当成工程未完成，也不为等源变好冻结队列。locked、excluded、unknown 或 required params 未解决的 dataset 显式暂停。稳定性继续按 dataset 独立积累，不能被用作延迟全部接口接入的全局门禁。
 
 **Datas PM 接入口径（2026-09-05 Asia/Shanghai）：** 上游晚发、缺行、限频、文档≠现实、间歇 `provider_error` 是外部 blocker，不是工程未完成；合同正确时必须单独列出，不得停止下一可接接口，也不得计为进度 slip / 未完成。优先最小诚实合同（request shape + cadence + empty≠success）；除非否则无法得到 SUCCESS，否则不得新增 cadence class、VIP transport、完整性重写、worker 上调或 catalog 超时变更。双认证 catalog <15s 仍是既有部署安全门，不发明额外 release gate。盘中生产行为变更默认 WIP=1，但 vendor emptiness 不得冻结队列。我们拥有 registry/shape、cadence/planner、fanout、activation、merge→GZ cut，以及 vendor 实际返回行时的非空 SUCCESS；不拥有把 vendor 数据变好、伪造非空、把 empty 写成 success，或等源“变稳定”再发。对齐 Tushare 的是 dataset/coverage 菜单，不是其 ad-hoc API 交付模型；empty receipt 不是 success，但合同正确时的 empty/`provider_error` 是外部事实，不是重设计理由。正确合同上 GZ 后，vendor-side empty/`provider_error` 只记短外部-blocker 行并继续下一可接接口；仅内部 shape/cadence 错误才重开。本口径不是 mass-unpause。完整运维正文见 `docs/OPERATIONS.md`「Datas PM 接入口径」。
 

@@ -429,13 +429,23 @@ exit code `3` 与并发 busy code `75` 都视为完成；validation 与 provider
 
 `tools/report_dataset_onboarding_status.py` 只读取已验证的 SQLite 快照、runtime registry 与可选的脱敏 formal API snapshot；不得调用 provider、写数据库或触碰 API/timer。可选的 `config/readiness_partition_audit.v1.json` 预注册少量已经完成的精确分区，汇总 receipt、provider、行数、身份空值/重复、上限与 terminal-empty 事实。它不是采集 manifest，也不会激活、调度或提升数据集。
 
-普通读取仍仅按 receipt authority 做单遍历。只有 onboarding、合同漂移、事故恢复和每日 scrub 才执行独立双遍历验证。合法 empty 只证明该观察窗口没有数据；历史读取默认仍为 `observation_only`，除非另有 immutable receipt、as-of、first-seen 与 revision-vintage 的完整证据，不能据此声称 PIT 或非空完整性。
+普通读取仍仅按 receipt authority 做单遍历。只有 onboarding、合同漂移、事故恢复和每日 scrub 才执行独立双遍历验证。合法 empty 只证明该观察窗口没有数据；历史读取默认仍为 `observation_only`，除非另有 immutable receipt、as-of、first-seen 与 revision-vintage 的完整证据，不能据此声称 PIT 或非空完整性。合同正确时的 empty / `provider_error` 是外部 blocker，不是 onboarding 未完成，也不得冻结下一可接接口；见下文「Datas PM 接入口径」。
 
 ## Datas PM 接入口径（2026-09-05 Asia/Shanghai）
 
 Haofei / Datas PM 锁定的计划与运维口径。不新增流程框架、不改数据面合同、
-不做 mass-unpause。产品身份仍是 agent-first `catalog/query` 事实层；
-**empty ≠ success**。
+不做 mass-unpause。产品身份仍是 agent-first `catalog/query` 事实层。
+
+硬线（必须按字面执行）：
+
+- **Vendor/input quality is immutable external.** 上游晚发、缺行、限频、
+  文档≠现实、间歇 `provider_error` 是外部输入，我们改不了，也不当工程缺口。
+- **Correct contract + empty/`provider_error` = external blocker; log it and
+  MOVE ON** to the next connectable interface.
+- **Do not over-engineer or add gates** beyond the existing dual-auth catalog
+  **<15s** deploy check.
+- **empty ≠ success remains**（no fake fills）。
+- **Do not freeze the queue for source quality.**
 
 ### 外部输入质量（单独列，不计入未完成）
 
