@@ -10,13 +10,13 @@ provenance:
     sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: a22f268ae542517eece006361c6a5068ffbd06188946d7d72f12b413596e6603
+    sha256: e9514971979436a044b2755c578076e6d6bffcda7b552f5fca11260f25bfda22
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 00c7374160746184c0ba9989353d8726fd2cbe6f2cd907955b1a0144209800cd
+    sha256: 100285f15342988a85ac223073e1e5c3c5ed152f5a49cdc5f92f0b457a7df6e5
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -68,10 +68,10 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 142
-  probe_blocked: 48
-  ingest_contract_ready: 127
-  ingest_contract_blocked: 63
+  probe_executable: 141
+  probe_blocked: 49
+  ingest_contract_ready: 126
+  ingest_contract_blocked: 64
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -1136,21 +1136,30 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  # Official ts_code / ann_date are Y (二选一).  Date-only snapshot returns
-  # that day's announcements; ts_code fanout is the wrong 二选一 side.
-  # on_demand never schedules, so the row stayed paused with 0 SUCCESS.
-  # Empty ≠ success.  Keep ann_date-only; cadence moves to event.
-  probe_state: executable
-  probe_block_reasons: []
-  ingest_contract_state: ready
-  ingest_contract_block_reasons: []
+  request_shape: entity_fanout
+  # Official table still says ts_code / ann_date 二选一, but the regular
+  # forecast tip is single-stock history only; forecast_vip is the all-names
+  # date/period query and is not this transport.  GZ ac458530 ann_date-only
+  # 20260904 returned provider_error / 0 rows.  Empty ≠ success.  Drop the
+  # date filter; ts_code-only fanout matches pledge_stat / cashflow /
+  # express / fina_audit.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    ann_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: ft_limit
   scope_labels:

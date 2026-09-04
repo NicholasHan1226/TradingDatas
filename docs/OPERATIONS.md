@@ -283,10 +283,13 @@ empty 仍是 empty，不是 success。当前合同去掉可选日期过滤，改
 `max_batches_per_run=1`、无 `partition_continuation`），cadence 仍是 `event`。
 `cn.dataset.fina_audit` 是同一 wave7 financial 已激活行，官方 `ts_code` 同样
 是独立必填 `Y`，因此沿用同一 ts_code-only `entity_fanout`，不再带
-`ann_date` continuation。`cn.dataset.forecast` 官方 `ts_code` / `ann_date`
-是 `Y (二选一)`；原先 `on_demand` + paused 不会自动采集。当前合同改为
-`event` cadence 与 ann_date-only snapshot（`fanout=none`），并单独恢复
-`activation_state=active`。历史 empty 回执仍是 empty，不是 success。
+`ann_date` continuation。`cn.dataset.forecast` 官方输入表仍写 `ts_code` / `ann_date`
+`Y (二选一)`，但普通 `forecast` 提示只能按单只股票取历史，全市场日期/
+报告期查询属于未接入的 `forecast_vip`。GZ `ac458530` 的
+`ann_date=20260904` snapshot 返回 `provider_error` / 0 行，不是
+SUCCESS。当前合同去掉日期过滤，改为与 `pledge_stat` / cashflow /
+express / `fina_audit` 相同的 ts_code-only `entity_fanout`，cadence
+仍是 `event`。历史 empty / failed 回执仍不是 success。
 `cn.dataset.margin`、`cn.dataset.margin_detail` 与 `cn.dataset.margin_secs`
 已经是 `activation_state=active`，不是 `registry_activation_paused`。
 三者都是 trade_date-only snapshot。`margin` / `margin_detail` 官方是

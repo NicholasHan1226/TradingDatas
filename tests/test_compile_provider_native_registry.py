@@ -1510,7 +1510,7 @@ def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
     assert wave4_exact8 <= active
     assert "forecast" in active
     assert not active & {"pledge_detail", "stk_nineturn"}
-    assert active_evidence.get("forecast") == "server-evidence/20260904T-forecast-ann-date-only"
+    assert active_evidence.get("forecast") == "server-evidence/20260904T-forecast-ts-code-only"
     assert "pledge_detail" not in active_evidence
     assert "stk_nineturn" not in active_evidence
 
@@ -1711,9 +1711,19 @@ def test_forecast_and_fina_audit_use_success_capable_event_contracts() -> None:
     assert forecast_binding["activation_state"] == "active"
     assert forecast_binding["probe_state"] == "executable"
     assert forecast_binding["ingest_contract_state"] == "ready"
-    assert forecast_binding["request_template"] == {"ann_date": "${window.ann_date}"}
-    assert forecast_binding["fanout"] == {"strategy": "none"}
-    assert forecast_binding["request_window_policy"]["required_keys"] == ["ann_date"]
+    assert forecast_binding["request_template"] == {}
+    assert forecast_binding["request_window_policy"] is None
+    assert forecast_binding["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.equity.security_master",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert forecast_binding["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
 
     fina_audit = datasets["fina_audit"]
     audit_binding = fina_audit["provider_bindings"][0]

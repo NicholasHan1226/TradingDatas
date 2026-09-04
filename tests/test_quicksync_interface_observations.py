@@ -96,9 +96,9 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     # The generic synthetic fixture only evidences the ingest-ready cohort;
     # active entries whose interfaces are not ingest-ready in the checked-in
     # observations (blocked params, unresolved enums, session-minute fanout)
-    # never appear in its candidate projection.  The gap is 19 once
-    # rt_min_daily is restored to active_evidence as a seed-dependent.
-    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 19
+    # never appear in its candidate projection.  The gap is 20 once
+    # forecast joins the seed-dependent active set (with rt_min_daily).
+    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 20
     assert activation_projection["candidate_count"] == len(active_evidence) - (
         _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS
     )

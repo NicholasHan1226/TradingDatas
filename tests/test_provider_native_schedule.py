@@ -4545,7 +4545,7 @@ def test_cashflow_and_express_empty_receipts_are_not_success(
     assert "success" not in executed.values()
 
 
-def test_forecast_is_active_and_plans_event_ann_date_snapshot(
+def test_forecast_is_active_and_plans_undated_ts_code_fanout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4564,8 +4564,12 @@ def test_forecast_is_active_and_plans_event_ann_date_snapshot(
     assert binding.entitlement_state == "active"
     assert binding.probe_state == "executable"
     assert binding.fanout is not None
-    assert binding.fanout.strategy == "none"
-    assert dict(binding.request_template) == {"ann_date": "${window.ann_date}"}
+    assert binding.fanout.strategy == "dataset_field"
+    assert binding.fanout.batch_size == 1
+    assert dict(binding.request_template) == {}
+    assert binding.request_window_policy is None
+    assert binding.resumable_fanout is not None
+    assert binding.resumable_fanout.progress_mode == "complete_window"
 
     db_path = tmp_path / "facts.sqlite"
     _database(db_path)
@@ -4586,7 +4590,7 @@ def test_forecast_is_active_and_plans_event_ann_date_snapshot(
         for plan in automatic.plans
         if plan.dataset_id == _FORECAST_DATASET_ID
     }
-    assert planned == {_FORECAST_DATASET_ID: {"ann_date": "20260720"}}
+    assert planned == {_FORECAST_DATASET_ID: {}}
     skipped = {item.dataset_id: item.state for item in automatic.skipped}
     assert skipped.get(_FORECAST_DATASET_ID) != "paused"
     assert skipped.get("cn.news.flash") == "paused"
