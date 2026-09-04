@@ -456,10 +456,11 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
         "income",
         "pledge_stat",
     )
-    # cashflow / express left the ann_date continuation: official ts_code is
-    # independently required (not 二选一), and date + 1-code fanout stayed
-    # empty.  Empty ≠ success.  Undated ts_code-only matches pledge_stat.
-    undated_report_family = {"cashflow", "express", "pledge_stat"}
+    # cashflow / express / fina_audit left the ann_date continuation:
+    # official ts_code is independently required (not 二选一), and date +
+    # 1-code fanout stayed empty.  Empty ≠ success.  Undated ts_code-only
+    # matches pledge_stat.
+    undated_report_family = {"cashflow", "express", "fina_audit", "pledge_stat"}
     for api_name in report_family:
         expected_progress = {"cursor_contract_version": 2, "max_batches_per_run": 1}
         if api_name not in undated_report_family:
@@ -487,6 +488,15 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
     assert _contract(bundle, "cb_share")["cadence_class"] == "event"
     assert _contract(bundle, "cb_basic")["cadence_class"] == "daily_reference"
     assert "resumable_fanout" not in _contract(bundle, "cb_basic")
+    # Official forecast is 二选一.  Date-only snapshot + event cadence;
+    # on_demand never scheduled so it stayed at 0 SUCCESS.  Empty ≠ success.
+    assert _contract(bundle, "forecast")["cadence_class"] == "event"
+    assert _contract(bundle, "forecast")["request_template"] == {
+        "ann_date": "${window.ann_date}"
+    }
+    assert _contract(bundle, "forecast")["fanout"]["strategy"] == "none"
+    assert "ann_date" in _entry(observations, "forecast")["parameters"]
+    assert "ts_code" not in _entry(observations, "forecast")["parameters"]
 
     default_observations = deepcopy(observations)
     _entry(default_observations, "express")["parameters"]["ts_code"].pop(
@@ -637,6 +647,14 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     assert cashflow["probe_state"] == "executable"
     assert cashflow["probe_block_reasons"] == []
     assert cashflow["params"] == {"ts_code": "600000.SH"}
+    fina_audit = _entry(plan, "fina_audit")
+    assert fina_audit["probe_state"] == "executable"
+    assert fina_audit["probe_block_reasons"] == []
+    assert fina_audit["params"] == {"ts_code": "600000.SH"}
+    forecast = _entry(plan, "forecast")
+    assert forecast["probe_state"] == "executable"
+    assert forecast["probe_block_reasons"] == []
+    assert forecast["params"] == {"ann_date": "20260718"}
     assert "600000.SH" not in yaml.safe_dump(plan["provenance"])
     assert plan["provenance"]["seed_authorities"] == [
         {

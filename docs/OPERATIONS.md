@@ -281,8 +281,14 @@ empty 回执仍是 empty，不是 success；成功只能来自收盘后开市日
 empty 仍是 empty，不是 success。当前合同去掉可选日期过滤，改为与
 `pledge_stat` 相同的 ts_code-only `entity_fanout`（`batch_size=1`、
 `max_batches_per_run=1`、无 `partition_continuation`），cadence 仍是 `event`。
+`cn.dataset.fina_audit` 是同一 wave7 financial 已激活行，官方 `ts_code` 同样
+是独立必填 `Y`，因此沿用同一 ts_code-only `entity_fanout`，不再带
+`ann_date` continuation。`cn.dataset.forecast` 官方 `ts_code` / `ann_date`
+是 `Y (二选一)`；原先 `on_demand` + paused 不会自动采集。当前合同改为
+`event` cadence 与 ann_date-only snapshot（`fanout=none`），并单独恢复
+`activation_state=active`。历史 empty 回执仍是 empty，不是 success。
 其余 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、
-news.flash、margin*、forecast、rt_etf_min*）保持暂停。
+news.flash、margin*、rt_etf_min*）保持暂停。
 
 ## 国际新闻原始发布时间与精度
 

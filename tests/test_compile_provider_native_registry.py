@@ -1505,11 +1505,12 @@ def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 134
-    assert len(bindings) - len(active) == 56
+    assert len(active) == 135
+    assert len(bindings) - len(active) == 55
     assert wave4_exact8 <= active
-    assert not active & {"forecast", "pledge_detail", "stk_nineturn"}
-    assert "forecast" not in active_evidence
+    assert "forecast" in active
+    assert not active & {"pledge_detail", "stk_nineturn"}
+    assert active_evidence.get("forecast") == "server-evidence/20260904T-forecast-ann-date-only"
     assert "pledge_detail" not in active_evidence
     assert "stk_nineturn" not in active_evidence
 
@@ -1534,11 +1535,12 @@ def test_wave5_batch_a_active_evidence_is_formal_and_fail_closed() -> None:
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 134
-    assert len(bindings) - len(active) == 56
+    assert len(active) == 135
+    assert len(bindings) - len(active) == 55
     assert batch_a <= active
     assert "top10_cb_holders" in active
-    assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
+    assert "forecast" in active
+    assert not active & {"cb_price_chg", "pledge_detail", "stk_nineturn"}
     assert active_evidence.get("top10_cb_holders") == batch_a_ref
 
 
@@ -1561,10 +1563,11 @@ def test_wave5_batch_b_top10_active_evidence_is_formal_and_fail_closed() -> None
         for api_name, binding in bindings.items()
         if binding["activation_state"] == "active"
     }
-    assert len(active) == 134
-    assert len(bindings) - len(active) == 56
+    assert len(active) == 135
+    assert len(bindings) - len(active) == 55
     assert "top10_cb_holders" in active
-    assert not active & {"cb_price_chg", "forecast", "pledge_detail", "stk_nineturn"}
+    assert "forecast" in active
+    assert not active & {"cb_price_chg", "pledge_detail", "stk_nineturn"}
 
 
 def test_wave7_financial_exact7_valid_empty_evidence_is_formal_and_fail_closed() -> None:
@@ -1586,11 +1589,12 @@ def test_wave7_financial_exact7_valid_empty_evidence_is_formal_and_fail_closed()
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 134
-    assert len(bindings) - len(active) == 56
+    assert len(active) == 135
+    assert len(bindings) - len(active) == 55
     assert wave7_exact7 <= active
     assert "pledge_stat" in active
-    assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
+    assert "forecast" in active
+    assert not active & {"pledge_detail", "stk_nineturn", "cb_price_chg"}
 
 
 def test_wave7_tradedate_exact3_evidence_is_formal_and_fail_closed() -> None:
@@ -1612,8 +1616,8 @@ def test_wave7_tradedate_exact3_evidence_is_formal_and_fail_closed() -> None:
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 134
-    assert len(bindings) - len(active) == 56
+    assert len(active) == 135
+    assert len(bindings) - len(active) == 55
     assert tradeday <= active
     assert bindings["daily_basic"]["activation_state"] == "active"
     assert bindings["daily_basic"]["request_template"] == {
@@ -1621,7 +1625,8 @@ def test_wave7_tradedate_exact3_evidence_is_formal_and_fail_closed() -> None:
     }
     assert bindings["daily_basic"]["fanout"] == {"strategy": "none"}
     assert "pledge_stat" in active
-    assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
+    assert "forecast" in active
+    assert not active & {"pledge_detail", "stk_nineturn", "cb_price_chg"}
 
 
 def test_wave7_high_fanout_exact3_is_active_automatic_and_resumable() -> None:
@@ -1686,10 +1691,59 @@ def test_cashflow_and_express_use_undated_ts_code_fanout() -> None:
         for dataset in registry["datasets"]
         if dataset["provider_bindings"][0]["activation_state"] == "paused"
     }
-    assert "cn.dataset.forecast" in paused
+    assert "cn.dataset.forecast" not in paused
     assert "cn.dataset.fund_daily" in paused
     assert "cn.dataset.cashflow" not in paused
     assert "cn.dataset.express" not in paused
+
+
+def test_forecast_and_fina_audit_use_success_capable_event_contracts() -> None:
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    datasets = {
+        dataset["provider_bindings"][0]["api_name"]: dataset
+        for dataset in registry["datasets"]
+    }
+    forecast = datasets["forecast"]
+    forecast_binding = forecast["provider_bindings"][0]
+    assert forecast["cadence_class"] == "event"
+    assert forecast_binding["activation_state"] == "active"
+    assert forecast_binding["probe_state"] == "executable"
+    assert forecast_binding["ingest_contract_state"] == "ready"
+    assert forecast_binding["request_template"] == {"ann_date": "${window.ann_date}"}
+    assert forecast_binding["fanout"] == {"strategy": "none"}
+    assert forecast_binding["request_window_policy"]["required_keys"] == ["ann_date"]
+
+    fina_audit = datasets["fina_audit"]
+    audit_binding = fina_audit["provider_bindings"][0]
+    assert fina_audit["cadence_class"] == "event"
+    assert audit_binding["activation_state"] == "active"
+    assert audit_binding["probe_state"] == "executable"
+    assert audit_binding["ingest_contract_state"] == "ready"
+    assert audit_binding["request_template"] == {}
+    assert audit_binding["request_window_policy"] is None
+    assert audit_binding["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.equity.security_master",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert audit_binding["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+    paused = {
+        dataset["dataset_id"]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["activation_state"] == "paused"
+    }
+    assert "cn.dataset.forecast" not in paused
+    assert "cn.dataset.fina_audit" not in paused
+    assert "cn.dataset.fund_daily" in paused
+    assert "cn.news.flash" in paused
+    assert len(paused) == 55
 
 
 def test_wave7_nowindow_and_seed_unlock_rt_min_daily_activation() -> None:
@@ -1707,14 +1761,15 @@ def test_wave7_nowindow_and_seed_unlock_rt_min_daily_activation() -> None:
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 134
-    assert len(bindings) - len(active) == 56
+    assert len(active) == 135
+    assert len(bindings) - len(active) == 55
     assert active_cohort <= active
     assert bindings["rt_min_daily"]["activation_state"] == "active"
     assert bindings["rt_min_daily"]["probe_state"] == "executable"
     assert bindings["rt_min_daily"]["ingest_contract_state"] == "ready"
     assert "pledge_stat" in active
-    assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
+    assert "forecast" in active
+    assert not active & {"pledge_detail", "stk_nineturn", "cb_price_chg"}
 
 
 def test_wave7_pledge_stat_evidence_is_formal_and_exact16_resolved() -> None:
@@ -1727,8 +1782,8 @@ def test_wave7_pledge_stat_evidence_is_formal_and_exact16_resolved() -> None:
     bindings = {d["provider_bindings"][0]["api_name"]: d["provider_bindings"][0] for d in registry["datasets"]}
     active = {api for api, binding in bindings.items() if binding["activation_state"] == "active"}
     assert len(bindings) == 190
-    assert len(active) == 134
-    assert len(bindings) - len(active) == 56
+    assert len(active) == 135
+    assert len(bindings) - len(active) == 55
     assert "pledge_stat" in active
     security_master_dependents = {
         "balancesheet", "cashflow", "cyq_chips", "cyq_perf", "express",
@@ -1737,7 +1792,8 @@ def test_wave7_pledge_stat_evidence_is_formal_and_exact16_resolved() -> None:
     }
     assert security_master_dependents <= active
     assert "rt_min_daily" in active
-    assert not active & {"forecast", "pledge_detail", "stk_nineturn", "cb_price_chg"}
+    assert "forecast" in active
+    assert not active & {"pledge_detail", "stk_nineturn", "cb_price_chg"}
 
 
 def test_active_evidence_remains_fail_closed_for_blocked_observation_classes() -> None:

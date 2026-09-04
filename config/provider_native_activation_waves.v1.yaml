@@ -1,6 +1,6 @@
 version: 1
 input_hashes:
-  runtime_registry_sha256: "eb67832e43071274b5b829a574369a102fba52109b4d007909cca0d5bcc8b2d0"
+  runtime_registry_sha256: "aeb72af461c821c0280992ba9c1f2324d89c93e819c16e0fbf7550dc78e5a51b"
   schedule_sha256: "b04dbe685cae3e83d70ed504fdfc8298e66c7179537b7e814771ead20f79df92"
 waves:
   breadth_observed_20260814:
@@ -67,8 +67,9 @@ waves:
     # to the event wave: ann_date-partitioned announcements publish throughout
     # the announcement day, so the 00:30 daily sweep only ever observed
     # trusted-empty windows (2026-08-18..24 receipts all empty while
-    # upstream held the rows).  forecast (paused on_demand) follows in a
-    # separate activation once its server-side evidence ref is recorded.
+    # upstream held the rows).  forecast is activated separately as an
+    # event + ann_date-only snapshot (official 二选一); this wave stays
+    # disclosure_date / share_float only.
     dataset_ids:
     - cn.dataset.disclosure_date
     - cn.dataset.share_float

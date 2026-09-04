@@ -352,9 +352,9 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "forecast",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.forecast",
       "entitlement": "active",

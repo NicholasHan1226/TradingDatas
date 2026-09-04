@@ -11337,8 +11337,7 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: entity_fanout
-  request_template:
-    ann_date: ${window.ann_date}
+  request_template: {}
   request_variants:
   - {}
   fanout:
@@ -11350,19 +11349,9 @@ contracts:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
-    progress_mode: partition_continuation
-    continuation_max_age_days: 31
-    partition_date_field: ann_date
   pagination:
     strategy: none
-  request_window_policy:
-    required_keys:
-    - ann_date
-    formats:
-      ann_date: yyyymmdd
-    range_start_key: ann_date
-    range_end_key: ann_date
-    max_span_days: 1
+  request_window_policy: null
   response_completeness: null
   requested_fields: []
   budgets:
@@ -13018,7 +13007,7 @@ contracts:
   range_field: null
   partition_field: null
   as_of_format: null
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   point_in_time: append_only

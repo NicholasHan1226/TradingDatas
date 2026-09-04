@@ -284,7 +284,9 @@ entries:
   source_document_sha256: 5331510b6cc64a8aca6f6f747aeb5221e887238e6b327e71537a73b7d999affe
   reason_code: doc_explicit_event
 - api_name: fina_audit
-  # 2026-08-29 #350: same ann_date event binding as balancesheet.
+  # Official ts_code is independently required.  ann_date + 1-code fanout
+  # produced trusted-empty (date reset before universe sweep).  Empty ≠
+  # success.  Keep event cadence; request is now ts_code-only (pledge_stat).
   cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 9ea741dfcfa5fc06548ca3431c18bd3b1febebedcfbd6359ff8f41e553c4b185
@@ -301,10 +303,15 @@ entries:
   source_document_sha256: c71ef9b216b9f4431f7c643511729839e536ac7528a83e998d3bca2a37aa6bc9
   reason_code: no_document_frequency_evidence
 - api_name: forecast
-  cadence_class: on_demand
+  # Official ts_code / ann_date are Y (二选一).  on_demand never schedules,
+  # so the interface stayed paused with 0 SUCCESS.  Announcements publish
+  # throughout the day (same window as disclosure_date / share_float);
+  # daily_reference 00:30 would trusted-empty the just-started date.
+  # Empty ≠ success.  Event + ann_date-only snapshot; no fanout.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: b0fa96c98b8ca40eec91374c907d8f605f23733b6d6c1b020e0f2f97a1a75869
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: ft_limit
   cadence_class: on_demand
   freshness_sla_seconds: 86400

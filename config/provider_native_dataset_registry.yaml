@@ -10380,8 +10380,7 @@ datasets:
       declared_source_type: str
       required: false
     request_shape: entity_fanout
-    request_template:
-      ann_date: ${window.ann_date}
+    request_template: {}
     request_variants:
     - {}
     fanout:
@@ -10393,19 +10392,9 @@ datasets:
     resumable_fanout:
       cursor_contract_version: 2
       max_batches_per_run: 1
-      progress_mode: partition_continuation
-      continuation_max_age_days: 31
-      partition_date_field: ann_date
     pagination:
       strategy: none
-    request_window_policy:
-      required_keys:
-      - ann_date
-      formats:
-        ann_date: yyyymmdd
-      range_start_key: ann_date
-      range_end_key: ann_date
-      max_span_days: 1
+    request_window_policy: null
     response_completeness: null
     requested_fields: []
     max_batch_bytes: 67108864
@@ -11825,7 +11814,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -11834,7 +11823,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_forecast
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
