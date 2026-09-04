@@ -273,9 +273,16 @@ empty 回执仍是 empty，不是 success；成功只能来自收盘后开市日
 `Y (二选一)` 卡住：多代码 fanout 在 QuickSync 上返回 empty，trade_date-only
 才返回全日全市场行。当前合同改为 trade_date snapshot、`scheduled_partition`、
 `fanout=none`，并单独恢复 `activation_state=active`。历史 empty 回执仍是 empty，
-不是 success。其余 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、
-index_daily、news.flash、margin*、cashflow、express、forecast、rt_etf_min*）
-保持暂停。
+不是 success。
+`cn.dataset.cashflow` 与 `cn.dataset.express` 已经是 `activation_state=active`
+（wave7 financial），不是 `registry_activation_paused`。官方 `ts_code` 是独立
+必填 `Y`，不是 二选一；QuickSync 拒绝 ann_date-only（20002）。单码 + 当日
+`ann_date` 除公告日外返回 empty，日期在 5971 码扫完前重置，收据停在 empty。
+empty 仍是 empty，不是 success。当前合同去掉可选日期过滤，改为与
+`pledge_stat` 相同的 ts_code-only `entity_fanout`（`batch_size=1`、
+`max_batches_per_run=1`、无 `partition_continuation`），cadence 仍是 `event`。
+其余 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、
+news.flash、margin*、forecast、rt_etf_min*）保持暂停。
 
 ## 国际新闻原始发布时间与精度
 

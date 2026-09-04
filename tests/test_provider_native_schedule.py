@@ -1843,10 +1843,17 @@ def test_recent_terminal_receipt_makes_active_dataset_not_due(
         "cn.dataset.cb_share",
     }
     # Continuation must first derive the current verified code universe. This
-    # fixture seeds daily prices/calendar only, so these seven bindings cannot
+    # fixture seeds daily prices/calendar only, so dated bindings cannot
     # borrow a universe from a terminal receipt or plan an unbound batch.
-    continuation_family = report_family - {"cn.dataset.pledge_stat"}
-    assert {"cn.dataset.pledge_stat"} <= planned
+    # cashflow / express dropped the ann_date window (ts_code-only, same
+    # shape as pledge_stat) so they plan without a dated continuation.
+    undated_report_family = {
+        "cn.dataset.cashflow",
+        "cn.dataset.express",
+        "cn.dataset.pledge_stat",
+    }
+    continuation_family = report_family - undated_report_family
+    assert undated_report_family <= planned
     assert not continuation_family & planned
     assert {skipped[dataset_id] for dataset_id in continuation_family} == {
         "dependency_unavailable"
@@ -4307,6 +4314,10 @@ _REACTIVATED_TRADE_DATE_SNAPSHOTS = (
     "cn.dataset.adj_factor",
 )
 _DAILY_BASIC_DATASET_ID = "cn.dataset.daily_basic"
+_CASHFLOW_EXPRESS_DATASET_IDS = (
+    "cn.dataset.cashflow",
+    "cn.dataset.express",
+)
 
 
 def test_stk_limit_and_adj_factor_stay_active_and_plan_postclose(
@@ -4416,6 +4427,96 @@ def test_daily_basic_is_active_and_plans_postclose_trade_date(
         schedule_source_path=SCHEDULE_CONFIG,
     )
     assert _DAILY_BASIC_DATASET_ID not in {plan.dataset_id for plan in wave.plans}
+
+
+def test_cashflow_and_express_are_active_and_plan_undated_ts_code_fanout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    paused = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].activation_state == "paused"
+    }
+    assert paused == _PAUSED_DATASET_IDS
+    assert set(_CASHFLOW_EXPRESS_DATASET_IDS).isdisjoint(paused)
+    for dataset_id in _CASHFLOW_EXPRESS_DATASET_IDS:
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == "event"
+        assert binding.activation_state == "active"
+        assert binding.entitlement_state == "active"
+        assert binding.probe_state == "executable"
+        assert binding.fanout is not None
+        assert binding.fanout.strategy == "dataset_field"
+        assert binding.fanout.batch_size == 1
+        assert dict(binding.request_template) == {}
+        assert binding.request_window_policy is None
+        assert binding.resumable_fanout is not None
+        assert binding.resumable_fanout.progress_mode == "complete_window"
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    automatic = scheduler.run_schedule(
+        registry=registry,
+        schedule=schedule,
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        cadence_class="event",
+    )
+    planned = {
+        plan.dataset_id: dict(plan.request_window)
+        for plan in automatic.plans
+        if plan.dataset_id in _CASHFLOW_EXPRESS_DATASET_IDS
+    }
+    assert planned == {dataset_id: {} for dataset_id in _CASHFLOW_EXPRESS_DATASET_IDS}
+    skipped = {item.dataset_id: item.state for item in automatic.skipped}
+    assert skipped.get("cn.dataset.cashflow") != "paused"
+    assert skipped.get("cn.dataset.express") != "paused"
+    assert skipped.get("cn.news.flash") == "paused"
+
+
+def test_cashflow_and_express_empty_receipts_are_not_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        conn.commit()
+
+    def execute(plan: scheduler.ScheduledRun) -> scheduler.DatasetResult:
+        if plan.dataset_id in _CASHFLOW_EXPRESS_DATASET_IDS:
+            return scheduler.DatasetResult(plan.dataset_id, plan.provider, "empty", 3)
+        return scheduler.DatasetResult(plan.dataset_id, plan.provider, "success", 0)
+
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=True,
+        executor=execute,
+        cadence_class="event",
+    )
+    executed = {
+        item.dataset_id: item.state
+        for item in result.executed
+        if item.dataset_id in _CASHFLOW_EXPRESS_DATASET_IDS
+    }
+    assert executed == {
+        dataset_id: "empty" for dataset_id in _CASHFLOW_EXPRESS_DATASET_IDS
+    }
+    assert "success" not in executed.values()
 
 
 def test_daily_basic_empty_receipts_are_not_success(
