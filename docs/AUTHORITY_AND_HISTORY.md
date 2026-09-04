@@ -14,6 +14,7 @@
 | service/timer/effective release | 服务器本轮直接 readback | `STATUS.md` 可记录最近摘要 |
 | 长期架构和接口 | `docs/ARCHITECTURE.md` / `docs/API.md` | 稳定说明 |
 | 发布和恢复规则 | `docs/OPERATIONS.md` | 操作合同 |
+| 接口接入 / 外部 blocker / 采集成功口径 | `docs/OPERATIONS.md`「Datas PM 接入口径」 | 解释我们拥有什么；不把 vendor empty 写成未完成 |
 | 长期决策 | `docs/adr/` | 决策原因、约束和后果 |
 | 一次性验收、事故、迁移证据 | `docs/reports/` | 日期化人工可读记录 |
 | 普通代码修改历史 | Git commits | 不重复写事件日志 |

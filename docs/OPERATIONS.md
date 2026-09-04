@@ -431,6 +431,52 @@ exit code `3` 与并发 busy code `75` 都视为完成；validation 与 provider
 
 普通读取仍仅按 receipt authority 做单遍历。只有 onboarding、合同漂移、事故恢复和每日 scrub 才执行独立双遍历验证。合法 empty 只证明该观察窗口没有数据；历史读取默认仍为 `observation_only`，除非另有 immutable receipt、as-of、first-seen 与 revision-vintage 的完整证据，不能据此声称 PIT 或非空完整性。
 
+## Datas PM 接入口径（2026-09-05 Asia/Shanghai）
+
+Haofei / Datas PM 锁定的计划与运维口径。不新增流程框架、不改数据面合同、
+不做 mass-unpause。产品身份仍是 agent-first `catalog/query` 事实层；
+**empty ≠ success**。
+
+### 外部输入质量（单独列，不计入未完成）
+
+Tushare 及任何 provider 的晚发、缺行、限频、文档≠现实、间歇
+`provider_error` 是**外部 blocker**，不是工程未完成。必须与内部缺口分开
+记录。合同正确时，它们不得停止下一可接接口的 onboarding，也不得计为进度
+slip / 未完成。
+
+### 最小合同，禁止过度设门
+
+优先能产出诚实 receipt 的最小合同：request shape + cadence + empty ≠
+success。除非否则无法得到 SUCCESS，否则不得新增 cadence class、VIP
+transport、完整性重写、worker 上调或 catalog 超时放宽。
+
+双认证 catalog **<15s** 仍是既有部署安全门（冷启动/重启对；warm-only
+不算），不是新的发布框架，也不为文档或无关接口发明额外 release gate。
+
+盘中生产行为变更默认 **WIP=1**。vendor emptiness / 外部 `provider_error`
+**不得**冻结队列：记一行外部 blocker 后继续下一可接接口。
+
+### 我们拥有 vs 不拥有
+
+我们拥有：registry / request shape、cadence / planner class、fanout、
+activation、merge → GZ cut、以及 vendor 实际返回行时的非空 SUCCESS。
+
+我们不拥有：把 vendor 数据变好、伪造非空、把 empty 写成 success、或等源
+“变稳定”再发下一可接接口。
+
+### 交付模型
+
+对齐 Tushare 的是 dataset / coverage **菜单**，不是 Tushare 的 ad-hoc API
+调用交付模型。TradingDatas 仍是 agent-first catalog+query 事实层。empty
+receipt 不是 success；合同正确时的 empty / `provider_error` 是外部事实，
+不是重设计理由。
+
+### 速度规则
+
+正确合同已上 GZ 后：若 receipt 为 empty 或 `provider_error` 且分类为
+vendor-side，**继续下一可接接口**，只保留短外部-blocker 行。仅当失败是
+内部（错误 shape / cadence）时才重开该接口。本口径不是 mass-unpause。
+
 ## Release 与回滚身份
 
 `tools/release_manifest.py` 只管理 Git release 字节与 `current` 指针，不安装 unit、
@@ -992,6 +1038,12 @@ does not authorize credential rotation or deletion of any account data.
 ## 发布门禁
 
 必须分别验证：local、origin/GitHub、production checkout、active release、service/timer、SQLite、真实 provider receipt、API readback 和消费者调用。
+
+双认证 `GET /v1/catalog` **<15s**（冷启动/重启对；warm-only 不算）是既有
+部署安全门，不是额外发布框架。文档 tip 的 GZ cut 可以做，但不构成数据面
+目的变更；Pages 只在 `static/**` / `public-web/**` 变化时触发。盘中生产行为
+变更默认 WIP=1；vendor emptiness 不得冻结下一可接接口，见上文
+「Datas PM 接入口径」。
 
 旧 `api.tushare.pro` official-direct release 只保留代码与回滚证据，不得启动为生产采集 runtime；修正版必须 fresh 验证 QuickSync endpoint/TLS、禁止 redirect、权限码分类、200 次/60 秒账号门禁、并发 4、单一 deadline、仅 pre-send DNS failover 和 impaired API readback。历史 190 接口本机矩阵、222 静态能力目录或分钟吞吐证明都不能替代服务器 provider -> SQLite -> receipt -> API readback；每日额度未知时仍不启用自动历史回填。
 

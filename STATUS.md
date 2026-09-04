@@ -1,10 +1,37 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-04 21:35 CST（Finance 三面园艺；本地 / GitHub / 广州
-immutable `current` / runtime 分开记录）。审计时刻 `origin/main` 为
-`4e98eaa602425cae31aea117928e237d5dd7dd48`（#470）。本页合入后 GitHub HEAD
-会再前进一步，仍是文档层，**不**构成新的 GZ 发布。历史决策见
+最后更新：2026-09-05 Asia/Shanghai（Haofei / Datas PM 接入口径锁定；文档层，
+**不**构成数据面目的变更或新的 GZ 发布）。历史决策见
 [`docs/adr/`](docs/adr/)，事故与验收复盘见 [`docs/reports/`](docs/reports/)。
+运维正文见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)「Datas PM 接入口径」。
+
+## 2026-09-05 Datas PM 接入口径（文档锁定）
+
+Haofei / Datas PM 2026-09-05 Asia/Shanghai 口径已写入
+`docs/OPERATIONS.md`、`ROADMAP.md`、`README.md` 与 `AGENTS.md`。#373 仍是
+GitHub 上的周计划 issue，本仓库不另建平行计划文件。本页不 mass-unpause，
+不改 registry/runtime/config。
+
+- 上游晚发、缺行、限频、文档≠现实、间歇 `provider_error` 是**外部
+  blocker**，单独列出；合同正确时不停止下一可接接口，也不计为进度 slip /
+  未完成。
+- 优先最小诚实合同（request shape + cadence + empty ≠ success）。不得为
+  “等源变好”新增 cadence class、VIP transport、完整性重写、worker 上调或
+  catalog 超时变更。
+- 双认证 catalog **<15s** 仍是既有部署安全门，不发明额外 release gate。
+  盘中生产行为变更默认 **WIP=1**，但 vendor emptiness 不得冻结队列。
+- 我们拥有 registry/shape、cadence/planner、fanout、activation、merge→GZ
+  cut，以及 vendor 实际返回行时的非空 SUCCESS。我们不拥有把 vendor 数据
+  变好、伪造非空、把 empty 写成 success，或等源“变稳定”再发。
+- 对齐 Tushare 的是 dataset/coverage **菜单**，不是其 ad-hoc API 交付模型。
+  TradingDatas 仍是 agent-first catalog+query 事实层。empty ≠ success；合同
+  正确时的 empty / `provider_error` 是外部事实，不是重设计理由。
+- 正确合同上 GZ 后，vendor-side empty/`provider_error` 只记短外部-blocker
+  行并继续下一可接接口；仅内部 shape/cadence 错误才重开。
+
+文档 tip 的 GZ cut 可以做，但不改变数据面目的。Pages 未改
+`static/**` / `public-web/**`，不应触发。下方 2026-09-04 园艺与更早段落
+仍是当时分层读回，不因本口径重写。
 
 ## 2026-09-04 21:35 CST 三面园艺与验收
 
