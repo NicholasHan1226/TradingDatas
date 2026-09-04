@@ -164,12 +164,37 @@ dataset, consume a payment action, modify an account, or persist the raw key.
 
 ## Prompt compiler and tests
 
-The frontend extracts the canonical templates and thin Agent prefixes from this
-document. It must not keep separate complete prompt strings in UI components.
-`VITE_TRADINGDATAS_API_BASE_URL` may provide a reviewed HTTPS origin at build
-time. It is public configuration, never a secret or proof of route readiness.
-When absent, the dialog labels the prompt as a draft and uses an explicit
-placeholder. Copying remains available for preparation, with no network request.
+`public-web/src/agentPrompts.js` extracts the templates from this Markdown.
+The headings below are load-bearing parser keys. Renaming them, wrapping them
+in extra markup, or keeping a second full prompt in `AgentDialog.jsx` breaks
+the dialog; there is no hardcoded fallback copy.
+
+Locale compilation (every Agent × locale pair is tested independently):
+
+| Locale | Concatenated source blocks |
+| --- | --- |
+| `en` | `### ${agent}` prefix + `## Canonical setup prompt` + `### Shared first-query checklist` |
+| `zh` | `## Canonical setup prompt (Chinese)` only |
+
+Chinese prompts do **not** receive Agent prefixes or the English checklist.
+`tests/agent-prompts.test.mjs` requires the same semantic terms in both
+languages, including `queryability.queryable === true`, `queryability.reasons`,
+`selectable`, `limit=1`, `next_cursor`, `Retry-After`, and `TRADINGDATA_API_KEY`.
+Add a required phrase to both language paths, or CI fails. Do not put a product
+slug, guessed `schema_major`, or a live hostname into these blocks.
+
+`VITE_TRADINGDATAS_API_BASE_URL` is public build configuration, never a secret
+or proof that a route is live. `apiOrigin()` accepts only `https://host` with
+no userinfo, path, query, or fragment. Anything else, including `http://` and
+`https://host/v1`, stays unconfigured and the prompt uses the placeholder
+`<TRADINGDATA_BASE_URL_FROM_ACCOUNT>`. Unresolved `{{...}}` placeholders and
+unknown Agent names throw; the dialog must not copy a partial prompt.
+
+Legacy spelling `TradingData` in these blocks is normalized to `TradingDatas`
+at compile time. Keep `TRADINGDATA_API_KEY` / `TRADINGDATA_BASE_URL` as the
+secret and variable names. Copying never sends a request. After Agent or
+language changes, a late clipboard success is ignored. Escape returns focus;
+Cmd/Ctrl+K is swallowed so the background search shortcut cannot fire.
 
 Deterministic tests assert for every variant:
 

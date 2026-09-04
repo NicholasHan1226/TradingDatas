@@ -145,6 +145,26 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
 
+### 查询页的 failed-cohort 前缀
+
+旧 collector 可能在同一 execution 后续调用失败前，已经提交前缀 success 行。认证
+`POST /v1/query` 不会把这些行当成成功事实：它用该行自身回执和同 execution 的已验证
+failed 终态识别前缀，最多重选 8 次。Git 合入或 HTTP 200 都不能证明生产已切换；是否
+生效仍看目标 release 的认证 query readback。
+
+诊断时先分清三种结果，不要删 SQLite facts/receipts 或改写 `runtime_state`：
+
+- **HTTP 200 且缺了预期行**：该行 `receipt_id` 为 success，但同一 `execution_id` 已有
+  明确 failed 终态。这是查询过滤。同页其它独立 success execution 仍应返回。
+- **HTTP 200 且包含曾经失败过的行**：同一逻辑请求在失败 attempt 之后有成功重试，
+  cohort 为 success。这是合法事实，不是漏过滤。
+- **HTTP 503 `service_unavailable`**：回执缺失/畸形、provider 不匹配、调用序列只有断档
+  而没有明确 failed 终态，或 8 次重选后候选页仍被 distinct failed-cohort 前缀占满。
+  `retryable: true` 不表示重试会补回前缀或修复缺失回执。大量互不相同的失败前缀若排在
+  合法行之前，可以耗尽 8 次预算；这与单次缺失回执是不同根因。
+
+公共合同见 [API 查询行权威](API.md#post-v1query)。
+
 分批续采读取历史时复用 `validated_receipt_history_for_dataset`，仅扫描当前 dataset 的
 完整回执历史；不能在每个分批任务中重复调用全目录 history loader。两者使用同一
 authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用缓存、截断历史、跳过
@@ -246,6 +266,39 @@ dataset allowlist，不改变 entitlement、请求形状、串行 provider budge
 全局 collection lock；新增 session-minute dataset 仍只能通过 registry/config 接入。每个真实
 交易窗口的连续 receipt 与认证 query/consumer readback 仍是稳定性证据，调度隔离本身不构成
 `stable` 声明。
+
+当前 `config/provider_native_schedule.yaml` 的 `session_minute` 窗口与预留
+（`Asia/Shanghai`、配置工作日 Mon–Fri）为：
+
+| 配置窗口 | dispatcher 预留 |
+| --- | --- |
+| 09:30–11:35 | 08:40–11:35 |
+| 13:00–15:05 | 12:10–15:05 |
+
+比较按分钟截断秒与微秒，以覆盖 timer `RandomizedDelaySec=15s` 的整根结束分钟
+（例如 11:35:59、15:05:59 仍预留；11:36:00、15:06:00 起恢复完整 scheduler）。
+午休 11:36–12:09、08:40 之前、15:06 之后以及周末不预留。午休不预留是因为即使
+oneshot 打到 45 分钟超时，也会在下午窗口开始前结束。
+
+预留只读 schedule 的 `weekdays` 与 `session_windows_local`，**不**读交易日历：
+工作日假期里 session_minute 计划仍会是 `not_due`，其它 automatic cadence 要等到
+当日预留结束后才重新进入完整 scheduler。预留时钟必须带时区；naive 时钟与
+schedule 加载失败一样，dispatcher 打印脱敏
+`{"mode":"execute","phase":"preplan","reason":"schedule_load","state":"validation"}`
+并以 exit `2` fail closed，不暴露路径或异常细节。
+
+`--cadence-class` 是 planner 的通用过滤器：只接受 schedule 已声明的 cadence class，
+未知值 fail closed；与 `--activation-wave` 同时出现时取交集。生产 dispatcher 不传
+wave。只读核对（不写库、不调用 provider）：
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/run_provider_native_schedule.py --cadence-class session_minute
+```
+
+生产仍必须经安装好的 collector service 启动，不得用该 flag 另开第二套 timer，
+也不得从 shell 直连 `/run/tradingdatas/collect.lock`。
+
 `pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。其中的
 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
@@ -860,6 +913,51 @@ the [language checkpoint](reports/2026-08-30-email-language-readiness.md). This 
 not an OTP/session test or administrator grant. Preserve all existing deployment
 credentials, customer keys and unrelated Resend resources; do not send further
 mail or open email login before the remaining gates pass.
+
+### Email OTP admission diagnosis
+
+Email login remains gated (`EMAIL_LOGIN_ENABLED` and
+`IDENTITY_RETENTION_ENABLED` stay false until a separate activation). Use this
+section for local workerd/D1 checks and, later, enabled-runtime 429/503
+triage. Policy: [Email identity v1](design/email-identity-v1.md).
+Implementation: `public-web/worker/email-identity.js` (`takeCoupledRates`).
+
+`POST /api/account/email/challenge` and `.../verify` admit the shared attempt
+budget and the applicable per-IP budget in **one** D1 statement. If either
+limit is full, neither counter changes. A saturated global limit therefore
+cannot insert a new attacker-controlled IP bucket. Storage abort or an
+inconsistent `RETURNING` set becomes `503 identity_unavailable` and rolls
+both counters back. After a successful admission, later send-email,
+send-global, cooldown, invalid verify payloads, failed OTP compares, and
+provider send failures still consume the admitted budgets.
+
+| Limit | Key prefix | Window |
+| --- | --- | --- |
+| 1000 identity attempts | `identity-attempt-global` | 10 minutes |
+| 10 challenge sends / IP | `send-ip:` (HMAC of `CF-Connecting-IP`) | 1 hour |
+| 40 verify attempts / IP | `verify-ip:` | 10 minutes |
+| 5 sends / email, 100 sends global | `send-email:`, `send-global` | 1 hour |
+| 60s resend cooldown | `identity_send_cooldowns` | per email hash |
+
+Do not treat `429` as a mail-provider outage, and do not treat `503
+delivery_unavailable` as a rate-limit. Empty or missing `CF-Connecting-IP`
+is `503 identity_unavailable`; never fall back to `X-Forwarded-For`.
+`Retry-After` on 429 is 60 seconds. Fixed D1 windows can allow two
+adjacent-window bursts; they are not rolling commercial API limits.
+
+Local checks (loopback, intercepted outbound mail, no production D1):
+
+```bash
+cd public-web
+node --test tests/email-identity.test.mjs
+node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js
+```
+
+The Node tests cover saturated global/per-IP admission, no new IP bucket on
+a full global cap, and storage-failure rollback. The Miniflare script is
+optional workerd/D1 acceptance, not an enablement or send-real-mail command.
+Do not query `identity_rate_buckets` as a user table or apply identity SQL
+to financial SQLite.
 
 ### Account-only retention candidate
 

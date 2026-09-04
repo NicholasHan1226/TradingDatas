@@ -74,12 +74,16 @@ dataset/provider、成功状态与完整采集序列校验。缺失或无效的�
 
 旧版本可能在同一采集 execution 的后续调用明确失败前，已提交前缀调用的 success
 行。查询会在排序与分页前，通过该行自身回执及同 execution 的已验证 failed 终态识别并
-排除这类已知 partial 前缀，最多有界重选 8 次；它们不构成可返回的成功事实。这个例外
+排除这类已知 partial 前缀，最多有界重选 8 次；它们不构成可返回的成功事实。其余独立
+success execution 的行仍可同页返回，因此 HTTP 200 且 `data` 变短是预期过滤，不是 503。
+同一逻辑请求在失败 attempt 之后的成功重试属于完整 success cohort，仍可返回。这个例外
 不放宽 fail closed：回执缺失、畸形、provider 不匹配、调用序列只有断档而没有明确
 failed 终态，或 8 次重选仍不能形成有效页时，仍返回 `503 service_unavailable`。
+该 503 的 `retryable: true` 只表示共享不可用信封，不承诺重试会补回被排除的前缀或缺失回执。
 
 `include_receipt_proofs` 只控制是否输出逐行证明及其既有的单一采集序列限制，
-不控制上述基础校验是否执行。省略该字段等于 `false`。默认查询继续允许同页
+不控制上述基础校验是否执行；被排除的 failed-cohort 前缀也不会出现在证明列表中。
+省略该字段等于 `false`。默认查询继续允许同页
 包含来自多个有效历史采集序列的行；字段投影、分页和默认响应格式不变。
 同一页若行回执分属不同 `execution_id` / `request_window` / `config_hash` /
 `data_through`，默认查询在各回执均有效时可返回这些行；显式 `true` 会因单一
@@ -514,8 +518,22 @@ no tenant, data grant, usage or API key access. This does not change catalog/que
 or existing Portal authentication. Configured readiness is not delivery evidence;
 missing configuration keeps email login unavailable. Detailed request/response,
 limits, failure and release contracts: [Email identity v1](design/email-identity-v1.md).
+Operator diagnosis of 429/503: [OPERATIONS.md](OPERATIONS.md#email-otp-admission-diagnosis).
 No production storage migration, secret provisioning or email activation is
 asserted by this API description.
+
+Challenge and verify share one admission gate, then apply narrower send/verify
+caps. Status values below are the Worker JSON `error` field. They are not
+catalog/query codes and do not grant data access.
+
+| HTTP | `error` | When |
+| --- | --- | --- |
+| 202 | (none) | Challenge accepted by the mail provider; not inbox delivery. |
+| 400 | `invalid_request` / `invalid_code` | Malformed email, or verify payload/code failed. Invalid email is rejected **before** admission. Invalid verify payloads after admission still consume that attempt. |
+| 429 | `rate_limited` | Coupled global+per-IP admission denied, or a later send-email / send-global / 60s cooldown cap. `Retry-After: 60`. A full global budget must not create a new per-IP bucket. |
+| 503 | `email_login_unavailable` | Enable flags, D1, pepper, or Resend key incomplete. |
+| 503 | `identity_unavailable` | Missing Cloudflare `CF-Connecting-IP`, D1/storage throw, or inconsistent admission rows. Do not trust `X-Forwarded-For`. |
+| 503 | `delivery_unavailable` | Provider send failed after admission; an unaccepted challenge row is deleted. |
 
 The local candidate also adds `POST /api/account/profile/deletion`: same-origin
 JSON `{confirmation: "DELETE"}`, `X-TD-Identity` matching the current email identity,

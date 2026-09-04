@@ -26,6 +26,13 @@ Recipe 是版本化准备合同，不是当前运行时 pipeline。它可以组�
 
 Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具和限制的透明衍生数据。它不能是 alpha、信号、排名或建议。Feature Plane 目前未实现，详情页与 manifest 只能标记为 target/product definition/planned。完整分层见 `docs/product/PRODUCT_PLANES.md`。
 
+公开站 Account 邮箱 OTP 与会话是独立的 Cloudflare Worker 控制面
+（`public-web/worker/email-identity.js` + 专用 D1），不是 SQLite facts、receipt
+或 `catalog/query` 的一部分。Git 合入、静态页发布或配置绑定都不等于
+`EMAIL_LOGIN_ENABLED`。Agent 接入提示词由 `docs/AGENT_INTEGRATIONS.md` 编译，
+不新增数据路由。身份 429/503 诊断见 `docs/OPERATIONS.md`；公开页不得把
+`productManifest` 写成采集健康。
+
 公共对象与视觉合同由 `docs/design/public-data-product-system-v1.md` 与 `docs/product/PUBLIC_SURFACE_MAP.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
 
 ### 公开站控制面
@@ -167,6 +174,12 @@ activation evidence 不能绕过 provider payload 的绝对扫描上限。regist
 
 当前数据优先于历史回填；回填必须有界、可恢复、可观察，并遵守账号级和 API 级预算。
 
+生产只有一个 collector dispatcher。临近 `session_minute` 配置窗口时，它仍使用同一
+registry/schedule runner 与全局 lock，但通过通用 `--cadence-class` 只选择该
+cadence，避免低频波次跨过下一根 5 分钟快照。这不是 dataset allowlist、新
+service/timer，也不是 `stable` 证据；预留超前量、工作日/窗口边界与 fail-closed
+诊断见 `docs/OPERATIONS.md`。新增 session-minute dataset 仍只能改 registry/config。
+
 ## Provider 权限与 Transport 预算
 
 registry 的 `entitlement` 是 provider-neutral 技术状态。对当前 Tushare 数据集，它表示通过 QuickSync transport 受控真实调用观测到的账号接口权限；它不表示购买、计费或订阅。凭证只建立 transport 账号身份，不证明接口权限。
@@ -207,6 +220,10 @@ query 的权威在同一只读快照内分两层，不能互相替代：
 
 1. **dataset 级 runtime 投影**：catalog/query 的 freshness、quality、`metadata.receipt_id` 与 `lineage` 来自当前可信 receipt cohort。最新成功回执只能描述当前 run，不能给历史行改写 provenance。
 2. **页级行回执校验**：每个成功返回页上的每一行必须用自身 `receipt_id` 通过 dataset/provider、success 状态与完整采集序列校验。缺失、畸形、跨 provider 或不完整 execution 一律 `503 service_unavailable`，不得把最新 dataset 回执套到该行上，也不得在 `lineage.complete=true` 后继续返回该行。空页没有行回执可校验。
+
+已知例外是 **explicit failed-cohort success prefix**：同一 execution 里前缀调用已提交 success 行，后续调用已留下已验证 failed 终态。Query 在排序与分页前把这些 receipt ID 从候选页排除，并最多重选 8 次；它们不是可返回事实，也不删除 SQLite 中的 prefix rows。独立完整 success execution 的行可以同页保留。同一逻辑请求在失败 attempt 之后的成功重试使 cohort 为 success，必须返回。
+
+`classify_row_receipt_proofs` 把上述前缀标成可排除集合；严格 helper `validated_row_receipt_proofs` 仍会因这些 ID fail closed。Query 默认路径使用分类结果做有界过滤，`include_receipt_proofs` 只格式化过滤后的证明。8 次重选仍无法形成不含该前缀的有效页时，同样 503。该过滤不改写 facts、receipt 或 dataset `runtime_state`。
 
 可选 `include_receipt_proofs` 只决定是否输出 `metadata.row_receipt_proofs`，并额外要求整页来自单一采集序列；它不开关第 2 层校验。默认查询仍允许同页混合多个有效历史 execution。合同与 503 语义见 `docs/API.md`；运维诊断见 `docs/OPERATIONS.md`。
 
