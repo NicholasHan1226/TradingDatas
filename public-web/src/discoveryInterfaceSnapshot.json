@@ -1,0 +1,108 @@
+{
+  "authority": "capability_scope_only",
+  "candidates": [
+    {
+      "apiName": "bo_cinema",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "bo_daily",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "bo_monthly",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "bo_weekly",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "cls_index",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "cls_market_shock",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "cls_member",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "cls_stock_shock",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "concept",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "concept_detail",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "dc_hot",
+      "contractState": "review_required"
+    },
+    {
+      "apiName": "film_record",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "ft_tick",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "fund_sales_vol",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "hs_const",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "idx_anns",
+      "contractState": "review_required"
+    },
+    {
+      "apiName": "index_member",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "jygs_stock_shock",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "kpl_concept",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "limit_list",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "ncov_num",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "stock_mx",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "stock_vx",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "teleplay_record",
+      "contractState": "missing_official_contract"
+    },
+    {
+      "apiName": "ths_hot",
+      "contractState": "review_required"
+    }
+  ],
+  "schemaVersion": 1,
+  "scopeId": "tushare-capability-scope.v2",
+  "warning": "Candidates are not runtime contracts and have no inferred dataset ID, schema, cadence, entitlement, collection state, or customer access."
+}

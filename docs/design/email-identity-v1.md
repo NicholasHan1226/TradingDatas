@@ -141,7 +141,9 @@ The shared attempt budget and the applicable per-IP budget are admitted in one
 atomic D1 statement. If either limit is full, neither counter changes and a full
 shared budget cannot create a new attacker-controlled IP bucket. Malformed
 requests and failed OTP/provider outcomes that pass this coupled admission
-continue to consume the applicable budgets.
+continue to consume the applicable budgets. Operator 429/503 diagnosis, local
+test entry points and the status table:
+[OPERATIONS.md — Email OTP admission diagnosis](../OPERATIONS.md#email-otp-admission-diagnosis).
 
 Rollback new sign-ups first by setting the email enable flag false. Retain D1
 binding and compatible session read/revoke code until existing sessions expire

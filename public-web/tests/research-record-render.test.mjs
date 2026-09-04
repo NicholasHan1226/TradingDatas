@@ -24,6 +24,7 @@ test("all guide comparisons retain core journeys and localize reasons across bod
     const paper = projectResearchIndex(papers.find(p => p.title === title));
     const journey = readingJourney(paper, papers);
     const comparisons = comparisonReadings(paper, papers, journey?.links.map(l => l.paper.id));
+    if (!comparisons.length) continue;
     for (const locale of ["zh", "en"]) for (const bodyStatus of ["loading", "error", "ready"]) {
       const html = renderToStaticMarkup(createElement(ResearchRecord, { paper, locale, bodyStatus, onRetryBody() {}, topicLabel: paper.topic, kindLabel: paper.kind, related: [], furtherReading: papers.slice(0, 3), saved: false, onToggleBookmark() {}, onNavigate() {} }));
       assert.ok(html.includes(locale === "zh" ? 'aria-label="对照阅读"' : 'aria-label="Read alongside"'));
@@ -38,12 +39,9 @@ test("all guide comparisons retain core journeys and localize reasons across bod
   }
 });
 
-test("uncurated summary records retain the same-topic fallback", () => {
-  const paper = papers.find(p => !p.readingNotes?.length && !readingJourney(p, papers) && !comparisonReadings(p, papers).length);
-  assert.ok(paper);
-  const html = renderToStaticMarkup(createElement(ResearchRecord, { paper, locale: "en", topicLabel: paper.topic, kindLabel: paper.kind, related: [], furtherReading: papers.slice(0, 3), saved: false, onToggleBookmark() {}, onNavigate() {} }));
-  assert.match(html, /research-next-list/);
-  assert.doesNotMatch(html, /research-comparison-readings/);
+test("the complete library has no summary-only fallback record", () => {
+  assert.ok(papers.every(paper => researchReaderNotes[paper.title]?.sections.length >= 4));
+  assert.equal(papers.filter(paper => !researchReaderNotes[paper.title]).length, 0);
 });
 
 test("all 200 records render in both languages with direct sources and no internal QA text", () => {

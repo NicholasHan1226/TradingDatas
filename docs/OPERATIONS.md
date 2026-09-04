@@ -102,10 +102,21 @@ QuickSync 小响应探测不是当前 scheduler 容量或上游合同额度。�
 一轮能在下一次 timer 触发前结束；若超时、出现上游限流或任一 current-window receipt 失败，
 回退到前一 immutable release，不通过重试或静默跳过伪造连续性。
 
-`event` 波次按广度优先执行，每个分片在单轮内只尝试一次。失败分片由
-`failure_retry_seconds=300` 在后续 timer 轮次重新变为可执行；不得在同一轮用最多三次重试
-耗尽共享账号/provider 预算并截断后续独立 dataset 或 `major_news` 来源。其它 cadence 的
-有界同轮重试策略不变。
+`event` 波次按广度优先执行。采集重试分两层，不能混为一谈：
+
+- collector 同轮 `retry.max_attempts`：`_collect_with_retry` 对可重试的
+  `rate_limited` / `provider_error` / `transport_error` 再发起真实调用；每一次调用都经
+  `request_gate` 计入该 cadence 的账号/provider/API 预算。
+- planner `failure_retry_seconds`：只看同一 `dataset + provider + request_window` 最近失败
+  receipt 的年龄；未到期时该窗口返回 `not_due`，不消耗本轮预算。
+
+当前 `event` 配置为每个分片单轮只尝试一次（`max_attempts=1`，延迟全 0）。失败后由
+`failure_retry_seconds=300` 在后续五分钟 timer 轮次重新变为可执行；不得在同一轮用最多三次
+重试耗尽共享账号/provider 预算并截断后续独立 dataset 或 `major_news` 来源。当前 active
+event 波次的确定性调用数必须严格低于 event 账号/provider 上限 36；余量不是同轮重试头寸。
+后续 event 分片若出现 `resource_budget`，应先核对波次是否长大，而不是假设前序分片在同轮
+重试。失败后 300 秒内 planner 对同一窗口返回 `not_due` 是预期节流，不是调度丢失。其它
+automatic cadence 的有界同轮重试（`max_attempts=3`）不变；`on_demand` 本身不进 timer。
 
 `event` 与 `session_minute` 的 append-only 数据集不使用“上一份新鲜成功掩盖最新
 provider_error”的低频容错。最新 refresh 失败时 catalog 立即显示 failed/degraded，
@@ -133,6 +144,26 @@ release manifest 切回不含该 canary 的 release；不删除 SQLite facts 或
 planner 对每个 `dataset + provider + request_window` 只生成一个包含 registry 全部 request variants 的 plan；snapshot 数据集只要任一 variant 到期，就重新运行完整 cohort，不能因一个 sibling receipt 跳过其余 variants。scheduler 每次 run 生成显式 UUID root，并按稳定 plan ordinal 派生 window attempt root；one-shot collection 也必须执行完整 registry cohort，但只把自己的 root 视为单 window execution。`event` 的当前窗口在完整 success/empty 后同样服从 `minimum_interval_seconds`，不能被 5 分钟唤醒器连续重跑；该间隔从请求开始时间计算，failed 仍只按完成时间后的 `failure_retry_seconds` 重试。生产 timer 只处理当前/最新 window；有界历史回填不占用它的周期。
 
 收据的完整性校验按 dataset 隔离：某一 dataset 的损坏、伪造或时间非法 receipt 必须让该 dataset 以 `invalid_receipt_authority` 停止计划和 provider 调用；它不能为自身或其它 dataset 提供事实，也不能让无关 dataset 的受控计划停摆。该 skip 的 scheduler 输出只附带验证器已生成、稳定排序的 `reasons` 代码列表，不暴露 receipt payload、provider rows 或运行路径；其它 skip 的输出结构保持不变。
+
+### 查询页的 failed-cohort 前缀
+
+旧 collector 可能在同一 execution 后续调用失败前，已经提交前缀 success 行。认证
+`POST /v1/query` 不会把这些行当成成功事实：它用该行自身回执和同 execution 的已验证
+failed 终态识别前缀，最多重选 8 次。Git 合入或 HTTP 200 都不能证明生产已切换；是否
+生效仍看目标 release 的认证 query readback。
+
+诊断时先分清三种结果，不要删 SQLite facts/receipts 或改写 `runtime_state`：
+
+- **HTTP 200 且缺了预期行**：该行 `receipt_id` 为 success，但同一 `execution_id` 已有
+  明确 failed 终态。这是查询过滤。同页其它独立 success execution 仍应返回。
+- **HTTP 200 且包含曾经失败过的行**：同一逻辑请求在失败 attempt 之后有成功重试，
+  cohort 为 success。这是合法事实，不是漏过滤。
+- **HTTP 503 `service_unavailable`**：回执缺失/畸形、provider 不匹配、调用序列只有断档
+  而没有明确 failed 终态，或 8 次重选后候选页仍被 distinct failed-cohort 前缀占满。
+  `retryable: true` 不表示重试会补回前缀或修复缺失回执。大量互不相同的失败前缀若排在
+  合法行之前，可以耗尽 8 次预算；这与单次缺失回执是不同根因。
+
+公共合同见 [API 查询行权威](API.md#post-v1query)。
 
 分批续采读取历史时复用 `validated_receipt_history_for_dataset`，仅扫描当前 dataset 的
 完整回执历史；不能在每个分批任务中重复调用全目录 history loader。两者使用同一
@@ -235,6 +266,39 @@ dataset allowlist，不改变 entitlement、请求形状、串行 provider budge
 全局 collection lock；新增 session-minute dataset 仍只能通过 registry/config 接入。每个真实
 交易窗口的连续 receipt 与认证 query/consumer readback 仍是稳定性证据，调度隔离本身不构成
 `stable` 声明。
+
+当前 `config/provider_native_schedule.yaml` 的 `session_minute` 窗口与预留
+（`Asia/Shanghai`、配置工作日 Mon–Fri）为：
+
+| 配置窗口 | dispatcher 预留 |
+| --- | --- |
+| 09:30–11:35 | 08:40–11:35 |
+| 13:00–15:05 | 12:10–15:05 |
+
+比较按分钟截断秒与微秒，以覆盖 timer `RandomizedDelaySec=15s` 的整根结束分钟
+（例如 11:35:59、15:05:59 仍预留；11:36:00、15:06:00 起恢复完整 scheduler）。
+午休 11:36–12:09、08:40 之前、15:06 之后以及周末不预留。午休不预留是因为即使
+oneshot 打到 45 分钟超时，也会在下午窗口开始前结束。
+
+预留只读 schedule 的 `weekdays` 与 `session_windows_local`，**不**读交易日历：
+工作日假期里 session_minute 计划仍会是 `not_due`，其它 automatic cadence 要等到
+当日预留结束后才重新进入完整 scheduler。预留时钟必须带时区；naive 时钟与
+schedule 加载失败一样，dispatcher 打印脱敏
+`{"mode":"execute","phase":"preplan","reason":"schedule_load","state":"validation"}`
+并以 exit `2` fail closed，不暴露路径或异常细节。
+
+`--cadence-class` 是 planner 的通用过滤器：只接受 schedule 已声明的 cadence class，
+未知值 fail closed；与 `--activation-wave` 同时出现时取交集。生产 dispatcher 不传
+wave。只读核对（不写库、不调用 provider）：
+
+```bash
+uv run --python 3.12 --with-requirements requirements.txt \
+  python tools/run_provider_native_schedule.py --cadence-class session_minute
+```
+
+生产仍必须经安装好的 collector service 启动，不得用该 flag 另开第二套 timer，
+也不得从 shell 直连 `/run/tradingdatas/collect.lock`。
+
 `pilot_existing` 仅用于受控、只选择当前窗口的历史复现，不是 production 范围开关。其中的
 `cn.dataset.rt_min` 5 分钟 canary 不是新增 entitlement、全市场分钟覆盖、研究/交易
 Universe 或低延迟执行证据：每轮必须保留实际 bar time、observed_at 和 receipt，不能把上游
@@ -629,6 +693,61 @@ DNS failover 都从目标 release 配置及带时间戳的有界探测读回，�
 预算约束，消费者应缩小日期范围，不能通过无限重试或旧 route fallback 绕过。非分区
 snapshot（如 security master）及有界 calendar 可按 registry 默认排序完整翻页。
 
+## 查询页的行回执校验
+
+默认 `POST /v1/query` 在写出每一页前，会在同一只读快照内校验该页每行自己的
+`receipt_id`：身份、dataset/provider、`status=success` 以及该 execution 的完整
+采集序列。这与 catalog / query metadata 使用的最新 dataset 回执是两件独立事实。
+合同见 [API query](API.md#post-v1query)。
+
+### 何时会 503
+
+下列情况对默认查询和 `include_receipt_proofs=true` 都会返回既有
+`503 service_unavailable`，不会返回该行，也不会把 `lineage.complete=true` 贴到
+无权威的结果上：
+
+- 事实行的 `receipt_id` 在 `market_ingest_runs.run_id` 中不存在；
+- 回执 `notes` 损坏、无法通过既有 receipt validator；
+- 回执 provider 与该行 `provider` 不一致，或 dataset 不匹配；
+- 同一 execution 的采集序列不完整（缺中间 `call_index` 等）；
+- 回执不是 `success`（failed/empty/其它状态不能给行背书）。
+
+catalog 仍可能对该 dataset 显示 `success`：最新可信 run 完好，只是本页引用的
+历史行回执已经缺失或损坏。空页没有行回执可校验，因此 `unobserved`/`empty` 的
+`data=[]` 不会走这条门禁。`include_receipt_proofs` 只额外要求整页单一采集序列，
+不是这条校验的开关。
+
+### 不要做的事
+
+- 不要把最新 `metadata.receipt_id` 写回历史行，也不要复制最新回执信封去冒充
+  行的原始 `receipt_id`；
+- 不要为了让查询通过而删除事实行、补造回执或在业务库内建临时表/索引/视图；
+- 不要把 `retryable: true` 理解成同一页再请求就会恢复；容量/IPC 类 503 可以
+  有界重试，行回执损坏必须先恢复原始 success 信封；
+- 不要把一次认证 catalog 200 或旧 HTTP 200 当作该页仍可查询的证明。
+
+### 只读诊断
+
+在库外副本或 `mode=ro` + `PRAGMA query_only=ON` 下核对，结果如需落盘只用
+ATTACH 临时文件。不要在读模型库内创建对象。
+
+```sql
+SELECT r.dataset_id, r.provider, r.schema_major, count(*) AS rows_missing_receipt
+FROM provider_dataset_rows AS r
+LEFT JOIN market_ingest_runs AS m ON m.run_id = r.receipt_id
+WHERE m.run_id IS NULL
+GROUP BY r.dataset_id, r.provider, r.schema_major;
+```
+
+缩小到正在 503 的 `dataset_id`、过滤字段和 `limit`，确认失败页上的
+`receipt_id` 是否存在、`status` 是否为 `success`、以及同 `execution_id` 的
+兄弟回执是否从 `call_index=0` 连续。`tools/diagnose_projection_failure.py`
+只报告全站未知 `source`，不能替代本页行回执核对。
+
+恢复只能还原该行原始、字节保持的 success 回执；生产切库需要新的冻结快照与
+其后采集对账，隔离副本不是回滚件。应用回滚只撤销本校验，不会把缺失回执变回
+可查询。
+
 ## 管理控制台公网回源
 
 管理控制台前端继续由 Cloudflare Pages 提供，生产 API 主机名固定为
@@ -694,6 +813,28 @@ SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke
 作为事故证据，在相邻只读目录新增修正版；若修正版使用相对 payload 路径，必须从原
 payload 目录执行 `sha256sum -c /absolute/fix/PAYLOADS.sha256`，再进入修复目录校验
 sidecar。不得覆盖原始 payload 或把失败清单改写成通过。
+
+### 登录与非支付购买预览
+
+`/pricing` 打开 `/pricing/preview?plan=&period=`。六个组合只存在于 URL 与
+`public-web/src/pricing.js`；预览不写订单、不改 grants，也没有可打开收款的
+runtime flag。Actions 自动回读目前只覆盖 `/`、`/account/`、`/data/`、`/research/`、
+`/pricing/`。`/login` 与 `/pricing/preview` 依赖 Worker SPA fallback，必须在浏览器
+或 loopback harness 单独验收；`/pricing/` HTTP 200 不能证明预览或登录回跳可用。
+
+本地合成验收：
+
+```bash
+cd public-web
+npm run build
+node scripts/login-qa-server.mjs
+```
+
+打开 `http://127.0.0.1:5193/__qa`。harness 只绑定 loopback，不调用上游，只接受合成
+字符串。`?case=` 覆盖 `normal`、`invalid`、`unavailable`、`malformed`、
+`usage-failure`、`logout-retry`、`slow-login`、`slow-identity`、`identity-outage`、
+`expired`、`late-key`。并行第二实例使用 `TRADINGDATAS_QA_PORT=5194`。禁止把真实
+客户 key、Portal origin 或生产 cookie 送进该进程。显示价验收不等于商户开通。
 
 ## Resend account email preparation
 
@@ -772,6 +913,51 @@ the [language checkpoint](reports/2026-08-30-email-language-readiness.md). This 
 not an OTP/session test or administrator grant. Preserve all existing deployment
 credentials, customer keys and unrelated Resend resources; do not send further
 mail or open email login before the remaining gates pass.
+
+### Email OTP admission diagnosis
+
+Email login remains gated (`EMAIL_LOGIN_ENABLED` and
+`IDENTITY_RETENTION_ENABLED` stay false until a separate activation). Use this
+section for local workerd/D1 checks and, later, enabled-runtime 429/503
+triage. Policy: [Email identity v1](design/email-identity-v1.md).
+Implementation: `public-web/worker/email-identity.js` (`takeCoupledRates`).
+
+`POST /api/account/email/challenge` and `.../verify` admit the shared attempt
+budget and the applicable per-IP budget in **one** D1 statement. If either
+limit is full, neither counter changes. A saturated global limit therefore
+cannot insert a new attacker-controlled IP bucket. Storage abort or an
+inconsistent `RETURNING` set becomes `503 identity_unavailable` and rolls
+both counters back. After a successful admission, later send-email,
+send-global, cooldown, invalid verify payloads, failed OTP compares, and
+provider send failures still consume the admitted budgets.
+
+| Limit | Key prefix | Window |
+| --- | --- | --- |
+| 1000 identity attempts | `identity-attempt-global` | 10 minutes |
+| 10 challenge sends / IP | `send-ip:` (HMAC of `CF-Connecting-IP`) | 1 hour |
+| 40 verify attempts / IP | `verify-ip:` | 10 minutes |
+| 5 sends / email, 100 sends global | `send-email:`, `send-global` | 1 hour |
+| 60s resend cooldown | `identity_send_cooldowns` | per email hash |
+
+Do not treat `429` as a mail-provider outage, and do not treat `503
+delivery_unavailable` as a rate-limit. Empty or missing `CF-Connecting-IP`
+is `503 identity_unavailable`; never fall back to `X-Forwarded-For`.
+`Retry-After` on 429 is 60 seconds. Fixed D1 windows can allow two
+adjacent-window bursts; they are not rolling commercial API limits.
+
+Local checks (loopback, intercepted outbound mail, no production D1):
+
+```bash
+cd public-web
+node --test tests/email-identity.test.mjs
+node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js
+```
+
+The Node tests cover saturated global/per-IP admission, no new IP bucket on
+a full global cap, and storage-failure rollback. The Miniflare script is
+optional workerd/D1 acceptance, not an enablement or send-real-mail command.
+Do not query `identity_rate_buckets` as a user table or apply identity SQL
+to financial SQLite.
 
 ### Account-only retention candidate
 

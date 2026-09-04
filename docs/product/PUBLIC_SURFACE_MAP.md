@@ -1,8 +1,9 @@
 # TradingDatas public surface map
 
-Status: product contract v2, 2026-08-26. This document defines the public
-information architecture. It does not claim that target product capabilities,
-commerce, or the public domain are live.
+Status: product contract v2, 2026-08-26, with 2026-09-01 login and non-paying
+preview routes. This document defines the public information architecture. It
+does not claim that checkout, payment, or the public domain commerce plane are
+live.
 
 ## 1. Navigation logic
 
@@ -195,6 +196,14 @@ Categories:
 Every card opens a real article route and names its authority source. Current
 `/v1/catalog` and `/v1/query` remain the only public API contract. Future
 canonical/PIT/feature endpoints must not be documented as live.
+
+### Login `/login`
+
+Dedicated access-key entry to the existing Account workspace. Phone remains
+unavailable. Email is a separately gated identity candidate and must not be
+presented as live signup. `?next=` accepts only `/account` or a canonical
+`/pricing/preview?plan=&period=` selection; every other value falls back to
+`/account`. Successful sign-in does not create an order or change grants.
 
 ### Account `/account`
 

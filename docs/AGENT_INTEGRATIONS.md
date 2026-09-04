@@ -51,7 +51,7 @@ Required workflow for every data task:
 3. Call `POST /v1/query` with a bounded request using only catalog-supported fields and filters. Start with the smallest useful field set, date/window, and limit; never exceed the documented limit.
 4. Follow `next_cursor` for pagination. Do not invent offsets or reuse a cursor with changed query parameters.
 5. Before treating data as usable, inspect `metadata.state`, `runtime_state`, `degraded`, `freshness`, `quality`, `lineage`, `receipt_id`, `data_through`, `observed_at`, and `reasons`.
-6. Treat missing receipt/lineage, `partial`, `degraded`, `stale`, `paused`, `failed`, `unobserved`, schema mismatch, authentication failure, and rate-limit responses as explicit limitations. Do not silently substitute another dataset, provider route, cached file, or external source.
+6. Treat HTTP 503 `service_unavailable`, missing receipt/lineage, `partial`, `degraded`, `stale`, `paused`, `failed`, `unobserved`, schema mismatch, authentication failure, and rate-limit responses as explicit limitations. Do not silently substitute another dataset, provider route, cached file, or external source. A query 503 can mean the page's own row receipts are missing or invalid even when catalog looks ready; do not invent rows or reuse an older HTTP 200.
 7. Preserve dataset IDs, field names, timestamps, units, provider lineage, and revision/as-of caveats in downstream work.
 8. TradingData supplies raw material. Do not describe its data as a TradingData strategy, signal, forecast, recommendation, or guaranteed research result.
 
@@ -164,12 +164,37 @@ dataset, consume a payment action, modify an account, or persist the raw key.
 
 ## Prompt compiler and tests
 
-The frontend extracts the canonical templates and thin Agent prefixes from this
-document. It must not keep separate complete prompt strings in UI components.
-`VITE_TRADINGDATAS_API_BASE_URL` may provide a reviewed HTTPS origin at build
-time. It is public configuration, never a secret or proof of route readiness.
-When absent, the dialog labels the prompt as a draft and uses an explicit
-placeholder. Copying remains available for preparation, with no network request.
+`public-web/src/agentPrompts.js` extracts the templates from this Markdown.
+The headings below are load-bearing parser keys. Renaming them, wrapping them
+in extra markup, or keeping a second full prompt in `AgentDialog.jsx` breaks
+the dialog; there is no hardcoded fallback copy.
+
+Locale compilation (every Agent × locale pair is tested independently):
+
+| Locale | Concatenated source blocks |
+| --- | --- |
+| `en` | `### ${agent}` prefix + `## Canonical setup prompt` + `### Shared first-query checklist` |
+| `zh` | `## Canonical setup prompt (Chinese)` only |
+
+Chinese prompts do **not** receive Agent prefixes or the English checklist.
+`tests/agent-prompts.test.mjs` requires the same semantic terms in both
+languages, including `queryability.queryable === true`, `queryability.reasons`,
+`selectable`, `limit=1`, `next_cursor`, `Retry-After`, and `TRADINGDATA_API_KEY`.
+Add a required phrase to both language paths, or CI fails. Do not put a product
+slug, guessed `schema_major`, or a live hostname into these blocks.
+
+`VITE_TRADINGDATAS_API_BASE_URL` is public build configuration, never a secret
+or proof that a route is live. `apiOrigin()` accepts only `https://host` with
+no userinfo, path, query, or fragment. Anything else, including `http://` and
+`https://host/v1`, stays unconfigured and the prompt uses the placeholder
+`<TRADINGDATA_BASE_URL_FROM_ACCOUNT>`. Unresolved `{{...}}` placeholders and
+unknown Agent names throw; the dialog must not copy a partial prompt.
+
+Legacy spelling `TradingData` in these blocks is normalized to `TradingDatas`
+at compile time. Keep `TRADINGDATA_API_KEY` / `TRADINGDATA_BASE_URL` as the
+secret and variable names. Copying never sends a request. After Agent or
+language changes, a late clipboard success is ignored. Escape returns focus;
+Cmd/Ctrl+K is swallowed so the background search shortcut cannot fire.
 
 Deterministic tests assert for every variant:
 
@@ -177,7 +202,8 @@ Deterministic tests assert for every variant:
 - catalog discovery precedes query;
 - `dataset_id` and `schema_major` are catalog-derived;
 - query guidance is bounded and cursor-aware;
-- receipt, freshness, quality, lineage, and degraded state are checked;
+- receipt, freshness, quality, lineage, degraded state, and HTTP 503
+  `service_unavailable` are treated as explicit limitations;
 - provider-specific fallback and invented data are forbidden;
 - no API key or secret-shaped fixture appears in rendered text;
 - copy feedback and screen-reader announcement are present;

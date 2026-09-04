@@ -18,7 +18,7 @@ target product plane: canonical/PIT model + transparent Features -> versioned de
 ```
 
 - data plane 是数据身份、可用性、覆盖、freshness、quality 与 lineage 的唯一权威；
-- account/commerce plane 是价格、套餐映射、试用、续费、到期和支付结果的唯一权威；在该 plane 实现并读回前，相关页面只能标记 proposal；
+- account/commerce plane 是价格、套餐映射、试用、续费、到期和支付结果的唯一权威。已实现的是公开站入口与同站会话桥接，以及已批准的**显示价**与非支付购买预览；订单、收款、订阅写入和授权变更仍未实现，相关页面必须保持 paused/unavailable，不能把前端选择写成 live offer；
 - content plane 解释数据和教授准备方法，读取 data/account 投影但不反向修改 registry、facts、receipts、activation、entitlement 或 quota。
 - target product plane 只通过新合同建立 canonical/PIT 与透明 Feature 对象，并保留回链 provider-native facts/receipts；当前 `/v1` 和 SQLite 权威链不得被原地改写。
 
@@ -26,7 +26,34 @@ Recipe 是版本化准备合同，不是当前运行时 pipeline。它可以组�
 
 Feature 是公开公式、输入、对齐、缺失/修订策略、测试夹具和限制的透明衍生数据。它不能是 alpha、信号、排名或建议。Feature Plane 目前未实现，详情页与 manifest 只能标记为 target/product definition/planned。完整分层见 `docs/product/PRODUCT_PLANES.md`。
 
-公共路由和内部部署路径在实现前由 `docs/design/public-data-product-system-v1.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
+公开站 Account 邮箱 OTP 与会话是独立的 Cloudflare Worker 控制面
+（`public-web/worker/email-identity.js` + 专用 D1），不是 SQLite facts、receipt
+或 `catalog/query` 的一部分。Git 合入、静态页发布或配置绑定都不等于
+`EMAIL_LOGIN_ENABLED`。Agent 接入提示词由 `docs/AGENT_INTEGRATIONS.md` 编译，
+不新增数据路由。身份 429/503 诊断见 `docs/OPERATIONS.md`；公开页不得把
+`productManifest` 写成采集健康。
+
+公共对象与视觉合同由 `docs/design/public-data-product-system-v1.md` 与 `docs/product/PUBLIC_SURFACE_MAP.md` 冻结。无论页面数量如何增长，公共数据 API 仍只有 `GET /v1/catalog` 与 `POST /v1/query`；内容页面、checkout 和 console route 不能成为数据旁路。
+
+### 公开站控制面
+
+`public-web/` 在同一品牌下实现 Login / Pricing / Account，属于 account 控制面与内容面，不改变 data plane。
+
+```text
+/pricing  ->  /pricing/preview?plan=&period=  ->  /login?next=<allowlisted preview>
+          \                                    /
+           `->  /login  ->  /account
+```
+
+已实现、且必须以源码为准的行为：
+
+- `/login` 用访问密钥调用同站 `POST /api/account/session`，换取 8 小时 `HttpOnly; Secure; SameSite=Strict; Path=/api/account` cookie。没有 browser-storage 或 direct-bearer 回退。Phone 仍不可用。Email 是独立 gated 候选，见 `docs/design/email-identity-v1.md`。
+- 六个显示价组合集中在 `public-web/src/pricing.js`：月付 99 / 299 / 499 CNY，年付为十二月价九折（1,069.20 / 3,229.20 / 5,389.20）。`getPreviewState().canPay` 恒为 `false`，没有环境开关可打开收款。
+- `safeLoginDestination` 只接受 `/account` 或规范 `/pricing/preview?plan=&period=`。外链、`/api/*`、hash、重复 `next`、额外 query 一律回落到 `/account`。
+- 浏览器身份视图由 `getAccountViewState` 分为 `checking` / `signed_out` / `unavailable` / `authenticated`。登录 `401` 是无效密钥（`invalid_token`），其它 `401` 是会话缺失；用量 `5xx` 不得冒充退出。
+- Account Billing 标明不可用。预览不创建订单、不改 Portal 套餐或 dataset grants。
+
+`/checkout`、商户回调和 commerce ledger 仍不存在。Worker 对 `/api/commerce/*` 与 `/api/account/orders` 保持 fail-closed。生产是否启用会话桥接以 `STATUS.md` 与认证 readback 为准，不能由页面 200 或本地 QA 推断。合同见 `docs/API.md`、`docs/OPERATIONS.md` 与 `docs/design/payment-flow-preparation-v1.md`。
 
 ## 权威顺序
 
@@ -147,11 +174,25 @@ activation evidence 不能绕过 provider payload 的绝对扫描上限。regist
 
 当前数据优先于历史回填；回填必须有界、可恢复、可观察，并遵守账号级和 API 级预算。
 
+生产只有一个 collector dispatcher。临近 `session_minute` 配置窗口时，它仍使用同一
+registry/schedule runner 与全局 lock，但通过通用 `--cadence-class` 只选择该
+cadence，避免低频波次跨过下一根 5 分钟快照。这不是 dataset allowlist、新
+service/timer，也不是 `stable` 证据；预留超前量、工作日/窗口边界与 fail-closed
+诊断见 `docs/OPERATIONS.md`。新增 session-minute dataset 仍只能改 registry/config。
+
 ## Provider 权限与 Transport 预算
 
 registry 的 `entitlement` 是 provider-neutral 技术状态。对当前 Tushare 数据集，它表示通过 QuickSync transport 受控真实调用观测到的账号接口权限；它不表示购买、计费或订阅。凭证只建立 transport 账号身份，不证明接口权限。
 
 Tushare 官方接口说明给出的积分门槛、单次行数、分钟频次和每日总量只适用于官方合同参考，不能自动套用到 QuickSync。activation 与 scheduler budget 必须由 QuickSync 文档、真实有界探测和人工审核共同确定。当前受控证据只证明健康单一 HTTPS 节点的小响应 request-start 能力至少 200 次/分钟、并发 4；`main` 中的 200 次/60 秒和并发 4 是本地保护门禁，不是供应商合同额度或已部署 production 配置。混合大响应、每日额度与 DNS failover 仍未知，逐接口权限继续由真实矩阵决定。任何并发都要受 transport 账号级与 API 级预算共同约束，不能因为单次调用成功自动扩大。
+
+采集重试按 cadence 配置，不是全局固定三次。collector 同轮 `retry.max_attempts` 会经
+`request_gate` 计入该 cadence 的账号/provider/API 预算；planner 的
+`failure_retry_seconds` 只决定失败分片何时再次变为可执行。`event` cadence 当前关闭同轮
+重试（`max_attempts=1`），把瞬时失败交给下一轮 timer，避免共享预算被前序分片的重试风暴
+耗尽并截断后续 fanout。其它 automatic cadence 仍使用有界同轮重试。这不改变
+empty/failed 的 receipt 语义，也不把 HTTP 200 或预算余量当成覆盖完整。运维诊断见
+`docs/OPERATIONS.md`。
 
 ## 通用存储
 
@@ -175,7 +216,18 @@ release 的固定 schedule policy：配置开窗前或非配置工作日，以�
 
 catalog 和 query 只读 SQLite。缺数据库、缺表、缺 receipt、损坏或 metadata 不一致时 fail closed；不得同步调用 provider 或回退旧文件/旧数据库。
 
-API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。
+query 的权威在同一只读快照内分两层，不能互相替代：
+
+1. **dataset 级 runtime 投影**：catalog/query 的 freshness、quality、`metadata.receipt_id` 与 `lineage` 来自当前可信 receipt cohort。最新成功回执只能描述当前 run，不能给历史行改写 provenance。
+2. **页级行回执校验**：每个成功返回页上的每一行必须用自身 `receipt_id` 通过 dataset/provider、success 状态与完整采集序列校验。缺失、畸形、跨 provider 或不完整 execution 一律 `503 service_unavailable`，不得把最新 dataset 回执套到该行上，也不得在 `lineage.complete=true` 后继续返回该行。空页没有行回执可校验。
+
+已知例外是 **explicit failed-cohort success prefix**：同一 execution 里前缀调用已提交 success 行，后续调用已留下已验证 failed 终态。Query 在排序与分页前把这些 receipt ID 从候选页排除，并最多重选 8 次；它们不是可返回事实，也不删除 SQLite 中的 prefix rows。独立完整 success execution 的行可以同页保留。同一逻辑请求在失败 attempt 之后的成功重试使 cohort 为 success，必须返回。
+
+`classify_row_receipt_proofs` 把上述前缀标成可排除集合；严格 helper `validated_row_receipt_proofs` 仍会因这些 ID fail closed。Query 默认路径使用分类结果做有界过滤，`include_receipt_proofs` 只格式化过滤后的证明。8 次重选仍无法形成不含该前缀的有效页时，同样 503。该过滤不改写 facts、receipt 或 dataset `runtime_state`。
+
+可选 `include_receipt_proofs` 只决定是否输出 `metadata.row_receipt_proofs`，并额外要求整页来自单一采集序列；它不开关第 2 层校验。默认查询仍允许同页混合多个有效历史 execution。合同与 503 语义见 `docs/API.md`；运维诊断见 `docs/OPERATIONS.md`。
+
+API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksync`，使消费者能区分数据合同来源和实际采集通道。HTTP 200 不能抹平 QuickSync permission denied、rate limited 或其它 impaired 状态。catalog 每一行的 `limits` 只投影 `max_page_size`、`max_in_values` 与 `max_lookback_days`；query 另强制 `max_selected_fields`。这些是查询预算，不是套餐额度或覆盖证明。合同见 `docs/API.md`。
 
 ## 运行面隔离与未来扩展
 

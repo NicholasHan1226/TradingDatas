@@ -1,6 +1,6 @@
 # External research library
 
-Last reviewed: 2026-09-01. Scope: the `public-web` PR candidate, not production.
+Last reviewed: 2026-09-02. Scope: the `public-web` PR candidate, not production.
 
 ## Purpose and acceptance
 
@@ -84,9 +84,9 @@ guides across all eight reading journeys. `researchDeepReads.js` overrides eight
 representatives; `researchGuideDepthExpansion.js` adds supported detail to fifteen
 more without mutating their original four-section records. `researchAdditionalGuides.js`
 adds two six-section guides for existing Amihud and Novy-Marx records. The current
-library has 180 guides: 179 have six bilingual sections with source locators;
-Dechow/Dichev remains a four-section,
-abstract-based orientation pending usable full text. Nelson/Siegel's additions use
+library has 200 guides: 199 have six bilingual sections with source locators;
+Dechow/Dichev remains a four-section, abstract-based orientation pending usable
+full text. No record remains summary-only. Nelson/Siegel's additions use
 the March 1985 NBER working paper, with public edition-specific locators and limits
 that distinguish it from the retained 1987 final publication identity. All retain
 source-specific limitations and internal evidence URLs/actual reading scopes.
@@ -123,8 +123,8 @@ works: Dechow/Sloan/Sweeney's model comparison, Ohlson's valuation framework and
 Altman's discriminant analysis. They distinguish abnormal accruals, residual
 earnings and bankruptcy scores; source pages and acceptance are documented in
 `docs/design/research-corporate-questions-v9.md`.
-This does not certify 200 full-length guides or 180 full-text reviews; 20 works
-remain summary-only.
+This does not certify 200 full-text reviews, translations, replications, or
+investment conclusions. Every record is now a bounded source-linked reader guide.
 The editorial pass in `docs/design/research-editorial-polish-v10.md` retains those
 then-current counts while replacing generic passages in Lazy Prices with source-located
 document pairing, parsing and similarity definitions, and in governance with
@@ -181,13 +181,16 @@ Daily high/low and illiquidity guides link to daily data rather than minute bars
 text guides link to document versioning. No available order-book, governance,
 token-adoption or general model-fitting tutorial is implied. Related materials
 remain further exploration, not original samples or a replication bundle.
-The next public-web-only continuation in `researchBatchThree180.js` converts twenty
+The public-web-only continuation in `researchBatchThree180.js` converts twenty
 existing identities covering market microstructure, corporate fundamentals and
 governance, China/Hong Kong institutions, alternative data, and asset pricing.
 The guide text is bounded to primary source descriptions and registered metadata;
 where public abstracts are unavailable, it describes only the title-defined object,
 required inputs, and non-extrapolation boundary. Selection and acceptance targets
-are recorded in `docs/design/research-180-guides-v17.md`; no runtime, dataset, or
+are recorded in `docs/design/research-180-guides-v17.md`, which is historical.
+`researchBatchFour200.js` completes the final twenty source identities as full
+reader guides. Its public-source scope, new authored comparisons and candidate
+evidence are in `docs/design/research-200-guides-v18.md`; no runtime, dataset, or
 production claim is added.
 
 System language is the default; Account holds the System/中文/English override.
@@ -210,19 +213,19 @@ accessible name; clearing resets active selection and returns focus to that inpu
 Each subject has a three-stage introductory/core/deeper reading route in
 `researchJourneys.js`, shown on the first unfiltered topic page. Some stages
 deliberately bridge related subjects; this does not change original taxonomy or
-counts. Featured also exposes the 180 expanded guides below the lead story.
+counts. Featured also exposes the 200 source-linked guides below the lead story.
 The eight core sequences retain their original 24 distinct guides; additional
 guides do not invent a fourth stage or change original sequence membership.
-`researchConnections.js` supplies 85 explicit, symmetric editorial comparison
-pairs across 121 works, covering the first 120 guides; newer guides retain the
-same-topic fallback until an explicit comparison is authored. They contrast definitions,
+`researchConnections.js` supplies 101 explicit, symmetric editorial comparison
+pairs. Every guide in the final completion batch has an authored comparison; there
+is no automatic summary-only fallback. They contrast definitions,
 inputs or methods; they do not assert citations, agreement, replication or evidence
 ranking. The reader shows at most three comparisons with bilingual reasons and
 excludes already displayed previous/next sequence links. Matching uses stable
 catalog identities resolved from authored titles; missing matches fail closed.
 Metadata is sufficient, so comparison navigation remains available while article
-text is loading or has failed. Without a sequence or curated comparisons, the
-existing same-topic fallback remains. No new route, API or stored preference.
+text is loading or has failed. Missing authored matches fail closed. No new route,
+API or stored preference.
 Three supplementary corporate question routes in `researchQuestionRoutes.js`
 connect nine existing works around earnings quality, company comparison and
 financial distress. They appear as closed disclosures on the first unfiltered
@@ -286,8 +289,8 @@ files or changing source-check dates. Explicit PDF/text download paths also get
 a final Content-Type check: HTML or other mismatches require review; missing or
 generic binary types remain unconfirmed. Matching headers are not full-text or
 file-byte verification. Limits, offsets and interpretation are in
-`public-web/README.md`. Summary-only records and limited-reading scopes are
-editing candidates, not automatically defective works; HTTP success and length
+`public-web/README.md`. Limited-reading scopes are editing candidates, not
+automatically defective works; HTTP success and length
 are never a quality certificate.
 The existing internal-note guard applies to bilingual headings, summaries,
 limitations and reference labels as well as section paragraphs. Internal evidence

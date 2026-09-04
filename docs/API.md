@@ -61,6 +61,21 @@ schema 2 候选同样只移除缺失的 `trade_time_desc` 响应字段，保留 
 runtime `unobserved`/`empty` 语义彼此独立。coverage 不参与 cursor watermark，采集
 增量不会使未过期的 catalog cursor 失效。
 
+每个 catalog row 的 `limits` 是该数据集的查询预算投影，不是账号套餐额度，也不是
+覆盖或 freshness 证明。当前固定三键：
+
+- `limits.max_page_size`：单页 `limit` 上限（dataset 合同；当前 A 股 registry 默认 500）
+- `limits.max_in_values`：任一 `filters.<field>.in` 数组长度上限（来自同一 registry
+  的 `query_defaults.max_in_values`，当前默认 500）。#458 起写入每一行，避免消费者把
+  “目录未声明”误判为“禁止 `in` 过滤”
+- `limits.max_lookback_days`：可请求回看天数上限（dataset 合同；当前 A 股 registry
+  默认 36500）
+
+消费者必须从认证 catalog 读回实际值，不得硬编码仓库默认值。Git 合入 #458 不等于
+广州 GZ 已切换；生产是否露出 `max_in_values` 仍须 exact-main 发布后的认证 catalog
+readback。`limits` 不含 `max_selected_fields`；显式 `fields` 数量预算只在 query
+合同中强制。
+
 ## POST /v1/query
 
 每一页返回的行都必须在同一只读 SQLite 快照内通过自身 `receipt_id` 的身份、
@@ -69,16 +84,46 @@ dataset/provider、成功状态与完整采集序列校验。缺失或无效的�
 `lineage.complete=true` 后继续返回该行。校验限于当前页引用的去重回执及其
 采集序列，不遍历其它数据集，也不访问 provider；定位序列成员的 SQL 仍可能
 检查当前数据集的历史回执，因此页大小有界不等于历史规模对耗时完全无影响。
+空页（`data=[]`）没有行回执可校验；catalog 显示 `success` 不能证明即将返回的
+历史行仍绑着完整回执。
 
 旧版本可能在同一采集 execution 的后续调用明确失败前，已提交前缀调用的 success
 行。查询会在排序与分页前，通过该行自身回执及同 execution 的已验证 failed 终态识别并
-排除这类已知 partial 前缀，最多有界重选 8 次；它们不构成可返回的成功事实。这个例外
+排除这类已知 partial 前缀，最多有界重选 8 次；它们不构成可返回的成功事实。其余独立
+success execution 的行仍可同页返回，因此 HTTP 200 且 `data` 变短是预期过滤，不是 503。
+同一逻辑请求在失败 attempt 之后的成功重试属于完整 success cohort，仍可返回。这个例外
 不放宽 fail closed：回执缺失、畸形、provider 不匹配、调用序列只有断档而没有明确
 failed 终态，或 8 次重选仍不能形成有效页时，仍返回 `503 service_unavailable`。
+该 503 的 `retryable: true` 只表示共享不可用信封，不承诺重试会补回被排除的前缀或缺失回执。
 
 `include_receipt_proofs` 只控制是否输出逐行证明及其既有的单一采集序列限制，
-不控制上述基础校验是否执行。默认查询继续允许同页包含来自多个有效历史
-采集序列的行；字段投影、分页和默认响应格式不变。
+不控制上述基础校验是否执行；被排除的 failed-cohort 前缀也不会出现在证明列表中。
+省略该字段等于 `false`。默认查询继续允许同页
+包含来自多个有效历史采集序列的行；字段投影、分页和默认响应格式不变。
+同一页若行回执分属不同 `execution_id` / `request_window` / `config_hash` /
+`data_through`，默认查询在各回执均有效时可返回这些行；显式 `true` 会因单一
+序列合同失败并同样返回 503。
+
+该 503 使用与其它 query fail-closed 相同的错误信封，不单独暴露哪一行或哪份
+回执损坏：
+
+```json
+{
+  "api_version": "v1",
+  "request_id": "...",
+  "error": {
+    "code": "service_unavailable",
+    "message": "service temporarily unavailable",
+    "retryable": true
+  }
+}
+```
+
+`retryable` 是该错误码的固定分类（容量不足、IPC 失败与行回执损坏共用），
+不是“同一页再试就会好”的承诺。行回执缺失或无效时，缩小 `filters`/`limit`
+可以隔离损坏页，但相同页会持续 503，直到原始 success 回执被恢复；省略
+`include_receipt_proofs`、改用后续 dataset 回执或复用旧 HTTP 200 都不能绕过。
+诊断步骤见 [查询页行回执校验](OPERATIONS.md#查询页的行回执校验)。
 
 请求：
 
@@ -90,11 +135,12 @@ failed 终态，或 8 次重选仍不能形成有效页时，仍返回 `503 serv
   "filters": {},
   "as_of": null,
   "limit": 500,
-  "cursor": null
+  "cursor": null,
+  "include_receipt_proofs": false
 }
 ```
 
-省略 `fields` 或传空数组时返回完整 provider-native payload；显式字段、过滤和排序必须受 registry allowlist 与预算限制。
+省略 `fields` 或传空数组时返回完整 provider-native payload；显式字段、过滤和排序必须受 registry allowlist 与预算限制。`limit` 不得超过该行 `limits.max_page_size`；任一 `filters.<field>.in` 不得超过 `limits.max_in_values`；显式 `fields` 数量不得超过 registry `query_defaults.max_selected_fields`（当前默认 100，不出现在 catalog `limits`）。超预算返回 HTTP 413、`error.code=budget_exceeded`，`retryable=false`，不得截断后继续。未知字段或非法算子仍是 400 `invalid_request`。
 
 响应至少包含：
 
@@ -444,6 +490,34 @@ Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 `me` 验证身份与 `usage` 可用性分离，用量服务故障仅展示可重试提示。页面重新可见时
 验证现有会话；非后台轮询。此桥接仍不等于手机/邮箱身份库或可独立撤销的持久会话。
 
+### Browser view-state mapping
+
+`public-web/src/accountSession.js` 把传输结果映射为四态视图。登录页、Account 私有
+面板和购买预览必须共用同一套状态，不能把网关故障写成退出，也不能把无效密钥写成
+服务不可用。
+
+| 条件 | 客户端 error | `getAccountViewState` |
+| --- | --- | --- |
+| 正在请求 `GET /api/account/me` | — | `checking` |
+| 响应含有效 `portal` 或已验证 email identity | — | `authenticated` |
+| `POST /api/account/session` 返回 401 | `invalid_token` | `signed_out` |
+| 其它已认证读/写返回 401 | `signed_out` | `signed_out` |
+| 403（通用） | `access_denied` | `unavailable` |
+| 429 | `rate_limited` | `unavailable` |
+| 请求超时（默认 12s） | `account_timeout` | `unavailable` |
+| 5xx、非 JSON 或缺少 `tenant_id`/`tier` | `account_unavailable` | `unavailable` |
+
+`startAccountSession` 把会话交换的 401 改写成 `invalid_token`，以便登录表单显示
+“密钥无效”，而不是“已退出”。后续 `me`/`usage`/`keys` 的 401 才是会话缺失。
+`usage` 的 5xx 只设置用量错误，不得 `clearAccountView`。退出必须先看到
+`DELETE /api/account/session` 返回 `{"signed_out": true}`，才能清空 UI。
+
+购买预览的 `next` 校验在 `public-web/src/purchasePreview.js`：只允许恰好一个
+`next=/account`，或规范路径 `/pricing/preview` 且仅含 `plan`（`basic` /
+`standard` / `flagship`）与 `period`（`monthly` / `annual`）。
+重复参数、hash、外链和 `/api/*` 一律回落 `/account`。预览状态 `canPay` 恒为
+`false`，与是否已登录无关。
+
 ### Independent email identity candidate
 
 The existing Login/Account also has a local-only, separately gated email-identity
@@ -459,8 +533,22 @@ no tenant, data grant, usage or API key access. This does not change catalog/que
 or existing Portal authentication. Configured readiness is not delivery evidence;
 missing configuration keeps email login unavailable. Detailed request/response,
 limits, failure and release contracts: [Email identity v1](design/email-identity-v1.md).
+Operator diagnosis of 429/503: [OPERATIONS.md](OPERATIONS.md#email-otp-admission-diagnosis).
 No production storage migration, secret provisioning or email activation is
 asserted by this API description.
+
+Challenge and verify share one admission gate, then apply narrower send/verify
+caps. Status values below are the Worker JSON `error` field. They are not
+catalog/query codes and do not grant data access.
+
+| HTTP | `error` | When |
+| --- | --- | --- |
+| 202 | (none) | Challenge accepted by the mail provider; not inbox delivery. |
+| 400 | `invalid_request` / `invalid_code` | Malformed email, or verify payload/code failed. Invalid email is rejected **before** admission. Invalid verify payloads after admission still consume that attempt. |
+| 429 | `rate_limited` | Coupled global+per-IP admission denied, or a later send-email / send-global / 60s cooldown cap. `Retry-After: 60`. A full global budget must not create a new per-IP bucket. |
+| 503 | `email_login_unavailable` | Enable flags, D1, pepper, or Resend key incomplete. |
+| 503 | `identity_unavailable` | Missing Cloudflare `CF-Connecting-IP`, D1/storage throw, or inconsistent admission rows. Do not trust `X-Forwarded-For`. |
+| 503 | `delivery_unavailable` | Provider send failed after admission; an unaccepted challenge row is deleted. |
 
 The local candidate also adds `POST /api/account/profile/deletion`: same-origin
 JSON `{confirmation: "DELETE"}`, `X-TD-Identity` matching the current email identity,

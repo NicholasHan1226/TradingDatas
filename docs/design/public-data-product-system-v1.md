@@ -143,7 +143,8 @@ availability claim.
 
 ### 4.2 Proposed route map
 
-The paths below are a design contract, not a claim that they are implemented.
+The paths below are a design contract. `/login` and `/pricing/preview` are
+implemented public control-plane routes; `/checkout` is not.
 
 ```text
 /
@@ -162,6 +163,7 @@ The paths below are a design contract, not a claim that they are implemented.
 /pricing/preview          display-only selection; payment disabled
 /pricing/alternative
 /pricing/beta
+/login                    access-key session; allowlisted return only
 /docs
 /checkout                 future commerce plane
 /account
@@ -355,8 +357,9 @@ Required modules:
 4. quality, freshness, receipt, and lineage explanation;
 5. bounded API example with copy action and no real token;
 6. `Use with` relationships to other raw datasets;
-7. authored links to relevant external Research records and related preparation
-   methods, shown as a learning path rather than a claim that the product
+7. related Cookbook methods plus authored links to relevant external Research
+   records, where each source-specific data-material relationship has been
+   reviewed; show these as a learning path rather than a claim that the product
    reproduces the paper, proves its conclusion, or produces a result;
 8. product-level bookmark control. Before authenticated library authority is
    available it remains explicitly browser-local; no product page may imply
@@ -372,6 +375,13 @@ authoritative `dataset_id`, `schema_major`, and entitlement through
 
 `Use with` is a relationship guide, not a precomputed joined dataset or a claim
 of investment usefulness.
+
+An external reading is optional rather than a category default. It may appear
+only when its maintained research record explicitly names the relevant raw
+product or preparation method. The link is a route into learning material; it
+does not claim that the product reproduces the source's sample, conclusion, or
+result. An empty reading area is therefore intentional for products without a
+reviewed source-specific connection, including future alternative-data products.
 
 ### 5.4 Research methods (Cookbook/Recipes compatibility layer)
 
@@ -498,14 +508,17 @@ Keep the floating shared navigation, brand, search and Account layout intact.
 Reuse existing surface/ink/muted/blue/aqua tokens, 48px inputs, visible keyboard
 focus and restrained shadows. Primary form text is 13–16px, not microcopy-sized.
 
-The panel distinguishes available access-key login from the confirmed future
-Phone/Email identity methods. The latter show explicit unavailable states,
-never a fake send-code form or unverified success. No automatic direct-bearer
+The panel distinguishes available access-key login from Phone and Email. Phone
+stays unavailable. Email is a separately gated identity candidate: when the
+Worker reports incomplete configuration it must show an unavailable state and
+never collect a contact or fake a sent code. See `docs/design/email-identity-v1.md`. No automatic direct-bearer
 fallback; a new session is only established through the same-site gateway.
 Loading, invalid/expired key, denied access, throttling, timeout and service
 outage are distinct feedback states. Usage failure is independent of sign-in.
-After successful login, replace the route with `/account`; leaving Login clears
-the raw input. See `API.md` for the session/security contract.
+After successful login, replace the route with `/account` or an allowlisted
+canonical `/pricing/preview?plan=&period=` from `next`. Reject extra query
+parameters, hashes, API paths and external URLs. Leaving Login clears the raw
+input. See `API.md` for the session/security contract.
 On initial load or foreground revalidation, the Account entry and private panels
 show a neutral checking state, not a signed-out prompt or stale credentials.
 Connection failures offer retry without claiming the user signed out. Only a

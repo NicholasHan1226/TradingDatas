@@ -119,7 +119,7 @@ mutable data -> /opt/investment-data/tradingdatas/
 - 冻结少量完整基础套餐与另类数据 add-on 的 server-side entitlement 映射；试用到期默认停止且不自动收费的目标只有在 commerce 实现和读回后才可对外承诺；
 - 第三方数据逐类完成使用/再分发权、provider contract、真实 receipt/API readback 和 account entitlement；
 - 实现网站账户与 API key 分离、订单/订阅/发票/webhook 幂等和客户自助 token 管理；commerce 数据不写入金融 facts SQLite；
-- 在自动价格、支付和授权完成前，公共商业 CTA 固定为申请 private beta；不得把 proposal 套餐写成可立即购买；
+- 在支付和授权完成前，公共商业 CTA 固定为非支付购买预览（`/pricing/preview`），支付按钮保持禁用；不得把显示价格写成可立即购买，也不得恢复已移除的 beta 申请表作为开通路径；
 - 公共前端按 `docs/product/PUBLIC_SURFACE_MAP.md` 与 `docs/design/public-data-product-system-v1.md` 完成 desktop/tablet/mobile、无障碍、错误/空/到期/试用结束状态和真实浏览器视觉验收。
 
 退出条件分两步：先让内测客户可以从 Dataset/Feature/Recipe/Research 关系理解产品并申请匹配的 A 股数据访问；随后在 commerce 实现后，客户可以购买已获授权的数据套餐、读取真实 entitlement，并用可复现 Recipe 正确准备数据。网站、commerce、数据 runtime 与生产 readback 仍分别有可验证证据。

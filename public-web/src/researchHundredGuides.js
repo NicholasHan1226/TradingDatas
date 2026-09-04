@@ -4,6 +4,7 @@ const bi = ([zh, en]) => ({ zh, en });
 const materials = {
   "More Than Words: Quantifying Language to Measure Firms' Fundamentals": { recipes: ["document-version-ledger"] },
   "Annual Report Readability, Current Earnings, and Earnings Persistence": { recipes: ["document-version-ledger"] },
+  "CSI 300 Index Methodology": { datasets: ["cn-index-constituents"] },
 };
 const guide = ([title, url, edition, evidenceScope, limits, rows]) => [title, {
   reviewedAt: "2026-08-31", evidenceUrl: url, evidenceScope, limits: bi(limits), related: materials[title] ?? {},
