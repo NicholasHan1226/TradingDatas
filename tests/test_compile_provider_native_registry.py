@@ -1687,7 +1687,7 @@ def test_cashflow_and_express_use_undated_ts_code_fanout() -> None:
         if dataset["provider_bindings"][0]["activation_state"] == "paused"
     }
     assert "cn.dataset.forecast" in paused
-    assert "cn.news.flash" in paused
+    assert "cn.dataset.fund_daily" in paused
     assert "cn.dataset.cashflow" not in paused
     assert "cn.dataset.express" not in paused
 
