@@ -1,7 +1,7 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-05 Asia/Shanghai（Haofei / Datas PM 接入口径锁定 +
-00:28 认证读回；文档层，**不**构成数据面目的变更或新的 GZ 发布）。
+最后更新：2026-09-05 01:05 CST（Datas PM 口径锁定 + 00:28 读回 +
+三面园艺收口；文档层，**不**构成数据面目的变更或新的 GZ 发布）。
 历史决策见 [`docs/adr/`](docs/adr/)，本轮读回见
 [`docs/reports/2026-09-05-ann-date-event-readback.md`](docs/reports/2026-09-05-ann-date-event-readback.md)。
 运维正文见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)「Datas PM 接入口径」。
@@ -45,6 +45,23 @@ Haofei / Datas PM 2026-09-05 Asia/Shanghai 口径已写入核心入口：
 文档 tip 的 GZ cut 可以做，但不改变数据面目的，也不把本页写成已验收。Pages 未改
 `static/**` / `public-web/**`，不应触发。下方 00:28 读回与 2026-09-04
 园艺段落仍是当时分层读回，不因本口径重写。
+
+## 2026-09-05 01:05 CST 三面园艺收口
+
+- **本地：** extra worktree 6 个已归档后回收（脏 `work/` / `qa/` 进
+  `~/Archives/Finance-worktrees/20260905/untracked/`，独有提交进
+  `archive/20260905/*` 与 bundle）。canonical 工作树 clean。gone 本地
+  分支已删。`~/td-cut-staging`、`/tmp/td-cleanup-20260904-*`、Finance
+  层 July leftover 已移出工作区。
+- **GitHub：** 已合远端 `docs/ann-date-event-readback-20260905` 与
+  `docs/garden-source-sync-20260905` 已删。未合独有远端保留。#395 保持
+  draft。本页合入后 GitHub tip 再前进，仍是文档层。
+- **广州 files：** 01:00 CST 读回 `current` 与 crypto `current` 均为
+  `d73dbb58`（#473 文档 tip，00:55 已切），`verify-current`
+  `verified=true`（`file_count=1051`，`tree=c5009899…`）。本轮**不再**
+  为文档 tip 切 GZ。`/tmp/td-*` 诊断已清；Aug 18 `TradingDatasSource-demo-90`
+  已移到 `/opt/investment/_archive/`。`TradingDatasSource` 与 releases
+  未删。Daily acceptance 仍是该 running SHA + catalog/receipt，不是本页。
 
 ## 2026-09-05 00:28–00:35 CST 认证读回与事件族冻结
 
