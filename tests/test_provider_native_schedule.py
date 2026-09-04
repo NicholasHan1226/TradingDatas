@@ -4764,6 +4764,7 @@ def test_margin_t1_requests_previous_open_day_only_after_0830(
                 date(2026, 7, 16): True,
                 date(2026, 7, 17): True,
                 date(2026, 7, 20): True,
+                date(2026, 7, 21): True,
             },
         )
         conn.commit()
@@ -4786,15 +4787,18 @@ def test_margin_t1_requests_previous_open_day_only_after_0830(
             if plan.dataset_id in _MARGIN_T1_BLOCKED_DATASET_IDS
         }
 
-    before = _planned(datetime(2026, 7, 20, 8, 0, tzinfo=ZoneInfo("Asia/Shanghai")))
-    after = _planned(datetime(2026, 7, 20, 8, 31, tzinfo=ZoneInfo("Asia/Shanghai")))
+    # Calendar receipt is 2026-07-20T00:00Z.  Use the next open morning so
+    # the calendar is already in the past.  Tuesday 08:00 must not request
+    # Monday (published at 08:30); Tuesday 08:31 must request Monday.
+    before = _planned(datetime(2026, 7, 21, 8, 0, tzinfo=ZoneInfo("Asia/Shanghai")))
+    after = _planned(datetime(2026, 7, 21, 8, 31, tzinfo=ZoneInfo("Asia/Shanghai")))
     assert before == {
-        "cn.dataset.margin": ("prior_open_morning", {"trade_date": "20260716"}),
-        "cn.dataset.margin_detail": ("prior_open_morning", {"trade_date": "20260716"}),
-    }
-    assert after == {
         "cn.dataset.margin": ("prior_open_morning", {"trade_date": "20260717"}),
         "cn.dataset.margin_detail": ("prior_open_morning", {"trade_date": "20260717"}),
+    }
+    assert after == {
+        "cn.dataset.margin": ("prior_open_morning", {"trade_date": "20260720"}),
+        "cn.dataset.margin_detail": ("prior_open_morning", {"trade_date": "20260720"}),
     }
 
 
