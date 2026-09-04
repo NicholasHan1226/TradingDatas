@@ -444,6 +444,34 @@ Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 `me` 验证身份与 `usage` 可用性分离，用量服务故障仅展示可重试提示。页面重新可见时
 验证现有会话；非后台轮询。此桥接仍不等于手机/邮箱身份库或可独立撤销的持久会话。
 
+### Browser view-state mapping
+
+`public-web/src/accountSession.js` 把传输结果映射为四态视图。登录页、Account 私有
+面板和购买预览必须共用同一套状态，不能把网关故障写成退出，也不能把无效密钥写成
+服务不可用。
+
+| 条件 | 客户端 error | `getAccountViewState` |
+| --- | --- | --- |
+| 正在请求 `GET /api/account/me` | — | `checking` |
+| 响应含有效 `portal` 或已验证 email identity | — | `authenticated` |
+| `POST /api/account/session` 返回 401 | `invalid_token` | `signed_out` |
+| 其它已认证读/写返回 401 | `signed_out` | `signed_out` |
+| 403（通用） | `access_denied` | `unavailable` |
+| 429 | `rate_limited` | `unavailable` |
+| 请求超时（默认 12s） | `account_timeout` | `unavailable` |
+| 5xx、非 JSON 或缺少 `tenant_id`/`tier` | `account_unavailable` | `unavailable` |
+
+`startAccountSession` 把会话交换的 401 改写成 `invalid_token`，以便登录表单显示
+“密钥无效”，而不是“已退出”。后续 `me`/`usage`/`keys` 的 401 才是会话缺失。
+`usage` 的 5xx 只设置用量错误，不得 `clearAccountView`。退出必须先看到
+`DELETE /api/account/session` 返回 `{"signed_out": true}`，才能清空 UI。
+
+购买预览的 `next` 校验在 `public-web/src/purchasePreview.js`：只允许恰好一个
+`next=/account`，或规范路径 `/pricing/preview` 且仅含 `plan`（`basic` /
+`standard` / `flagship`）与 `period`（`monthly` / `annual`）。
+重复参数、hash、外链和 `/api/*` 一律回落 `/account`。预览状态 `canPay` 恒为
+`false`，与是否已登录无关。
+
 ### Independent email identity candidate
 
 The existing Login/Account also has a local-only, separately gated email-identity
