@@ -6,7 +6,7 @@ profile_id: tushare-request-profiles.v1
 provider: tushare
 source_documents:
   snapshot_id: tushare-official-document-contracts.v1
-  sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
+  sha256: b436912460c4aaaae751c589500781d4316b50473869a5fefe2bc61813c58816
   contract_count: 190
 excluded_existing_activations:
 - daily
