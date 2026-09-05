@@ -1,39 +1,43 @@
-## 2026-09-05 国内供数前端整合候选（Asia/Shanghai）
-
-- Nicholas 已确认 Crypto 仅内部使用。公共 Data/来源候选/套餐范围排除 Crypto，外部研究文献保留，但移除指向不对外供数产品的关联链接。
-- 新增账户会话桥接 `/api/account/catalog`，只使用当前用户已有 key；全部授权国内/新闻接口展示真实 runtime、coverage、receipt/reasons，21 个产品导航绑定相关原始接口。产品加工完成度、查询实际结果和连续稳定性分别判断。
-- `pledge_stat` 默认小页 503 的原因是同一失败 execution 的成功前缀逐项耗尽排除循环；最小共享修复一次排除已验证失败 cohort 的全部前缀。旧版本回归失败，候选对真实库只读诊断返回 1 行、lineage complete；未放宽完整性/预算。
-- 本轮 27 项默认空结果的复查为 26 项当前 provider_returned_no_rows 和 1 项 provider_error，不伪造非空、不计作 27 项工程未完成。
-- 已有权限暂停 34 项中，可执行 probe 与 ingest ready 同时满足的为 3 项。具体批次与检查节点以 OPERATIONS「接入计划与检查节点」为准；不再把旧日期误作全量成功承诺。
-- 本地：346 项相关 Python 测试、321 项公共站测试通过；桌面/手机合成数据渲染、真实状态筛选、产品绑定与查询体已检查。规则发现 fresh 会话及独立读模型/桥接审查未见 P0/P1。
-- 本节记录候选，不代表已合并/已发布。真实用户商业订阅闭环仍待既有测试账号与商业配置验收。运行层以本次发布后新增回读记录为准。
-
 # TradingDatas 当前状态
 
-观察时间：2026-09-05 20:25 Asia/Shanghai。本页记录当前发布与运行事实；源码、公开网站、数据运行面和真实商业开通分别验收。
+供数观察时间：2026-09-05 21:24 Asia/Shanghai；发布检查更新至 21:33。源码、公开网站、数据运行面、真实商业开通分别验收；历史快照由 Git 保存。
 
-## 账户、订阅与 Docs
+## 对外范围与前后端整合
 
-- [PR #495](https://github.com/NicholasHan1226/TradingDatas/pull/495) 已合入 `e5e374a24b341fd27bb5b31fc2f98cef20d2d9d4`。候选 [33964732178](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33964732178) 四组检查通过；已发布源的精确主线检查 [33965230844](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33965230844) 补跑四组全部通过；原轮被后续文档合并取消，未将取消写成成功。
-- Cloudflare [33965231922](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33965231922) 成功。20:10 正式资源 `index-qtd5VsfW.js` 与发布一致，Docs 公共页面/账户菜单及 `/account/billing` → `/login?next=%2Faccount%2Fbilling` 通过。auth-methods 为 email=true/phone=false；guest commerce/offers/orders 为 JSON 404，明确无效邮箱 session 的 commerce 为 401，guest `/v1/catalog` 为 401，均 no-store；未创建订单。
-- 订阅/订单账本与现有数据权限分开显示，账本不可用不阻断邮箱登录、已有密钥连接、有效期和用量。
-- 生产未绑定 commerce 数据库或测试模式，不能创建订单、收款或发放新的数据权限。账本未接通明确显示不可确认记录，不将它显示成“从未购买”。
-- 独立本地持久化模拟器覆盖订单、价格/条款版本快照、所有权、幂等、重复事件、开通失败重试及重启读回。这不是支付服务商 sandbox，也不是正式购买或续费。
-- Docs 保留 13 个公开地址和原有双语目录、正文、搜索内容源。入口仅在账户菜单/工作区，顶栏继续数据、研究、套餐。
-- 313 项网站测试、构建/打包及独立审核通过；实际浏览器验证合成邮箱登录返回账单、订单/模拟结算、重启持久化、连接已有密钥、刷新/分区切换、中英/明暗与 390/768px。最终修复重复 React key，实际交互后始终只有一个订阅面板，无控制台错误。
-- 补充程序客户端检查：Python requests、Node undici、curl 的标识均得到预期 JSON 401；Python-urllib/3.9 默认标识得到 Cloudflare plain-text 403，具体边缘规则尚未核实。现有 Cloudflare 登录可读取该域名，但规则查询返回 403/10000；浏览器控制台尚未登录。此兼容性问题待具备规则查看权限的控制台会话继续排查，不冒充数据源故障或已修复。
-- 真实验证码送达、普通客户本人连接和成功 catalog/query 尚待指定验收邮箱/账户。尚未代发真实邮件、创建客户密钥或执行付款。
+- Nicholas 确认 Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；独立内部采集继续。Research 可保留外部加密资产文献，不映射为对外供数承诺。
+- [PR #498](https://github.com/NicholasHan1226/TradingDatas/pull/498) 合入 `a3106d68b19d528c31be775b808665833ed8c4e3`；候选 [33967381204](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33967381204)、精确主线 [33967864444](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33967864444) 四组检查全部通过。
+- 公开 Data/产品介绍无需登录；真实状态通过账户 `/api/account/catalog` 使用当前用户已有 key 读取，展示全部授权境内/新闻接口的 state、coverage、receipt/reasons 和读取时间。21 个产品导航绑定正式原始 dataset；38 个产品定义不等于 38 个已完成加工产品，也不等于可返回非空数据的接口数。
+- `pledge_stat` 小页 503 已修复：一次排除同一已验证失败 execution 的全部成功前缀，避免逐项耗尽排除循环；不放宽失败批次、lineage 或查询预算。
+- [PR #499](https://github.com/NicholasHan1226/TradingDatas/pull/499) 合入 `e251ae7be29981646fb8bb2223da9e64fa255aa4`，仅调整公共账户目录传输等待并更新构建/API 文档。候选 [33968276279](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968276279) 通过；发布后精确主线 [33968738191](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968738191) 四组检查全部通过。
+- Cloudflare [33968739190](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968739190) 两项发布成功；正式 `/data` 资源 `index-CoboUdjE.js` 一致。账户目录上游等待与已有公共网关统一为 30 秒，浏览器为 45 秒，仍 no-store、身份隔离、失败可重试；不增加采集预算或修改数据面性能目标。
+- 21:24 正式公网使用既有内部验收权限：会话 200，目录 200 / 12.410 秒 / 192 项，192 项均有 runtime 与 coverage，Crypto 0；质押统计查询 200 / 3.516 秒 / 1 行、partial、lineage complete；退出确认 200。此为既有权限链路，不是普通客户商业购买证明。
 
-## 数据运行与性能
+## 数据运行、质量与性能
 
-- PR #494 已合入 `3a2e534091079e28d1955ee0a2fca8c1bb1c2590`，精确主线 CI [33964421197](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33964421197) 通过。改动复用同一回执绑定的校验结果，不改存储模式、索引、HTTP 超时或 worker 数。
-- 两个候选目录各 1071 文件验证通过。A 股隔离候选实际首次认证目录为 200 / 16.251 秒 / 192 项；Crypto 正常初始化后为 200 / 11.576 秒 / 240 项。A 股尚未达既有 15 秒目标，本轮未切换数据运行版本。
-- A 股和 Crypto current 仍为 `a093d407d23fe6cf7f82c1fb2a27359c82b7d803`，各 1056 文件清单验证通过，现有服务 active。本轮只启动并回收独立诊断进程，未更改线上服务、timer、数据库内容或凭据。
-- 20:08 现有运行认证读回：A 股 200 / 16.433 秒 / 192 项，Crypto 200 / 6.973 秒 / 240 项；`cn.dataset.fina_mainbz` 查询 200 / 0.286 秒 / 1 行，partial/degraded、lineage complete，两个 current 在读回前后相同。该读回是内部凭据验收，不是普通客户或冷启动验收。
-- 源 empty/partial/stale/provider_error 继续分别按合同展示；不以全量 stable 阻断接入、开发、发布或供数。商户配置与消费者验收也不是已有数据服务的统一开关。
+- A 股与内部 Crypto `current` 均为 `a3106d68b19d528c31be775b808665833ed8c4e3`，各 1086 文件清单验证通过。发布等待在途采集自然结束，未强杀 collector；两项 API 启动与原有 timer 状态恢复均通过。回滚 release `a093d407d23fe6cf7f82c1fb2a27359c82b7d803` 保留；恢复写入后的回滚必须重新自然 drain。
+- 隔离候选全新进程认证目录：境内 200 / 14.346 秒 / 192 项，内部 Crypto 200 / 8.510 秒 / 240 项。正式切换后 21:22 回读：境内 200 / 6.080 秒，内部 Crypto 200 / 7.915 秒；质押统计 200 / 0.912 秒 / 1 行，partial/degraded、lineage complete；两个 current 在回读前后不变。
+- 境内/新闻目录状态快照为 success 92、paused 55、empty 39、stale 3、unobserved 2、failed 1。它们是当前采集状态，不是 192 项都能返回非空，也不是连续稳定或商业可售数量。内部 Crypto 240 项不纳入对外统计。
+- 先前 27 项默认空查询复核为 26 项 provider_returned_no_rows 与 1 项 provider_error，不伪造非空、不把它们算作 27 项工程未完成。源 empty/partial/stale/provider_error 按合同展示，不冻结其它接入、开发或发布。
+- 性能仍需优化：本轮早期隔离境内目录出现 19.739 秒，公开账户目录出现 503/504；独立 profile 未重现固定慢函数，现场有 I/O 等待与采集竞争，相关性不是完整因果结论。后续成功读回不抹去繁忙时段超时，不宣称已持续稳定。
+- 一次诊断在旧 A 股 release 留下 15 个 Python 缓存；已保存到库外、验证全部 1056 个正式文件未变并仅清除该批缓存，恢复不可变目录验证后才发布。未改业务数据或凭据。另一次 Crypto 启动检查因探针等待短于原有初始化窗口而提前终止；已修正诊断等待并以真实启动/认证回读通过验收，没有放宽服务性能门禁。
+- 本地验证：346 项相关 Python 测试、321 项公共站测试、最终 29 项账户桥接/目录测试通过，生成构建通过。独立规则发现/代码审查，以及合成桌面、390/768px、中英/明暗、加载、身份切换、失败重试、空结果与查询示例检查完成；实际公网访客页面与授权 HTTP 链路另行验证。
 
-## 当前入口与未完成项
+## 接入计划与下一批
 
-长期合同：[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md)、[账户与订阅](docs/design/customer-identity-commerce-v1.md)。本轮证据：[账户整合](docs/reports/2026-09-05-account-commerce-integration.md)、[目录优化](docs/reports/2026-09-05-catalog-binding-memo.md)。历史快照由 Git 保存，不再在当前页累积旧导航和发布段落。
+计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。当前 190 个 Tushare 注册接口为 136 active、54 paused；另有 2 个新闻接口。54 个 Tushare 暂停中：34 个已有权限、14 locked、5 excluded、1 unknown。另有 25 个 current 未注册候选与 7 个 retired；后者不列入当前交付队列。
 
-剩余：指定真实验收邮箱及普通客户数据权限；明确既有支付渠道/商户、结算币种后接入服务商测试并验收；继续降低 A 股首次目录延迟并完成双并发与实际运行切换；核对并修正 urllib 默认标识的边缘拦截。`api.tradingdatas.com` DNS 未配置不阻断现有官网同域入口。#395 settlement identity/迁移草稿不在本轮范围。
+- 先推进同时满足实际 probe executable 与 ingest ready 的 3 项：`fut_daily`、`opt_basic`、`stk_nineturn`。
+- 紧接着复核 12 个仅被数量边界完整性疑虑暂停的合同：`bc_otcqt`、`dc_concept_cons`、`dc_member`、`etf_sz_cons`、`fund_daily`、`fund_nav`、`fut_holding`、`fut_wsr`、`index_basic`、`index_weekly`、`kpl_concept_cons`、`opt_daily`。真实有限覆盖可以如实 partial/unverified，不要求先证明全量。
+- `bak_daily`、`fund_adj`、`fund_manager` 目前只是 limit=1/offset=0 探测合同，先补实际分页或窗口。其余 seed、请求锚点与必要参数按依赖推进。12+3 属于待复核/修正，不是本轮已激活。
+- compiler 仍存在把整千数量边界直接升级为 activation blocker 的行为，尚未在本轮修改；其与有限覆盖政策的差距列为下一批优先通用合同修正。不能直接清空 blocker、批量 unpause，或把失败 receipt 改成成功。
+- 9 月 11 日、18 日、10 月 9 日是检查节点，不是全量上线保证，也不是已就绪接口必须等待的发布日期。每交易日 2–3 项仅容量参考，不是限额；非交易日照常开发、复核、回填和发布，采集按 cadence。
+
+## 账户、订阅与未完成项
+
+- Docs 保留 13 个公开地址及双语内容，入口仅在账户菜单/工作区，顶栏为 Data、Research、Pricing。订阅/订单账本与既有数据权限分开；账本不可用不阻断登录、已有 key 连接、有效期和用量。
+- 生产未绑定 commerce 数据库或测试模式，不能创建订单、收款或发放新权限。本地持久化模拟器覆盖幂等、重复事件、开通失败重试与重启读回，但不是支付服务商 sandbox 或正式交易。
+- 待指定真实验收邮箱、普通客户数据权限及既有商户/支付渠道，完成验证码送达、购买/续费/开通验收；尚未代发真实邮件、创建客户 key 或执行付款。
+- Python-urllib 默认标识曾遭边缘 403；requests/Node/curl 的结果不同，具体边缘规则仍待具备查看权限的会话核对。不能将它冒充数据源故障或已修复。
+- `api.tradingdatas.com` DNS 未配置不阻断官网同域接口；#395 settlement identity/迁移草稿不在本轮范围。后续工程优先项为有限覆盖合同修正、下一批就绪接口，以及繁忙时段目录与公网转发耗时。
+
+长期合同：[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md)、[账户与订阅](docs/design/customer-identity-commerce-v1.md)。当前页记录本轮证据，旧状态由 Git 历史追溯。
