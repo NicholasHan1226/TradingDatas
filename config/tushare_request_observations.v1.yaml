@@ -2348,6 +2348,10 @@ entries:
   - gaps
   transport_observation_class: schema_subset
   request_shape: snapshot_or_date_range
+  # Official ts_code/bmk_type/bmk_level are optional (N). bmk_type and
+  # bmk_level are Chinese labels, not request codes, and there is no
+  # 不输入为获取全部 sentence. Do not invent an empty-all snapshot or
+  # an index_basic fanout of ETF benchmark rows.
   probe_state: blocked
   probe_block_reasons:
   - request_anchor_unresolved

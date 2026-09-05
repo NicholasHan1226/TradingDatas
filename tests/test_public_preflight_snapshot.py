@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -80,6 +81,24 @@ def _bind_live_preflight(generator, monkeypatch: pytest.MonkeyPatch) -> None:
         return (CONFIG / name).read_bytes()
 
     monkeypatch.setattr(generator, "_read", _read)
+
+
+def test_checked_in_preflight_snapshot_matches_compiled_registry() -> None:
+    generator = _generator()
+    rendered = json.dumps(
+        generator.build_snapshot(),
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ) + "\n"
+    assert generator.OUTPUT_PATH.read_text(encoding="utf-8") == rendered
+    groups = _groups(json.loads(rendered))
+    ready = {row["apiName"] for row in groups["ready_for_bounded_https_probe"]}
+    assert ready == {"bse_mapping", "fund_basic", "sge_basic", "stk_nineturn"}
+    assert groups["requires_activation_window_contract"] == []
+    assert "stk_nineturn" not in {
+        row["apiName"] for row in groups["requires_seed_receipt"]
+    }
 
 
 def test_frozen_dump_binds_wip_observations_without_preflight_json_regen() -> None:
