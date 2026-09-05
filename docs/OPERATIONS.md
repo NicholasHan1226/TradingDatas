@@ -406,8 +406,12 @@ empty 仍是 empty，不是 success；历史 trusted-empty 分区保持 empty。
 `margin_secs` 官方是每日盘前更新当日标的，合同仍是 `postclose_daily`，
 在开市日 16:30 之后采集已发布的盘前名单。其余
 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、
-news.flash、rt_etf_min*）保持暂停。`bse_mapping` 只把空 snapshot 写成可探测请求
-（官方 `o_code`/`n_code` 均为 N，不得猜代码）；`index_weekly` 改为已注册
+news.flash、rt_etf_min*）保持暂停。`bse_mapping` / `fund_basic` / `sge_basic`
+已按 2026-09-06 仓外 HTTPS 探测 sidecar（`evidence/20260906-preflight6-paused-probe/`，
+success 248 / 2884 / 13）写入 `active_evidence`，正式 `activation_state=active`，
+cadence 仍是 `on_demand`，窗口/variants/预算未改；本切片不采集、不切 GZ
+`current`。`bse_mapping` 与 `sge_basic` 仍是官方 empty snapshot（不得猜代码）；
+`fund_basic` 仍是 documented `market=E` 模板与 E/O variants。`index_weekly` 改为已注册
 `index_basic.ts_code` fanout，仍保留 observed-limit ingest block。`bc_otcqt`
 没有已注册债券主数据 seed，`index_basic` 的官方 `市场说明(market)` 表已进入冻结文档快照
 （MSCI/CSI/SSE/SZSE/CICC/SW/OTH，默认 SSE），请求按官方 market
@@ -415,8 +419,7 @@ variants 收窄，仍因 observed 6000 行完整性未决保持阻断。
 `ths_index` 的 `exchange=A` 不是文档默认值。`stock_hsgt` 官方 `类型` 表已进入冻结
 文档快照（HK_SZ/SZ_HK/HK_SH/SH_HK，默认 HK_SZ），请求按官方 type variants
 收窄，ingest 原因已空，仍 paused，未激活。`fund_company` 官方输入段是
-「无，可提取全部」，文档快照不再把输出表误读成输入；空 snapshot 与
-`sge_basic` 的「不输入为获取全部」同强度。2026-09-06 有界 HTTPS 探测返回
+「无，可提取全部」，文档快照不再把输出表误读成输入。2026-09-06 有界 HTTPS 探测返回
 15371 行非空，超过 10000 硬预算；`row_limit_observation` 记
 `reject_at_limit=true`，ingest 保持阻断。这是过大非空，不是 empty≠success，
 也不是 activation。文档快照没有可钉住的输入滤镜；下一步是收窄请求，

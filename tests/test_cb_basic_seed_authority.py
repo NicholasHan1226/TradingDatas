@@ -185,6 +185,12 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         assert bindings[api]["provider_bindings"][0]["activation_state"] == "active"
         assert bindings[api]["cadence_class"] == "on_demand"
         assert active_evidence[api] == f"server-evidence/20260905-ready3-{api}"
+    for api in ("bse_mapping", "fund_basic", "sge_basic"):
+        assert bindings[api]["provider_bindings"][0]["activation_state"] == "active"
+        assert bindings[api]["cadence_class"] == "on_demand"
+        assert active_evidence[api] == f"server-evidence/20260906-preflight6-{api}"
+    assert bindings["fund_company"]["provider_bindings"][0]["activation_state"] == "paused"
+    assert bindings["stock_hsgt"]["provider_bindings"][0]["activation_state"] == "paused"
     assert bindings["pledge_detail"]["provider_bindings"][0]["activation_state"] == "active"
     assert bindings["stk_nineturn"]["provider_bindings"][0]["activation_state"] == "paused"
     assert bindings["forecast"]["provider_bindings"][0]["activation_state"] == "active"
@@ -216,8 +222,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 138
-    assert len(bindings) - active_count == 52
+    assert active_count == 141
+    assert len(bindings) - active_count == 49
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:

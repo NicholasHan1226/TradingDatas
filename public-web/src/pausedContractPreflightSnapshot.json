@@ -5,18 +5,6 @@
       "id": "ready_for_bounded_https_probe",
       "interfaces": [
         {
-          "apiName": "bse_mapping",
-          "datasetId": "cn.dataset.bse_mapping"
-        },
-        {
-          "apiName": "fund_basic",
-          "datasetId": "cn.dataset.fund_basic"
-        },
-        {
-          "apiName": "sge_basic",
-          "datasetId": "cn.dataset.sge_basic"
-        },
-        {
           "apiName": "stk_nineturn",
           "datasetId": "cn.dataset.stk_nineturn"
         },
