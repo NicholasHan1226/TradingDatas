@@ -123,7 +123,7 @@ async function upstreamRequest(env, path, accessKey, init = {}) {
   headers.set("authorization", `Bearer ${accessKey}`);
   headers.set("accept", "application/json");
   // Never forward a bearer credential through an upstream redirect.
-  const response = await fetch(target, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(8_000) });
+  const response = await fetch(target, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(path === "/v1/catalog" ? 20_000 : 8_000) });
   if (response.status >= 300 && response.status < 400) {
     await response.body?.cancel();
     throw new Error("account_upstream_redirect_rejected");

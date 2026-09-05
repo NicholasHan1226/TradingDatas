@@ -114,7 +114,7 @@ async function upstream(ctx,path,key,init={},bodyLimit=512*1024) {
   if(base.protocol!=='https:' || base.username || base.password || base.search || base.hash) throw new Error('invalid_backend');
   const headers=new Headers({'authorization':`Bearer ${key}`,'accept':'application/json'});
   if(init.body!==undefined) headers.set('content-type','application/json');
-  const response=await ctx.fetchImpl(new URL(path,base).toString(),{...init,headers,redirect:'manual',signal:AbortSignal.timeout(8000)});
+  const response=await ctx.fetchImpl(new URL(path,base).toString(),{...init,headers,redirect:'manual',signal:AbortSignal.timeout(path==='/v1/catalog' && bodyLimit===ACCOUNT_CATALOG_MAX_BYTES?20000:8000)});
   if(response.status>=300 && response.status<400) {await response.body?.cancel(); throw new Error('redirect_rejected');}
   if(!response.ok) {
     if(response.status===400 && isPortalKeyPath(path)) {
