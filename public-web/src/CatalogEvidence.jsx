@@ -11,7 +11,7 @@ export function CatalogProvider({ account, checking, error, active, onRetryAccou
     const controller = new AbortController();
     if (!active || checking || !catalogOwner(account) || (account.identity_kind === 'email' && account.data_access_state !== 'connected')) return () => controller.abort();
     setSnapshot({ account, status: 'loading', rows: [] });
-    accountJson('catalog', { expectedIdentity: catalogOwner(account), signal: controller.signal }, fetch, 30000)
+    accountJson('catalog', { expectedIdentity: catalogOwner(account), signal: controller.signal }, fetch, 45000)
       .then(payload => { if (!controller.signal.aborted) setSnapshot({ account, status: 'ready', readAt: new Date().toISOString(), rows: domesticRows(payload) }); })
       .catch(error => { if (!controller.signal.aborted) setSnapshot({ account, status: 'error', recheck: ['signed_out', 'identity_changed', 'access_denied'].includes(error.message), rows: [] }); });
     return () => controller.abort();
