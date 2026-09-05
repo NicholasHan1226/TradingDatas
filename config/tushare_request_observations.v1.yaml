@@ -7,7 +7,7 @@ production_ready: false
 provenance:
   official_contracts:
     path: config/tushare_document_contracts.v1.yaml
-    sha256: 06ddd10f130f22f0c87c114609b8700990154632687880b2fe5a30efb91ae685
+    sha256: b436912460c4aaaae751c589500781d4316b50473869a5fefe2bc61813c58816
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
     sha256: ec7bbf84f4792f1b57b58b9bbcedcef2f173cf1de424e19e14d76c5bc8e530b6
@@ -16,7 +16,7 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: e0592329fd7b47f934c04b1da917de2c06e5814ecb1a0a00054828a99bc3604b
+    sha256: 9fd92ba2aa0189139c7884276746f4563020b3ea71b424fda6a627cf60358051
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -68,10 +68,10 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 135
-  probe_blocked: 55
-  ingest_contract_ready: 128
-  ingest_contract_blocked: 62
+  probe_executable: 136
+  probe_blocked: 54
+  ingest_contract_ready: 129
+  ingest_contract_blocked: 61
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -9589,21 +9589,29 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  probe_state: blocked
-  probe_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
-  unresolved_parameter_keys:
-  - type
+  # Official 类型 table is now in the document snapshot
+  # (doc 398, sha c49e3313...). Required type values are
+  # HK_SZ/SZ_HK/HK_SH/SH_HK. Template uses first-listed HK_SZ.
+  # Keep the existing trade_date window. Ingest reasons are empty;
+  # do not activate.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
   parameters:
     trade_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    type:
+      source: literal
+      value: HK_SZ
+  request_variants:
+  - type: HK_SZ
+  - type: SZ_HK
+  - type: HK_SH
+  - type: SH_HK
   row_limit_observation: null
 - api_name: stock_st
   scope_labels:

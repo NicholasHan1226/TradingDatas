@@ -179,10 +179,10 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert len(set(api_names)) == 190
     assert observations["counts"] == {
         "interfaces": 190,
-        "probe_executable": 135,
-        "probe_blocked": 55,
-        "ingest_contract_ready": 128,
-        "ingest_contract_blocked": 62,
+        "probe_executable": 136,
+        "probe_blocked": 54,
+        "ingest_contract_ready": 129,
+        "ingest_contract_blocked": 61,
         "row_limit_ingest_contract_blocked": 15,
     }
     assert observations["counts"] == {
@@ -409,6 +409,25 @@ def test_bse_mapping_empty_snapshot_does_not_guess_codes() -> None:
         "reject_at_limit": True,
     }
 
+    stock_hsgt = _entry(observations, "stock_hsgt")
+    assert stock_hsgt["probe_state"] == "executable"
+    assert stock_hsgt["ingest_contract_state"] == "ready"
+    assert stock_hsgt["parameters"] == {
+        "trade_date": {
+            "source": "run_clock",
+            "transform": "yyyymmdd",
+            "offset_seconds": 0,
+        },
+        "type": {"source": "literal", "value": "HK_SZ"},
+    }
+    assert stock_hsgt["request_variants"] == [
+        {"type": "HK_SZ"},
+        {"type": "SZ_HK"},
+        {"type": "HK_SH"},
+        {"type": "SH_HK"},
+    ]
+    assert stock_hsgt["row_limit_observation"] is None
+
     bc_otcqt = _entry(observations, "bc_otcqt")
     assert bc_otcqt["probe_state"] == "executable"
     assert bc_otcqt["ingest_contract_state"] == "blocked"
@@ -434,6 +453,19 @@ def test_bse_mapping_empty_snapshot_does_not_guess_codes() -> None:
         {"market": "CICC"},
         {"market": "SW"},
         {"market": "OTH"},
+    ]
+    hsgt_contract = _contract(bundle, "stock_hsgt")
+    assert hsgt_contract["probe_state"] == "executable"
+    assert hsgt_contract["ingest_contract_state"] == "ready"
+    assert hsgt_contract["request_template"] == {
+        "trade_date": "${window.trade_date}",
+        "type": "HK_SZ",
+    }
+    assert hsgt_contract["request_variants"] == [
+        {"type": "HK_SZ"},
+        {"type": "SZ_HK"},
+        {"type": "HK_SH"},
+        {"type": "SH_HK"},
     ]
 
     plan = _compile_plan()
@@ -1455,8 +1487,8 @@ def test_row_limit_over_hard_budget_still_requires_activation_block() -> None:
     entry["ingest_contract_block_reasons"] = []
     counts = observations["counts"]
     assert isinstance(counts, dict)
-    counts["ingest_contract_ready"] = 128
-    counts["ingest_contract_blocked"] = 62
+    counts["ingest_contract_ready"] = 129
+    counts["ingest_contract_blocked"] = 61
     counts["row_limit_ingest_contract_blocked"] = 14
 
     with pytest.raises(
@@ -1716,10 +1748,10 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 135,
-        "blocked": 55,
-        "ingest_contract_ready": 128,
-        "ingest_contract_blocked": 62,
+        "executable": 136,
+        "blocked": 54,
+        "ingest_contract_ready": 129,
+        "ingest_contract_blocked": 61,
     }
 
     daily = _entry(plan, "daily")
@@ -1784,10 +1816,10 @@ def test_checked_probe_authorities_compile_without_test_rebinding() -> None:
     assert plan["counts"]["planned"] == 190
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 135,
-        "blocked": 55,
-        "ingest_contract_ready": 128,
-        "ingest_contract_blocked": 62,
+        "executable": 136,
+        "blocked": 54,
+        "ingest_contract_ready": 129,
+        "ingest_contract_blocked": 61,
     }
 
 
@@ -1805,10 +1837,10 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     plan = _compile_plan(dataset_field_values=[seed])
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 155,
-        "blocked": 35,
-        "ingest_contract_ready": 146,
-        "ingest_contract_blocked": 44,
+        "executable": 156,
+        "blocked": 34,
+        "ingest_contract_ready": 147,
+        "ingest_contract_blocked": 43,
     }
     express = _entry(plan, "express")
     assert express["probe_state"] == "executable"
@@ -1942,8 +1974,8 @@ def test_probe_plan_rejects_seed_schema_drift_and_blocked_producer() -> None:
     producer = _entry(observations, "stock_basic")
     producer["probe_state"] = "blocked"
     producer["probe_block_reasons"] = ["request_anchor_unresolved"]
-    observations["counts"]["probe_executable"] = 134
-    observations["counts"]["probe_blocked"] = 56
+    observations["counts"]["probe_executable"] = 135
+    observations["counts"]["probe_blocked"] = 55
     observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
         _yaml_bytes(live_bundle)
     ).hexdigest()

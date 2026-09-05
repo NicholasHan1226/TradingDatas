@@ -407,9 +407,14 @@ news.flash、rt_etf_min*）保持暂停。`bse_mapping` 只把空 snapshot 写�
 没有已注册债券主数据 seed，`index_basic` 的官方 `市场说明(market)` 表已进入冻结文档快照
 （MSCI/CSI/SSE/SZSE/CICC/SW/OTH，默认 SSE），请求按官方 market
 variants 收窄，仍因 observed 6000 行完整性未决保持阻断。
-`ths_index` 的 `exchange=A` 不是文档默认值，`stock_company` 官方 requiredness
-未知，`hm_list` 与 `opt_daily` 继续保持阻断：`opt_daily` 已按官方
-`exchange`（SSE/SZSE/CFFEX/DCE/SHFE/CZCE）收窄，trade_date-only 仍观测
+`ths_index` 的 `exchange=A` 不是文档默认值。`stock_hsgt` 官方 `类型` 表已进入冻结
+文档快照（HK_SZ/SZ_HK/HK_SH/SH_HK，默认 HK_SZ），请求按官方 type variants
+收窄，ingest 原因已空，仍 paused，未激活。`fund_company` 官方输入段是
+「无，可提取全部」，没有 名称/类型/必选表，也没有输入后说明/枚举表，保持
+`official_requiredness_unknown`。`stock_company` 输入表表头是「必须」不是
+「必选」，且没有输入后交易所说明表，保持 `official_requiredness_unknown` 与
+`request_anchor_unresolved`。`hm_list` 与 `opt_daily` 继续保持阻断：`opt_daily`
+已按官方 `exchange`（SSE/SZSE/CFFEX/DCE/SHFE/CZCE）收窄，trade_date-only 仍观测
 15000 行超过 10000 硬预算，分所行数未观测。这不是 activation。
 
 ## 国际新闻原始发布时间与精度

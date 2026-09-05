@@ -94,7 +94,13 @@ def test_checked_in_preflight_snapshot_matches_compiled_registry() -> None:
     assert generator.OUTPUT_PATH.read_text(encoding="utf-8") == rendered
     groups = _groups(json.loads(rendered))
     ready = {row["apiName"] for row in groups["ready_for_bounded_https_probe"]}
-    assert ready == {"bse_mapping", "fund_basic", "sge_basic", "stk_nineturn"}
+    assert ready == {
+        "bse_mapping",
+        "fund_basic",
+        "sge_basic",
+        "stk_nineturn",
+        "stock_hsgt",
+    }
     assert groups["requires_activation_window_contract"] == []
     assert "stk_nineturn" not in {
         row["apiName"] for row in groups["requires_seed_receipt"]
@@ -119,8 +125,8 @@ def test_frozen_dump_binds_wip_observations_without_preflight_json_regen() -> No
         scheduled_partition="20260718",
     )
     assert plan["counts"]["planned"] == 190
-    assert plan["counts"]["executable"] == 135
-    assert plan["counts"]["ingest_contract_ready"] == 128
+    assert plan["counts"]["executable"] == 136
+    assert plan["counts"]["ingest_contract_ready"] == 129
 
 
 def test_probe_executable_single_partition_local_datetime_is_window_ready(

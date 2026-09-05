@@ -260,3 +260,25 @@ def test_checked_in_contracts_expose_honest_probe_readiness() -> None:
         "SW",
         "OTH",
     ]
+    stock_hsgt = next(
+        contract for contract in contracts if contract["api_name"] == "stock_hsgt"
+    )
+    assert stock_hsgt["doc_url"] == "https://tushare.pro/wctapi/documents/398.md"
+    assert (
+        stock_hsgt["doc_sha256"]
+        == "c49e3313931b2b6594fbbb09868997f6044f23e7d3b3e5012f276bb93d9efdba"
+    )
+    assert [row["类型"] for row in stock_hsgt["note_tables"][0]["rows"]] == [
+        "HK_SZ",
+        "SZ_HK",
+        "HK_SH",
+        "SH_HK",
+    ]
+    fund_company = next(
+        contract for contract in contracts if contract["api_name"] == "fund_company"
+    )
+    stock_company = next(
+        contract for contract in contracts if contract["api_name"] == "stock_company"
+    )
+    assert "note_tables" not in fund_company
+    assert "note_tables" not in stock_company

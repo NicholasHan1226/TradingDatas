@@ -16309,6 +16309,20 @@ contracts:
     declared_type: str
     description: 类型名称
     default_display: Y
+  note_tables:
+  - heading: ''
+    headers:
+    - 类型
+    - 类型名称
+    rows:
+    - 类型: HK_SZ
+      类型名称: 深股通(港>深)
+    - 类型: SZ_HK
+      类型名称: 港股通(深>港)
+    - 类型: HK_SH
+      类型名称: 沪股通(港>沪)
+    - 类型: SH_HK
+      类型名称: 港股通(沪>港)
 - api_name: stock_st
   doc_url: https://tushare.pro/wctapi/documents/397.md
   doc_sha256: 9b04035d1ad9fe67974227a4ccb74411d78234756e947506d6351d44228cae12
