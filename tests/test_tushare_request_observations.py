@@ -36,7 +36,6 @@ PROVIDER_NATIVE_REGISTRY = ROOT / "config" / "provider_native_dataset_registry.y
 TEN_CODE_FANOUT_APIS = {
     "cyq_chips",
     "cyq_perf",
-    "fina_mainbz",
     "stk_rewards",
     "top10_floatholders",
     "top10_holders",
@@ -508,6 +507,41 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
     }
     assert "ann_date" not in _entry(observations, "forecast")["parameters"]
     assert "ts_code" in _entry(observations, "forecast")["parameters"]
+    # fina_mainbz: QuickSync has no ann_date.  Drop run-clock start/end and
+    # type=P; ts_code-only single-code history matches pledge_stat.
+    assert _contract(bundle, "fina_mainbz")["cadence_class"] == "event"
+    assert _contract(bundle, "fina_mainbz")["request_template"] == {}
+    assert _contract(bundle, "fina_mainbz")["request_window_policy"] is None
+    assert _contract(bundle, "fina_mainbz")["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.equity.security_master",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert _contract(bundle, "fina_mainbz")["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+    assert "type" not in _entry(observations, "fina_mainbz")["parameters"]
+    assert "start_date" not in _entry(observations, "fina_mainbz")["parameters"]
+    assert "end_date" not in _entry(observations, "fina_mainbz")["parameters"]
+    assert _contract(bundle, "pledge_detail")["cadence_class"] == "event"
+    assert _contract(bundle, "pledge_detail")["request_template"] == {
+        "ann_date": "${window.ann_date}"
+    }
+    assert _contract(bundle, "top10_cb_holders")["cadence_class"] == "event"
+    assert _contract(bundle, "top10_cb_holders")["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.dataset.cb_basic",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert _contract(bundle, "top10_cb_holders")["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
     # Live ids stay trade_date-only snapshots.  margin / margin_detail are
     # official T+1 08:30 previous-day publishes; prior_open_morning requests
     # the previous open trade_date after 08:30.  Empty ≠ success.

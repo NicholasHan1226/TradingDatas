@@ -354,6 +354,16 @@ empty 仍是 empty，不是 success。当前合同去掉可选日期过滤，改
 SUCCESS。当前合同去掉日期过滤，改为与 `pledge_stat` / cashflow /
 express / `fina_audit` 相同的 ts_code-only `entity_fanout`，cadence
 仍是 `event`。历史 empty / failed 回执仍不是 success。
+`cn.dataset.fina_mainbz` 已是 `activation_state=active`，但 on_demand 加上
+run-clock `start_date`/`end_date` 与 `type=P` 从未产生 receipt（#349）。
+QuickSync 无 `ann_date`。当前合同改为与 `pledge_stat` / forecast 相同的
+ts_code-only `entity_fanout`（`batch_size=1`、`max_batches_per_run=1`），
+cadence 改为 `event`。`cn.dataset.top10_cb_holders` 同样已 active，只是
+on_demand 未调度；cadence 改为 event，沿用 `cb_basic` 单码 fanout。
+`cn.dataset.pledge_detail` 从 `registry_activation_paused` 恢复为
+`activation_state=active`，合同是 `ann_date` event snapshot（与
+disclosure_date / share_float 同窗）。`stk_nineturn` 官方 21:00 发布且
+datetime 窗尚无 completeness 合同，本波保持暂停。empty 仍是 empty。
 `cn.dataset.margin`、`cn.dataset.margin_detail` 与 `cn.dataset.margin_secs`
 已经是 `activation_state=active`，不是 `registry_activation_paused`。
 三者都是 trade_date-only snapshot。`margin` / `margin_detail` 官方是

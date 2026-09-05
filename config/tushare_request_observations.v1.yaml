@@ -10,13 +10,13 @@ provenance:
     sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: e9514971979436a044b2755c578076e6d6bffcda7b552f5fca11260f25bfda22
+    sha256: 25c297ba41e8334583893cca486a84b0ac8ce908de96f3356ed01b625cfad115
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 100285f15342988a85ac223073e1e5c3c5ed152f5a49cdc5f92f0b457a7df6e5
+    sha256: 14b7dde7d2af57d2053551d979605f5f542c7ab4c3703ec85c62964cf5bfd867
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -1105,6 +1105,9 @@ entries:
   - gaps
   transport_observation_class: schema_subset
   request_shape: entity_fanout
+  # QuickSync has no ann_date.  Run-clock start/end + type=P + batch 10
+  # missed real periods (#349).  Empty ≠ success.  ts_code-only single-code
+  # history matches pledge_stat / forecast.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
@@ -1113,23 +1116,15 @@ entries:
   - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    end_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-    start_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
     ts_code:
       source: dataset_field
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
-      batch_size: 10
-    type:
-      source: literal
-      value: P
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: forecast
   scope_labels:
@@ -9583,6 +9578,8 @@ entries:
   - gaps
   transport_observation_class: schema_subset
   request_shape: entity_fanout
+  # on_demand never scheduled this already-active row.  Event + single-code
+  # cb_basic fanout matches pledge_stat.  Empty ≠ success.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
@@ -9596,6 +9593,10 @@ entries:
       dataset_id: cn.dataset.cb_basic
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: top10_floatholders
   scope_labels:
