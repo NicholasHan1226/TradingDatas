@@ -1200,6 +1200,16 @@ Firecrawl 的失败仍无数据行，HTTP 401/403、402/429 与既有上游 time
 发布后等下一自然调度的 receipt 检查新提示，不能靠主动补采证明修复。
 这些分类不修改抽取 request schema、字段合同、时效、采集频率或上游权限。
 
+`global.news.flash` 的抽取请求要求 `title`、`url`、`published_at`，与既有发布日期
+校验一致；源配置为 `config/firecrawl_upstream_contracts.v1.yaml`，registry 由现有
+compiler 生成。日期仍须来自页面，缺失/不可解析时失败，不能用采集时间补齐。
+注册表字节变化须同步受审 activation wave 的输入摘要；波次成员和 schedule 摘要不变。
+该要求不证明某次 `response item invalid` 就是缺日期，也不保证上游能提供日期。
+修改抽取 schema 会改变 ingest config hash，即使输出 schema 仍为 `1.1.0`：旧 facts/receipts
+保留原哈希，不能改写或作为新配置成功证明。发布后按自然调度检查新哈希的 receipt
+及认证 query；在取得证据前保留当前 unobserved/degraded 等真实状态。回退使用上一
+不可变 release，不回填哈希或修改历史数据。
+
 Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，仅作为 on_demand
 补充手段设计，不在自动调度内；激活前需先验证其真实响应契约。
 

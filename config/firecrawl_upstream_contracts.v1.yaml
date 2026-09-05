@@ -296,7 +296,7 @@ contracts:
   request_shape: event_or_intraday_window
   request_template:
     publication_provenance_mode: raw_item_v1
-    extraction_schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"url":{"type":"string"},"published_at":{"type":"string"}},"required":["title","url"],"additionalProperties":true}}},"required":["items"]}'
+    extraction_schema: '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"url":{"type":"string"},"published_at":{"type":"string"}},"required":["title","url","published_at"],"additionalProperties":true}}},"required":["items"]}'
     max_age_ms: "900000"
     prompt: 只抽取页面中客观存在的新闻条目：标题、原文链接、页面显示的发布日期。禁止生成摘要、情绪判断或任何加工结论；禁止输出页面上不存在的内容。
     timeout_ms: "30000"

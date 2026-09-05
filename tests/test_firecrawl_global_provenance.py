@@ -317,7 +317,11 @@ def test_minor_append_only_versions_and_old_registry_rollback_are_explicitly_deg
         ),
         request_template=MappingProxyType(
             {
-                key: value
+                key: (
+                    value.replace('"required":["title","url","published_at"]',
+                                  '"required":["title","url"]')
+                    if key == "extraction_schema" else value
+                )
                 for key, value in binding.request_template.items()
                 if key != "publication_provenance_mode"
             }
@@ -486,3 +490,50 @@ def test_raw_business_prose_about_credentials_is_not_a_credential(
     result, _ = _collect(item, monkeypatch, tmp_path)
     assert result.state == "success"
     assert json.loads(result.rows[0]["raw_item_json"]) == item
+
+
+def test_publication_requirement_changes_ingest_hash_not_output_contract():
+    dataset = load_dataset_registry().resolve("global.news.flash")
+    (binding,) = dataset.provider_bindings
+    schema = json.loads(binding.request_template["extraction_schema"])
+    assert schema["properties"]["items"]["items"]["required"] == ["title", "url", "published_at"]
+    old_template = dict(binding.request_template)
+    old_template["extraction_schema"] = old_template["extraction_schema"].replace(
+        '"required":["title","url","published_at"]', '"required":["title","url"]'
+    )
+    old_binding = replace(binding, request_template=MappingProxyType(old_template))
+    old_dataset = replace(dataset, provider_bindings=(old_binding,))
+    assert provider_ingest_config_hash(old_dataset, old_binding) != provider_ingest_config_hash(dataset, binding)
+    assert replace(old_dataset, provider_bindings=dataset.provider_bindings) == dataset
+    assert dataset.schema_version == "1.1.0"
+
+
+@pytest.mark.parametrize("date_value", [None, "", "not-a-date", "Aug. 14, 2026"])
+def test_registry_date_requirement_is_sent_and_never_fills_missing_date(
+    tmp_path, monkeypatch, date_value,
+):
+    dataset = load_dataset_registry().resolve("global.news.flash")
+    (binding,) = dataset.provider_bindings
+    _key_file(tmp_path, monkeypatch)
+    params = dict(binding.request_template)
+    params.update(url=binding.fanout.values[0], window_start="2026-08-14 00:00:00", window_end="2026-08-14 23:59:59")
+    item = _item(date_value)
+    if date_value is None:
+        del item["published_at"]
+    calls = []
+    def post(path, body, *, api_key):
+        calls.append(body)
+        assert "published_at" in body["formats"][0]["schema"]["properties"]["items"]["items"]["required"]
+        return {"success": True, "data": {"json": {"items": [item]}}}
+    collector = fc.FirecrawlWebCollector()
+    monkeypatch.setattr(collector, "_post", post)
+    monkeypatch.setattr(fc._OPENER, "open", lambda *a, **kw: pytest.fail("offline only"))
+    result = collector.collect_outcome("scrape_page_global", params)
+    assert len(calls) == 1
+    if date_value == "Aug. 14, 2026":
+        assert result.state == "success"
+        assert result.rows[0]["provider_published_at"] == date_value
+        assert result.rows[0]["publication_precision"] == "date"
+    else:
+        assert result.state == "failed" and result.rows == ()
+        assert result.error_message == "firecrawl response item invalid"
