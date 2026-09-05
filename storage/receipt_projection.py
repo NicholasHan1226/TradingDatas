@@ -4514,7 +4514,10 @@ def _open_bound_receipt_database_ro(
             or authority_tables != {PROVIDER_DATASET_ROWS_TABLE, "market_ingest_runs"}
         ):
             raise RuntimeProjectionError("receipt database schema is unavailable")
-        conn.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone()
+        # Prove the receipt table is readable without walking notes payloads.
+        # A discarded COUNT(*) here made every snapshot (primary + verifier)
+        # scan the append-only journal before catalog/query work started.
+        conn.execute("SELECT 1 FROM market_ingest_runs LIMIT 1").fetchone()
         _require_bound_path_identities(binding)
         return conn
     except RuntimeProjectionError:

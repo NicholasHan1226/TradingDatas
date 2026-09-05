@@ -129,3 +129,146 @@ def test_coverage_prefetch_discards_count_and_keeps_exact_aggregates(
             fault_in_catalog_coverage_index(missing)
     finally:
         writer.close()
+
+
+def test_coverage_prefetch_without_registry_avoids_full_index_count(
+    tmp_path: Path,
+) -> None:
+    from catalog_service import fault_in_catalog_coverage_index
+    from storage.schema import SCHEMA_SQL
+    from storage.sqlite_authority_lock import sqlite_authority_lock
+
+    db_path = tmp_path / "provider_native.sqlite"
+    writer = sqlite3.connect(db_path)
+    try:
+        writer.executescript(SCHEMA_SQL)
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.executemany(
+            """INSERT INTO provider_dataset_rows
+               (dataset_id, provider, schema_major, ingested_schema_version,
+                row_key, observed_at, partition_value, payload_json,
+                payload_hash, quality_state, quality_issues_json,
+                collected_at, receipt_id, revision)
+               VALUES ('chosen', 'tushare', 1, 'v1', ?, ?, NULL, '{}', ?, 'valid',
+                       '[]', '2026-09-05T00:00:00Z', 'receipt:1', 1)""",
+            [(f"k{i}", f"2026-09-01T00:{i:05d}", f"h{i}") for i in range(4000)],
+        )
+        writer.commit()
+        with sqlite_authority_lock(db_path, mode="exclusive", create=True):
+            pass
+        statements: list[str] = []
+        import storage.receipt_projection as projection_module
+
+        real_connect = projection_module.sqlite3.connect
+
+        def tracked_connect(*args, **kwargs):
+            conn = real_connect(*args, **kwargs)
+            conn.set_trace_callback(statements.append)
+            return conn
+
+        projection_module.sqlite3.connect = tracked_connect
+        try:
+            fault_in_catalog_coverage_index(db_path)
+        finally:
+            projection_module.sqlite3.connect = real_connect
+        coverage_sql = [
+            sql
+            for sql in statements
+            if "provider_dataset_rows" in sql and "COUNT(*)" in sql.replace(" ", "")
+        ]
+        assert coverage_sql == []
+        assert any("LIMIT 1" in sql and "provider_dataset_rows" in sql for sql in statements)
+        expected = writer.execute(
+            "SELECT COUNT(*), MIN(observed_at), MAX(observed_at) "
+            "FROM provider_dataset_rows WHERE dataset_id='chosen' AND schema_major=1"
+        ).fetchone()
+        from catalog_service import _dataset_coverage
+
+        assert tuple(
+            _dataset_coverage(
+                writer, SimpleNamespace(dataset_id="chosen", schema_major=1)
+            ).values()
+        ) == expected
+    finally:
+        writer.close()
+
+
+def test_coverage_prefetch_with_registry_keeps_exact_aggregates(
+    tmp_path: Path,
+) -> None:
+    from catalog_service import _dataset_coverage, fault_in_catalog_coverage_index
+    from dataset_registry import DatasetRegistry, load_dataset_registry
+    from storage.schema import SCHEMA_SQL
+    from storage.sqlite_authority_lock import sqlite_authority_lock
+
+    db_path = tmp_path / "provider_native.sqlite"
+    writer = sqlite3.connect(db_path)
+    try:
+        writer.executescript(SCHEMA_SQL)
+        writer.execute("PRAGMA journal_mode=WAL")
+        dataset = load_dataset_registry().resolve("tushare.daily")
+        writer.executemany(
+            """INSERT INTO provider_dataset_rows
+               (dataset_id, provider, schema_major, ingested_schema_version,
+                row_key, observed_at, partition_value, payload_json,
+                payload_hash, quality_state, quality_issues_json,
+                collected_at, receipt_id, revision)
+               VALUES (?, 'tushare', ?, 'v1', ?, ?, NULL, '{}', ?, 'valid', '[]',
+                       '2026-09-05T00:00:00Z', ?, 1)""",
+            [
+                (
+                    dataset.dataset_id,
+                    dataset.schema_major,
+                    "k1",
+                    "2026-09-01T00:00:00Z",
+                    "h1",
+                    "receipt:1",
+                ),
+                (
+                    dataset.dataset_id,
+                    dataset.schema_major,
+                    "k2",
+                    "2026-09-05T00:00:00Z",
+                    "h2",
+                    "receipt:1",
+                ),
+            ],
+        )
+        writer.commit()
+        with sqlite_authority_lock(db_path, mode="exclusive", create=True):
+            pass
+        registry = DatasetRegistry((dataset,))
+        before = writer.execute(
+            "SELECT COUNT(*), MIN(observed_at), MAX(observed_at) "
+            "FROM provider_dataset_rows WHERE dataset_id=? AND schema_major=?",
+            (dataset.dataset_id, dataset.schema_major),
+        ).fetchone()
+        statements: list[str] = []
+        import storage.receipt_projection as projection_module
+
+        real_connect = projection_module.sqlite3.connect
+
+        def tracked_connect(*args, **kwargs):
+            conn = real_connect(*args, **kwargs)
+            conn.set_trace_callback(statements.append)
+            return conn
+
+        projection_module.sqlite3.connect = tracked_connect
+        try:
+            fault_in_catalog_coverage_index(db_path, registry=registry)
+        finally:
+            projection_module.sqlite3.connect = real_connect
+        assert any(
+            "COUNT(*)" in sql.replace(" ", "") and "dataset_id" in sql
+            for sql in statements
+        )
+        assert all(
+            "INDEXED BY provider_dataset_rows_coverage_idx" not in sql
+            or "LIMIT 1" in sql
+            or "dataset_id" in sql
+            for sql in statements
+        )
+        after = _dataset_coverage(writer, dataset)
+        assert tuple(after.values()) == before
+    finally:
+        writer.close()

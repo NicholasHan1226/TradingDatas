@@ -3769,6 +3769,62 @@ def _snapshot_select_one(db_path: Path) -> tuple[object, ...]:
         return tuple(conn.execute("SELECT 1").fetchone())
 
 
+def test_snapshot_open_does_not_count_receipt_journal(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "provider_native.sqlite"
+    writer = sqlite3.connect(db_path)
+    try:
+        writer.executescript(SCHEMA_SQL)
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        note = json.dumps({"pad": "x" * 2048}, separators=(",", ":"))
+        writer.executemany(
+            "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                (
+                    f"run-{index:05d}",
+                    "2026-09-01T00:00:00Z",
+                    "2026-09-01T00:00:01Z",
+                    "success",
+                    "provider-native",
+                    1,
+                    1,
+                    note,
+                )
+                for index in range(3_000)
+            ),
+        )
+        writer.commit()
+        with sqlite_authority_lock(db_path, mode="exclusive", create=True):
+            pass
+        statements: list[str] = []
+        real_connect = projection_module.sqlite3.connect
+
+        def tracked_connect(*args, **kwargs):
+            conn = real_connect(*args, **kwargs)
+            conn.set_trace_callback(statements.append)
+            return conn
+
+        projection_module.sqlite3.connect = tracked_connect
+        try:
+            with projection_module.open_verified_read_model_snapshot(db_path):
+                pass
+        finally:
+            projection_module.sqlite3.connect = real_connect
+        normalized = [" ".join(sql.split()) for sql in statements]
+        assert any(
+            sql == "SELECT 1 FROM market_ingest_runs LIMIT 1" for sql in normalized
+        )
+        assert all(
+            sql != "SELECT COUNT(*) FROM market_ingest_runs" for sql in normalized
+        )
+        assert writer.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone() == (
+            3_000,
+        )
+    finally:
+        writer.close()
+
+
 def test_connection_epoch_evidence_is_bounded_by_latest_receipt() -> None:
     conn = sqlite3.connect(":memory:")
     conn.executescript(SCHEMA_SQL)
