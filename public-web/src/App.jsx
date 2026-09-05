@@ -1,3 +1,5 @@
+import { getDocumentation } from "./documentation.js";
+import { DocumentationPage } from "./DocumentationPage.jsx";
 import { accountPath, accountSectionForRoute, isAccountRoute, privateAccountSections } from "./accountNavigation.js";
 import { keyManagementMessage } from "./accountAccess.js";
 import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
@@ -136,8 +138,6 @@ const messages = {
     pricingCopy: "Start with the data needed for your workflow. Add alternative data only when you choose to.",
     plans: ["Research", "Systematic", "Trading"],
     proposal: "Package proposal",
-    docsTitle: "One interface. Clear contracts.",
-    docsCopy: "Catalog and query stay provider-neutral, authenticated and ready for HTTP-capable Agents.",
     account: "Account",
     accountItems: ["Overview", "Data & subscription", "Usage & limits", "API keys", "Agent Connections", "Billing & invoices", "Security"],
     environment: "Environment",
@@ -199,8 +199,6 @@ const messages = {
     pricingCopy: "从工作所需的数据开始；只有在你明确选择时，才添加另类数据。",
     plans: ["研究", "量化", "交易"],
     proposal: "套餐方案",
-    docsTitle: "一个接口，清晰的数据合同。",
-    docsCopy: "Catalog 与 Query 保持供应商中立、全程认证，可直接供支持 HTTP 的 Agent 使用。",
     account: "账户",
     accountItems: ["概览", "数据与订阅", "用量与限制", "API 密钥", "Agent 接入", "账单与发票", "安全"],
     environment: "显示设置",
@@ -677,7 +675,6 @@ export function App() {
   const mobileSearchInputRef = useRef(null);
   const [dataFamily, setDataFamily] = useState("all");
   const [dataStage, setDataStage] = useState("all");
-  const [docsCategory, setDocsCategory] = useState("all");
   const [pricingPlanIndex, setPricingPlanIndex] = useState(() => Math.max(0, getBasePlanCards("en").findIndex((plan) => plan.id === readPreviewSelection(window.location.search)?.plan.id)));
   const [pricingBillingPeriod, setPricingBillingPeriod] = useState(() => readPreviewSelection(window.location.search)?.period || "monthly");
   const [accountSessionRequested, setAccountSessionRequested] = useState(() => (isAccountRoute(route) || route === "login"));
@@ -1077,7 +1074,7 @@ export function App() {
       return;
     }
     window.scrollTo({ top: route === "research" ? researchScrollRef.current : 0, behavior: "instant" });
-    if (navigationRevision > 0 && (route.startsWith("research/") || route.startsWith("recipes/"))) {
+    if (navigationRevision > 0 && (route.startsWith("research/") || route.startsWith("recipes/") || route.startsWith("docs/"))) {
       const heading = document.querySelector("main h1");
       heading?.setAttribute("tabindex", "-1");
       heading?.focus({ preventScroll: true });
@@ -1274,25 +1271,8 @@ export function App() {
     ["03", "Understand method and limits", "Identify alignment, samples, assumptions, and what cannot be generalized."],
     ["04", "Continue in Data and Methods", "Find the matching raw materials and reproducible preparation method."],
   ];
-  const docsCategories = locale === "zh" ? [
-    { key: "start", label: "开始使用", items: [["平台概览", "了解 Data、Research、Pricing、全站搜索与 Account 的关系。"], ["首次接入", "创建账户、选择套餐、生成密钥并完成第一条 Catalog 查询。"]] },
-    { key: "data", label: "数据说明", items: [["数据分类与模板", "市场、domain、字段、覆盖、更新时间与 receipt 的统一结构。"], ["另类数据", "来源、再分发边界、试用、加购和授权读回。"], ["数据凭证", "如何阅读 source、quality、freshness、coverage 与 receipt。"]] },
-    { key: "api", label: "API 与 Agent", items: [["Catalog", "发现已授权数据集及其结构、覆盖与限制。"], ["Query", "字段、游标、预算、错误和 fail-closed 行为。"], ["Agent 与 MCP", "Claude、Codex、OpenClaw、Hermes 的安全接入说明。"]] },
-    { key: "learn", label: "学习与方法", items: [["Research 阅读指南", "如何阅读外部论文、行业研究和案例。"], ["研究方法", "查询、连接、时点对齐、复权、缺失与验证。"]] },
-    { key: "commerce", label: "套餐与账户", items: [["套餐比较", "相同基础数据，三档请求频率及月付、年付价格；支付尚未开放。"], ["订阅与账单", "有效期、试用、加购、续费、账单和发票。"], ["账户与安全", "用量、密钥、会话、语言、主题与访问审计。"]] },
-  ] : [
-    { key: "start", label: "Get started", items: [["Platform overview", "How Data, Research, Pricing, site search, and Account fit together."], ["First connection", "Create an account, choose a package, generate a key, and make the first Catalog request."]] },
-    { key: "data", label: "Data guide", items: [["Classification & template", "The shared market, domain, field, coverage, update, and receipt structure."], ["Alternative data", "Source, redistribution boundary, trial, add-on, and entitlement readback."], ["Data receipts", "How to read source, quality, freshness, coverage, and receipt evidence."]] },
-    { key: "api", label: "API & Agents", items: [["Catalog", "Discover authorized datasets, schemas, coverage, and limitations."], ["Query", "Fields, cursors, budgets, errors, and fail-closed behavior."], ["Agents & MCP", "Safe setup for Claude, Codex, OpenClaw, Hermes, and other Agents."]] },
-    { key: "learn", label: "Learning & methods", items: [["Research reading guide", "How to read external papers, industry research, and cases."], ["Research methods", "Querying, joins, point-in-time alignment, adjustment, missingness, and validation."]] },
-    { key: "commerce", label: "Plans & account", items: [["Compare packages", "The same base data, three request rates, and monthly/annual prices; checkout is not yet available."], ["Subscription & billing", "Expiry, trials, add-ons, renewal, billing, and invoices."], ["Account & security", "Usage, keys, sessions, language, appearance, and access audit."]] },
-  ];
-  const allDocs = docsCategories.flatMap((category) => category.items.map(([title, description], index) => ({ category: category.key, categoryLabel: category.label, title, description, slug: `${category.key}-${index + 1}` })));
-  const visibleDocs = allDocs.filter((entry) => {
-    const matchesCategory = docsCategory === "all" || entry.category === docsCategory;
-    return matchesCategory;
-  });
-  const selectedDoc = allDocs.find((entry) => entry.slug === routeSlug);
+  const documentation = getDocumentation(locale);
+  const allDocs = documentation.guides.map(entry => ({ ...entry, categoryLabel: documentation.categories.find(category => category.key === entry.category)?.label }));
   const activeAccountItem = accountGroups.flatMap((group) => group.items).find((item) => item.key === accountSection) || accountGroups[0].items[0];
   const accountPlanLabels = locale === "zh" ? { basic: "基础版", standard: "专业版", flagship: "旗舰版", free: "免费版", starter: "入门版", research: "研究版", pro: "专业版", enterprise: "企业版", internal: "内部账户" } : { basic: "Basic", standard: "Professional", flagship: "Flagship", free: "Free", starter: "Starter", research: "Research", pro: "Pro", enterprise: "Enterprise", internal: "Internal" };
   const accountCategoryLabels = locale === "zh" ? { a_share: "A 股基础数据", crypto: "加密资产", news: "新闻与事件" } : { a_share: "A-share base data", crypto: "Crypto", news: "News & events" };
@@ -1621,25 +1601,8 @@ export function App() {
           <div className="detail-actions"><a className="primary-button" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看套餐与购买预览" : "View plans and purchase preview"}<ArrowRight /></a><a className="text-link" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "浏览数据目录" : "Browse the data catalog"}<ArrowRight /></a></div>
         </section>}
 
-        {primaryRoute === "docs" && !routeSlug && <section className="docs-hub" id="docs">
-          <SectionNav locale={locale} active="/docs" onNavigate={navigate} items={locale === "zh" ? [{ path: "/docs", label: "文档首页" }, { path: "/docs/data-1", label: "数据模型" }, { path: "/connect", label: "Agent 与 MCP" }, { path: "/docs/commerce-1", label: "套餐" }] : [{ path: "/docs", label: "Docs home" }, { path: "/docs/data-1", label: "Data model" }, { path: "/connect", label: "Agents & MCP" }, { path: "/docs/commerce-1", label: "Plans" }]} />
-          <div className="docs-hub-hero">
-            <span className="mono-kicker">PLATFORM GUIDE / DATA / API / ACCOUNT</span>
-            <h1>{locale === "zh" ? "理解并使用 TradingDatas 的所有说明。" : "Everything needed to understand and use TradingDatas."}</h1>
-            <p>{locale === "zh" ? "Docs 汇集网站各板块、数据合同、Agent 接入、套餐与账户的说明；API 只是其中一个部分。" : "Docs brings together guidance for every product area, data contract, Agent connection, package, and account workflow. API is one part—not the whole hub."}</p>
-          </div>
-          <div className="docs-category-tabs" aria-label={locale === "zh" ? "文档分类" : "Documentation categories"}>
-            <button type="button" className={docsCategory === "all" ? "is-active" : ""} onClick={() => setDocsCategory("all")}>{locale === "zh" ? "全部" : "All"}</button>
-            {docsCategories.map((category) => <button type="button" key={category.key} className={docsCategory === category.key ? "is-active" : ""} onClick={() => setDocsCategory(category.key)}>{category.label}</button>)}
-          </div>
-          <div className="docs-grid">{visibleDocs.length ? visibleDocs.map((entry, index) => <a className="docs-card" key={`${entry.category}-${entry.title}`} href={`/docs/${entry.slug}`} onClick={(event) => navigate(event, `/docs/${entry.slug}`)}><span>{String(index + 1).padStart(2, "0")} · {entry.categoryLabel}</span><h2>{entry.title}</h2><p>{entry.description}</p><ArrowRight /></a>) : <div className="docs-empty">{locale === "zh" ? "没有匹配的说明。换一个关键词或分类。" : "No guidance matches. Try another term or category."}</div>}</div>
-          <section className="docs-quickstart">
-            <div><span className="mono-kicker">API QUICKSTART / ONE PART OF DOCS</span><h2>{copy.docsTitle}</h2><p>{copy.docsCopy}</p><button className="primary-button" type="button" onClick={() => setAgentOpen(true)}>{copy.connect}</button></div>
-            <div className="code-window"><div><span /><span /><span /><small>catalog request</small></div><pre><code>{`GET /v1/catalog HTTP/1.1\nHost: tradingdatas.com\nAuthorization: Bearer ••••••••\nAccept: application/json`}</code></pre><div className="code-status"><ShieldCheck weight="fill" /> authenticated · provider-neutral</div></div>
-          </section>
-        </section>}
+        {primaryRoute === "docs" && <DocumentationPage locale={locale} slug={routeSlug} documentation={documentation} onNavigate={navigate} />}
 
-        {primaryRoute === "docs" && routeSlug && <section className="object-detail-page docs-article"><a className="object-back" href="/docs" onClick={(event) => navigate(event, "/docs")}>← {locale === "zh" ? "返回文档" : "Back to Docs"}</a><div className="object-detail-hero"><div><span className="mono-kicker">{selectedDoc?.categoryLabel?.toUpperCase() || "DOCUMENTATION"}</span><h1>{selectedDoc?.title || (locale === "zh" ? "说明未找到" : "Guide not found")}</h1><p>{selectedDoc?.description}</p></div><span className="maturity-tag">{locale === "zh" ? "版本化说明" : "Versioned guide"}</span></div>{selectedDoc && <div className="docs-article-body"><aside><span>{locale === "zh" ? "本文回答" : "THIS GUIDE ANSWERS"}</span><p>{selectedDoc.description}</p><span>{locale === "zh" ? "权威来源" : "AUTHORITY"}</span><p>{selectedDoc.category === "api" ? "docs/API.md + authenticated runtime" : selectedDoc.category === "data" ? "registry + facts/receipts + docs/PRODUCT.md" : "docs/PRODUCT.md + backend contract"}</p></aside><article><h2>{locale === "zh" ? "说明结构" : "Guide structure"}</h2><p>{locale === "zh" ? "每篇文档会明确当前能力、目标能力、使用步骤、限制、错误状态、相关对象与下一步。它不会把产品提案写成生产事实。" : "Every guide identifies current capability, target capability, steps, limits, error states, related objects, and next action. It never turns a product proposal into a production fact."}</p><h2>{locale === "zh" ? "相关入口" : "Related entries"}</h2><div className="detail-actions"><a className="text-link" href="/data" onClick={(event) => navigate(event, "/data")}>{locale === "zh" ? "数据目录" : "Data catalog"}<ArrowRight /></a><a className="text-link" href="/recipes" onClick={(event) => navigate(event, "/recipes")}>Recipes<ArrowRight /></a></div></article></div>}</section>}
 
         {primaryRoute === "pricing" && routeSlug === "preview" && <PurchasePreview locale={locale} selection={readPreviewSelection(routeSearch)} accountState={accountViewState} navigate={navigate} onRetry={() => setAccountConnectionRevision((value) => value + 1)} onAccount={() => openAccountSection("subscription")} />}
 

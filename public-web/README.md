@@ -503,3 +503,13 @@ aggregate Crypto. Normal builds configure Agent instructions for
 that origin (an empty value leaves instructions unconfigured). Copying instructions
 does not query or authenticate. See the API/OPERATIONS contract and STATUS for
 real deployment and customer acceptance.
+
+## Doc content and reader
+
+`src/documentation.js` holds bilingual guide content under the existing stable
+`/docs/:slug` routes. `DocumentationPage.jsx` renders the task-oriented hub,
+grouped directory and reader; `documentation.css` owns its responsive layout.
+Global search and page metadata reuse these records. Update authored guides
+when product/API/account behavior changes, keeping paused commerce explicit.
+Verify both languages, desktop/mobile navigation, article anchors and direct
+links with `npm run test:sites`, `npm run build` and browser review.

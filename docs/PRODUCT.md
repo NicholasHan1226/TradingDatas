@@ -77,7 +77,9 @@ The public experience has seven durable information areas:
   authorship, year, venue, and outbound attribution;
 - **Pricing**: a small number of complete A-share workflow packages plus
   separately selected alternative-data access;
-- **Docs**: the platform-wide help hub for product areas, data guidance,
+- **Doc**: the task-oriented public help hub with a grouped directory and
+  authored step-by-step guides, retaining existing `/docs/:slug` addresses.
+  It is the platform-wide help hub for product areas, data guidance,
   API/Agents, learning methods, packages, account, schema, pagination, quota,
   and errors;
 - **Account**: private overview, subscription, expiry, usage, API keys, billing

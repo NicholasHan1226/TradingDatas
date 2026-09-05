@@ -494,13 +494,25 @@ The purchase path is dataset/detail or Pricing -> add-on summary -> checkout ->
 payment confirmation -> server entitlement readback -> Console. Base-package
 checkout must never silently include or auto-charge an alternative add-on.
 
-### 5.6 Docs hub
+### 5.6 Doc hub
 
-Docs is not an API-only marketing hero. It is the common explanation layer for
-the whole public product and provides search plus five stable categories:
-Get started, Data guide, API & Agents, Learning & methods, and Plans & account.
-API quickstart remains a prominent module inside Docs, while full product-area
-guidance remains equally discoverable.
+Doc is reached from Account, never a desktop/mobile primary navigation item.
+The public `/docs` hub presents first connection, Agent setup and account help
+first, then a grouped directory spanning getting started, data, APIs, methods
+and account guidance. Desktop uses a persistent directory beside the reading
+column; mobile uses a native collapsible directory. Detail pages have specific
+authored steps, on-page links, relevant next actions and adjacent guides. Keep
+existing `/docs/:slug` URLs. Avoid oversized marketing headings, equal-height
+card grids, internal authority panels and generic placeholder articles.
+
+`public-web/src/documentation.js` is the single authored bilingual content source
+for the directory, article body and global search metadata; platform and API
+contracts remain authoritative for factual statements. Examples are copy-only.
+Email identity is distinct from existing API access, and purchase/renewal stays
+paused until the commerce service is available.
+
+Current `/v1/catalog` and `/v1/query` remain the only public data API contract.
+Future canonical/PIT/feature endpoints must not be described as live.
 
 ### 5.7 Account and Agent Connections
 
