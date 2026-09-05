@@ -2,6 +2,8 @@
 Description=Wake isolated TradingDatas Crypto USDM funding-rate and open-interest collection
 
 [Timer]
+# Stays on *:2/5:00 so Persistent catch-up cannot share a calendar second
+# with bar primary (*:0/5:00), bar backup (*:1/5:00), or book-ticker (*:3/5:10).
 OnCalendar=*-*-* *:2/5:00
 AccuracySec=1s
 RandomizedDelaySec=15s

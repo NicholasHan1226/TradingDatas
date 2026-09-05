@@ -65,7 +65,7 @@ response has no provider event timestamp, so its time authority is the
 collection receipt's actual observation interval. It is not historical L1,
 order-book depth, a replayable market-time series, or execution evidence.
 It has no backfill. The source tree provides a dedicated
-`tradingdatas-crypto-binance-book-ticker.timer` for five-minute collection;
+`tradingdatas-crypto-binance-book-ticker.timer` at `*-*-* *:3/5:10` for five-minute collection;
 installation and enablement remain a separate immutable-release decision.
 Runtime effectiveness requires fresh unit, receipt and authenticated `18083`
 readback recorded in `STATUS.md`. Each collection keeps only the latest

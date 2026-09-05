@@ -2,7 +2,11 @@
 Description=Refresh isolated TradingDatas Crypto book-ticker snapshots every five minutes
 
 [Timer]
-OnCalendar=*-*-* *:0/5:40
+# Production drop-in used *:3/5:10 so this snapshot does not share a
+# Persistent catch-up second with the closed-5m primary (*:0/5:00), the
+# close+60s backup (*:1/5:00), or USDM (*:2/5:00). The old *:0/5:40 slot
+# raced the shared collect.lock. RandomizedDelay stays 0.
+OnCalendar=*-*-* *:3/5:10
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=true

@@ -2,6 +2,9 @@
 Description=Wake isolated TradingDatas Crypto closed-5m collection
 
 [Timer]
+# Close-aligned primary. The close+60s backup is a separate unit
+# (tradingdatas-crypto-binance-collect-retry.timer at *:1/5:00) so a still-
+# running 160s oneshot does not queue a second start of this service.
 OnCalendar=*-*-* *:0/5:00
 AccuracySec=1s
 RandomizedDelaySec=15s
