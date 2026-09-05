@@ -83,11 +83,12 @@ Marketing, content, and client-side state are never runtime evidence.
    a reading guide, related data materials, and progressively disclosed
    preparation methods;
 3. **Pricing** — three request-rate tiers sharing the same base data; alternative-data
-   commerce is a later independent surface and is not part of the main page.
+   commerce is a later independent surface and is not part of the main page;
+4. **Help & setup** — public documentation and Agent/MCP tutorials/templates.
 
-The header is a compact floating rounded surface containing the three primary
+The header is a compact floating rounded surface containing the four primary
 destinations, one global search field, Bookmarks, and the Account icon. Its
-desktop hierarchy stays single-layer: Data, Research, and Pricing are quiet
+desktop hierarchy stays single-layer: Data, Research, Pricing and Help & setup are quiet
 text links placed directly on the shared surface, with a fine current-location
 underline instead of a nested segmented pill or filled active tab. Desktop
 search uses a bounded responsive width so it remains prominent without taking
@@ -98,8 +99,9 @@ search spans datasets, external research, preparation methods, and
 documentation. Data, Research, the expanded research library, and Documentation
 do not duplicate keyword search boxes; they retain only task-specific taxonomy
 and status controls. On mobile, global search moves into the expanded floating
-navigation. Documentation, language, appearance, Agent/MCP connection, access,
-billing, and security live inside Account rather than as top-navigation items.
+navigation. Help & setup opens public `/docs` and `/connect`; language and
+appearance are available without login in the upper-right menu. Account is
+private and contains personal access, usage, keys, billing and security.
 Bookmarks remain explicitly browser-local until authenticated sync exists.
 Global results are grouped by Data, Research, Methods, and Docs and implement
 combobox keyboard behavior: Arrow Up/Down changes the active result, Home/End
@@ -167,14 +169,15 @@ implemented public control-plane routes; `/checkout` is not.
 /docs
 /checkout                 future commerce plane
 /account
-/account/subscription     future account/commerce projection
-/account/access
-/account/usage
-/account/api-keys
-/account/agent-connections
-/account/billing
-/account/security
-/account/preferences
+/account/overview         private
+/account/subscription     private effective-access projection; payment paused
+/account/usage            private
+/account/keys             private
+/account/billing          private; payment paused
+/account/security         private
+/docs/:slug               public
+/connect                  public Agent/MCP tutorial/template
+/bookmarks                public browser-local library
 /app/                     existing authenticated console
 ```
 
@@ -186,9 +189,8 @@ continue to use `GET /v1/catalog` and `POST /v1/query`.
 - supported locales: `zh-CN` and `en`;
 - first visit follows `navigator.languages`/system locale; Chinese locales map
   to `zh-CN`, all others to `en`;
-- language and appearance controls live inside Account and remain accessible in
-  signed-out states; the global header keeps only the compact discovery and
-  personal-action controls;
+- language and appearance controls live in the upper-right menu and remain
+  accessible without login;
 - a manual choice overrides system detection and persists locally; signed-in
   accounts may additionally persist it server-side;
 - localize navigation, product copy, dates, numbers, currency, validation and
@@ -214,14 +216,14 @@ Required sequence:
 3. a full-width `Data, with receipts` trust section that explains provider ->
    validation -> facts + receipt -> authenticated API and links to live,
    source-bound transparency details;
-4. one quiet Agent/MCP connection link that enters the signed-in Account area;
+4. one quiet Agent/MCP tutorial link that enters public `/connect`;
 5. Cookbook, packages, and alternative-data add-ons only after the trust and
    connection story is understood.
 
 The first viewport has one visual focal point: the receipt-backed Data Passport.
 Data Composition, query code, and Cookbook figures must not compete with it there.
 Move Data Composition to dataset detail or Cookbook detail; move the full query
-editor to Docs or Account/Agent Connections. Homepage previews may link to them
+editor to public Docs or `/connect`. Homepage previews may link to them
 using one quiet row.
 
 Avoid exchange terminals, candlesticks as decoration, red/green price theatre,
@@ -515,33 +517,24 @@ never collect a contact or fake a sent code. See `docs/design/email-identity-v1.
 fallback; a new session is only established through the same-site gateway.
 Loading, invalid/expired key, denied access, throttling, timeout and service
 outage are distinct feedback states. Usage failure is independent of sign-in.
-After successful login, replace the route with `/account` or an allowlisted
+After successful login, restore `/account`, a known private account section, or an allowlisted
 canonical `/pricing/preview?plan=&period=` from `next`. Reject extra query
 parameters, hashes, API paths and external URLs. Leaving Login clears the raw
 input. See `API.md` for the session/security contract.
 On initial load or foreground revalidation, the Account entry and private panels
 show a neutral checking state, not a signed-out prompt or stale credentials.
 Connection failures offer retry without claiming the user signed out. Only a
-confirmed absent/invalid session offers sign-in; bookmarks, learning content and
-preferences stay accessible independently of authentication.
+confirmed absent/invalid session redirects to `/login?next=` preserving a safe
+private section. Unknown sessions never redirect prematurely. Public `/bookmarks`,
+`/docs`, `/docs/:slug`, `/connect` and upper-right preferences remain accessible
+independently of authentication.
 
-The account workspace is grouped by customer task:
+The private account workspace contains only overview, subscription, usage, keys,
+billing and security. It may link to public help/setup, but does not duplicate
+public documentation, local bookmarks or preferences. Effective access comes from
+the backend; payment/renewal remain paused and no client state creates a grant.
 
-1. **Saved materials** — browser-local bookmarks until authenticated sync exists;
-2. **Overview** — account identity, plan, expiry, service notices;
-3. **Data & subscription** — current package, dataset access, alternative-data
-   trials/add-ons, renewal and cancellation state;
-4. **Usage & limits** — per-minute request limit and request history;
-5. **API keys** — create, name, rotate and revoke credentials;
-6. **Agent Connections** — MCP and prompt-based connection for Claude, Codex,
-   OpenClaw, Hermes, and Other Agent;
-7. **Documentation** — platform, data, API, method, plan, and account guides;
-8. **Billing & invoices** — payment method, billing identity, invoices and
-   transaction history;
-9. **Security** — sessions, sign-in methods and security events;
-10. **Preferences** — language and appearance preferences.
-
-The `/account/agent-connections` surface presents Claude, Codex, OpenClaw,
+The `/connect` surface presents Claude, Codex, OpenClaw,
 Hermes, and `Other Agent` as a lightweight selector. Selecting an Agent changes
 setup language but not the canonical API behavior.
 
@@ -637,11 +630,11 @@ method, and emphasis; they do not encode price movement or runtime health.
 
 ## 7. Component contract
 
-- **GlobalNav**: one floating rounded surface with Data, Research, Pricing,
+- **GlobalNav**: one floating rounded surface with Data, Research, Pricing, Help & setup,
   global search, Bookmarks, and Account; desktop primary links use a Hovvi-like
   single-layer text treatment and fine current-location underline, never a
-  nested pill. There is no duplicate page-level keyword search, Connect Agent,
-  language, theme, Docs, or Console text action.
+  nested pill. The upper-right menu owns guest-accessible language/theme; help
+  links target public pages. Do not duplicate page-level keyword search.
 - **GlobalSearch**: grouped Data/Research/Methods/Docs results, accessible
   combobox semantics, Arrow Up/Down + Home/End + Enter + Escape + Command/Ctrl K
   interaction, polite total-result announcement, bookmark action, empty state,
@@ -653,15 +646,13 @@ method, and emphasis; they do not encode price movement or runtime health.
   empty state help users recover without opaque semantic expansion. Compact
   ID/alias/approximate notes explain non-obvious matches without labelling
   ordinary title or description matches.
-- **LanguageSwitcher**: lives inside Account, exposes 中文/English, shows the
+- **LanguageSwitcher**: lives in the upper-right menu, exposes 中文/English, shows the
   effective locale, works before sign-in, and never changes technical identifiers.
 - **ResearchLibrary**: searchable external literature, TradingDatas-owned topic
   taxonomy, preserved author/year/venue/source, related data-material labels,
   empty state, and explicit external-conclusion disclaimer.
-- **AccountWorkspace**: a dedicated page grouped as Saved materials, Account
-  overview, Data access (subscription/add-ons, usage/limits, API keys), Connect
-  & learn (Agents/MCP and Documentation), Billing, and Settings
-  (language/appearance, security). Its compact header menu is only a task
+- **AccountWorkspace**: a private page with overview, subscription, usage, keys,
+  billing and security plus shortcuts to public help. Its compact header menu is only a task
   launcher; it never invents live account state.
 - **AgentConnect**: Agent selector, redacted setup prompt, copy feedback, secure
   credential instruction, and explicit connection test.

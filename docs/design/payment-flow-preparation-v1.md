@@ -20,7 +20,7 @@ trading orders. The fixed catalog/query data plane is unchanged.
 - Selection is URL state only: non-sensitive plan/term, not a saved order or an
   authenticated purchase intent. Refresh, history and language changes retain it.
   Invalid, duplicate or extra parameters are rejected.
-- Login `next` accepts only `/account` or canonical preview selections. External
+- Login `next` accepts `/account`, its known private overview/subscription/usage/keys/billing/security sections, or canonical preview selections. External
   redirects, API routes, arbitrary account parameters and payment flags are denied.
 - Checking / signed out / unavailable / authenticated are distinct. All have
   payment disabled. Sign-in never changes subscription or grants.

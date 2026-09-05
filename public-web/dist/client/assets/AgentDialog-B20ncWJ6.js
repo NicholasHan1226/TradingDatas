@@ -1,4 +1,4 @@
-import{r as p,j as t,e as v,f as x,b as _}from"./index-BAaUY0e4.js";import"./react-vendor-CXZBankB.js";import"./research-catalog-CxxN7Vt8.js";const w=`# TradingDatas Agent integration contract
+import{r as p,j as t,e as v,f as x,b as _}from"./index-BJ4iKG44.js";import"./react-vendor-CXZBankB.js";import"./research-catalog-CxxN7Vt8.js";const w=`# TradingDatas Agent integration contract
 
 Prompt version: \`2026-08-31.1\`. The public dialog reads this Markdown as its
 canonical source; \`public-web/src/agentPrompts.js\` extracts the authored blocks
@@ -146,7 +146,10 @@ verified implementation.
 
 ## Connection-page behavior
 
-\`/account/agent-connections\` shows one selected Agent at a time. The page provides:
+Public \`/connect\` shows one selected Agent at a time, reached through Help &
+setup and public Docs. Reading/copying tutorials and templates does not require
+website login. Actual catalog/query calls still require the caller's independent
+Bearer credential; a web session never supplies one. The page provides:
 
 1. Agent selector: Claude, Codex, OpenClaw, Hermes, Other Agent;
 2. base URL field sourced from deployment configuration;

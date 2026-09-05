@@ -5,7 +5,7 @@
 TradingDatas has one customer-facing account experience and one restricted administrator console. It does not maintain a second customer portal with its own product navigation.
 
 - The public product site remains the discovery and transparency layer: datasets, collection history, research, pricing, documentation, and public receipts.
-- `Account` is the customer home: bookmarks, subscription and add-ons, effective access, usage, API credentials, Agent/MCP connection, billing, preferences, and security.
+- `Account` is the private customer home: overview, subscription, effective access, usage, API credentials, billing and security. Public help/setup, browser-local bookmarks and upper-right language/theme preferences do not require login.
 - The administrator console is an exception-and-control surface: customer access, runtime exceptions, aggregate usage, and authenticated data readback.
 - Full collection catalogs and product stability stories are not duplicated in the administrator console. Operators start from unresolved exceptions; public product pages remain the readable source for dataset history and trends.
 
@@ -16,14 +16,23 @@ TradingDatas has one customer-facing account experience and one restricted admin
 1. Overview — plan, expiry, effective data categories, request frequency, and recent usage.
 2. Data access — base package, alternative-data add-ons, trials, expiry, and category grants.
 3. API keys — list, create, and disable same-tenant credentials. New keys inherit effective access; the raw secret is shown once and the current credential cannot disable itself. Rotation remains a guided create-and-disable sequence until a dedicated atomic rotation contract exists.
-4. Agents and MCP — one-click setup guidance for supported Agents without embedding secrets in prompts.
-5. Bookmarks — saved datasets, research, methods, and documentation.
-6. Billing — orders, renewals, invoices, and payment records after commerce contracts exist.
-7. Preferences and security — language, appearance, sessions, and access audit.
+4. Usage — limits and request history.
+5. Billing — orders, renewals, invoices, and payment records only after commerce contracts exist; payment remains paused.
+6. Security — identity/session and access safety.
+
+Public help shortcuts open `/docs`, `/docs/:slug` and `/connect`; `/bookmarks`
+is the browser-local library. These are not private Account sections. The top
+header is Data / Research / Pricing / Help & setup with guest-accessible
+language/theme in its upper-right menu.
+
+`/account` and `/account/:section` require a verified session. Unknown sessions
+show checking; only confirmed guests redirect to `/login?next=` with their
+allowlisted overview/subscription/usage/keys/billing/security destination. Login
+restores that destination. Identity outages show retry instead of redirecting.
 
 The current authenticated backend can truthfully supply account identity, entitlement, expiry, request limits, 30-day usage history, and customer-scoped key management through `/portal/api/me`, `/portal/api/me/usage`, and `/portal/api/me/keys`. Account Overview, Subscription, Usage, API Keys, and Security project only those authenticated facts. The current contract does not project alternative-data add-ons separately, so trial, add-on expiry, and renewal are labeled unavailable rather than inferred from broad category grants. Billing, a same-site passwordless session, and cross-device bookmark sync remain target surfaces until their backend contracts exist.
 
-`/login` is the dedicated customer authentication entry. It verifies an existing TradingDatas access key through the same-site session bridge and returns to `/account` or an explicitly allowlisted non-paying purchase preview. With the required bindings configured, the bridge exchanges the key for an eight-hour encrypted `HttpOnly`, `Secure`, `SameSite=Strict` cookie; all Account reads/mutations stay on `tradingdatas.com/api/account/*`. There is no direct-bearer or browser-storage fallback. Startup removes legacy Account credentials from both `localStorage` and `sessionStorage`; users of those retired paths sign in again without changing their server keys or grants. Email, SMS, password-reset, registration, durable cross-device sessions, and session-list/audit flows remain unavailable until the full identity contract exists; the interface must say so rather than simulate them.
+`/login` is the dedicated customer authentication entry. It verifies an existing TradingDatas access key through the same-site session bridge and returns to `/account`, its allowlisted private section, or an explicitly allowlisted non-paying purchase preview. With the required bindings configured, the bridge exchanges the key for an eight-hour encrypted `HttpOnly`, `Secure`, `SameSite=Strict` cookie; all Account reads/mutations stay on `tradingdatas.com/api/account/*`. There is no direct-bearer or browser-storage fallback. Startup removes legacy Account credentials from both `localStorage` and `sessionStorage`; users of those retired paths sign in again without changing their server keys or grants. Email, SMS, password-reset, registration, durable cross-device sessions, and session-list/audit flows remain unavailable until the full identity contract exists; the interface must say so rather than simulate them.
 
 The session bridge is a credential-containment migration, not the finished user identity system. The committed Worker configuration contains the non-secret `ACCOUNT_API_BASE` binding; the deployment workflow injects `SESSION_ENCRYPTION_KEY` from the repository secret using the explicit public Worker configuration. Runtime activation still requires exact Worker deployment and independent readback; successful customer login/read/key-mutation/logout must be verified separately from unauthenticated checks. Missing bindings return `503 identity_gateway_unavailable`, without a fallback credential path or an invented account. Current release evidence belongs in `STATUS.md`, not in this design contract.
 
@@ -64,14 +73,14 @@ or session to revoke. Public Account and the embedded administrator wrapper use
 the same response receipt before clearing their local projection. The legacy
 access-key cookie-clear path remains separate because it has no email identity.
 
-The React application under `static/app/` is administrator-only. Customer-scoped tokens are rejected there and directed to the existing public Account page; the old separate customer workspace is retired rather than redesigned.
+The React application under `static/app/` is administrator-only. Customer-scoped tokens are rejected there and directed to the existing private Account page; the old separate customer workspace is retired rather than redesigned.
 
-The administrator console links out to the public Account instead of rendering an embedded customer preview. This keeps customer session state, customer navigation, and administrator authority visibly separate.
+The administrator console links out to the private Account instead of rendering an embedded customer preview. This keeps customer session state, customer navigation, and administrator authority visibly separate.
 
 ## Owner identity and two workspaces
 
 Owner-confirmed on 2026-08-30: the supplied account email is the intended platform
-administrator identity and must also enter the existing public Account. Its literal
+administrator identity and must also enter the existing private Account. Its literal
 address belongs only to private provisioning context, not this public repository.
 This is a role requirement, not evidence that the email was verified or that a role
 was already assigned.

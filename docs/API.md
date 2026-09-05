@@ -515,10 +515,15 @@ Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 `DELETE /api/account/session` 返回 `{"signed_out": true}`，才能清空 UI。
 
 购买预览的 `next` 校验在 `public-web/src/purchasePreview.js`：只允许恰好一个
-`next=/account`，或规范路径 `/pricing/preview` 且仅含 `plan`（`basic` /
+`next=/account`、已知私有 `/account/overview`、`/account/subscription`、
+`/account/usage`、`/account/keys`、`/account/billing`、`/account/security`，
+或规范路径 `/pricing/preview` 且仅含 `plan`（`basic` /
 `standard` / `flagship`）与 `period`（`monthly` / `annual`）。
 重复参数、hash、外链和 `/api/*` 一律回落 `/account`。预览状态 `canPay` 恒为
-`false`，与是否已登录无关。
+`false`，与是否已登录无关。私有账户路由在会话未知时先验证；确认 guest
+才跳 `/login?next=`，验证后回原 section。不可用状态显示重试，不跳登录。
+公开 `/docs`、`/docs/:slug`、`/connect` 与本机 `/bookmarks` 不需要网页登录；
+数据 API 的调用者 Bearer 认证保持独立。
 
 ### Independent email identity candidate
 

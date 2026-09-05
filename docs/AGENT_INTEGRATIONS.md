@@ -146,7 +146,10 @@ verified implementation.
 
 ## Connection-page behavior
 
-`/account/agent-connections` shows one selected Agent at a time. The page provides:
+Public `/connect` shows one selected Agent at a time, reached through Help &
+setup and public Docs. Reading/copying tutorials and templates does not require
+website login. Actual catalog/query calls still require the caller's independent
+Bearer credential; a web session never supplies one. The page provides:
 
 1. Agent selector: Claude, Codex, OpenClaw, Hermes, Other Agent;
 2. base URL field sourced from deployment configuration;

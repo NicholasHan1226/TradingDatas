@@ -47,10 +47,13 @@ const server=http.createServer(async (req,res)=>{
     let response;
     if(req.url==='/__test__/mail' && req.method==='GET') response=new Response(`<!doctype html><html><meta charset="utf-8"><body><h1>LOCAL SYNTHETIC MAIL — NOT SENT</h1><p>Only example.com fixtures. Memory-only; never deployed.</p><pre>${JSON.stringify(outbox,null,2).replaceAll('&','&amp;').replaceAll('<','&lt;')}</pre></body></html>`,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
     else if(new URL(request.url).pathname==='/__test__/viewport' && req.method==='GET') {
-      const width=new URL(request.url).searchParams.get('width')==='768'?768:390;
+      const params=new URL(request.url).searchParams;
+      const width=['390','768','1024'].includes(params.get('width'))?Number(params.get('width')):390;
+      const page=['/docs','/connect','/bookmarks','/account/keys'].includes(params.get('page'))?params.get('page'):'/account';
       // A real nested layout viewport for responsive review; no app-state injection.
-      response=new Response(`<!doctype html><html><meta charset="utf-8"><title>Local account viewport</title><body style="margin:0;background:#d7d9dc"><nav style="padding:12px;font:14px sans-serif">LOCAL SYNTHETIC REVIEW · <a href="?width=390">390px</a> · <a href="?width=768">768px</a></nav><iframe title="Account responsive preview" src="/account" style="display:block;width:${width}px;height:850px;max-width:100%;border:0;margin:auto"></iframe></body></html>`,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
+      response=new Response(`<!doctype html><html><meta charset="utf-8"><title>Local account viewport</title><body style="margin:0;background:#d7d9dc"><nav style="padding:12px;font:14px sans-serif">LOCAL SYNTHETIC REVIEW · <a href="?width=390">390px</a> · <a href="?width=768">768px</a></nav><iframe title="Account responsive preview" src="${page}" style="display:block;width:${width}px;height:850px;max-width:100%;border:0;margin:auto"></iframe></body></html>`,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
     }
+    else if(process.env.TD_IDENTITY_PREVIEW_ACCOUNT_UNAVAILABLE==='true' && new URL(request.url).pathname==='/api/account/me') response=new Response(JSON.stringify({error:'account_upstream_unavailable'}),{status:503,headers:{'content-type':'application/json'}});
     else response=await handler(request,env) || await worker.fetch(request,env);
     res.writeHead(response.status,{...Object.fromEntries(response.headers),'set-cookie':response.headers.getSetCookie()});
     res.end(Buffer.from(await response.arrayBuffer()));

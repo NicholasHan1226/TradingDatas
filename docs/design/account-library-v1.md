@@ -42,12 +42,14 @@ retired references grant no access. GET returns only the current user's referenc
 PUT/DELETE are per-reference and idempotent; import is an explicit, bounded, atomic
 union, never a replacement of another device's library. Mutation rate is bounded.
 
-Guest bookmarks stay in `td-bookmarks` in this browser. Sign-in never automatically
-uploads them. Account → Bookmarks names the verified identity and offers an explicit
-import; the local copy remains after import. Cloud references never enter browser
-storage. Logout/account refresh hides cloud state immediately; requests and responses
-carry the expected identity so another tab's session switch cannot write to the
-wrong library. Errors show an unconfirmed state, never a false saved success.
+The current public `/bookmarks` surface and public bookmark actions use only
+`td-bookmarks` in this browser, independent of session checks, outages, or sign-in.
+They never switch to a cloud library or upload automatically. The cloud adapter and
+identity-bound endpoints below remain a disabled candidate; no current cloud-import
+UI is exposed. A future explicitly enabled private library must name the verified
+identity, require explicit import, preserve the local copy, keep cloud references
+out of browser storage, and hide cloud state on logout/identity changes. Requests
+and responses must carry expected identity. An unconfirmed write is not saved success.
 
 ## Routes and controls
 
