@@ -379,7 +379,12 @@ on_demand 未调度；cadence 改为 event，沿用 `cb_basic` 单码 fanout。
 当前合同去掉日期过滤，改为与 `pledge_stat` 相同的 ts_code-only
 `entity_fanout`（`batch_size=1`、`max_batches_per_run=1`），cadence
 仍是 `event`。`stk_nineturn` 官方 21:00 发布且
-datetime 窗尚无 completeness 合同，本波保持暂停。empty 仍是 empty。
+datetime 窗尚无受支持的 activation 合同，保持暂停。静态 probe executable /
+ingest ready 不等于 activation-ready，公开预检将其单列为采集窗口合同待补齐。
+现有 postclose_daily 在 16:30 首次取得完整 empty 后，同一窗口会受 86400 秒
+修订间隔限制，可能错过 21:00 发布；这是内部时段缺口。下一步先有界验证
+上一开市日午夜 datetime 是否表示整日，再决定日分区合同及是否复用
+prior_open_morning，不能只改 cadence 就宣称修复。empty 仍是 empty。
 `cn.dataset.margin`、`cn.dataset.margin_detail` 与 `cn.dataset.margin_secs`
 已经是 `activation_state=active`，不是 `registry_activation_paused`。
 三者都是 trade_date-only snapshot。`margin` / `margin_detail` 官方是

@@ -1,5 +1,15 @@
+import connectedInterfaceSnapshot from "./connectedInterfaceSnapshot.json" with { type: "json" };
+
+// Contract configuration only; collection health comes from the authenticated catalog.
+const tushareInterfaces = connectedInterfaceSnapshot.interfaces.filter(item => item.provider === "tushare");
+const tushareCounts = {
+  contractCount: tushareInterfaces.length,
+  activeCount: tushareInterfaces.filter(item => item.activation === "active").length,
+  pausedCount: tushareInterfaces.filter(item => item.activation === "paused").length,
+};
+
 export const landscapeMeta = {
-  reviewedAt: "2026-08-27",
+  reviewedAt: "2026-09-05",
   status: "research_registry",
   scope:
     "A maintained source landscape, not a claim that every technically reachable dataset may be redistributed or sold.",
@@ -11,15 +21,13 @@ const allConnectedCoverage = [
     provider: "Tushare via QuickSync",
     market: "CN",
     family: "china-markets",
-    contractCount: 190,
-    activeCount: 136,
-    pausedCount: 54,
+    ...tushareCounts,
     unit: "interfaces",
     collection: "configured",
     evidence: "provider-native registry",
     note: {
-      zh: "190 个标准化运行合同；136 个配置为 active。active 不等于每个接口都已连续稳定采集。",
-      en: "190 normalized runtime contracts; 136 are configured active. Active does not mean every interface has continuous healthy collection.",
+      zh: `${tushareCounts.contractCount} 个标准化运行合同；${tushareCounts.activeCount} 个配置为 active。active 不等于每个接口都已连续稳定采集。`,
+      en: `${tushareCounts.contractCount} normalized runtime contracts; ${tushareCounts.activeCount} are configured active. Active does not mean every interface has continuous healthy collection.`,
     },
   },
   {
@@ -56,6 +64,16 @@ const allConnectedCoverage = [
   },
 ];
 const allCollectionHistory = [
+  {
+    date: "2026-09-05",
+    provider: "Tushare / QuickSync",
+    status: "registry_snapshot",
+    title: { zh: "合同配置更新：138 active、52 paused", en: "Contract configuration updated: 138 active, 52 paused" },
+    detail: {
+      zh: "fut_daily 与 opt_basic 配置为按需接入，落库 receipt 仍待验证；stk_nineturn 的采集窗口合同待补齐。上游探测不等于已落库，也不代表连续稳定。",
+      en: "fut_daily and opt_basic are configured for on-demand access; persisted receipts remain to be verified. stk_nineturn still needs a collection-window contract. Upstream probes do not prove persisted data or continuous stability.",
+    },
+  },
   {
     date: "2026-08-27",
     provider: "Tushare / QuickSync",

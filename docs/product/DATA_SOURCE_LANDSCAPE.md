@@ -42,8 +42,10 @@ entitlement, collection state or customer access for a candidate.
 
 The same page includes a compact paused-contract preflight queue. It is derived
 from the frozen contract compiler and only identifies paused, active-entitlement
-contracts that are ready for a bounded HTTPS validation or still need a trusted
-seed receipt. It makes no provider call and must never be read as an observation,
+contracts that are ready for a bounded HTTPS validation, still need a trusted
+seed receipt, or have an executable probe but need a supported collection-window
+contract. The last group reuses the activation compiler's structural window
+check; probe readiness alone does not prove activation readiness. It makes no provider call and must never be read as an observation,
 collection, access or sellability claim.
 
 ## Coverage and counting boundary
@@ -86,7 +88,11 @@ reviewable change, never as a substitute for runtime health:
 1. Regenerate `public-web/src/connectedInterfaceSnapshot.json` from the
    immutable provider registry with
    `cd public-web && python3 scripts/build-connected-interface-snapshot.py`.
-   The resulting count is contract/config evidence only.
+   The resulting count is contract/config evidence only. Source-summary totals
+   and bilingual copy derive from this snapshot rather than hand-maintained counts.
+   Also regenerate `scripts/build-paused-contract-preflight-snapshot.py`; newly
+   active interfaces leave the preflight queue, while unsupported windows remain
+   separately visible. Run both generators with `--check` before release.
 2. Review each changed candidate independently against its official source,
    access terms and redistribution boundary. Record only a source identity,
    official URL, access model, rights state, review stage and roadmap phase;

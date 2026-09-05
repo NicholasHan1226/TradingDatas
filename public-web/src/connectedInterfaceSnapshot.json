@@ -12,7 +12,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "fut_daily",
       "cadence": "on_demand",
       "category": "derivatives",
@@ -92,7 +92,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "opt_basic",
       "cadence": "on_demand",
       "category": "derivatives",

@@ -3,20 +3,7 @@
   "groups": [
     {
       "id": "ready_for_bounded_https_probe",
-      "interfaces": [
-        {
-          "apiName": "fut_daily",
-          "datasetId": "cn.dataset.fut_daily"
-        },
-        {
-          "apiName": "opt_basic",
-          "datasetId": "cn.dataset.opt_basic"
-        },
-        {
-          "apiName": "stk_nineturn",
-          "datasetId": "cn.dataset.stk_nineturn"
-        }
-      ]
+      "interfaces": []
     },
     {
       "id": "requires_seed_receipt",
@@ -36,6 +23,17 @@
         {
           "apiName": "index_weight",
           "datasetId": "cn.dataset.index_weight"
+        }
+      ]
+    },
+    {
+      "id": "requires_activation_window_contract",
+      "interfaces": [
+        {
+          "apiName": "stk_nineturn",
+          "datasetId": "cn.dataset.stk_nineturn",
+          "probeState": "executable",
+          "reasonCode": "activation_window_contract_unsupported"
         }
       ]
     }
