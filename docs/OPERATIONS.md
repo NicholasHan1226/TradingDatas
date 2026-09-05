@@ -193,9 +193,10 @@ catalog 的 coverage 继续由同一 SQLite 快照中的精确 `COUNT`/`MIN`/`MA
 已有 coverage 索引时，使用同一语句中的独立标量聚合，让最早/最晚时间走索引端点；
 缺少该可选索引的旧库保留原单次聚合扫描。读取不创建索引、不把预热计数或估算当作
 行数权威。只读快照可设置 SQLite mmap/page cache，这只改变页读取方式。API 进程在
-监听前对已验证只读快照做一次覆盖索引页 fault-in（有索引时 `INDEXED BY` 该覆盖
-索引）并丢弃计数值；每个目录请求仍打开新的已验证快照并重新精确聚合。该预热只减少
-冷 I/O，不构成 cache-as-authority，也不放宽既有双认证 catalog <15s 门禁。
+监听前对已验证只读快照做一次与首个 catalog 相同的最近收据窗口和逐数据集
+`COUNT`/`MIN`/`MAX` 页 fault-in，并丢弃结果；不再对覆盖索引做全表 `COUNT(*)`。
+每个目录请求仍打开新的已验证快照并重新精确聚合。该预热只减少冷 I/O，不构成
+cache-as-authority，也不放宽既有双认证 catalog <15s 门禁。
 
 目录与历史证据读取可复用进程内的收据校验 memo，键绑定完整原始行内容和预期 provider binding；
 每次请求仍打开新的已验证 SQLite 快照、重读收据并计算当前状态。binding 改变或同一 receipt ID
@@ -1296,8 +1297,9 @@ Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，�
 cursor 由该完整请求的同一快照产生。子进程启动时核对物理代码目录/文件 hash、完整
 registry hash、SQLite 路径、账号及既有 cursor signer 指纹；不经任务队列传原 token、
 账号字典或 signer 密钥。监听启动前必须完成全部子进程身份检查，此步骤不读取 catalog
-事实，也不构成数据健康证明。身份检查之后、监听之前，父进程可对覆盖索引做一次丢弃
-计数的只读 fault-in；worker bootstrap 仍不读 facts。初始化失败关闭该候选服务；不能回退
+事实，也不构成数据健康证明。身份检查之后、监听之前，父进程可对首个 catalog 将要
+读取的收据窗口与逐数据集覆盖聚合做一次丢弃结果的只读 fault-in，不得全表扫描覆盖
+索引；worker bootstrap 仍不读 facts。初始化失败关闭该候选服务；不能回退
 到未隔离的计算。
 
 目录运行任务总数最多等于 worker 数，没有隐式等待队列。容量满或 worker/IPC 失败返回

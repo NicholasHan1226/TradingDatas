@@ -10,7 +10,7 @@ import re
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dataset_registry import DatasetDefinition, DatasetRegistry
@@ -412,27 +412,48 @@ def _dataset_coverage(
     }
 
 
-def fault_in_catalog_coverage_index(db_path: Path) -> None:
-    """Fault coverage-index pages into the OS cache before HTTP listen.
+def fault_in_catalog_coverage_index(
+    db_path: Path,
+    registry: DatasetRegistry | None = None,
+) -> None:
+    """Fault first-catalog pages into the OS cache before HTTP listen.
 
-    The counted value is discarded. Every later catalog request still opens a
-    new verified snapshot and recomputes exact COUNT/MIN/MAX. This is cold I/O
-    warmup, not coverage authority.
+    A full-index ``COUNT(*)`` walked every coverage leaf and evicted receipt
+    notes without matching the first request's per-dataset seeks. When a
+    registry is provided, this warms the same recent-receipt window and the
+    same per-dataset COUNT/MIN/MAX seeks the request will recompute. Values
+    are discarded. Every later catalog request still opens a new verified
+    snapshot and recomputes exact aggregates. This is cold I/O warmup, not
+    coverage or receipt authority.
     """
 
     if not isinstance(db_path, Path):
         raise TypeError("db_path must be pathlib.Path")
+    if registry is not None and not isinstance(registry, DatasetRegistry):
+        raise TypeError("registry must be DatasetRegistry")
     canonical_path = Path(os.path.abspath(os.fspath(db_path)))
     if db_path != canonical_path:
         raise ValueError("db_path must be canonical")
     with open_verified_read_model_snapshot(canonical_path) as conn:
+        if registry is not None:
+            project_catalog_runtime(
+                conn,
+                registry,
+                now=datetime.now(timezone.utc),
+            )
+            indexes = _provider_dataset_row_indexes(conn)
+            for dataset in registry.datasets:
+                if not is_catalog_discoverable(dataset):
+                    continue
+                _dataset_coverage(conn, dataset, indexes=indexes)
+            return
         if _PROVIDER_NATIVE_COVERAGE_INDEX in _provider_dataset_row_indexes(conn):
             conn.execute(
-                "SELECT COUNT(*) FROM provider_dataset_rows "
-                f"INDEXED BY {_PROVIDER_NATIVE_COVERAGE_INDEX}"
+                "SELECT 1 FROM provider_dataset_rows "
+                f"INDEXED BY {_PROVIDER_NATIVE_COVERAGE_INDEX} LIMIT 1"
             ).fetchone()
             return
-        conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone()
+        conn.execute("SELECT 1 FROM provider_dataset_rows LIMIT 1").fetchone()
 
 
 def _serialize_dataset(

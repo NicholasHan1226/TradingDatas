@@ -1724,12 +1724,16 @@ class TradingDatasHTTPServer(ThreadingHTTPServer):
 
 
 def _fault_in_catalog_coverage_index() -> None:
-    """Fault coverage-index pages before listen. Not a count authority."""
+    """Fault first-catalog receipt and coverage pages before listen."""
 
     from catalog_service import fault_in_catalog_coverage_index
+    from data_plane_runtime import build_data_plane_runtime
     from runtime_paths import marketdata_sqlite_path
 
-    fault_in_catalog_coverage_index(marketdata_sqlite_path())
+    fault_in_catalog_coverage_index(
+        marketdata_sqlite_path(),
+        registry=build_data_plane_runtime().registry,
+    )
 
 
 def main() -> None:
