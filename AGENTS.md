@@ -18,7 +18,7 @@ TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金�
 
 TradingDatas 对外销售的是可信、可追溯、可复现的金融数据原料。公共网站的信息架构固定分为 `Data`、`Features`、`Recipes`、`Research`、`Pricing`、`Docs` 与账户入口；`Research` 按 TradingDatas 自有分类体系整理外部论文，`Recipes` 回答“如何正确准备和组合数据”。它们是发现、购买、学习和管理同一个数据产品的界面，不是新的研究或交易 authority。Agent/MCP 是 Account/Docs 下的交付方式，不是首要购买理由。
 
-- `Data` 只展示 registry 与 catalog/query 可证明的数据身份、字段、覆盖、更新、lineage、样本和限制。静态文案不能把 paused/unobserved/degraded 数据写成可用，也不能从 provider 文档或一次 HTTP 200 推断历史完整性。
+- `Data` 只展示 registry 与 catalog/query 可证明的数据身份、字段、覆盖、更新、lineage、样本和限制。静态文案不能把 paused/unobserved 写成已有可查询数据，也不能把 degraded 写成 fresh/完整；已有可验证的 degraded 数据可按 API 合同如实供数，也不能从 provider 文档或一次 HTTP 200 推断历史完整性。
 - `Research` 只整理、分类和展示外部行业论文或研究，保留作者、年份、期刊/来源和外部链接，并可映射所需原始数据材料；不得改写成 TradingDatas 自有结论、推荐、绩效或数据产品 benchmark。论文元数据与摘要须标明外部来源，静态示例不得冒充已上线数据库。
 - `Features` 只允许透明、版本化的衍生数据，必须公开公式、输入、时间/as-of 对齐、缺失/修订策略、测试与限制；它不是因子排名、信号、策略或建议。当前 Feature Plane 未实现，相关页面只能标记为 `product definition` 或 `planned`。
 - `Recipes` 只教授查询、连接、时间/as-of 对齐、复权、缺失处理、去重和验证；示例必须列 dataset IDs、窗口、方法、输出 schema、限制及 synthetic/observed 身份。
@@ -48,13 +48,13 @@ provider registry
 
 ## 能力分层与轻量门禁
 
-数据质量不降级，但开发、内部试用与稳定生产不得再共用一扇门：
+质量状态必须如实报告；接入、只读供数与稳定性声明分别验收，完整规则见 [运维接入与供数边界](docs/OPERATIONS.md#接入供数与质量的边界)：
 
 - `contract_ready`：registry/config、字段/主键、cadence、consumer applicability、编译与失败测试均通过。它允许进入 capability manifest、TA 的受控兼容测试和候选发布准备；不声称上游权限、receipt、API 或生产可用。
 - `observed`：在受控窗口取得一次真实 provider -> SQLite receipt -> 固定 `catalog/query` 回读。它允许明确标注的内部只读试用，以及在既有 provider 预算、隔离运行面和 fail-closed 语义内持续积累观察证据；单次结果不等于连续健康或历史 PIT。
-- `stable`：按该数据集适用 cadence 连续成功，且需要消费的 TA/Copilot 已完成受控 readback。它才是稳定生产能力的称谓；不要求无关消费者或尚未适用的 cadence 一并完成。
+- `stable`：按该数据集适用 cadence 连续成功，并有本平台认证 API readback，才可声明该数据集连续稳定。TA/Copilot 的稳定消费另行验收，不是 TD 独立供数前置条件。
 
-`stable` 缺失只能阻止稳定生产声明、无界扩容或相应发布切换，不能单独阻止已受控启用的隔离只读采集、后续普通数据集的 registry/config、编译、测试、候选 PR，或 TA 的受控消费开发。观察期 timer 的启用不是 `stable` 声明，仍受 provider 权限/预算、SQLite receipt、认证 API 回读和 fail-closed 完整性约束。任何层级都不得由 HTTP 200、历史记录、代码合入或任务卡伪造。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，不是该层未完成，也不得冻结下一可接接口或发明额外 release gate。
+`stable` 缺失只限制连续稳定的声明，不得单独阻止接入、正常发布切换、按合同对外只读供数、既有预算内采集或 TA 消费开发。权限与资源扩容仍按其自身边界处理，不与源质量混用。观察期 timer 的启用不是 `stable` 声明，仍受 provider 权限/预算、SQLite receipt、认证 API 回读和 fail-closed 完整性约束。任何层级都不得由 HTTP 200、历史记录、代码合入或任务卡伪造。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，不是该层未完成，也不得冻结下一可接接口或发明额外 release gate。
 
 ## Tushare 复用
 
@@ -145,7 +145,7 @@ Token 配置（`config/api_tokens.json`）支持扩展字段：
 - 港股、美股和其它加密资产排除；预测市场仅限 TD 的公共只读数据面：受限采集、provider-native 校验、规范化事实、transaction receipt/lineage，以及在独立合同、官方来源 hash、relay/权限证据、真实 receipt 和认证 API readback 齐备后向 A-share/Crypto 分析供数；这不构成 activation；
 - 预测市场的 TA 交易/模拟、Copilot、钱包/账户/经纪、资金、订单、执行、promotion、live 与任何 provider 写/账号管理操作排除；
 - `in_scope` 只是产品分类，不等于 entitlement 或 activation；
-- `activation`/稳定生产的每个数据集必须有合同、权限证据、真实 receipt、API readback 和 observed cadence；`contract_ready` 候选只需保留上述缺口，不得被误标为已激活。
+- 启用采集须有合同、权限、planner 与预算证据；按实际 receipt 和 API readback 验收采集/供数，合法 empty 或 provider_error 也是如实的运行证据，不要求非空连续成功才能启用。`contract_ready` 不得被误标为已激活；observed cadence 用于稳定性声明，不是接入前置条件。
 
 ## QuickSync 权限与流控口径
 
@@ -194,7 +194,7 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 -> production readback
 ```
 
-reviewer 只能按冻结合同阻断 P0/P1，不得在候选冻结后扩大范围。普通 dataset onboarding 若需要修改 Python，直接判定架构失败。
+reviewer 只能按冻结合同阻断 P0/P1，不得在候选冻结后扩大范围。普通 dataset 优先零代码 registry/config 接入；不得为同构接口复制专用 Python 路径。若现有通用能力有可复现缺陷或缺口，允许按既有范围与测试做最小共享修复，不因改动 Python 本身判定架构失败，也不要求重建框架。
 
 ## 运维与诊断纪律
 

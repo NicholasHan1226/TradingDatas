@@ -35,7 +35,7 @@ provider
 - 数据集独立沿 `contract_ready -> observed -> stable` 前进，不设置全局完成门槛。
 - `contract_ready` 允许继续开发、集成和候选发布；一个数据集失败不阻断其它独立数据集。
 - `observed` 由真实 provider -> SQLite receipt -> authenticated API readback 的客观证据自动形成。
-- `stable` 由适用 cadence 的连续成功和消费者 readback 自动形成；满足冻结规则即可自动晋级，不需要人工确认。
+- `stable` 由适用 cadence 的连续成功和本平台认证 API readback 自动形成，只支持稳定性声明；不等待该状态才接入、发布或按合同供数。消费者独立验收，详见 [运维边界](docs/OPERATIONS.md#接入供数与质量的边界)。
 - 自动晋级只能扩大“内部只读数据可用性”和既有预算内的调度范围，不能绕过 provider 权限、资源预算、我们自己的 receipt 完整性（empty ≠ success）或安全边界。Vendor/input quality is immutable external，不得把上游 completeness 当成晋级或排期门禁。
 - GitHub Actions 是可选验证渠道，不是生产上线门禁。Actions 不可用时，以本地/服务器确定性测试、候选 release 校验和生产 runtime readback 作为发布证据。
 - 公共 Data/Features/Recipes/Research/Pricing/Docs/Account 可以在合同层和前端候选中独立推进，但不得在运行面、commerce、授权、再分发和 production readback 完成前伪装为 live，也不得阻断既有数据持续运行。
@@ -104,7 +104,7 @@ mutable data -> /opt/investment-data/tradingdatas/
 - systemd service/timer 在既有资源和网络边界内运行；
 - 发布后以 service/timer、receipt、catalog/query 和消费者 readback 验证实际运行；
 - GitHub、服务器 source、effective release、runtime 和数据证据分别陈述，不能互相替代；
-- CI 不可用时不阻断发布，但发布脚本/服务器验证失败必须 fail closed；
+- CI 不可用不停止现有采集与 API；新源码仍须通过既有 PR/CI 门禁，发布工具或服务器验证失败只阻断该发布；
 - 已稳定替代的旧运行入口按引用归零后删除，不长期维持双轨。
 
 ## Phase 4 — 公共数据产品定义与内测入口

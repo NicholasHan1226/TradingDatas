@@ -10,7 +10,7 @@ TradingDatas 是一个类似 Tushare 的、provider-neutral 的公共金融数�
 
 ## 当前开发优先级
 
-当前实现先把已批准的数据稳定写入 SQLite，再通过统一 `catalog/query` API 供 Agent 和受控用户消费。公共产品定位不改变数据事实门禁：对外开放某一数据分类前，仍须完成上游再分发条款、dataset entitlement、真实 receipt、认证 API readback 和账户隔离验证。不得为公共产品按 provider 或单个接口拆分新的公共路由、业务表或定时任务。
+当前实现将已批准、实际收到的数据写入 SQLite，再通过统一 `catalog/query` API 供 Agent 和受控用户消费；不等待上游连续稳定才供数，限制与质量状态随响应如实提供。公共产品定位不改变数据事实门禁：对外开放某一数据分类前，仍须完成上游再分发条款、dataset entitlement、真实 receipt、认证 API readback 和账户隔离验证。不得为公共产品按 provider 或单个接口拆分新的公共路由、业务表或定时任务。
 
 用户产品分类以 A 股、加密资产、新闻为首批入口；registry 中继续用 `market` 与 `domain` 表达技术数据身份。账户权限是 endpoint scope、分类 allowlist 与运行限额的交集；后端已在 catalog/query 两条路径强制执行 `data_categories`，管理员控制台可配置，Account 只展示当前密钥真实生效的分类。旧 Token 缺字段时保留原访问范围，显式空列表不授权任何数据集。完整产品合同见 [docs/PRODUCT.md](docs/PRODUCT.md)。
 
@@ -39,10 +39,10 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 | 状态 | 最小证据 | 可做什么 | 不能声称什么 |
 |---|---|---|---|
 | `contract_ready` | registry/config、编译与失败测试 | 进入 capability manifest、TA 兼容测试、候选 PR | 上游权限、真实数据、生产可用 |
-| `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 明确标注的内部只读试用与受预算约束的观察期采集 | 连续健康、历史 PIT、稳定生产声明 |
-| `stable` | 跨适用 cadence 连续成功，且适用 TA/Copilot 已 readback | 稳定生产能力声明与相应常规运行 | 覆盖所有无关消费者或未适用 cadence |
+| `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 如实标注的只读供数与预算内采集；对外权限另行核对 | 连续健康、历史 PIT、稳定性承诺 |
+| `stable` | 跨适用 cadence 连续成功及本平台认证 API 回读 | 对该数据集的连续稳定能力声明 | 消费者自动合格、超出证据的 SLA 或完整性保证 |
 
-缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制稳定生产声明和无界扩容，不单独阻断已受控启用的隔离只读观察采集。合同正确时的 empty / `provider_error` 是外部 blocker，不是 `observed`/`stable` 工程未完成，也不得冻结下一可接接口。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。empty ≠ success，不得伪造非空。
+缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制连续稳定声明，不阻断正常发布、按合同对外供数或预算内采集。degraded 数据按既有查询合同和真实质量标识提供，TD 供数不等待 TA/Copilot 消费验收；权限、完整性与资源约束各自保留。见 [接入、供数与质量的边界](docs/OPERATIONS.md#接入供数与质量的边界)。合同正确时的 empty / `provider_error` 是外部 blocker，不是 `observed`/`stable` 工程未完成，也不得冻结下一可接接口。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。empty ≠ success，不得伪造非空。
 
 ## 普通数据集零代码接入
 
