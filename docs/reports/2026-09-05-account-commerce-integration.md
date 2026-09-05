@@ -46,16 +46,3 @@ Rollback restores the prior public Worker while retaining identity/connection
 state and existing customer keys. There is no production commerce migration to
 reverse. Local simulator files remain outside the repository. Existing catalog
 quality and collection continue independently of merchant inputs.
-
-## Public release evidence
-
-PR #495 merged as `e5e374a24b341fd27bb5b31fc2f98cef20d2d9d4` after all four
-candidate checks passed (33964732178). Cloudflare run 33965231922 succeeded.
-At 20:10 Asia/Shanghai on September 5, the real public page loaded
-`index-qtd5VsfW.js`; Docs was public and in the Account menu, and guest billing
-redirected to `/login?next=%2Faccount%2Fbilling`. Auth methods still reported
-email enabled, phone disabled. Guest commerce/offers/orders returned JSON 404;
-an explicitly invalid email-session cookie returned 401 for commerce. Guest
-catalog returned 401. Private API responses were no-store; no order was created.
-This confirms the public deployment and negative authorization boundaries, not
-real customer sign-in, a live commerce ledger or paid activation.
