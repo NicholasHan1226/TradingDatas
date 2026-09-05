@@ -1488,7 +1488,9 @@ def _is_valid_unmapped_tushare_attempt(
 # receipts written since the previous request instead of the full append-only
 # history; short-lived callers pass ``None`` and keep the direct path.  The
 # cache is keyed by row content, not run_id, so a restored or rewritten row
-# with a recycled run_id is always re-validated.
+# with a recycled run_id is always re-validated. The expected provider binding
+# is also part of the key: interface/history reads retain their exact binding
+# filter while reusing validation of unchanged receipts.
 _RECEIPT_VALIDATION_CACHE_LIMIT = 250_000
 _RECEIPT_VALIDATION_CACHE_LOCK = threading.Lock()
 
@@ -1501,7 +1503,7 @@ def _validate_receipt_row_memoized(
     expected_binding: ProviderBinding | None,
     cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"] | None,
 ) -> "_Receipt | _InvalidReceipt | None":
-    if cache is None or expected_binding is not None:
+    if cache is None:
         return _validate_receipt_row(
             scanned, dataset, known_dataset_ids, now, expected_binding
         )
@@ -1518,7 +1520,7 @@ def _validate_receipt_row_memoized(
         )
     key = (
         dataset.dataset_id,
-        hashlib.sha256(repr(scanned.raw).encode("utf-8")).hexdigest(),
+        hashlib.sha256(repr((scanned.raw, expected_binding)).encode("utf-8")).hexdigest(),
     )
     with _RECEIPT_VALIDATION_CACHE_LOCK:
         if key in cache:

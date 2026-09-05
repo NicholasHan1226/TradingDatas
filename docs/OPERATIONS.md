@@ -189,6 +189,10 @@ authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用�
 代码回滚继续遵循 immutable release 切换与同层 receipt/API readback，索引缺失在旧 release 中是
 允许状态。
 
+目录与历史证据读取可复用进程内的收据校验 memo，键绑定完整原始行内容和预期 provider binding；
+每次请求仍打开新的已验证 SQLite 快照、重读收据并计算当前状态。binding 改变或同一 receipt ID
+的内容改变必须重新校验；memo 不保存目录响应，不替代当前事实、freshness 或完整性校验。
+
 catalog 先取每个 envelope `source` 最近 100 条收据作为初始窗口。达到 100 条的已注册
 source 对窗口内所有可识别的有效 execution 补齐兄弟收据，不能根据尚未完整验证的时间
 上下文猜测只有最旧一组被截断。初始窗口中的无效收据全部保留；初始读取及补读共用

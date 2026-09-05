@@ -1240,3 +1240,22 @@ def test_ingest_result_rejects_unsafe_error_message_shapes() -> None:
         IngestResult(**base, error_message="line one\nline two")
     with pytest.raises(ValueError, match="error_message"):
         IngestResult(**base, error_message="Bearer production-token")
+
+
+@pytest.mark.parametrize("codepoint", range(256))
+def test_identity_text_control_character_boundary(codepoint: int) -> None:
+    value = f"prefix{chr(codepoint)}suffix"
+    if codepoint < 32:
+        with pytest.raises(ValueError, match="control characters"):
+            receipt_module._require_text(value, "identity")
+    else:
+        assert receipt_module._require_text(value, "identity") == value
+
+
+def test_identity_text_preserves_non_ascii_and_whitespace_rules() -> None:
+    assert receipt_module._require_text("收据\u2028身份", "identity") == "收据\u2028身份"
+    for value in ("", " id", "id ", "\tidentity"):
+        with pytest.raises(ValueError, match="surrounding whitespace"):
+            receipt_module._require_text(value, "identity")
+    with pytest.raises(TypeError, match="must be a string"):
+        receipt_module._require_text(b"identity", "identity")
