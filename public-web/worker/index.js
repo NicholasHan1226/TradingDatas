@@ -1,3 +1,4 @@
+import { handleDataApi } from './data-api.js';
 import { portalKeyError, isPortalKeyPath } from './portal-errors.js';
 import { handleEmailIdentity } from "./email-identity.js";
 import { runIdentityMaintenance } from "./identity-retention.js";
@@ -218,6 +219,7 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/v1" || url.pathname.startsWith("/v1/")) return handleDataApi(request, env);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
       if (env.ACCOUNT_ADMIN_ENABLED !== "true" || !["GET", "HEAD"].includes(request.method)) return jsonResponse({ error: "not_found" }, 404);
       // Static Assets canonicalizes directory indexes to the trailing-slash

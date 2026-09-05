@@ -1644,7 +1644,7 @@ export function App() {
           <div className="docs-grid">{visibleDocs.length ? visibleDocs.map((entry, index) => <a className="docs-card" key={`${entry.category}-${entry.title}`} href={`/docs/${entry.slug}`} onClick={(event) => navigate(event, `/docs/${entry.slug}`)}><span>{String(index + 1).padStart(2, "0")} · {entry.categoryLabel}</span><h2>{entry.title}</h2><p>{entry.description}</p><ArrowRight /></a>) : <div className="docs-empty">{locale === "zh" ? "没有匹配的说明。换一个关键词或分类。" : "No guidance matches. Try another term or category."}</div>}</div>
           <section className="docs-quickstart">
             <div><span className="mono-kicker">API QUICKSTART / ONE PART OF DOCS</span><h2>{copy.docsTitle}</h2><p>{copy.docsCopy}</p><button className="primary-button" type="button" onClick={() => setAgentOpen(true)}>{copy.connect}</button></div>
-            <div className="code-window"><div><span /><span /><span /><small>catalog request</small></div><pre><code>{`GET /v1/catalog HTTP/1.1\nHost: api.tradingdatas.com\nAuthorization: Bearer ••••••••\nAccept: application/json`}</code></pre><div className="code-status"><ShieldCheck weight="fill" /> authenticated · provider-neutral</div></div>
+            <div className="code-window"><div><span /><span /><span /><small>catalog request</small></div><pre><code>{`GET /v1/catalog HTTP/1.1\nHost: tradingdatas.com\nAuthorization: Bearer ••••••••\nAccept: application/json`}</code></pre><div className="code-status"><ShieldCheck weight="fill" /> authenticated · provider-neutral</div></div>
           </section>
         </section>}
 
