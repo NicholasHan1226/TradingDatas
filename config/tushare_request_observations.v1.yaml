@@ -10,7 +10,7 @@ provenance:
     sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: ec7bbf84f4792f1b57b58b9bbcedcef2f173cf1de424e19e14d76c5bc8e530b6
+    sha256: 23acd551c15b50b72ee60bc9dbd22d78d9d7816c14065844de35955473931349
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
@@ -295,7 +295,7 @@ entries:
   request_shape: snapshot_or_date_range
   # Official o_code/n_code are optional (N). The contract is the mapping
   # table itself; empty snapshot is the honest request. Do not invent
-  # old or new codes. Activation stays paused in the registry.
+  # old or new codes. Formal activation is active_evidence only.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready
@@ -1304,8 +1304,8 @@ entries:
   # market is E场内 / O场外 with 默认E; those documented literals are the
   # request anchor. status D/I/L is optional with no official default, so
   # it stays unmapped rather than guessed. ts_code has no non-circular
-  # seed. Activation stays paused in the registry; this slice only
-  # resolves the request mapping.
+  # seed. Formal activation is active_evidence only; this slice does
+  # not change the request mapping.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready
@@ -9051,7 +9051,7 @@ entries:
   request_shape: snapshot_or_date_range
   # Official ts_code is optional and 不输入为获取全部. Empty parameters
   # are that documented all-list snapshot. Do not invent a contract
-  # code. Activation stays paused in the registry.
+  # code. Formal activation is active_evidence only.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready

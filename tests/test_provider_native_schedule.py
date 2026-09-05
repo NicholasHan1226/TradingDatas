@@ -4320,7 +4320,6 @@ _PAUSED_DATASET_IDS = frozenset(
     {
         "cn.dataset.bak_daily",
         "cn.dataset.bc_otcqt",
-        "cn.dataset.bse_mapping",
         "cn.dataset.cb_price_chg",
         "cn.dataset.ci_index_member",
         "cn.dataset.dc_concept_cons",
@@ -4330,7 +4329,6 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.etf_sz_cons",
         "cn.dataset.ft_mins",
         "cn.dataset.fund_adj",
-        "cn.dataset.fund_basic",
         "cn.dataset.fund_company",
         "cn.dataset.fund_daily",
         "cn.dataset.fund_manager",
@@ -4361,7 +4359,6 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.rt_idx_min",
         "cn.dataset.rt_k",
         "cn.dataset.rt_sw_k",
-        "cn.dataset.sge_basic",
         "cn.dataset.stk_nineturn",
         "cn.dataset.stk_premarket",
         "cn.dataset.stock_company",

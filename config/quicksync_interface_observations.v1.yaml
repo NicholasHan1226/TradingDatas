@@ -416,6 +416,7 @@ active_evidence:
   bond_blk: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   bond_blk_detail: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   broker_recommend: server-evidence/20260727T091112Z-periodic-window-probe-r2
+  bse_mapping: server-evidence/20260906-preflight6-bse_mapping
   cb_call: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   cb_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   cb_factor_pro: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -441,6 +442,7 @@ active_evidence:
   forecast: server-evidence/20260904T-forecast-ts-code-only
   ft_limit: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_daily: server-evidence/20260905-ready3-fut_daily
+  fund_basic: server-evidence/20260906-preflight6-fund_basic
   fund_div: server-evidence/20260722TQkgWsk-1def337-provider-native
   fund_portfolio: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fund_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -489,6 +491,7 @@ active_evidence:
   shibor: server-evidence/20260801T-shibor-daily-reference-probe
   shibor_quote: server-evidence/20260801T-shibor-daily-reference-probe
   sf_month: server-evidence/20260727T091112Z-periodic-window-probe-r2
+  sge_basic: server-evidence/20260906-preflight6-sge_basic
   sge_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   share_float: server-evidence/20260722TQkgWsk-1def337-provider-native
   slb_len: server-evidence/20260727T082100Z-quicksync-executable-reprobe

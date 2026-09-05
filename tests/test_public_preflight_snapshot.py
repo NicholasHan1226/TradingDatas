@@ -95,9 +95,6 @@ def test_checked_in_preflight_snapshot_matches_compiled_registry() -> None:
     groups = _groups(json.loads(rendered))
     ready = {row["apiName"] for row in groups["ready_for_bounded_https_probe"]}
     assert ready == {
-        "bse_mapping",
-        "fund_basic",
-        "sge_basic",
         "stk_nineturn",
         "stock_hsgt",
     }

@@ -1,11 +1,12 @@
 # TradingDatas 当前状态
 
-发布检查更新至 2026-09-06 04:05 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
+发布检查更新至 2026-09-06 04:20 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
 
 ## 当前结论与对外范围
 
 - Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；内部采集保持隔离。Research 外部文献不构成 Crypto 供数承诺。
-- 两个已 active 的 `on_demand` 接口在 live `e8a96ccc` 上完成首次有界正式采集：`cn.dataset.fut_daily`（`trade_date=20260904`）与 `cn.dataset.opt_basic`（window `{}`）。未激活、未采集任何 paused 项。empty ≠ success。
+- 两个已 active 的 `on_demand` 接口在 live `e8a96ccc` 上完成首次有界正式采集：`cn.dataset.fut_daily`（`trade_date=20260904`）与 `cn.dataset.opt_basic`（window `{}`）。empty ≠ success。
+- 本切片只正式激活已探测非空的 `bse_mapping` / `fund_basic` / `sge_basic`（Tushare 141 active / 49 paused）。仍是 `on_demand`，未 cut、未采集；`fund_company` 与 empty 项保持暂停。
 - 2026-09-06 03:27 已把 A 股与 Crypto 的 live `current` 切到 [PR #511](https://github.com/NicholasHan1226/TradingDatas/pull/511) merge SHA `e8a96ccc0cfbf38905a34c22dfa1345d95e5f539`。15 秒门未放宽：切前全新暂存进程双认证 catalog 对为 A 股 200 / **2.480s** / 192、Crypto 200 / 8.676s / 240；切后生产端口 3.576s / 11.835s。匿名两侧 401。
 - [PR #501](https://github.com/NicholasHan1226/TradingDatas/pull/501) 合入 `49e5ca9d60a878bcf4712b7ff46975215c817c58`。精确主线 [33971674611](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33971674611) 第 2 次执行通过；首次失败为测试清理与后台 Git 锁竞争，不能写成首次成功。
 - [PR #502](https://github.com/NicholasHan1226/TradingDatas/pull/502) 合入 `d1140e914a11b1303173c9e05148d86421a788ac`，修正测试隔离及网站历史文案；精确主线 [33972854145](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33972854145) 四组检查均通过。
@@ -40,7 +41,7 @@
 
 ## 接入证据与下一批
 
-计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。主线 52 个 Tushare 暂停中：32 个已有权限、14 locked、5 excluded、1 unknown；另有 25 个 current 未注册候选与 7 个 retired，后者排除当前队列。
+计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。主线 49 个 Tushare 暂停中：29 个已有权限、14 locked、5 excluded、1 unknown；另有 25 个 current 未注册候选与 7 个 retired，后者排除当前队列。编译 registry（含新闻补充合同）为 142 active / 50 paused。
 
 - 21:56 在既有 immutable a3106d68 上执行 3 次冻结的串行 HTTPS 探测：`fut_daily` valid_empty；`opt_basic` success / 6000 行（仅 ts_code 字段）；`stk_nineturn` valid_empty。这些是上游权限/请求观察，不是全字段落库 receipt、生产供数或连续稳定证明。
 - `fut_daily`、`opt_basic` 已是 active / `on_demand`。2026-09-06 04:02 在 `e8a96ccc` 上完成首次有界正式采集与认证 catalog/query 回读，见上文 receipt。单次非空 success 是 observed 证据，不是 `stable`，也不是历史完整性或 PIT。
@@ -49,8 +50,9 @@
 - [PR #505](https://github.com/NicholasHan1226/TradingDatas/pull/505) 已合入 merge SHA `7ef6bd19eae0c0e3874b5e85cd4158a412d8c465`。精确主线 [33982793546](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33982793546) 通过；Cloudflare Pages [33982793531](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33982793531) 已在该 SHA 发布。**未做 GZ cut**。
 - 该 SHA 的全新暂存进程双认证 catalog 对未过既有 15 秒门：A 股 200 / **20.350s** / 192 datasets；Crypto 200 / 11.406s / 240 datasets；匿名 401 两侧成立。监听约 43.5s（含覆盖索引全表 fault-in）。本次 fault-in **没有**把 A 股首请求压到 15s 以下。
 - `d21278d5` follow-up 只改只读 I/O：监听前不再对覆盖索引做全表 `COUNT(*)`，改为同一最近收据窗口 + 逐数据集 `COUNT`/`MIN`/`MAX` 并丢弃结果；快照打开的收据可读性探测改为 `LIMIT 1`。权威、认证、receipt 与 15s 门不变。当时实测境内 17.554s，未过门。`e8a96ccc` 在该基础上切掉 leftover snapshot 工作后，暂存对 2.480s / 8.676s，已切 `current`。empty ≠ success。
-- 2026-09-06 对 `5f0f8f78` / 合入后主线的有界 HTTPS 探测：`fund_company` 返回 **15371 行**，超过硬预算 `max_rows_per_attempt` 10000，属过大非空，不是 empty≠success。**未激活、未 unpause、未抬高硬预算**。本轮也未采集 `bse_mapping` / `fund_basic` / `sge_basic` / `fund_company` / `stk_nineturn` / `stock_hsgt`。
-- `fund_company` 已按既有 `row_limit_observation` 合同记 `observed_count=15371`、`reject_at_limit=true`，ingest 改为 blocked（`response_completeness_unresolved_at_observed_limit`），activation 仍 paused。官方输入段仍是 documented empty-all，文档快照没有可钉住的收窄滤镜，不得猜公司名或抬高硬预算。preflight ready 现为 5 且全部 paused。
+- 2026-09-06 对 `5f0f8f78` / 合入后主线的有界 HTTPS 探测：`fund_company` 返回 **15371 行**，超过硬预算 `max_rows_per_attempt` 10000，属过大非空，不是 empty≠success。**未激活、未 unpause、未抬高硬预算**。
+- 同批探测中 `bse_mapping` / `fund_basic` / `sge_basic` 为 nonempty success（248 / 2884 / 13），已具备 ingest-ready 合同。本切片只把这三项写入 `active_evidence`（`server-evidence/20260906-preflight6-*`），Tushare 正式编译为 **141 active / 49 paused**；cadence 仍是 `on_demand`，窗口/variants/预算未改。**未做 GZ cut，未采集**；collect 等新的 current。仓外 sidecar 仍在 `/opt/investment-data/tradingdatas/evidence/20260906-preflight6-paused-probe/`，探测 JSON 不进 git。`fund_company`、`stk_nineturn`（valid_empty）、`stock_hsgt`（valid_empty）及其余 paused 项均未动。empty ≠ success。
+- `fund_company` 已按既有 `row_limit_observation` 合同记 `observed_count=15371`、`reject_at_limit=true`，ingest 改为 blocked（`response_completeness_unresolved_at_observed_limit`），activation 仍 paused。官方输入段仍是 documented empty-all，文档快照没有可钉住的收窄滤镜，不得猜公司名或抬高硬预算。preflight ready 现为 2 且全部 paused（`stk_nineturn`、`stock_hsgt`）。
 - 本地 `codex/cursor-finite-coverage` 已把官方 `index_basic` 市场表与 `stock_hsgt` 类型表写入文档快照（doc 94 / 398）。`stock_hsgt` 按官方 `HK_SZ`/`SZ_HK`/`HK_SH`/`SH_HK` 映射，ingest 原因已空，仍 paused，未激活。`stock_company` 输入表表头是「必须」不是「必选」，且没有输入后交易所说明表，保持 `official_requiredness_unknown` + `request_anchor_unresolved`。`hm_list` / `mkt_idx_bmk` / `ths_index` / `ths_member` 仍无文档 empty-all 或默认值。`index_basic` / `opt_daily` ingest 仍因 6000 / 15000 行完整性未决保持阻断。
 - 有限覆盖合同下一批优先 `fund_daily`、`dc_concept_cons`：复核真实请求、字段、主键、时间与预算，有限覆盖如实 partial/unverified，不要求先证明全量。`stk_nineturn` 的 datetime/cadence 单独处理。
 - compiler 把数量边界直接升级为 activation blocker 的行为仍待通用合同修正；不得直接清空 blocker、批量 unpause 或将失败 receipt 改为成功。`bak_daily`、`fund_adj`、`fund_manager` 的 limit=1/offset=0 探测合同仍须补实际分页或窗口；其余 seed、锚点与必填参数按依赖推进。
