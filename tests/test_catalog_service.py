@@ -18,6 +18,9 @@ from catalog_service import (
     CatalogFilters,
     DatasetQueryability,
     _provider_native_queryability_reasons,
+    _serialize_dataset,
+    _static_catalog_dataset,
+    fault_in_catalog_coverage_index,
     inspect_dataset_queryability,
     is_catalog_discoverable,
     is_initial_release_eligible,
@@ -1748,3 +1751,67 @@ def test_out_of_product_scope_runtime_rows_are_not_required_or_watermarked(
         cursor=first["next_cursor"],
     )
     assert second["data"][0]["dataset_id"] == "cn.catalog.beta"
+
+
+def test_static_catalog_row_matches_live_serialize_except_snapshot_fields() -> None:
+    dataset = _catalog_dataset("cn.catalog.static_template")
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA_SQL)
+    runtime = {
+        "state": "unobserved",
+        "degraded": False,
+        "data_through": None,
+        "observed_at": None,
+        "receipt_id": None,
+        "reasons": ["no_recognized_receipt"],
+    }
+    live = _serialize_dataset(conn, dataset, runtime, max_in_values=50)
+    static = _static_catalog_dataset(dataset, max_in_values=50)
+    reused = _serialize_dataset(
+        conn, dataset, runtime, max_in_values=50, static_row=static
+    )
+    conn.close()
+    assert reused == live
+    assert "queryability" not in static
+    assert "coverage" not in static
+    assert "runtime" not in static
+    assert live["coverage"] == {
+        "row_count": 0,
+        "earliest_observed_at": None,
+        "latest_observed_at": None,
+    }
+
+
+def test_fault_in_seeds_shared_receipt_validation_cache(
+    real_catalog_harness: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(real_catalog_harness)
+    fault_in_catalog_coverage_index(
+        real_catalog_harness["db_path"],
+        registry=real_catalog_harness["registry"],
+        validation_cache=service._validation_cache,
+    )
+    assert service._validation_cache
+
+    direct_calls = {"count": 0}
+    real_validate = receipt_projection_module._validate_receipt_row
+
+    def counting_validate(*args: object, **kwargs: object) -> object:
+        direct_calls["count"] += 1
+        return real_validate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        receipt_projection_module, "_validate_receipt_row", counting_validate
+    )
+    response = _list(
+        service,
+        real_catalog_harness,
+        limit=20,
+        request_id="warmed-snapshot",
+    )
+    assert {row["dataset_id"] for row in response["data"]} >= {
+        "cn.runtime.a_success",
+        "cn.runtime.b_empty",
+    }
+    assert direct_calls["count"] == 0

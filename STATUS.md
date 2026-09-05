@@ -5,7 +5,7 @@
 ## 当前结论与对外范围
 
 - Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；内部采集保持隔离。Research 外部文献不构成 Crypto 供数承诺。
-- 两个新接口的按需配置已经合入主线，公开网站已更新；**正式采集批次仍未执行**。live GZ `current` 已是 `f4bb6bef`（#506 文档合入门，基于 `7ef6bd19`），不是 `a3106d68`。catalog I/O follow-up `d21278d5` 只暂存未切，因为新的双认证冷启动对境内仍 **17.554s**，未过既有 15 秒门。empty ≠ success。
+- 两个新接口的按需配置已经合入主线，公开网站已更新；**正式采集批次仍未执行**。live GZ `current` 已是 `f4bb6bef`（#506 文档合入门，基于 `7ef6bd19`），不是 `a3106d68`。catalog I/O follow-up `d21278d5` 只暂存未切，因为新的双认证冷启动对境内仍 **17.554s**，未过既有 15 秒门。本分支继续只做只读 I/O/算法收缩，**15s 仍未证明**，不得切 `current`。empty ≠ success。
 - [PR #501](https://github.com/NicholasHan1226/TradingDatas/pull/501) 合入 `49e5ca9d60a878bcf4712b7ff46975215c817c58`。精确主线 [33971674611](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33971674611) 第 2 次执行通过；首次失败为测试清理与后台 Git 锁竞争，不能写成首次成功。
 - [PR #502](https://github.com/NicholasHan1226/TradingDatas/pull/502) 合入 `d1140e914a11b1303173c9e05148d86421a788ac`，修正测试隔离及网站历史文案；精确主线 [33972854145](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33972854145) 四组检查均通过。
 - Cloudflare [33972855121](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33972855121) 发布成功，最新资源为 `index-BZtC9up5.js`。来源摘要从正式配置快照派生，显示 Tushare 190 项、138 active / 52 paused；加新闻共 192 项、139 active / 53 paused。这是主线配置数量，**不证明两个 immutable 采集运行面已切换**。
@@ -19,6 +19,7 @@
 - `7ef6bd19` 全新暂存进程权威对：境内 20.350 秒 / 192 项，Crypto 11.406 秒 / 240 项，监听约 43.5 秒（含覆盖索引全表 fault-in）。该 fault-in 伤害监听且不足以让首个 A 股 catalog <15s。
 - [PR #507](https://github.com/NicholasHan1226/TradingDatas/pull/507) 合入 merge SHA `d21278d5b60eff2ab0188331db449a961787a745`（head `f95bea2f`）。PR CI [33984284520](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33984284520) 四组 fast shard 通过。本次无 `static/**` / `public-web/**`，未调度 Cloudflare。精确主线 [33984887459](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33984887459) 写入时仍在跑，不能写成已绿。
 - `d21278d5` 已按同一 archive/manifest 通道暂存到 A 股与 Crypto 两平面（1089 文件，tree `97f1ff4d…`，registry 逐字节 cmp 通过），**未**切 `current`。全新暂存进程双认证 catalog 对：A 股 200 / **17.554s** / 192 datasets；Crypto 200 / 9.622s / 240 datasets；匿名两侧 401。监听 31.930s（低于 `7ef6bd19` 的 43.5s）。境内仍高于既有 15 秒门，故停在暂存层。**15s 仍未证明**。empty ≠ success。
+- 本分支相对 `d21278d5` 只改只读路径：epoch verifier 不再重复主连接的 schema/mmap/page-cache PRAGMA；监听前 fault-in 复用同一 `build_data_plane_runtime()` 并把收据校验 memo 预热进将要服务的 `CatalogService`；192 项 registry 静态 catalog 体预计算，coverage/runtime/queryability 仍按请求快照计算。权威、认证、精确 `COUNT`/`MIN`/`MAX` 与 15s 门不变。本地无法用生产 facts 库证明 <15s；**未切 GZ `current`，未开采集**。live `current` 保持 `f4bb6bef`。
 - 新进程 profile 总计 16.857 秒，其中 coverage 9.927 秒。对同样的 15,196,606 行，计数冷读 10.7114 秒、warm 0.5138 秒；分组 warm 0.7666 秒未证明优于现有方案。冷缓存/I/O 是调查方向，尚无完整因果或已解决结论。
 - 本次冷启动诊断未新增 SQL、schema、缓存、timeout 或 worker 调整。下一步只做有证据的局部性能修正，保留 receipt/lineage、权限与发布回退边界；繁忙时段目录性能是内部未完成项，不归为 vendor 问题。
 - 公网管理服务此前已随 source 更新至 `d1140e914a11b1303173c9e05148d86421a788ac`。live 不可变采集/API `current` 现为 `f4bb6bef`，不能再写成 a3106d68。同次较早公网目录的 `fut_daily`、`opt_basic` 均为 unobserved、存量 0、`no_recognized_receipt`；查询分别 200 / 1.230 秒 / 0 行、200 / 1.512 秒 / 0 行，lineage incomplete。`stk_nineturn` 仍 paused。公网新配置不证明已完成采集；回读文件中的 release 字段只是本机 current 指针，不是 HTTP 服务版本证明。

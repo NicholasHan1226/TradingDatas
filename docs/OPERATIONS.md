@@ -192,11 +192,15 @@ authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用�
 catalog 的 coverage 继续由同一 SQLite 快照中的精确 `COUNT`/`MIN`/`MAX` 生成。
 已有 coverage 索引时，使用同一语句中的独立标量聚合，让最早/最晚时间走索引端点；
 缺少该可选索引的旧库保留原单次聚合扫描。读取不创建索引、不把预热计数或估算当作
-行数权威。只读快照可设置 SQLite mmap/page cache，这只改变页读取方式。API 进程在
-监听前对已验证只读快照做一次与首个 catalog 相同的最近收据窗口和逐数据集
-`COUNT`/`MIN`/`MAX` 页 fault-in，并丢弃结果；不再对覆盖索引做全表 `COUNT(*)`。
-每个目录请求仍打开新的已验证快照并重新精确聚合。该预热只减少冷 I/O，不构成
-cache-as-authority，也不放宽既有双认证 catalog <15s 门禁。
+行数权威。只读快照可设置 SQLite mmap/page cache，这只改变页读取方式，且仅作用于
+承担 schema 合同检查的主连接；epoch verifier 只打开同一绑定路径并比对
+`schema_version`/`page_count`/最新收据，不再重复 mmap、page cache 或 table/index
+PRAGMA。API 进程在监听前对已验证只读快照做一次与首个 catalog 相同的最近收据窗口和
+逐数据集 `COUNT`/`MIN`/`MAX` 页 fault-in，并丢弃结果；不再对覆盖索引做全表
+`COUNT(*)`。若该进程将服务 `CatalogService` 的收据校验 memo 传入预热，则只填充既有
+不可变收据行 memo，不缓存目录响应。每个目录请求仍打开新的已验证快照并重新精确聚合。
+该预热只减少冷 I/O 与重复校验 CPU，不构成 cache-as-authority，也不放宽既有双认证
+catalog <15s 门禁。
 
 目录与历史证据读取可复用进程内的收据校验 memo，键绑定完整原始行内容和预期 provider binding；
 每次请求仍打开新的已验证 SQLite 快照、重读收据并计算当前状态。binding 改变或同一 receipt ID

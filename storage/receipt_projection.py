@@ -4404,6 +4404,8 @@ def _expected_provider_indexes_snapshot(
 
 def _open_bound_receipt_database_ro(
     binding: _ReceiptDatabaseBinding,
+    *,
+    inspect_schema: bool = True,
 ) -> sqlite3.Connection:
     try:
         # ``immutable=1`` skips WAL and can serve a stale main-file snapshot.
@@ -4416,11 +4418,18 @@ def _open_bound_receipt_database_ro(
         )
         _require_bound_path_identities(binding)
         conn.execute("PRAGMA query_only = ON")
-        # Pager/mmap settings are I/O, not count authority. Catalog coverage
-        # still uses exact COUNT/MIN/MAX on this same verified snapshot.
-        conn.execute(f"PRAGMA mmap_size = {_READ_SNAPSHOT_MMAP_BYTES}")
-        conn.execute(f"PRAGMA cache_size = -{_READ_SNAPSHOT_CACHE_KIB}")
+        # The epoch verifier only needs a second bound connection plus
+        # ``_connection_epoch_evidence``. Repeating mmap/cache/schema PRAGMA
+        # there is not authority: schema_version is already in epoch evidence,
+        # and the primary connection still inspects the full table contract.
+        if inspect_schema:
+            # Pager/mmap settings are I/O, not count authority. Catalog coverage
+            # still uses exact COUNT/MIN/MAX on this same verified snapshot.
+            conn.execute(f"PRAGMA mmap_size = {_READ_SNAPSHOT_MMAP_BYTES}")
+            conn.execute(f"PRAGMA cache_size = -{_READ_SNAPSHOT_CACHE_KIB}")
         conn.execute("BEGIN")
+        if not inspect_schema:
+            return conn
         conn.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone()
         table_info = tuple(
             (
@@ -4594,7 +4603,9 @@ def open_verified_read_model_snapshot(db_path: Path):
                         primary_evidence = _connection_epoch_evidence(conn)
                         verifier: sqlite3.Connection | None = None
                         try:
-                            verifier = _open_bound_receipt_database_ro(binding)
+                            verifier = _open_bound_receipt_database_ro(
+                                binding, inspect_schema=False
+                            )
                             if _connection_epoch_evidence(verifier) != primary_evidence:
                                 raise RuntimeProjectionError(
                                     "receipt database connection target changed"

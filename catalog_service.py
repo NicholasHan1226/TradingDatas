@@ -415,6 +415,8 @@ def _dataset_coverage(
 def fault_in_catalog_coverage_index(
     db_path: Path,
     registry: DatasetRegistry | None = None,
+    *,
+    validation_cache: dict | None = None,
 ) -> None:
     """Fault first-catalog pages into the OS cache before HTTP listen.
 
@@ -422,9 +424,11 @@ def fault_in_catalog_coverage_index(
     notes without matching the first request's per-dataset seeks. When a
     registry is provided, this warms the same recent-receipt window and the
     same per-dataset COUNT/MIN/MAX seeks the request will recompute. Values
-    are discarded. Every later catalog request still opens a new verified
-    snapshot and recomputes exact aggregates. This is cold I/O warmup, not
-    coverage or receipt authority.
+    are discarded. When ``validation_cache`` is the serving CatalogService
+    memo, warmup also seeds immutable receipt-row validation so the first
+    request does not repeat that CPU. Every later catalog request still
+    opens a new verified snapshot and recomputes exact aggregates. This is
+    cold I/O warmup plus the existing receipt memo, not coverage authority.
     """
 
     if not isinstance(db_path, Path):
@@ -440,6 +444,7 @@ def fault_in_catalog_coverage_index(
                 conn,
                 registry,
                 now=datetime.now(timezone.utc),
+                validation_cache=validation_cache,
             )
             indexes = _provider_dataset_row_indexes(conn)
             for dataset in registry.datasets:
@@ -456,18 +461,13 @@ def fault_in_catalog_coverage_index(
         conn.execute("SELECT 1 FROM provider_dataset_rows LIMIT 1").fetchone()
 
 
-def _serialize_dataset(
-    conn: sqlite3.Connection,
+def _static_catalog_dataset(
     dataset: DatasetDefinition,
-    runtime: Mapping[str, object],
     *,
     max_in_values: int,
-    schema_reasons: tuple[str, ...] | None = None,
-    indexes: frozenset[str] | None = None,
 ) -> dict[str, object]:
-    queryability = inspect_dataset_queryability(
-        conn, dataset, schema_reasons=schema_reasons
-    )
+    """Registry-only catalog body. Coverage and runtime stay per-snapshot."""
+
     filter_operators = {
         field_name: list(operators)
         for field_name, operators in dataset.filter_operators.items()
@@ -517,26 +517,53 @@ def _serialize_dataset(
                 {binding.activation_state for binding in dataset.provider_bindings}
             ),
         },
-        "queryability": {
-            "queryable": queryability.queryable,
-            "reasons": list(queryability.reasons),
-        },
-        "coverage": _dataset_coverage(conn, dataset, indexes=indexes),
-        "runtime": {
-            "state": runtime["state"],
-            "degraded": runtime["degraded"],
-            "data_through": runtime["data_through"],
-            "observed_at": runtime["observed_at"],
-            "receipt_id": runtime["receipt_id"],
-            "reasons": list(runtime["reasons"]),
-        },
     }
+
+
+def _serialize_dataset(
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+    runtime: Mapping[str, object],
+    *,
+    max_in_values: int,
+    schema_reasons: tuple[str, ...] | None = None,
+    indexes: frozenset[str] | None = None,
+    static_row: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    queryability = inspect_dataset_queryability(
+        conn, dataset, schema_reasons=schema_reasons
+    )
+    row = (
+        dict(static_row)
+        if static_row is not None
+        else _static_catalog_dataset(dataset, max_in_values=max_in_values)
+    )
+    row["queryability"] = {
+        "queryable": queryability.queryable,
+        "reasons": list(queryability.reasons),
+    }
+    row["coverage"] = _dataset_coverage(conn, dataset, indexes=indexes)
+    row["runtime"] = {
+        "state": runtime["state"],
+        "degraded": runtime["degraded"],
+        "data_through": runtime["data_through"],
+        "observed_at": runtime["observed_at"],
+        "receipt_id": runtime["receipt_id"],
+        "reasons": list(runtime["reasons"]),
+    }
+    return row
 
 
 class CatalogService:
     """List access-visible registry datasets from one verified SQLite snapshot."""
 
-    __slots__ = ("_registry", "_db_path", "_cursor_codec", "_validation_cache")
+    __slots__ = (
+        "_registry",
+        "_db_path",
+        "_cursor_codec",
+        "_validation_cache",
+        "_static_rows",
+    )
 
     def __init__(
         self,
@@ -560,6 +587,14 @@ class CatalogService:
         # Memo for immutable receipt-row validation; see
         # storage.receipt_projection._validate_receipt_row_memoized.
         self._validation_cache: dict = {}
+        max_in_values = registry.query_defaults.max_in_values
+        self._static_rows = {
+            dataset.dataset_id: _static_catalog_dataset(
+                dataset, max_in_values=max_in_values
+            )
+            for dataset in registry.datasets
+            if is_catalog_discoverable(dataset)
+        }
 
     def list_datasets(
         self,
@@ -689,6 +724,7 @@ class CatalogService:
                     max_in_values=self._registry.query_defaults.max_in_values,
                     schema_reasons=schema_reasons,
                     indexes=indexes,
+                    static_row=self._static_rows.get(dataset.dataset_id),
                 )
                 for dataset, runtime in selected
             ]

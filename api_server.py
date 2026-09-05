@@ -1728,11 +1728,15 @@ def _fault_in_catalog_coverage_index() -> None:
 
     from catalog_service import fault_in_catalog_coverage_index
     from data_plane_runtime import build_data_plane_runtime
-    from runtime_paths import marketdata_sqlite_path
 
+    # One process-wide runtime: executor bootstrap already published it when
+    # workers are enabled. A second call is the cached singleton, not a second
+    # registry parse. Warmup seeds that CatalogService receipt memo.
+    runtime = build_data_plane_runtime()
     fault_in_catalog_coverage_index(
-        marketdata_sqlite_path(),
-        registry=build_data_plane_runtime().registry,
+        runtime.catalog._db_path,
+        registry=runtime.registry,
+        validation_cache=runtime.catalog._validation_cache,
     )
 
 
@@ -1759,6 +1763,7 @@ def main() -> None:
 
             # Complete identity/bootstrap before accepting requests. This does
             # not read catalog facts or establish production data health.
+            # Warmup below reuses this same cached runtime.
             initialize_catalog_executor(build_data_plane_runtime().catalog)
         _fault_in_catalog_coverage_index()
         httpd = TradingDatasHTTPServer(

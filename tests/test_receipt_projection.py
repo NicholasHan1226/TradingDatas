@@ -3669,7 +3669,7 @@ def test_primary_connection_is_closed_when_snapshot_setup_exits_with_error(
     monkeypatch.setattr(
         projection_module,
         "_open_bound_receipt_database_ro",
-        lambda _binding: verifier,
+        lambda _binding, **_kwargs: verifier,
     )
 
     with pytest.raises(RuntimeProjectionError, match="projection failed closed"):
@@ -3705,7 +3705,7 @@ def test_primary_connection_is_closed_when_lightweight_verifier_open_fails(
         raising=False,
     )
 
-    def fail_verifier(_binding: object) -> sqlite3.Connection:
+    def fail_verifier(_binding: object, **_kwargs: object) -> sqlite3.Connection:
         raise RuntimeProjectionError("injected verifier failure")
 
     monkeypatch.setattr(
@@ -3821,6 +3821,23 @@ def test_snapshot_open_does_not_count_receipt_journal(
         assert writer.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone() == (
             3_000,
         )
+        schema_probes = [
+            sql
+            for sql in normalized
+            if sql.startswith("PRAGMA main.table_xinfo('market_ingest_runs')")
+            or sql.startswith("PRAGMA main.table_xinfo(\"market_ingest_runs\")")
+        ]
+        mmap_setup = [sql for sql in normalized if sql.startswith("PRAGMA mmap_size")]
+        readability = [
+            sql for sql in normalized if sql == "SELECT 1 FROM market_ingest_runs LIMIT 1"
+        ]
+        epoch_schema = [
+            sql for sql in normalized if sql.startswith("PRAGMA schema_version")
+        ]
+        assert len(schema_probes) == 1
+        assert len(mmap_setup) == 1
+        assert len(readability) == 1
+        assert len(epoch_schema) == 2
     finally:
         writer.close()
 
@@ -5196,7 +5213,7 @@ def test_snapshot_retries_transient_epoch_skew_under_concurrent_write(
         conn.commit()
         return conn, ("dev", 0, 1)
 
-    def _fake_bound(binding):
+    def _fake_bound(binding, **_kwargs):
         conn = sqlite3.connect(":memory:")
         conn.executescript(SCHEMA_SQL)
         conn.commit()
