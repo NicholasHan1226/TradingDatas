@@ -24,7 +24,7 @@ This boundary does not stop existing isolated collection or delete stored data.
 | collector unit | `tradingdatas-crypto-binance-collect.service` |
 | timer | `tradingdatas-crypto-binance-collect.timer` at `*-*-* *:0/5:00`; isolated 5-minute close-aligned collection. Enablement is a separate release decision |
 | backup collector unit | `tradingdatas-crypto-binance-collect-retry.service`, same `latest_closed_window` with `--backup-wake` |
-| backup timer | `tradingdatas-crypto-binance-collect-retry.timer` at `*-*-* *:1/5:00` (close+60s). It writes the same just-closed bar if the primary oneshot never started; a held `collect.lock` exits `skipped_lock_held` so a still-running primary is not queued again |
+| backup timer | `tradingdatas-crypto-binance-collect-retry.timer` at `*-*-* *:1/5:00` (close+60s). It fills datasets without a validated success receipt for the same closed-bar window; a held `collect.lock` exits `skipped_lock_held` so a still-running primary is not queued again |
 | book-ticker unit | `tradingdatas-crypto-binance-book-ticker.service` |
 | book-ticker timer | `tradingdatas-crypto-binance-book-ticker.timer` at `*-*-* *:3/5:10`; this is the in-repo production deconflict slot, not `*:0/5:40`. Enablement is a separate release decision |
 | rule unit | `tradingdatas-crypto-binance-rules.service` |
@@ -66,6 +66,17 @@ outcomes, never substitutes another provider or bar, and a second failure
 leaves the dataset failed. This bounded recovery is only to preserve honest
 observation continuity during a brief public transport interruption; it does
 not relax the API metadata or TradingAgent evidence gate.
+
+After acquiring the collection lock, the backup checks up to the latest 100
+receipts per dataset for the exact requested window. Candidate selection alone
+never proves completion: the existing receipt validator must confirm the
+success cohort and current registry contract. Completed datasets reuse the
+existing receipt ID with `collection_action=reused_completed_receipt`; no
+provider call or receipt write occurs for those datasets. The output includes
+`skipped_completed_dataset_count`. Missing, empty, failed, invalid or unmatched
+receipts do not suppress collection. If bounded lookup cannot establish proof,
+the normal collection path remains available. This does not change primary
+collection, historical provenance, schema, or dataset quality requirements.
 
 The expansion contract freezes forty symbols in
 `config/crypto_binance_spot_universe.v1.yaml` and compiles two hundred and
