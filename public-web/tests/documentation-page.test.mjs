@@ -28,6 +28,8 @@ test("hub and missing guide retain discoverable real document routes without req
   const html = renderToStaticMarkup(createElement(DocumentationPage,{locale:"en",slug,documentation,onNavigate(){}}));
   for(const guide of documentation.guides) assert.ok(html.includes(`href="/docs/${guide.slug}"`));
   assert.ok(html.includes('<details'));
+  assert.ok(html.includes('aria-label="Docs"'));
+  assert.ok(html.includes('>Docs</a>'));
   assert.ok(!html.includes('href="/login'));
   if(slug) assert.ok(html.includes('Guide not found'));
  }

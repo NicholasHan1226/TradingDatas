@@ -18,7 +18,7 @@ npm run dev
 The prototype includes the confirmed public-home visual direction and the compact
 `Data / Research / Pricing` floating navigation. Global search spans data,
 external research, methods and documentation; compatibility routes for Features,
-Recipes remain directly addressable. Doc in Account exposes public `/docs`,
+Recipes remain directly addressable. Docs in Account exposes public `/docs`,
 `/docs/:slug` and `/connect` tutorials/templates; `/bookmarks` is the public
 browser-local library. Language/theme are available without login in the
 upper-right menu. Account is private, with overview/subscription/usage/keys/
@@ -62,7 +62,7 @@ Developer pitfalls for this slice:
   `node --test tests/email-identity.test.mjs`. Optional workerd/D1:
   `node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js`.
   Diagnose 429 vs 503 with [OPERATIONS.md](../docs/OPERATIONS.md#email-otp-admission-diagnosis);
-  flags remain false.
+  configured flags and production readback are recorded separately in STATUS.
 
 The candidate landscape is maintained research, not an exhaustive list of every
 global API. Technical reachability, redistribution rights, runtime activation,
@@ -85,13 +85,13 @@ uv run --python 3.12 --with-requirements ../requirements.txt \
 
 ## Checks
 
-Account continuity candidate: the existing `/account` can explicitly connect an
-already-issued data key and use a separate authenticated personal library. The
-existing administrator app is reused at `/admin/` via a same-origin authorized
-gateway; no new customer dashboard. Flags `ACCOUNT_CONNECTION_ENABLED`,
-`ACCOUNT_LIBRARY_ENABLED`, `ACCOUNT_ADMIN_ENABLED` all default false. Additive
-`worker/account-library-schema.sql` has **not** been applied remotely. No new
-subscription, production identity, admin grant or email delivery is asserted.
+Account continuity: the existing `/account` can explicitly connect an
+already-issued data key. Authenticated personal-library and same-origin admin
+gateway implementations remain separately disabled; current bookmarks stay
+browser-local. There is no new customer dashboard. Each capability has an independent enable flag. The checked-in configuration
+enables email identity, retention and existing-key connection; library/admin
+remain disabled. See `../STATUS.md` for actual migration/release evidence.
+Login or connection never implies payment, a new subscription or an admin grant.
 See [contract and acceptance gates](../docs/design/account-library-v1.md).
 
 When admin source changes, first run `npm ci && npm run build` in `../frontend`.
@@ -105,8 +105,9 @@ origin, never on `tradingdatas.com`.
 Purchase preparation: `/pricing` opens the non-paying
 `/pricing/preview?plan=basic&period=monthly`. Six combinations share `src/pricing.js`;
 selection survives refresh and login via a strict same-site return allowlist.
-It never creates orders or changes grants. Account billing remains unavailable.
-Payment onboarding is paused; no merchant calls or live purchase switch exist.
+The production preview never creates orders or changes grants; its billing
+ledger remains unavailable. The independent development simulator supports
+test orders only. No merchant calls or live purchase switch exist.
 See [flow and resumption gates](../docs/design/payment-flow-preparation-v1.md).
 
 ```bash
@@ -488,7 +489,7 @@ Known key-management refusals use the same safe error codes for both login paths
 
 The integration release enables only `ACCOUNT_CONNECTION_ENABLED`, after applying
 `worker/account-library-schema.sql` to the existing dedicated identity D1 store.
-Library and Admin flags remain false. Roll back by disabling connection and
+Library and Admin configured flags and production readback are recorded separately in STATUS. Roll back by disabling connection and
 restoring the preceding Worker version; retain additive tables and the identity
 disable trigger. Existing keys, data facts, sessions and payment settings are not
 rewritten. Live activation and end-to-end user verification are recorded in STATUS.
@@ -504,7 +505,7 @@ that origin (an empty value leaves instructions unconfigured). Copying instructi
 does not query or authenticate. See the API/OPERATIONS contract and STATUS for
 real deployment and customer acceptance.
 
-## Doc content and reader
+## Docs content and reader
 
 `src/documentation.js` holds bilingual guide content under the existing stable
 `/docs/:slug` routes. `DocumentationPage.jsx` renders the task-oriented hub,
@@ -513,3 +514,34 @@ Global search and page metadata reuse these records. Update authored guides
 when product/API/account behavior changes, keeping paused commerce explicit.
 Verify both languages, desktop/mobile navigation, article anchors and direct
 links with `npm run test:sites`, `npm run build` and browser review.
+
+## Account commerce development
+
+Current routes, ownership and production boundary are defined once in
+[Customer identity and commerce](../docs/design/customer-identity-commerce-v1.md).
+Production has no commerce binding and payment stays unavailable; its Account
+panel reports that the ledger cannot be confirmed, independently of Portal access.
+
+Use the existing synthetic preview with two separate, absolute test-store paths
+for durable sandbox development:
+
+```bash
+TD_IDENTITY_PREVIEW_DB=/absolute/test/identity.sqlite \
+TD_COMMERCE_SANDBOX_DB=/absolute/test/commerce.sqlite \
+node scripts/preview-email-identity.mjs
+```
+
+Only example.com addresses work; no message is sent. The two files must be
+separate and must never refer to production stores. Defaults remain in-memory
+identity with commerce unavailable. Save an order from Account, then simulate
+its verification and test activation through the local operator CLI:
+
+```bash
+node scripts/commerce-sandbox.mjs /absolute/test/commerce.sqlite ORDER_ID
+```
+
+This has no provider call or real data grant. Restarting with the same two files
+preserves test identity ownership and orders. Use a separate new browser session
+and sign in to the same synthetic address to verify cross-session readback.
+Run `npm run test:sites` and `npm run build`; do not deploy these test-store
+bindings or claim that simulator results prove a real payment-provider sandbox.

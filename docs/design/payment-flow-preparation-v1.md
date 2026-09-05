@@ -1,9 +1,11 @@
-# Payment flow preparation — checkout remains paused
+# Payment flow preparation and integration
 
-Decision date: 2026-08-30. Authority: owner's instruction to pause payment
-activation and prepare the flow. Uses existing Pricing, Login and Account,
-not a new customer console. These are product/control-plane workflows, not
-trading orders. The fixed catalog/query data plane is unchanged.
+Current implementation authority: [Customer identity and commerce](customer-identity-commerce-v1.md).
+The owner resumed subscription integration and payment testing on 2026-09-05.
+This document describes the retained public selection flow and the eventual real
+payment transitions. Merchant configuration and real settlement remain pending;
+the isolated simulator is not payment-provider sandbox evidence. The fixed
+catalog/query service continues independently.
 
 ## Implemented preparation
 
@@ -30,9 +32,11 @@ trading orders. The fixed catalog/query data plane is unchanged.
   are not open. It collects no input and links to Data and non-paying Pricing;
   it must not promise a waitlist, trial grant or an available application path.
 
-No order ID, payment URL, checkout request, invoice, refund or entitlement write
-exists in this slice. There is no frontend/environment switch to enable real
-checkout. No sandbox/production Alipay calls are made. Onboarding is paused.
+The production preview creates no order, payment URL, invoice, refund or data
+entitlement. Its development simulator separately supports test orders under the
+current commerce contract. No frontend switch enables real checkout; no actual
+payment-provider sandbox or production calls are implemented. Merchant onboarding
+remains pending owner/provider configuration.
 
 ## Target customer flow — future server implementation
 
@@ -66,10 +70,10 @@ settlement results are never browser authority.
 
 Payment/order and subscription/access are separate projections. Never collapse
 `paid + provisioning_failed` into unpaid, active or pay again. Unknown/malformed
-server state means unable to confirm, never success. No real transitions are
-dispatched by this preparation frontend.
+server state means unable to confirm, never success. Production transitions remain unavailable. Isolated test-order behavior follows
+the current account/commerce contract.
 
-## Future implementation boundaries
+## Real payment implementation boundaries
 
 - Identity store: verified credentials, explicit tenant membership, one-time
   challenges, revocable sessions, abuse protection and safe existing-key migration.
@@ -86,7 +90,7 @@ dispatched by this preparation frontend.
 - Rollback: stop new checkout independently of callbacks/reconciliation and
   existing access. Never delete settled records or revoke old keys for UI rollback.
 
-## Resumption checklist
+## Real collection activation checklist
 
 1. Actual operating entity, website filing, merchant eligibility and dataset
    redistribution rights. Recheck requirements at resumption.
@@ -114,6 +118,7 @@ search and Account layout are unchanged.
 
 Verify with `cd public-web && npm run test:sites && npm run build`, then browser
 checks of six combinations, invalid URLs, login return, identity states, refresh/
-history, bilingual copy, mobile/tablet/desktop, themes and keyboard. Use only the
-loopback synthetic harness for sign-in QA; never real credentials/provider calls.
-Record results in `docs/reports/2026-08-30-payment-preparation-review.md`.
+history, bilingual copy, mobile/tablet/desktop, themes and keyboard. Use the loopback synthetic harness for deterministic QA. Real customer and
+provider verification follows the current commerce contract using the intended
+recipient and approved configuration; do not substitute test fixtures for that evidence.
+Record new results in a dated report and STATUS; the August preparation report is historical evidence.

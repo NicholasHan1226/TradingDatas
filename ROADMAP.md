@@ -112,9 +112,9 @@ mutable data -> /opt/investment-data/tradingdatas/
 公共产品继续销售同一份 receipt-backed 原始数据，不建立研究、策略或交易旁路。
 
 账户独立身份与购买开通的实施前合同、待确认商业选择及验收顺序见
-[Customer identity and commerce draft](docs/design/customer-identity-commerce-v1.md)。
+[Customer identity and commerce](docs/design/customer-identity-commerce-v1.md)。
 手机与邮箱双登录、99/299/499 月价及年付九折已由 owner 确认；
-该草案不代表已选定验证码/支付服务，也不构成真实收费授权。
+邮箱已选用 Resend，独立身份与已有密钥连接已实现；短信与支付商户配置分别推进。2026-09-05 已恢复订阅整合及隔离支付测试，真实收费仍需商户/结算合同及实际验证，不能用隔离模拟结果代替。
 
 - 冻结 Data / Features / Recipes / Research / Pricing / Docs / Account 的对象、索引页、详情页和状态词；
 - 完成 `zh-CN`/`en` 系统语言检测、显式切换、偏好持久化、English fallback 和技术标识不翻译合同；

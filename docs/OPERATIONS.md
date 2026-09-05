@@ -932,7 +932,7 @@ Worker 静态页发布不能声称会话桥接已启用。启用前必须：
 identity_gateway_unavailable`，再按获批范围重新发布上一已验证公开站 SHA。当前前端不得
 回退为 direct-bearer 或浏览器存储密钥；同源清 Cookie 仍可用。回滚到旧版时需明确其
 旧兼容路径风险，不能把降级当成功。不得因此修改客户 key、管理 API、数据 API、采集 runtime 或
-SQLite。完整邮箱身份、跨设备 session list、服务端单会话 revoke 和审计仍是独立后续发布。
+SQLite。邮箱身份及当前会话服务端撤销已实现；跨设备 session list 和扩展审计仍是独立后续工作，当前启用证据见 STATUS。
 
 运行证据的校验清单不得包含清单自身。payload 全部关闭后生成仅列 payload 的
 `PAYLOADS.sha256`，再用独立 sidecar 记录该清单的 SHA-256；交接前必须分别执行
@@ -1019,12 +1019,11 @@ server-side sender secret, and verify delivery to an explicitly approved test
 recipient plus session/expiry/replay/isolation behavior. Never put the sender
 secret, user address, verification code or login link into logs or the bundle.
 
-The [email identity candidate](design/email-identity-v1.md) implements this flow
-inside the existing Login/Account with local D1 tests and synthetic mail. The
-dedicated account DB is now provisioned; its candidate Worker binding keeps the
-email enable flag explicitly false. Secret provisioning, exact-head release,
-retention enforcement, approved-recipient OTP delivery and runtime readback remain separate
-gates. No real message or Worker deployment occurred during this preparation.
+The [email identity implementation](design/email-identity-v1.md) uses the existing
+Login/Account and dedicated D1 store. The checked-in Worker enables email,
+retention and explicit existing-key connection. STATUS owns fresh activation
+and customer-delivery evidence; historical preparation reports do not override
+current flags. Provider acceptance still does not prove inbox delivery.
 
 2026-08-30 follow-up: the earlier permission pause was respected. After the
 owner's renewed go-ahead, minimal account/user read and D1/Worker-script write
@@ -1038,14 +1037,14 @@ Later on 2026-08-30 the owner supplied a private recipient and confirmed receivi
 the delivery test; the branded follow-up also has provider delivery evidence in
 the [language checkpoint](reports/2026-08-30-email-language-readiness.md). This is
 not an OTP/session test or administrator grant. Preserve all existing deployment
-credentials, customer keys and unrelated Resend resources; do not send further
-mail or open email login before the remaining gates pass.
+credentials, customer keys and unrelated Resend resources; send real test mail only to the intended authorized recipient; delivery, session
+verification and any administrator grant remain separate outcomes.
 
 ### Email OTP admission diagnosis
 
-Email login remains gated (`EMAIL_LOGIN_ENABLED` and
-`IDENTITY_RETENTION_ENABLED` stay false until a separate activation). Use this
-section for local workerd/D1 checks and, later, enabled-runtime 429/503
+Email login readiness requires `EMAIL_LOGIN_ENABLED` and
+`IDENTITY_RETENTION_ENABLED` plus the documented bindings/secrets. Use this
+section for local workerd/D1 checks and enabled-runtime 429/503
 triage. Policy: [Email identity v1](design/email-identity-v1.md).
 Implementation: `public-web/worker/email-identity.js` (`takeCoupledRates`).
 

@@ -1,199 +1,132 @@
-# Customer identity and commerce — implementation contract draft
+# Customer identity and commerce
 
-Status: implementation proposal with owner-confirmed identity methods, Resend
-email provider and numeric prices; not runtime authority or permission to collect
-payments. Inspected against main `97c814b` on
-2026-08-30. Product authority: [Product](../PRODUCT.md); current account design:
-[Account convergence](account-admin-convergence-v1.md); current API:
-[API contract](../API.md).
+Authority: [Product](../PRODUCT.md), [Account convergence](account-admin-convergence-v1.md),
+[API](../API.md). This document owns the account/commerce implementation boundary;
+STATUS owns dated release and real customer evidence. Last contract review: 2026-09-05.
 
-## Confirmed boundaries
+## Current scope
 
-The owner paused payment activation on 2026-08-30; continue non-paying flow
-preparation only. Active period purchase with manual renewal/no automatic debit
-is confirmed. See [implementation and resumption gates](payment-flow-preparation-v1.md).
+The owner resumed subscription integration and payment testing on 2026-09-05.
+Independent email identity, session revocation and explicit existing-key connection
+already exist. They do not depend on payment activation. The current release work
+adds a server-read commerce surface and a durable **isolated simulator**, not a
+verified payment-provider sandbox or a production merchant integration.
 
-- Keep one customer workspace at `/account` and the existing visual language.
-  `/login` becomes the identity entry without introducing another dashboard.
-- Public data requests remain authenticated `GET /v1/catalog` and
-  `POST /v1/query`. New identity/commerce operations belong to the account
-  control plane, never provider-specific public data routes.
-- Basic maps to `basic` (200 requests/minute), Professional to `standard` (600),
-  Flagship to `flagship` (1000). No commercial daily quota or concurrency tier.
-- Website login must eventually be independent of Agent/API credentials.
-  Current access-key-to-cookie exchange is only a compatibility bridge.
-- Owner confirmed both mobile-phone and email login/registration on 2026-08-30.
-  The target is one account supporting separately verified credentials, not two
-  separate customer workspaces. Linking requires an authenticated account plus
-  verification of the new credential; never merge accounts by typed contact.
-- Owner selected the existing Resend account for email on 2026-08-30; SMS has no
-  provider yet. Deliver email first without requiring SMS configuration. The
-  dedicated sending domain is `account.tradingdatas.com`, with intended sender
-  `TradingDatas <login@account.tradingdatas.com>`. Domain setup is not an enabled
-  login flow or proof of delivery. See [email preparation](../OPERATIONS.md#resend-account-email-preparation).
-- Owner confirmed monthly prices of 99 / 299 / 499, and annual payment at 10%
-  off twelve monthly prices. Annual totals are 1,069.20 / 3,229.20 / 5,389.20;
-  monthly equivalents are 89.10 / 269.10 / 449.10. Public display assumes CNY
-  for the domestic-first product; confirm settlement currency before activation.
-  These are price-display decisions, not evidence of live checkout or renewal.
-- An unpurchased or unpaid order never grants data. Category authorization,
-  upstream redistribution permission and runtime availability remain separate.
-- Alternative-data selling is not part of the initial base-plan checkout.
-  Do not create a hidden add-on or a silent trial-to-paid conversion.
-- Identity, orders and payment records do not belong in financial facts SQLite.
-  Do not migrate the data plane or repurpose its service credentials.
-- The owner-designated email identity must access both public Account and Admin,
-  using explicit server-side role authorization after verification, not separate
-  accounts or client email matching. This is a confirmed target, not an existing
-  admin session bridge; see the [owner workspace contract](account-admin-convergence-v1.md#owner-identity-and-two-workspaces).
+Production checkout remains unavailable until actual merchant configuration,
+settlement terms and provider integration are supplied and verified. These missing
+inputs do not stop frontend/backend development, existing authenticated data
+service or independent dataset onboarding. Source quality is handled per dataset
+under [Operations](../OPERATIONS.md#接入供数与质量的边界), not a commerce-wide gate.
 
-## Existing implementation and gaps
+## Identity, access and purchase are independent
 
-2026-09-05 clarification: independent email identity, session lifecycle and explicit
-existing-key connection are implemented. See [account continuity](account-library-v1.md)
-and STATUS for activation; older local-candidate statements below describe the
-original rollout. This integration does not resume the paused checkout or create
-a subscription ledger.
+- Keep one `/account` workspace and the existing `/login` entry. Verified email
+  sessions use `IDENTITY_DB`; Resend supplies email delivery. SMS remains deferred.
+- `/api/account/me.identity` is identity only: `tenant_id: null`,
+  `subscription_state: not_subscribed`, no implicit categories. This compatibility
+  field does not describe the separate commerce ledger.
+- Explicit existing-key connection produces `data_access`. Portal remains the
+  authority for effective tier, expiry, categories, rate limits, usage and keys.
+  Neither an email address nor a paid order can substitute for that readback.
+- Commerce records are owned by the verified session user, never a browser-sent
+  user, tenant, price, date or role. Legacy key-only sessions have no inferred
+  billing identity. A data or commerce outage does not silently end email login.
+- Keep independent admin/library feature switches. Registration cannot create
+  admin authority, customer grants or cloud bookmark availability.
+- Financial data requests remain Bearer-authenticated `GET /v1/catalog` and
+  `POST /v1/query`. No commerce table or credential enters financial facts SQLite.
 
-| Capability | Existing surface | Work needed |
-| --- | --- | --- |
-| Browser access | Encrypted eight-hour account cookie wrapping an access key | Stable user identity and independently revocable sessions |
-| Account access | Tenant-scoped Portal projection and API key management | Verified user-to-tenant binding; no email-string tenant matching |
-| Commercial limits | Server-enforced basic/standard/flagship minute limits | Approved sellable offers and subscription entitlement provisioning |
-| Payment | No checkout, verified notification handler or ledger found | Merchant/provider choice, sandbox integration, reconciliation |
-| User onboarding | Access-key bridge; local email identity candidate in existing Login/Account | Approve dedicated store/secrets and verify real delivery before activation |
+## Offers and terms
 
-The candidate public Pricing cards now follow `PRODUCT.md`: same base-data scope
-and history policy, with rate-only tier differentiation. Monthly/annual switches
-show the actual period total, monthly equivalent and savings. This is a local
-candidate until merged/deployed, and never grants access. The sellable dataset
-set and its licence evidence still require explicit review.
+The only price source is `public-web/src/pricing.js`. Basic/Professional/Flagship
+map to `basic`/`standard`/`flagship`, at 200/600/1000 requests per minute. Monthly
+display prices are CNY 99/299/499; annual totals are CNY 1069.20/3229.20/5389.20.
+There is no commercial daily quota or concurrency limit, and no automatic debit.
+These are confirmed display choices, not a signed settlement contract.
 
-## Decisions required before implementation/activation
+Server offers contain an immutable version, tier, period, currency, integer minor
+amount and request rate. The isolated simulator labels every offer, order and
+subscription `environment: sandbox`. Its `sandbox-fixed-days-v1` terms exist only
+for deterministic tests and must never become production renewal defaults.
+Alternative data, trials, upgrades, refunds and automatic renewal are not silently
+added to this base-plan slice.
 
-1. Both identity methods are confirmed; Resend and the dedicated email domain
-   are selected. Still approve the identity store, least-privilege sending
-   secret provisioning, and delivery/support ownership before email activation.
-   SMS provider/signature/template remain deferred; do not expose an enabled SMS
-   challenge or make SMS a prerequisite for email. No service purchase or contact
-   upload is authorized by this draft.
-2. Merchant entity and available merchant account, supported payment channels,
-   settlement currency and sandbox credentials. Never request secrets in chat.
-3. Prices, periods and manual renewal are confirmed. Still decide currency,
-   tax/invoice handling, term boundaries, renewal stacking/upgrade rules, refund
-   policy and failed-payment behavior.
-   Do not invent defaults or treat annual billing as an automatic-renewal mandate.
-4. Approved dataset scope shared by the tiers, including any category exclusions,
-   and evidence of permissible customer redistribution.
-5. Existing-key migration: verified ownership proof and account-binding rules;
-   do not automatically attach an existing tenant by typed email or token label.
+## Account commerce API
 
-## End-to-end customer flow
+All routes use the existing verified email session and expected `X-TD-Identity`.
+Writes retain exact same-origin protection. Account switching clears prior data
+and discards late responses. Responses are private and `no-store`.
 
-1. **Sign in / register:** use one verified identity flow; generic send response,
-   bounded resend/attempt rates, short expiry and one-time challenge consumption.
-   No enumeration through different unknown/known-account responses.
-2. **Account without a plan:** show identity plus an honest no-subscription
-   state. No API data grant is minted just because registration succeeds.
-3. **Choose an offer:** backend returns an immutable offer version, tier,
-   currency, amount, period and included scope. The frontend cannot submit its
-   own trusted price, tenant, expiry or authorization.
-4. **Checkout:** backend creates a tenant-bound pending order and provider
-   checkout intent. Payment page return is informational, never payment proof.
-5. **Confirm payment:** verify provider signature and match merchant, order,
-   amount and currency. Deduplicate notifications transactionally; preserve a
-   reconciliation path for delayed or lost notifications.
-6. **Activate:** only verified payment can schedule entitlement provisioning.
-   Show `payment confirmed / activation pending` if provisioning fails. Use an
-   idempotent control-plane operation; never pretend access exists prematurely.
-7. **Use data:** Account reads effective subscription, expiry and dataset grants
-   from the backend; users create separately scoped Agent/API keys.
-8. **Renew / expire:** calculate from the authoritative entitlement expiry using
-   the approved renewal rules, not the browser clock. No automatic renewal until
-   explicit customer mandate and provider support are implemented and verified.
+| Route | Contract |
+| --- | --- |
+| `GET /api/account/commerce` | `{mode, checkout_available, subscription, orders, offers}`; bounded recent order list |
+| `GET /api/account/offers` | Server offers with mode and checkout availability |
+| `POST /api/account/orders` | Only `{offer_id, offer_version}` and `Idempotency-Key`; returns the owned order |
+| `GET /api/account/orders/:id` | Owned order only; another user's order and unknown ID both return 404 |
 
-## Logical objects (not a committed database migration)
+`mode: unavailable` with empty projections means no configured commerce ledger,
+not proof that a customer has never paid elsewhere. A storage error is a failed
+read with a retry state, not an empty history. Only the isolated test binding can
+currently enable checkout. Production configuration cannot create orders, payment
+events or grants through these routes. The UI must not display a working payment
+button based on local state or a URL parameter.
 
-- User identity; verified identity credential; explicit tenant membership.
-- One-time verification challenge with hashed secret, expiry and consumed state.
-- Browser session with hashed opaque credential, expiry and revocation record.
-- Offer version; tenant order; payment attempt; verified provider event.
-- Subscription entitlement; provisioning attempt/outbox; audit/reconciliation
-  record. Raw API keys never appear in commerce records or webhook logs.
+The subscription projection contains ID, tier, period, server start/expiry, state,
+environment and terms version. Orders include immutable offer identity/amount,
+creation time, payment state and provisioning state. Payment `pending` versus
+`verified_paid` is separate from provisioning `not_provisioned`, `pending`,
+`active` or `failed`. Paid plus failed provisioning means **payment confirmed,
+activation delayed**, never unpaid, pay again or actual production access.
 
-Keep payment state (`pending`, `verified_paid`, `failed`, `refunded`) separate
-from access state (`not_provisioned`, `provisioning`, `active`, `expired`,
-`suspended`). These are draft internal concepts, not promised public enums.
-Do not overload technical dataset entitlement with purchased subscriptions.
+## Durable isolated simulator
 
-## Delivery sequence and gates
+The test commerce store is separate from identity and financial data. Four tables
+hold orders, deduplicated events, subscriptions and provisioning attempts. No
+identity cascade can delete purchase records, and no commerce foreign key can
+block existing identity retention. There is no production commerce migration in
+this slice. Production billing retention/anonymization must be decided before
+binding a real store; copying the sandbox schema into IDENTITY_DB is unsupported.
 
-### Independent-account slice (local candidate, not activated)
+A user/idempotency-key pair creates one immutable order; reusing that key with a
+different offer conflicts. Verified events must match the order, merchant,
+amount and currency before recording payment. Event replay and provisioning
+retry cannot duplicate an order's term. A browser redirect, `paid=true`, screenshot
+or client assertion never changes payment state. Simulator verification is an
+injected test dependency, not an unauthenticated public callback or success button.
 
-Implemented locally within the existing Login/Account, independently of payment
-activation: one-use email codes, independent revocable sessions and unsubscribed
-account projection. See [email identity implementation contract](email-identity-v1.md).
-The dedicated D1 store and Resend secrets still need production approval; legacy
-tenant linking is deliberately absent, not inferred by matching email. SMS is a
-later independent slice, not an email-launch requirement. This document does not authorize a
-provider purchase, contact upload, production migration or secret change.
+Payment acknowledgement and its provisioning work are recorded atomically.
+Provisioning only touches isolated test grants; it does not invoke production
+Portal key creation. A real subscription adapter must provide idempotent durable
+entitlement writes and revalidation of already-issued keys on renewal before it
+can replace this test implementation.
 
-| Website identity | Data entitlement | Account experience |
-| --- | --- | --- |
-| Verified | None | Account and personal library available; data access not subscribed; no key creation/grant |
-| Verified | Active | Show server-confirmed access, expiry, usage and separately scoped Agent keys |
-| Verified | Expired/suspended | Account and saved materials remain accessible; data requests remain denied |
-| Unavailable | Unknown | Retry identity verification; never infer signed-out or active access |
+## Remaining real-service inputs
 
-Required local/sandbox acceptance before activation:
+1. Intended test recipient and an ordinary customer's existing data access for
+   delivered OTP → sign-in → connection → catalog/query → usage readback.
+2. Actual payment provider/merchant, approved settlement currency and sandbox
+   credential location (never secrets in chat), then real provider sandbox tests.
+3. Production term timezone/month boundaries, renewal stacking/tier-change policy,
+   refund/tax/support treatment and approved sellable dataset scope.
+4. Production commerce retention and entitlement provisioning/renewal adapter.
+5. A bounded real-payment test only after those facts are established and its
+   amount/merchant/rollback are authorized. Simulator tests are not that evidence.
 
-- One-use verification, expiry, bounded retry/resend, generic known/unknown-account
-  responses and atomic challenge consumption under concurrent attempts.
-- Verified identity cannot claim another tenant; contact linking and existing-key
-  linking require explicit ownership proof, never email/key-label matching.
-- Session expiry/revocation is independent of API-key rotation or expiry. No
-  silent logout from a data-usage outage; no grant minted by registration.
-- Existing key holders retain the current bridge during a reviewed migration;
-  no key replacement, deletion, or upload to the identity vendor.
-- Cross-device bookmarks follow verified identity. Browser-local bookmarks stay
-  local until a user explicitly imports them into the displayed account. Sign-out
-  or account switching must clear any fetched private library from memory; no
-  implicit import, cross-account merge or analytics event containing saved items.
+No merchant onboarding submission, contract acceptance, service purchase or live
+charge follows merely from preparing this code. Keep these pending inputs visible
+without blocking the work that does not require them.
 
-Production email/SMS sending and persisted accounts remain disabled until service
-configuration, abuse controls, reviewed storage/API boundaries and end-to-end
-verification are complete. Local fixtures cannot claim a message was delivered.
+## Verification and rollback
 
-### Release sequence
+Use the existing public-web test/build entry points. Verify ownership, identity
+switches, stale offers, unexpected client fields, idempotent/concurrent creation,
+wrong/forged payment events, duplicate callbacks, provisioning failure/retry and
+durable readback after reopening the test store. Inspect bilingual Account and
+preview pages at desktop/tablet/mobile sizes with empty, unavailable and pending
+states. Real email delivery, authenticated API success and provider sandbox
+settlement each require separate real evidence.
 
-1. Finish sign-out PR #386 review, exact-head CI, merge and exact release readback.
-   Current acceptance remains in its report; this draft does not approve merging.
-2. User signs in using an intended existing key; verify only Account/read-only
-   views first. Key creation/disabling needs a bounded separately approved test.
-3. Resolve the remaining decisions above, then choose the identity/commerce store and
-   provider integrations through an explicit architecture review.
-4. Implement a local/sandbox identity vertical slice, including expiry, replay,
-   resend, abuse, session revoke and tenant-isolation tests. Keep existing keys
-   and the compatibility path intact during migration.
-5. Implement sandbox checkout with no production merchant writes. Test duplicate,
-   forged, out-of-order, wrong-amount, cancelled, delayed and retried events plus
-   entitlement provisioning failures and recovery.
-6. Reuse current Login, Pricing and Account surfaces with loading, empty, failed,
-   pending-activation and expired states. Test Chinese/English, light/dark,
-   desktop/tablet/mobile and keyboard operation.
-7. Activate production only after provider/merchant configuration, exact-code CI,
-   limited approved transaction testing and independent payment/access readback.
-
-## Rollback and safety
-
-Identity and checkout entry points need independent feature switches. Disabling
-new checkout must stop new purchases without deleting settled orders or breaking
-existing paid access. Rollback cannot erase payments, reset subscriptions or
-revoke existing API keys. Reconcile verified paid-but-not-provisioned orders
-before retrying; do not issue duplicate access or duplicate charges.
-
-Until those gates pass, keep purchase and verification-sent claims disabled.
-The current Login remains access-key based, with both future identity methods
-explicitly unavailable; it must not pretend a code was sent or register an account.
-No fake invoice, placeholder amount, guessed expiry or fabricated payment
-success may appear in the public product.
+Disable new checkout independently from event reconciliation and existing access.
+Never erase settled records, reset terms, delete existing keys or disable working
+data access as a payment rollback. Exact source, CI, public release, financial
+runtime and actual user/provider outcomes are reported separately in STATUS.

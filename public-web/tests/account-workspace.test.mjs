@@ -16,8 +16,7 @@ test("renders authenticated plan, usage, and security sections from portal data"
 
 test("keeps unimplemented identity and commerce capabilities explicit", () => {
   assert.match(appSource, /另类数据加购尚未单独投影/);
-  assert.match(appSource, /支付与账单暂未开放/);
-  assert.match(appSource, /购买预览不会生成订单或账单/);
+  assert.match(appSource, /<AccountCommerce[\s\S]*section="billing"/);
   assert.match(appSource, /凭证绑定与跨设备会话列表尚未开放/);
   assert.match(appSource, /短信服务暂未接入/);
   assert.doesNotMatch(appSource, /模拟订单号|mock invoice|verification code sent/i);

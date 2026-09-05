@@ -85,8 +85,8 @@ Marketing, content, and client-side state are never runtime evidence.
 3. **Pricing** — three request-rate tiers sharing the same base data; alternative-data
    commerce is a later independent surface and is not part of the main page;
 
-The Account menu and Account workspace expose **Doc** for public documentation
-and Agent/MCP setup; Doc is absent from desktop and mobile primary navigation.
+The Account menu and Account workspace expose **Docs** for public documentation
+and Agent/MCP setup; Docs is absent from desktop and mobile primary navigation.
 
 The header is a compact floating rounded surface containing the three primary
 destinations, one global search field, Bookmarks, and the Account icon. Its
@@ -101,7 +101,7 @@ search spans datasets, external research, preparation methods, and
 documentation. Data, Research, the expanded research library, and Documentation
 do not duplicate keyword search boxes; they retain only task-specific taxonomy
 and status controls. On mobile, global search moves into the expanded floating
-navigation. Doc in Account opens public `/docs` and `/connect`; language and
+navigation. Docs in Account opens public `/docs` and `/connect`; language and
 appearance are available without login in the upper-right menu. Account is
 private and contains personal access, usage, keys, billing and security.
 Bookmarks remain explicitly browser-local until authenticated sync exists.
@@ -494,9 +494,9 @@ The purchase path is dataset/detail or Pricing -> add-on summary -> checkout ->
 payment confirmation -> server entitlement readback -> Console. Base-package
 checkout must never silently include or auto-charge an alternative add-on.
 
-### 5.6 Doc hub
+### 5.6 Docs hub
 
-Doc is reached from Account, never a desktop/mobile primary navigation item.
+Docs is reached from Account, never a desktop/mobile primary navigation item.
 The public `/docs` hub presents first connection, Agent setup and account help
 first, then a grouped directory spanning getting started, data, APIs, methods
 and account guidance. Desktop uses a persistent directory beside the reading

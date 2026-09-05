@@ -22,6 +22,10 @@ copyFileSync(path.join(root, "worker", "email-templates.js"), path.join(dist, "s
 copyFileSync(path.join(root, "worker", "identity-retention.js"), path.join(dist, "server", "identity-retention.js"));
 copyFileSync(path.join(root, "worker", "account-continuity.js"), path.join(dist, "server", "account-continuity.js"));
 copyFileSync(path.join(root, "worker", "portal-errors.js"), path.join(dist, "server", "portal-errors.js"));
+copyFileSync(path.join(root, "worker", "commerce.js"), path.join(dist, "server", "commerce.js"));
+// Keep offers derived from the same pricing source used by the browser.
+mkdirSync(path.join(dist, "src"), { recursive: true });
+copyFileSync(path.join(root, "src", "pricing.js"), path.join(dist, "src", "pricing.js"));
 copyFileSync(hosting, path.join(dist, ".openai", "hosting.json"));
 // Reuse the versioned admin build. The Worker serves its shell at /admin/;
 // assets remain under /app/. No cookie or credential enters these files.

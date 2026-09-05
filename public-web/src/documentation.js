@@ -15,9 +15,9 @@ const guide = (slug, title, description, sections, related) => ({ slug, category
 
 const zh = [
   guide("start-1", "认识 TradingDatas", "先浏览数据与研究，再按需连接账户和工具。", [
-    section("explore", "从你要完成的事开始", ["Data 用于查找数据产品、字段与覆盖；Research 整理外部论文及其所需材料；Pricing 解释套餐和请求频率。Doc 集中提供使用说明，可从右上角账户菜单打开。", "这些内容和 Agent 接入说明都可以免登录阅读。想保存某个数据产品、文献或方法时，使用收藏按钮，稍后从顶部收藏入口继续。"]),
+    section("explore", "从你要完成的事开始", ["Data 用于查找数据产品、字段与覆盖；Research 整理外部论文及其所需材料；Pricing 解释套餐和请求频率。Docs 集中提供使用说明，可从右上角账户菜单打开。", "这些内容和 Agent 接入说明都可以免登录阅读。想保存某个数据产品、文献或方法时，使用收藏按钮，稍后从顶部收藏入口继续。"]),
     section("access", "什么时候需要登录", ["查看个人订阅、用量、API 密钥、账单或安全设置时需要登录。未登录访问账户分区，会先进入登录页，成功后回到原分区。", "邮箱登录用于识别你的账户，不自动附带数据权限。数据 API 的每次请求仍需要有效的 Bearer 密钥，网页登录状态不会代替它。"]),
-    section("personalize", "设置阅读习惯", ["右上角菜单可以切换中文、英文及明亮、暗色或系统外观，无需登录。全站搜索可查找数据、研究、方法和 Doc。", "收藏保存在当前浏览器，不会自动同步到其它设备或账户；清除浏览器数据可能同时清除收藏。"]),
+    section("personalize", "设置阅读习惯", ["右上角菜单可以切换中文、英文及明亮、暗色或系统外观，无需登录。全站搜索可查找数据、研究、方法和 Docs。", "收藏保存在当前浏览器，不会自动同步到其它设备或账户；清除浏览器数据可能同时清除收藏。"]),
   ], [link("浏览数据", "/data"), link("首次接入", "/docs/start-2"), link("本机收藏", "/bookmarks")]),
   guide("start-2", "连接已有数据访问", "已有 API 密钥的用户，从连接账户到完成第一次请求。", [
     section("prepare", "先准备有效密钥", ["你需要已有的 TradingDatas 数据 API 密钥。仅注册或登录邮箱不会创建订阅，也不会自动生成可查询数据的权限。购买与续费目前暂停。", "如果暂时没有密钥，可以先浏览 Data、阅读研究和接入说明；无需等待登录或购买即可了解数据。"]),
@@ -76,7 +76,7 @@ const zh = [
     section("billing", "账单入口不代表已开通支付", ["购买、续费和在线账单流程目前未开放。预览选择不会生成订单、发票或支付记录，也不会自动续费。", "需要判断是否有数据权限时，查看当前订阅与 API 返回；不要把价格页、付款预览或页面按钮当作已生效的订阅。"]),
   ], [link("订阅与数据访问", "/account/subscription"), link("用量", "/account/usage"), link("账单", "/account/billing")]),
   guide("commerce-3", "保护账户与 API 密钥", "区分邮箱会话和数据凭证，安全查看、轮换及停用密钥。", [
-    section("identity", "邮箱身份与数据访问分开管理", ["邮箱验证用于登录个人账户；可用登录方式以登录页显示为准。连接已有数据密钥后，才可读取相应数据访问和管理能力。", "邮箱会话过期时重新登录。身份服务暂时不可用时，页面提供重试；Doc、数据产品介绍和本机收藏仍可访问。"]),
+    section("identity", "邮箱身份与数据访问分开管理", ["邮箱验证用于登录个人账户；可用登录方式以登录页显示为准。连接已有数据密钥后，才可读取相应数据访问和管理能力。", "邮箱会话过期时重新登录。身份服务暂时不可用时，页面提供重试；Docs、数据产品介绍和本机收藏仍可访问。"]),
     section("keys", "管理已有权限下的密钥", ["在 API 密钥页使用当前账户提供的操作。新建密钥继承现有有效权限，不会升级套餐；完整密钥仅显示一次，请立即保存到安全位置。", "轮换时先配置并验证替代密钥，再停用旧密钥。当前用于访问门户的密钥不能直接停用；不要将真实密钥放进聊天、文档或公开代码。"]),
     section("sessions", "退出与删除的影响", ["退出网站结束相应登录会话，不等于停用外部工具正在使用的 API 密钥；需要停止工具访问时处理该密钥。", "安全页在可用时提供邮箱资料删除，需要重新验证和明确确认。它不删除数据平台记录或替你撤销独立的既有 API 密钥；提交删除也不等于所有备份已立即清除。"]),
   ], [link("API 密钥", "/account/keys"), link("安全设置", "/account/security"), link("Agent 接入", "/connect")]),
@@ -84,9 +84,9 @@ const zh = [
 
 const en = [
   guide("start-1", "Meet TradingDatas", "Explore data and research, then connect your account and tools when needed.", [
-    section("explore", "Start with your task", ["Use Data to find products, fields, and coverage; Research to explore external papers and their materials; Pricing to compare plans and request rates. Open Doc from the account menu for guidance.", "You can read these pages and Agent setup instructions without signing in. Bookmark a dataset, paper, or method and return through the bookmark icon in the header."]),
+    section("explore", "Start with your task", ["Use Data to find products, fields, and coverage; Research to explore external papers and their materials; Pricing to compare plans and request rates. Open Docs from the account menu for guidance.", "You can read these pages and Agent setup instructions without signing in. Bookmark a dataset, paper, or method and return through the bookmark icon in the header."]),
     section("access", "When sign-in is needed", ["Personal subscription, usage, API keys, billing, and security pages require sign-in. If you open one as a guest, you go to Login first and return to the same section after signing in.", "Email sign-in identifies your account. It does not grant data access. Every data API request still needs a valid Bearer key; your website session cannot replace it."]),
-    section("personalize", "Set up your reading preferences", ["The upper-right menu offers Chinese, English, and light, dark, or system appearance without sign-in. Global search covers data, research, methods, and Doc.", "Bookmarks stay in this browser. They do not automatically sync across accounts or devices, and clearing browser data may remove them."]),
+    section("personalize", "Set up your reading preferences", ["The upper-right menu offers Chinese, English, and light, dark, or system appearance without sign-in. Global search covers data, research, methods, and Docs.", "Bookmarks stay in this browser. They do not automatically sync across accounts or devices, and clearing browser data may remove them."]),
   ], [link("Explore data", "/data"), link("First connection", "/docs/start-2"), link("Local bookmarks", "/bookmarks")]),
   guide("start-2", "Connect existing data access", "Use an existing API key to view your access and make your first request.", [
     section("prepare", "Have a valid key ready", ["You need an existing TradingDatas data API key. Creating or signing into an email account does not create a subscription or query access. Purchase and renewal are currently paused.", "Without a key, you can still explore Data, read research, and review setup instructions without waiting for sign-in or checkout."]),
@@ -145,7 +145,7 @@ const en = [
     section("billing", "A billing entry does not mean payment is live", ["Purchase, renewal, and online billing workflows are not currently open. Preview selections create no orders, invoices, payment records, or automatic renewal.", "To confirm data permissions, check your current subscription and API responses. A price, preview, or page button does not establish an active subscription."]),
   ], [link("Subscription & data access", "/account/subscription"), link("Usage", "/account/usage"), link("Billing", "/account/billing")]),
   guide("commerce-3", "Protect your account and API keys", "Keep email sessions separate from data credentials and rotate keys safely.", [
-    section("identity", "Manage identity and data access separately", ["Email verification signs you into your personal account; the Login page shows available methods. Connecting an existing data key enables its corresponding access and management capabilities.", "Sign in again when your email session expires. If identity services are temporarily unavailable, retry from the page. Doc, product descriptions, and local bookmarks remain accessible."]),
+    section("identity", "Manage identity and data access separately", ["Email verification signs you into your personal account; the Login page shows available methods. Connecting an existing data key enables its corresponding access and management capabilities.", "Sign in again when your email session expires. If identity services are temporarily unavailable, retry from the page. Docs, product descriptions, and local bookmarks remain accessible."]),
     section("keys", "Manage keys within existing permissions", ["Use the operations available on your API keys page. A new key inherits existing effective access and does not upgrade your plan. Its full value is displayed once, so save it securely immediately.", "For rotation, configure and verify a replacement before disabling the old key. The key currently used for portal access cannot be disabled directly. Keep real keys out of chat, documents, and public code."]),
     section("sessions", "Understand sign-out and deletion", ["Website sign-out ends the relevant sign-in session; it does not disable API keys used by external tools. To stop tool access, manage that key.", "When available, Security offers email-profile deletion with fresh verification and explicit confirmation. It does not delete data-platform records or revoke independent existing API keys for you. Submission does not mean every backup is immediately erased."]),
   ], [link("API keys", "/account/keys"), link("Security", "/account/security"), link("Agent setup", "/connect")]),

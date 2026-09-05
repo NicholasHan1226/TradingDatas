@@ -1,3 +1,4 @@
+import { AccountCommerce } from "./AccountCommerce.jsx";
 import { getDocumentation } from "./documentation.js";
 import { DocumentationPage } from "./DocumentationPage.jsx";
 import { accountPath, accountSectionForRoute, isAccountRoute, privateAccountSections } from "./accountNavigation.js";
@@ -1424,7 +1425,7 @@ export function App() {
             <button className="icon-button account-button" type="button" aria-label={locale === "zh" ? "账户与设置" : "Account and settings"} aria-expanded={accountMenuOpen} onClick={() => { setMobileOpen(false); setAccountMenuOpen((value) => !value); }}><UserCircle size={30} weight="thin" /></button>
             {accountMenuOpen && <div className="account-menu-popover">
               <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? (accountData.email || accountData.tenant_id) : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountPlanLabel} · 已登录` : `${accountPlanLabel} · signed in`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
-              <section><button type="button" onClick={() => openAccountSection("overview")}>{locale === "zh" ? "我的账户" : "My account"}<ArrowRight /></button><button type="button" onClick={() => goTo("/docs")}>Doc<ArrowRight /></button></section>
+              <section><button type="button" onClick={() => openAccountSection("overview")}>{locale === "zh" ? "我的账户" : "My account"}<ArrowRight /></button><button type="button" onClick={() => goTo("/docs")}>Docs<ArrowRight /></button></section>
               <section className="public-preferences"><span>{copy.language}</span><div className="segmented">{[["system",copy.system],["zh","中文"],["en","English"]].map(([value,label]) => <button key={value} type="button" aria-pressed={localeChoice === value} onClick={() => chooseLocale(value)}>{label}</button>)}</div><span>{copy.appearance}</span><div className="segmented">{[["system",copy.system],["light",locale === "zh" ? "明亮" : "Light"],["dark",locale === "zh" ? "暗色" : "Dark"]].map(([value,label]) => <button key={value} type="button" aria-pressed={themeChoice === value} onClick={() => chooseTheme(value)}>{label}</button>)}</div></section>
             </div>}
           </div>
@@ -1630,7 +1631,7 @@ export function App() {
                     {group.items.map((item) => <button key={item.key} type="button" className={accountSection === item.key ? "is-active" : ""} onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}
                   </div>
                 ))}
-<div className="account-nav-group"><a href="/docs" onClick={event => navigate(event,"/docs")}>Doc</a><a href="/connect" onClick={event => navigate(event,"/connect")}>Agent / MCP</a></div>
+<div className="account-nav-group"><a href="/docs" onClick={event => navigate(event,"/docs")}>Docs</a><a href="/connect" onClick={event => navigate(event,"/connect")}>Agent / MCP</a></div>
               </aside>}
               <article className="account-detail">
                 {primaryRoute === "account" && <div className="account-detail-head">
@@ -1645,10 +1646,13 @@ export function App() {
                 </div>}
                 {primaryRoute === "account" && accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
                 {primaryRoute === "account" && accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
+                {primaryRoute === "account" && !accountChecking && accountSection === "subscription" && <AccountCommerce key={`commerce:subscription:${accountData.user_id || accountData.tenant_id}`} account={accountData} locale={locale} section="subscription" navigate={navigate} />}
                 {isEmailAccount && !accountChecking && ["overview","subscription","security"].includes(accountSection) && <AccountConnection key={accountData.user_id} account={accountData} locale={locale} onChange={changeDataConnection} disabled={accountSignOutPending} />}
                 {accountPrivateSection && accountChecking ? (
                   <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
-                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountPrivateSection && isEmailAccount && (accountData.data_access_state !== "connected" || ["security","billing"].includes(accountSection)) ? (
+                ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountSection === "billing" ? (
+                  <AccountCommerce key={`commerce:billing:${accountData.user_id || accountData.tenant_id}`} account={accountData} locale={locale} section="billing" navigate={navigate} />
+                ) : accountPrivateSection && isEmailAccount && (accountData.data_access_state !== "connected" || accountSection === "security") ? (
                   <EmailAccountPanel key={`${accountData.user_id}:${accountSection}`} account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} onDelete={deleteEmailProfile} onRetry={() => setAccountConnectionRevision((value) => value + 1)} />
                 ) : accountSection === "overview" ? (
                   accountData ? (
@@ -1729,12 +1733,6 @@ export function App() {
                     <TerminalWindow size={30} weight="duotone" />
                     <div><strong>Claude · Codex · OpenClaw · Hermes</strong><p>{locale === "zh" ? "所有 Agent 共用 provider-neutral 的 catalog/query 合同。密钥不会进入提示词。" : "Every Agent uses the same provider-neutral catalog/query contract. Secrets stay out of prompts."}</p></div>
                     <button className="primary-button" type="button" onClick={() => setAgentOpen(true)}>{copy.connect}</button>
-                  </div>
-                ) : accountSection === "billing" ? (
-                  <div className="account-billing-panel">
-                    <div><span className="mono-kicker">BILLING / NOT YET AVAILABLE</span><h3>{locale === "zh" ? "支付与账单暂未开放。" : "Payments and billing are not open yet."}</h3><p>{locale === "zh" ? "购买预览不会生成订单或账单，也不会改变现有权限。正式接通后，这里会分别展示订单、支付结果和开通状态；现在不展示模拟记录。续费需主动购买，不自动扣款。" : "A purchase preview creates no order or bill and never changes existing access. Once connected, this space will distinguish orders, payment results, and activation. No simulated records are shown. Renewals require an active purchase, with no automatic debit."}</p></div>
-                    {accountData && <dl><div><dt>{locale === "zh" ? "当前套餐" : "Current plan"}</dt><dd>{accountPlanLabel}</dd></div><div><dt>{locale === "zh" ? "有效期" : "Expiry"}</dt><dd>{accountData.expires_at ? accountData.expires_at.slice(0, 10) : (locale === "zh" ? "长期有效" : "No expiry")}</dd></div></dl>}
-                    <a className="account-inline-action" href="/pricing" onClick={(event) => navigate(event, "/pricing")}>{locale === "zh" ? "查看公开套餐" : "View public plans"}<ArrowRight /></a>
                   </div>
                 ) : accountSection === "security" ? (
                   accountData ? (

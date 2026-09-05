@@ -1,4 +1,5 @@
 // Isolated account control plane. This module cannot mint data/API entitlements.
+import { handleCommerce } from './commerce.js';
 import { renderEmail } from './email-templates.js';
 import { accountCapabilities, accountContinuityProjection, handleAccountContinuity } from './account-continuity.js';
 const COOKIE = 'td_identity_session';
@@ -197,6 +198,8 @@ export function createEmailIdentityHandler({fetchImpl=(...args)=>fetch(...args),
       if(!session) return json({error:'unauthenticated'},401,[cookie('',0),clearLegacy]);
       const context={request,env,session,tokenHash:await digest(token),now,fetchImpl};
       if(path==='/api/account/me') return request.method==='GET' ? json({...identityProjection(session,session.expires_at,env),...await accountContinuityProjection(context)}) : json({error:'method_not_allowed'},405);
+      const commerce=await handleCommerce(context);
+      if(commerce) return commerce;
       const continuity=await handleAccountContinuity(context);
       if(continuity) return continuity;
       if(path==='/api/account/profile/deletion') {
