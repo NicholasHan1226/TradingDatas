@@ -1,39 +1,39 @@
 # TradingDatas 当前状态
 
-供数观察时间：2026-09-05 21:24 Asia/Shanghai；发布检查更新至 21:33。源码、公开网站、数据运行面、真实商业开通分别验收；历史快照由 Git 保存。
+发布检查更新至 2026-09-05 22:58 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
 
-## 对外范围与前后端整合
+## 当前结论与对外范围
 
-- Nicholas 确认 Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；独立内部采集继续。Research 可保留外部加密资产文献，不映射为对外供数承诺。
-- [PR #498](https://github.com/NicholasHan1226/TradingDatas/pull/498) 合入 `a3106d68b19d528c31be775b808665833ed8c4e3`；候选 [33967381204](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33967381204)、精确主线 [33967864444](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33967864444) 四组检查全部通过。
-- 公开 Data/产品介绍无需登录；真实状态通过账户 `/api/account/catalog` 使用当前用户已有 key 读取，展示全部授权境内/新闻接口的 state、coverage、receipt/reasons 和读取时间。21 个产品导航绑定正式原始 dataset；38 个产品定义不等于 38 个已完成加工产品，也不等于可返回非空数据的接口数。
-- `pledge_stat` 小页 503 已修复：一次排除同一已验证失败 execution 的全部成功前缀，避免逐项耗尽排除循环；不放宽失败批次、lineage 或查询预算。
-- [PR #499](https://github.com/NicholasHan1226/TradingDatas/pull/499) 合入 `e251ae7be29981646fb8bb2223da9e64fa255aa4`，仅调整公共账户目录传输等待并更新构建/API 文档。候选 [33968276279](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968276279) 通过；发布后精确主线 [33968738191](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968738191) 四组检查全部通过。
-- Cloudflare [33968739190](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968739190) 两项发布成功；正式 `/data` 资源 `index-CoboUdjE.js` 一致。账户目录上游等待与已有公共网关统一为 30 秒，浏览器为 45 秒，仍 no-store、身份隔离、失败可重试；不增加采集预算或修改数据面性能目标。
-- 21:24 正式公网使用既有内部验收权限：会话 200，目录 200 / 12.410 秒 / 192 项，192 项均有 runtime 与 coverage，Crypto 0；质押统计查询 200 / 3.516 秒 / 1 行、partial、lineage complete；退出确认 200。此为既有权限链路，不是普通客户商业购买证明。
+- Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；内部采集保持隔离。Research 外部文献不构成 Crypto 供数承诺。
+- 两个新接口的按需配置已经合入主线，公开网站已更新；**数据运行版本尚未切换，正式采集批次未执行**。阻碍是本平台目录冷启动耗时超过既有 15 秒发布要求，不是上游 empty 或稳定性不足。
+- [PR #501](https://github.com/NicholasHan1226/TradingDatas/pull/501) 合入 `49e5ca9d60a878bcf4712b7ff46975215c817c58`。精确主线 [33971674611](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33971674611) 第 2 次执行通过；首次失败为测试清理与后台 Git 锁竞争，不能写成首次成功。
+- [PR #502](https://github.com/NicholasHan1226/TradingDatas/pull/502) 合入 `d1140e914a11b1303173c9e05148d86421a788ac`，修正测试隔离及网站历史文案；精确主线 [33972854145](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33972854145) 四组检查均通过。
+- Cloudflare [33972855121](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33972855121) 发布成功，最新资源为 `index-BZtC9up5.js`。来源摘要从正式配置快照派生，显示 Tushare 190 项、138 active / 52 paused；加新闻共 192 项、139 active / 53 paused。这是主线配置数量，**不证明两个 immutable 采集运行面已切换**。
+- 来源页日期为 2026-09-05，保留 8 月 27 日历史。新增历史记录只说明按需配置，并引导至账户认证目录查看实际 receipt、覆盖与采集状态，不把探测或配置当作落库证明。
+- Data/产品介绍公开；真实状态通过 `/api/account/catalog` 使用当前用户已有 key 读取，21 个产品导航关联正式原始 dataset。38 个产品定义、接口数、非空查询结果和稳定性分别判断。上游等待 30 秒、浏览器 45 秒保持，不构成放宽数据运行发布要求。
 
-## 数据运行、质量与性能
+## 未切换的运行面与性能诊断
 
-- A 股与内部 Crypto `current` 均为 `a3106d68b19d528c31be775b808665833ed8c4e3`，各 1086 文件清单验证通过。发布等待在途采集自然结束，未强杀 collector；两项 API 启动与原有 timer 状态恢复均通过。回滚 release `a093d407d23fe6cf7f82c1fb2a27359c82b7d803` 保留；恢复写入后的回滚必须重新自然 drain。
-- 隔离候选全新进程认证目录：境内 200 / 14.346 秒 / 192 项，内部 Crypto 200 / 8.510 秒 / 240 项。正式切换后 21:22 回读：境内 200 / 6.080 秒，内部 Crypto 200 / 7.915 秒；质押统计 200 / 0.912 秒 / 1 行，partial/degraded、lineage complete；两个 current 在回读前后不变。
-- 境内/新闻目录状态快照为 success 92、paused 55、empty 39、stale 3、unobserved 2、failed 1。它们是当前采集状态，不是 192 项都能返回非空，也不是连续稳定或商业可售数量。内部 Crypto 240 项不纳入对外统计。
-- 先前 27 项默认空查询复核为 26 项 provider_returned_no_rows 与 1 项 provider_error，不伪造非空、不把它们算作 27 项工程未完成。源 empty/partial/stale/provider_error 按合同展示，不冻结其它接入、开发或发布。
-- 性能仍需优化：本轮早期隔离境内目录出现 19.739 秒，公开账户目录出现 503/504；独立 profile 未重现固定慢函数，现场有 I/O 等待与采集竞争，相关性不是完整因果结论。后续成功读回不抹去繁忙时段超时，不宣称已持续稳定。
-- 一次诊断在旧 A 股 release 留下 15 个 Python 缓存；已保存到库外、验证全部 1056 个正式文件未变并仅清除该批缓存，恢复不可变目录验证后才发布。未改业务数据或凭据。另一次 Crypto 启动检查因探针等待短于原有初始化窗口而提前终止；已修正诊断等待并以真实启动/认证回读通过验收，没有放宽服务性能门禁。
-- 本地验证：346 项相关 Python 测试、321 项公共站测试、最终 29 项账户桥接/目录测试通过，生成构建通过。独立规则发现/代码审查，以及合成桌面、390/768px、中英/明暗、加载、身份切换、失败重试、空结果与查询示例检查完成；实际公网访客页面与授权 HTTP 链路另行验证。
+- A 股与内部 Crypto 的 `current` 均仍为 `a3106d68b19d528c31be775b808665833ed8c4e3`。目标 `49e5ca9d` 的暂存 release 已通过 1087 文件清单验证，但未成为 current；两份现行 a310 清单均通过 1086 文件验证，两项 API 与原有 5 个采集 timer 均为 active；未出现新增 on-demand selector 或 batch-result。没有强杀采集、执行新接口正式批次或修改生产权限。
+- 目标版本全新进程认证目录三次结果：境内 20.084 / 21.853（受控诊断）/ 17.588 秒，内部 Crypto 12.363 / 8.517 / 7.853 秒。境内持续超出既有 15 秒要求，故停在暂存层；不能以已合并、HTTP 200 或较快的 warm 查询冒充发布完成。
+- 新进程 profile 总计 16.857 秒，其中 coverage 9.927 秒。对同样的 15,196,606 行，计数冷读 10.7114 秒、warm 0.5138 秒；分组 warm 0.7666 秒未证明优于现有方案。冷缓存/I/O 是调查方向，尚无完整因果或已解决结论。
+- 本次冷启动诊断未新增 SQL、schema、缓存、timeout 或 worker 调整。下一步只做有证据的局部性能修正，保留 receipt/lineage、权限与发布回退边界；繁忙时段目录性能是内部未完成项，不归为 vendor 问题。
+- 公网管理服务已随 source 更新至 `d1140e914a11b1303173c9e05148d86421a788ac`，服务于 22:49:58 启动；不可变采集/API current 仍为 a3106d68，不能笼统称所有生产配置仍旧。同次公网目录的 `fut_daily`、`opt_basic` 均为 unobserved、存量 0、`no_recognized_receipt`；查询分别 200 / 1.230 秒 / 0 行、200 / 1.512 秒 / 0 行，lineage incomplete。`stk_nineturn` 仍 paused。管理进程 cwd 为 `/opt/td-admin`，不可变 API cwd 为 a310 release；均无 registry override，两者读取同一 facts SQLite，因此公网读模型使用新 registry、采集/loopback 使用旧 registry。公网新配置不证明已完成采集；回读文件中的 release 字段只是本机 current 指针，不是 HTTP 服务版本证明。
+- 同次公网采集状态为 success 93、paused 53、empty 39、unobserved 4、stale 2、failed 1，合计 192。这是瞬时状态，不是稳定或可售数量。
+- 当前生产继续使用此前已验证的 a3106d68 查询修复：失败 execution 的成功前缀一次排除，`pledge_stat` 小页不再逐项耗尽排除循环。该修复不放行失败 cohort。
+- 本轮来源页受影响 7 项测试与生成构建通过，公开合同快照检查通过。22:49 新公网回读使用既有内部验收权限：会话 200；目录 200 / 24.939 秒 / 192 项，192 项均带 runtime/coverage，Crypto 0；退出 200 确认。该链路不是普通客户商业购买证明。
 
-## 接入计划与下一批
+## 接入证据与下一批
 
-计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。本批候选配置中，190 个 Tushare 注册接口为 138 active、52 paused；另有 2 个新闻接口。52 个 Tushare 暂停中：32 个已有权限、14 locked、5 excluded、1 unknown。另有 25 个 current 未注册候选与 7 个 retired；后者不列入当前交付队列。
+计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。主线 52 个 Tushare 暂停中：32 个已有权限、14 locked、5 excluded、1 unknown；另有 25 个 current 未注册候选与 7 个 retired，后者排除当前队列。
 
-- 21:56 在既有 immutable `a3106d68` 上按冻结计划执行 3 次串行真实 HTTPS 探测：`fut_daily` 为 valid_empty，`opt_basic` 为 success / 6000 行（仅 ts_code 探测），`stk_nineturn` 为 valid_empty。逐项 preactivation 编译只允许前两项激活；已更新正式配置，仍为 on_demand，不声称自动采集。本批候选尚待合入、部署及全字段 receipt/API 验收。
-- 证据保留在服务器 `evidence/20260905-ready3/` 的独立 sidecar；计划 SHA-256 为 `e80370da25b922ebe99ea3edbbf7620f733ae31c5ee62b9dee70290cb6d0ac45`，正式 evidence refs 对应 `server-evidence/20260905-ready3-fut_daily` 与 `server-evidence/20260905-ready3-opt_basic`。
-- `stk_nineturn` 的 probe/ingest ready 不等于 activation-ready；datetime 窗口合同及 21:00 发布时段仍待修正。前端由共享编译判定将其单列为采集窗口待补齐，保留可探测说明；源 empty 不阻挡前两项。
-- 公开接口摘要的中英文数量改为从正式 registry 快照派生，已激活项离开预检队列；实际采集状态仍从用户自身授权目录实时读取，不从静态 active 推断健康。
-- 紧接着复核 12 个仅被数量边界完整性疑虑暂停的合同：`bc_otcqt`、`dc_concept_cons`、`dc_member`、`etf_sz_cons`、`fund_daily`、`fund_nav`、`fut_holding`、`fut_wsr`、`index_basic`、`index_weekly`、`kpl_concept_cons`、`opt_daily`。真实有限覆盖可以如实 partial/unverified，不要求先证明全量。
-- `bak_daily`、`fund_adj`、`fund_manager` 目前只是 limit=1/offset=0 探测合同，先补实际分页或窗口。其余 seed、请求锚点与必要参数按依赖推进。12+3 属于待复核/修正，不是本轮已激活。
-- compiler 仍存在把整千数量边界直接升级为 activation blocker 的行为，尚未在本轮修改；其与有限覆盖政策的差距列为下一批优先通用合同修正。不能直接清空 blocker、批量 unpause，或把失败 receipt 改成成功。
-- 9 月 11 日、18 日、10 月 9 日是检查节点，不是全量上线保证，也不是已就绪接口必须等待的发布日期。每交易日 2–3 项仅容量参考，不是限额；非交易日照常开发、复核、回填和发布，采集按 cadence。
+- 21:56 在既有 immutable a3106d68 上执行 3 次冻结的串行 HTTPS 探测：`fut_daily` valid_empty；`opt_basic` success / 6000 行（仅 ts_code 字段）；`stk_nineturn` valid_empty。这些是上游权限/请求观察，不是全字段落库 receipt、生产供数或连续稳定证明。
+- `fut_daily`、`opt_basic` 通过逐项 preactivation 编译，主线正式配置改为 active、cadence 仍为 on_demand。由于运行版本未切换，正式有界采集、落库 receipt、采集后的认证查询与公网回读仍待完成，不声称已在生产观测。
+- 服务器证据位于 `evidence/20260905-ready3/`；冻结计划 SHA-256 为 `e80370da25b922ebe99ea3edbbf7620f733ae31c5ee62b9dee70290cb6d0ac45`。evidence refs 为 `server-evidence/20260905-ready3-fut_daily` 与 `server-evidence/20260905-ready3-opt_basic`；旧探测仍绑定原 immutable，不随新配置回写。
+- `stk_nineturn` 保持 paused：datetime 窗口与发布时段合同待补齐，probe/ingest ready 不等于 activation-ready。前端预检为 ready 0、待 seed 4、待采集窗口 1；源 empty 不阻挡其它接口。
+- 有限覆盖合同下一批优先 `fund_daily`、`dc_concept_cons`：复核真实请求、字段、主键、时间与预算，有限覆盖如实 partial/unverified，不要求先证明全量。`opt_daily` 观测 15000 行超过现有 10000 行硬预算，须先缩小请求范围，不能直接放宽预算。`stk_nineturn` 的 datetime/cadence 单独处理。
+- compiler 把数量边界直接升级为 activation blocker 的行为仍待通用合同修正；不得直接清空 blocker、批量 unpause 或将失败 receipt 改为成功。`bak_daily`、`fund_adj`、`fund_manager` 的 limit=1/offset=0 探测合同仍须补实际分页或窗口；其余 seed、锚点与必填参数按依赖推进。
+- 9 月 11 日、18 日、10 月 9 日为检查节点，不是全量上线保证或已就绪接口最早发布日期。每交易日 2–3 项仅容量参考，不是限额；非交易日继续开发、复核、回填和发布。源 empty/partial/stale/provider_error 如实展示，不冻结独立接入。
 
 ## 账户、订阅与未完成项
 
