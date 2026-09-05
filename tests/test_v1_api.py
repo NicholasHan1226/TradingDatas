@@ -2487,3 +2487,44 @@ def test_catalog_coverage_fault_in_precedes_listener_without_workers(
         api_server.main()
     assert events == ["coverage_fault_in", "listen", "serve", "close", "shutdown"]
     assert signal.getsignal(signal.SIGTERM) is old_sigterm
+
+
+def test_catalog_coverage_fault_in_reuses_process_runtime_validation_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    import catalog_service as catalog_module
+    import data_plane_runtime
+
+    cache = {"seed": True}
+    catalog = SimpleNamespace(
+        _db_path=Path("/tmp/unused.sqlite"),
+        _validation_cache=cache,
+    )
+    registry = object()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        data_plane_runtime,
+        "build_data_plane_runtime",
+        lambda: SimpleNamespace(catalog=catalog, registry=registry),
+    )
+
+    def fake_fault(
+        db_path: Path,
+        registry: object = None,
+        *,
+        validation_cache: object = None,
+    ) -> None:
+        captured["db_path"] = db_path
+        captured["registry"] = registry
+        captured["validation_cache"] = validation_cache
+
+    monkeypatch.setattr(
+        catalog_module, "fault_in_catalog_coverage_index", fake_fault
+    )
+    api_server._fault_in_catalog_coverage_index()
+    assert captured["db_path"] == catalog._db_path
+    assert captured["registry"] is registry
+    assert captured["validation_cache"] is cache

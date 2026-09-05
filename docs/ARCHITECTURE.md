@@ -240,7 +240,8 @@ registry、SQLite 路径和既有 cursor signer。完整 catalog 请求在子进
 快照中完成，不能把不同快照的 projection、coverage 或 cursor 拼接，也不共享跨请求结果。
 监听前可对首个 catalog 将读取的收据窗口与逐数据集覆盖聚合做一次丢弃结果的页
 fault-in，只减少冷 I/O，不得全表 `COUNT` 覆盖索引；coverage 权威仍是请求内
-同一已验证快照上的精确 `COUNT`/`MIN`/`MAX`。执行数量有硬上限、没有无界排队；失败不回退
+同一已验证快照上的精确 `COUNT`/`MIN`/`MAX`。已验证快照仍要求主连接加 epoch
+verifier；verifier 不重复主连接的 schema/mmap 设置。执行数量有硬上限、没有无界排队；失败不回退
 旧数据或原进程计算。初始化发生在监听前，正常停机须回收该 unit 的全部任务进程。配置、
 容量响应和生产验收见 `docs/OPERATIONS.md`。
 
