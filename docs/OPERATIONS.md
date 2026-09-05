@@ -191,7 +191,11 @@ authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用�
 
 catalog 的 coverage 继续由同一 SQLite 快照中的精确 `COUNT`/`MIN`/`MAX` 生成。
 已有 coverage 索引时，使用同一语句中的独立标量聚合，让最早/最晚时间走索引端点；
-缺少该可选索引的旧库保留原单次聚合扫描。读取不创建索引、不缓存或估算行数。
+缺少该可选索引的旧库保留原单次聚合扫描。读取不创建索引、不把预热计数或估算当作
+行数权威。只读快照可设置 SQLite mmap/page cache，这只改变页读取方式。API 进程在
+监听前对已验证只读快照做一次覆盖索引页 fault-in（有索引时 `INDEXED BY` 该覆盖
+索引）并丢弃计数值；每个目录请求仍打开新的已验证快照并重新精确聚合。该预热只减少
+冷 I/O，不构成 cache-as-authority，也不放宽既有双认证 catalog <15s 门禁。
 
 目录与历史证据读取可复用进程内的收据校验 memo，键绑定完整原始行内容和预期 provider binding；
 每次请求仍打开新的已验证 SQLite 快照、重读收据并计算当前状态。binding 改变或同一 receipt ID
@@ -378,13 +382,15 @@ on_demand 未调度；cadence 改为 event，沿用 `cb_basic` 单码 fanout。
 （须提供必选参数 `ts_code`），是内部 shape 错误不是 vendor empty。
 当前合同去掉日期过滤，改为与 `pledge_stat` 相同的 ts_code-only
 `entity_fanout`（`batch_size=1`、`max_batches_per_run=1`），cadence
-仍是 `event`。`stk_nineturn` 官方 21:00 发布且
-datetime 窗尚无受支持的 activation 合同，保持暂停。静态 probe executable /
-ingest ready 不等于 activation-ready，公开预检将其单列为采集窗口合同待补齐。
-现有 postclose_daily 在 16:30 首次取得完整 empty 后，同一窗口会受 86400 秒
-修订间隔限制，可能错过 21:00 发布；这是内部时段缺口。下一步先有界验证
-上一开市日午夜 datetime 是否表示整日，再决定日分区合同及是否复用
-prior_open_morning，不能只改 cadence 就宣称修复。empty 仍是 empty。
+仍是 `event`。`stk_nineturn` 官方输入把 `trade_date` 写成 `YYYY-MM-DD HH:MM:SS`，官方
+21:00 发布。通用 activation 窗现已接受单键 `local_datetime_seconds` 日分区：
+planner 把日历日编码为本地午夜 `YYYY-MM-DD 00:00:00`，`prior_open_morning`
+也可复用同一格式。这不是 per-dataset 例外，也不等于已激活。当前 cadence
+仍是文档编译出的 `postclose_daily`（`doc_explicit_postclose_daily`）；改成
+`prior_open_morning` 需要 reviewed_contract_exact，未在本批改 cadence
+policy。2026-09-05 probe 是 valid_empty，empty ≠ success，保持暂停。
+postclose_daily 16:30 仍可能早于 21:00 发布；下一开市日午夜窗仍须 live
+prior-open-day probe 证明 vendor 接受该字面量并返回非空 SUCCESS。
 `cn.dataset.margin`、`cn.dataset.margin_detail` 与 `cn.dataset.margin_secs`
 已经是 `activation_state=active`，不是 `registry_activation_paused`。
 三者都是 trade_date-only snapshot。`margin` / `margin_detail` 官方是
@@ -395,7 +401,12 @@ empty 仍是 empty，不是 success；历史 trusted-empty 分区保持 empty。
 `margin_secs` 官方是每日盘前更新当日标的，合同仍是 `postclose_daily`，
 在开市日 16:30 之后采集已发布的盘前名单。其余
 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、
-news.flash、rt_etf_min*）保持暂停。
+news.flash、rt_etf_min*）保持暂停。`bse_mapping` 只把空 snapshot 写成可探测请求
+（官方 `o_code`/`n_code` 均为 N，不得猜代码）；`index_weekly` 改为已注册
+`index_basic.ts_code` fanout，仍保留 observed-limit ingest block。`bc_otcqt`
+没有已注册债券主数据 seed，`index_basic` 的 market 表不在冻结文档快照中，
+`ths_index` 的 `exchange=A` 不是文档默认值，`stock_company` 官方 requiredness
+未知，`hm_list` 与 `opt_daily` 15000 行超预算继续保持阻断。这不是 activation。
 
 ## 国际新闻原始发布时间与精度
 
@@ -524,7 +535,7 @@ probe 和 ingest 状态，并在 `STATUS.md` 记录该批范围、实际发布�
 | --- | --- | --- |
 | 现有供数整合 | 公开产品到正式 dataset 的映射；已登录用户通过自身 key 读取目录、coverage、state 与 receipt；合法查询体及用户查询回读。页面公开，数据仍认证 | 优先推进，按实际端到端证据交付，不等后续批次 |
 | 就绪接口 | 优先 probe executable 且 ingest ready 的已有权限接口；有界验证、通用 registry/config、planner、发布与 receipt/API 回读 | 2026-09-11 检查核心就绪批；不是所有核心候选保证完成 |
-| 有限覆盖合同复核 | 紧接就绪批，优先复核仅因返回数量边界而暂停的合同；真实返回行可明确标为 partial/unverified，不将未知全量性单独作为停接理由。只含探测 limit/offset 的合同先补实际分页或窗口；保留请求、主键、字段、时间与 receipt/lineage 约束 | 与就绪批同批推进，逐项读回；不直接清空 blocker 或批量 unpause |
+| 有限覆盖合同复核 | 紧接就绪批，优先复核仅因返回数量边界而暂停的合同；真实返回行可明确标为 partial/unverified，不将未知全量性单独作为停接理由。runtime compiler 不再把硬行预算内的整千边界自动升为 activation blocker；`reject_at_limit` 保持显式布尔，不强制为 true。观测行数超过硬 `max_rows_per_attempt` 仍必须 `reject_at_limit: true` 并保留 `response_completeness_unresolved_at_observed_limit`。不得清空既有 blocker 或放宽预算以求通过；只含探测 limit/offset 的合同先补实际分页或窗口；保留请求、主键、字段、时间与 receipt/lineage 约束 | 与就绪批同批推进，逐项读回；不直接清空 blocker 或批量 unpause |
 | 依赖与合同修正 | 先补可复用 seed receipt，再处理请求锚点、必要参数、分区/分页合同；fund/fut/opt 按依赖另波，可就绪即接入，不互相等待 | 2026-09-18 检查已完成批次与剩余工作量，逐项更新下一批范围 |
 | 候选与权限 | current 未注册候选按公共用途和复用程度补合同；locked/unknown 保留明确外部依赖，不伪造授权；excluded/retired 不纳入完成率 | 2026-10-09 复核可积接口发布结果、内部剩余工作及外部依赖；不是全部接口上线承诺 |
 
@@ -1272,7 +1283,9 @@ Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，�
 cursor 由该完整请求的同一快照产生。子进程启动时核对物理代码目录/文件 hash、完整
 registry hash、SQLite 路径、账号及既有 cursor signer 指纹；不经任务队列传原 token、
 账号字典或 signer 密钥。监听启动前必须完成全部子进程身份检查，此步骤不读取 catalog
-事实，也不构成数据健康证明。初始化失败关闭该候选服务；不能回退到未隔离的计算。
+事实，也不构成数据健康证明。身份检查之后、监听之前，父进程可对覆盖索引做一次丢弃
+计数的只读 fault-in；worker bootstrap 仍不读 facts。初始化失败关闭该候选服务；不能回退
+到未隔离的计算。
 
 目录运行任务总数最多等于 worker 数，没有隐式等待队列。容量满或 worker/IPC 失败返回
 既有 503 `service_unavailable`，不自动重放或改走 query。父请求一直等待已接收的任务

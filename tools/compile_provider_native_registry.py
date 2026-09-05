@@ -250,30 +250,59 @@ _REQUEST_WINDOW_FORMATS = frozenset(
     }
 )
 # These formats can be produced deterministically from the shared cadence
-# planner.  ``local_datetime_seconds`` deliberately remains manual-window
-# only: the planner rejects automatic intraday ranges rather than guessing a
-# market session.  Keep this list at the generic request-shape boundary; do
-# not add per-dataset activation exceptions.
+# planner.  ``local_datetime_seconds`` is not an automatic *intraday* format:
+# the planner rejects automatic session ranges rather than guessing a market
+# session.  A single-key date partition is different: ``encode_request_window_value``
+# already renders a calendar date as local midnight.  Keep this list at the
+# generic request-shape boundary; do not add per-dataset activation exceptions.
 _AUTOMATIC_REQUEST_WINDOW_FORMATS = frozenset(
     {"yyyymmdd", "yyyymm", "yyyy_qn", "yyyyww"}
 )
+_DATE_PARTITION_CADENCE_CLASSES = frozenset(
+    {
+        "daily_reference",
+        "monthly",
+        "postclose_daily",
+        "prior_open_morning",
+        "quarterly_reporting",
+        "weekly",
+    }
+)
+
+
+def _is_single_partition_local_datetime_window(window: Mapping[str, Any]) -> bool:
+    """Return whether this window is one local midnight date, not a session range."""
+
+    start = window["range_start_key"]
+    return (
+        start == window["range_end_key"]
+        and set(window["required_keys"]) == {start}
+        and window["max_span_days"] == 1
+        and set(window["formats"].values()) == {"local_datetime_seconds"}
+    )
 
 
 def _activation_window_is_supported(contract: Mapping[str, Any]) -> bool:
     """Return whether fresh HTTPS evidence may activate this request shape.
 
-    Local datetime windows are deliberately not scheduler inputs. A bounded
-    ``on_demand`` event cohort is different: a caller supplies its exact
-    window, and the generic collector can validate each literal fanout shard
-    against a non-empty event identity. Keep that exception structural, not
-    dataset-specific, so it cannot promote a session-minute or open-ended
-    local-time contract.
+    Local datetime windows are deliberately not scheduler inputs when they
+    would require guessing an intraday session. Three structural exceptions
+    stay generic:
 
-    A second structural exception covers date-anchored content streams
-    (news flash and similar): the cadence planner derives whole-calendar-day
-    spans (local ``00:00:00``–``23:59:59``), never intraday session guesses,
-    and the ``event_stream_unique_primary_key`` contract still asserts
-    in-window event times and unique primary keys for every row.
+    * A bounded ``on_demand`` event cohort: a caller supplies its exact
+      window, and the generic collector can validate each literal fanout shard
+      against a non-empty event identity.
+    * Date-anchored content streams (news flash and similar): the cadence
+      planner derives whole-calendar-day spans (local ``00:00:00``–
+      ``23:59:59``), never intraday session guesses, and
+      ``event_stream_unique_primary_key`` still asserts in-window event times
+      and unique primary keys for every row.
+    * A single-key date partition encoded as ``local_datetime_seconds``: the
+      planner already renders the planned calendar date as local midnight
+      (``YYYY-MM-DD 00:00:00``). Official docs that declare that datetime
+      grammar for a daily ``trade_date`` use this shape. It is available to
+      any date-partition cadence, including ``prior_open_morning``. It does
+      not invent a publish-clock or activate by itself.
     """
 
     window = contract["request_window_policy"]
@@ -282,6 +311,13 @@ def _activation_window_is_supported(contract: Mapping[str, Any]) -> bool:
     formats = set(window["formats"].values())
     if formats <= _AUTOMATIC_REQUEST_WINDOW_FORMATS:
         return True
+    fanout = contract["fanout"]
+    if (
+        _is_single_partition_local_datetime_window(window)
+        and contract["cadence_class"] in _DATE_PARTITION_CADENCE_CLASSES
+        and fanout["strategy"] == "none"
+    ):
+        return True
     completeness = contract["response_completeness"]
     if formats != {"local_datetime_seconds"} or not bool(contract["primary_key"]):
         return False
@@ -289,13 +325,13 @@ def _activation_window_is_supported(contract: Mapping[str, Any]) -> bool:
         return False
     if (
         contract["cadence_class"] == "on_demand"
-        and contract["fanout"]["strategy"] == "literal_values"
+        and fanout["strategy"] == "literal_values"
         and completeness["strategy"] == "windowed_unique_primary_key"
     ):
         return True
     return (
         contract["cadence_class"] == "event"
-        and contract["fanout"]["strategy"] == "none"
+        and fanout["strategy"] == "none"
         and completeness["strategy"] == "event_stream_unique_primary_key"
     )
 

@@ -35,6 +35,44 @@ CATALOG_V2_PATH = ROOT / "config" / "tushare_capability_catalog.v2.yaml"
 MCP_SNAPSHOT_PATH = ROOT / "config" / "tushare_mcp_capability_snapshot.v1.yaml"
 SCOPE_V2_PATH = ROOT / "config" / "tushare_capability_scope.v2.yaml"
 OBSERVATIONS_PATH = ROOT / "config" / "quicksync_interface_observations.v1.yaml"
+DOCUMENT_CONTRACTS_PATH = ROOT / "config" / "tushare_document_contracts.v1.yaml"
+UPSTREAM_CONTRACTS_PATH = ROOT / "config" / "tushare_upstream_contracts.v1.yaml"
+REQUEST_OBSERVATIONS_PATH = ROOT / "config" / "tushare_request_observations.v1.yaml"
+UNREGISTERED_DOMESTIC_CANDIDATES = frozenset(
+    {
+        "bo_cinema",
+        "bo_daily",
+        "bo_monthly",
+        "bo_weekly",
+        "cls_index",
+        "cls_market_shock",
+        "cls_member",
+        "cls_stock_shock",
+        "concept",
+        "concept_detail",
+        "dc_hot",
+        "film_record",
+        "ft_tick",
+        "fund_sales_vol",
+        "hs_const",
+        "idx_anns",
+        "index_member",
+        "jygs_stock_shock",
+        "kpl_concept",
+        "limit_list",
+        "ncov_num",
+        "stock_mx",
+        "stock_vx",
+        "teleplay_record",
+        "ths_hot",
+    }
+)
+UNREGISTERED_NEIGHBOR_ALIASES = {
+    "concept": "dc_concept",
+    "index_member": "index_member_all",
+    "kpl_concept": "kpl_concept_cons",
+    "limit_list": "limit_list_d",
+}
 
 MCP_DOMESTIC_ADDITIONS = {
     "bo_cinema",
@@ -833,6 +871,49 @@ def test_v2_discovery_artifact_does_not_synthesize_runtime_contracts() -> None:
         by_name[name]["dimensions"]["activation"] == "paused"
         for name in retired | review_required | mcp_only | runtime_excluded
     )
+
+
+def test_unregistered_domestic_candidates_stay_outside_frozen_190() -> None:
+    official = load_capability_catalog(CATALOG_PATH)
+    catalog = yaml.safe_load(CATALOG_V2_PATH.read_text(encoding="utf-8"))
+    documents = yaml.safe_load(DOCUMENT_CONTRACTS_PATH.read_text(encoding="utf-8"))
+    upstream = yaml.safe_load(UPSTREAM_CONTRACTS_PATH.read_text(encoding="utf-8"))
+    observations = yaml.safe_load(REQUEST_OBSERVATIONS_PATH.read_text(encoding="utf-8"))
+    official_by_name = {item["api_name"]: item for item in official["capabilities"]}
+    v2_by_name = {item["name"]: item for item in catalog["datasets"]}
+    document_names = {item["api_name"] for item in documents["contracts"]}
+    upstream_names = {item["api_name"] for item in upstream["contracts"]}
+    observation_names = {item["api_name"] for item in observations["entries"]}
+    missing_official = UNREGISTERED_DOMESTIC_CANDIDATES - V2_REVIEW_REQUIRED
+
+    assert len(UNREGISTERED_DOMESTIC_CANDIDATES) == 25
+    assert V2_REVIEW_REQUIRED == {"dc_hot", "idx_anns", "ths_hot"}
+    assert missing_official <= UNREGISTERED_DOMESTIC_CANDIDATES
+    assert len(missing_official) == 22
+    assert len(document_names) == len(upstream_names) == len(observation_names) == 190
+    assert UNREGISTERED_DOMESTIC_CANDIDATES.isdisjoint(document_names)
+    assert UNREGISTERED_DOMESTIC_CANDIDATES.isdisjoint(upstream_names)
+    assert UNREGISTERED_DOMESTIC_CANDIDATES.isdisjoint(observation_names)
+
+    for name in V2_REVIEW_REQUIRED:
+        row = official_by_name[name]
+        item = v2_by_name[name]
+        assert row["scope_state"] == "unknown"
+        assert row["doc_url"]
+        assert item["official_doc_url"] == row["doc_url"]
+        assert item["dimensions"]["contract_state"] == "review_required"
+
+    for name in missing_official:
+        assert name not in official_by_name
+        item = v2_by_name[name]
+        assert item["official_doc_url"] is None
+        assert item["dimensions"]["contract_state"] == "missing_official_contract"
+
+    for unregistered, registered in UNREGISTERED_NEIGHBOR_ALIASES.items():
+        assert unregistered in missing_official
+        assert registered in document_names
+        assert registered not in UNREGISTERED_DOMESTIC_CANDIDATES
+        assert v2_by_name[unregistered]["name"] != registered
 
 
 def test_scope_v2_inputs_fail_closed_on_entitlement_alias_and_source_drift() -> None:

@@ -97,8 +97,10 @@ discovery-only 项不得伪造成 `DatasetDefinition`，也不得猜测 dataset 
 registry 声明 request template、variants、window、fanout、pagination、字段、主键、分区、预算、频率和回填。executor 不包含 dataset_id 或 api_name 条件分支。
 
 自动 cadence 统一支持 `yyyymmdd`、`yyyymm`、`yyyy_qn` 与 `yyyyww` 四种已验证窗口编码；它们
-都由同一个 planner 生成。`local_datetime_seconds` 只允许显式有界 one-shot，不能由 scheduler 猜测
-盘中窗口。带非空主键、`literal_values` fanout 和 `windowed_unique_primary_key` 完整性规则的
+都由同一个 planner 生成。`local_datetime_seconds` 不能由 scheduler 猜测盘中会话；单键日分区
+例外由同一 planner 把日历日编码为本地午夜 `YYYY-MM-DD 00:00:00`，可供
+`postclose_daily` / `prior_open_morning` 等日期 cadence 使用。带非空主键、
+`literal_values` fanout 和 `windowed_unique_primary_key` 完整性规则的
 `on_demand` 事件合同可在 fresh activation evidence 后由通用 collector 按需执行；这不使其
 进入 scheduler。窗口格式本身不构成 activation 证据，仍须经过 provider → SQLite receipt → query readback。
 
@@ -161,7 +163,7 @@ systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 
 
 官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表与更新说明，冻结 URL 和内容哈希；`config/tushare_cadence_policy.v1.yaml` 是 190 个已有正式文档合同的唯一 cadence authority，按排序 `api_name` 精确覆盖、逐项绑定官方文档 SHA，并只允许九个通用 cadence class、正 freshness SLA 和固定安全闭集内且与 cadence 语义一致的 reason code；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。更具体的 reviewed contract cadence/SLA 优先于该通用政策，`reviewed_contract_exact` 只能用于 reviewed bundle 中 cadence/SLA 精确一致的合同。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。
 
-activation evidence 不能绕过 provider payload 的绝对扫描上限。registry compiler 按声明字段数通用、确定性地收窄 active binding 的 `max_rows_per_attempt`；字段、深度或最小窗口在现有绝对上限内无法安全编译时，该 binding 继续保持 paused。runtime 仍复核同一硬上限，不因单个 dataset 放宽。
+activation evidence 不能绕过 provider payload 的绝对扫描上限。registry compiler 按声明字段数通用、确定性地收窄 active binding 的 `max_rows_per_attempt`；字段、深度或最小窗口在现有绝对上限内无法安全编译时，该 binding 继续保持 paused。runtime 仍复核同一硬上限，不因单个 dataset 放宽。runtime compiler 不再把硬行预算内的整千边界自动升为 activation blocker；`reject_at_limit` 保持显式布尔；观测行数超过硬 `max_rows_per_attempt` 仍必须阻断，不得清空 blocker 或放宽预算以求通过。
 
 请求合同的输入权威也必须按原始文件字节绑定，不能只信任调用方传入的已解析对象。runtime compiler 固定核对 official document、request observation、transport observation 和 reviewed contract 四类输入；HTTPS probe plan 固定核对 official document、request observation、transport observation 和 registered runtime contract 四类输入。任一文件内容与其冻结 SHA 不一致时，在生成请求或调用 provider 前失败。dataset-field seed 只有在 fresh success receipt 存在且 producer schema 与 registry 精确相等时才可使用；migration hint、旧 schema 或未来 schema 都不能替代生产者合同。
 
@@ -236,8 +238,10 @@ API lineage 必须同时保留 `provider=tushare` 与 `transport_service=quicksy
 用户限额，只向受信子进程传递已解析的查询合同；子进程使用同一 immutable release、
 registry、SQLite 路径和既有 cursor signer。完整 catalog 请求在子进程独立新建的只读
 快照中完成，不能把不同快照的 projection、coverage 或 cursor 拼接，也不共享跨请求结果。
-执行数量有硬上限、没有无界排队；失败不回退旧数据或原进程计算。初始化发生在监听前，
-正常停机须回收该 unit 的全部任务进程。配置、容量响应和生产验收见 `docs/OPERATIONS.md`。
+监听前可对覆盖索引做一次丢弃计数的页 fault-in，只减少冷 I/O；coverage 权威仍是请求内
+同一已验证快照上的精确 `COUNT`/`MIN`/`MAX`。执行数量有硬上限、没有无界排队；失败不回退
+旧数据或原进程计算。初始化发生在监听前，正常停机须回收该 unit 的全部任务进程。配置、
+容量响应和生产验收见 `docs/OPERATIONS.md`。
 
 TradingDatas 是一个产品和一套固定数据合同，不是一个必须共享所有运行状态的单体服务。
 所有 lane 复用同一 registry → provider adapter → SQLite facts/receipts → catalog/query

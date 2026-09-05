@@ -121,6 +121,10 @@ def test_verified_snapshot_accepts_checkpointed_empty_wal_sidecars(
             assert snapshot.execute("SELECT COUNT(*) FROM market_ingest_runs").fetchone() == (
                 0,
             )
+            assert snapshot.execute("PRAGMA mmap_size").fetchone()[0] > 0
+            assert snapshot.execute("PRAGMA cache_size").fetchone()[0] == (
+                -projection_module._READ_SNAPSHOT_CACHE_KIB
+            )
     finally:
         writer.close()
 

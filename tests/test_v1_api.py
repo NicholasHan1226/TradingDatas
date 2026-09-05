@@ -1415,6 +1415,7 @@ def test_v1_group_22_main_bootstrap_does_not_import_legacy_runtime(
     )
     monkeypatch.setattr(api_server, "_process_config_loaded", False, raising=False)
     monkeypatch.setattr(api_server, "TradingDatasHTTPServer", build_server)
+    monkeypatch.setattr(api_server, "_fault_in_catalog_coverage_index", lambda: None)
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
     main_errors: list[BaseException] = []
@@ -2412,7 +2413,7 @@ def test_catalog_executor_bootstrap_precedes_listener_and_always_closes(
 
     class Server:
         def __init__(self, *args, **kwargs):
-            assert events == ["bootstrap"]
+            assert events == ["bootstrap", "coverage_fault_in"]
             events.append("listen")
 
         def serve_forever(self):
@@ -2426,6 +2427,11 @@ def test_catalog_executor_bootstrap_precedes_listener_and_always_closes(
 
     monkeypatch.setattr(api_server, "_ensure_process_config_loaded", lambda: None)
     monkeypatch.setattr(api_server, "TradingDatasHTTPServer", Server)
+    monkeypatch.setattr(
+        api_server,
+        "_fault_in_catalog_coverage_index",
+        lambda: events.append("coverage_fault_in"),
+    )
     monkeypatch.setattr(data_plane_runtime, "build_data_plane_runtime",
                         lambda: SimpleNamespace(catalog=sentinel))
     monkeypatch.setitem(sys.modules, "catalog_executor", SimpleNamespace(
@@ -2435,6 +2441,49 @@ def test_catalog_executor_bootstrap_precedes_listener_and_always_closes(
     ))
     with pytest.raises(RuntimeError):
         api_server.main()
-    assert events == (["bootstrap", "shutdown"] if failure == "bootstrap" else
-                      ["bootstrap", "listen", "serve", "close", "shutdown"])
+    assert events == (
+        ["bootstrap", "shutdown"]
+        if failure == "bootstrap"
+        else ["bootstrap", "coverage_fault_in", "listen", "serve", "close", "shutdown"]
+    )
+    assert signal.getsignal(signal.SIGTERM) is old_sigterm
+
+
+def test_catalog_coverage_fault_in_precedes_listener_without_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import signal
+    import sys
+    from types import SimpleNamespace
+
+    events: list[str] = []
+    old_sigterm = signal.getsignal(signal.SIGTERM)
+
+    class Server:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            assert events == ["coverage_fault_in"]
+            events.append("listen")
+
+        def serve_forever(self) -> None:
+            events.append("serve")
+            raise RuntimeError("serve stopped")
+
+        def server_close(self) -> None:
+            events.append("close")
+
+    monkeypatch.setattr(api_server, "_ensure_process_config_loaded", lambda: None)
+    monkeypatch.setattr(api_server, "TradingDatasHTTPServer", Server)
+    monkeypatch.setattr(
+        api_server,
+        "_fault_in_catalog_coverage_index",
+        lambda: events.append("coverage_fault_in"),
+    )
+    monkeypatch.setitem(sys.modules, "catalog_executor", SimpleNamespace(
+        catalog_worker_count=lambda: 0,
+        initialize_catalog_executor=lambda catalog: events.append("bootstrap"),
+        shutdown_catalog_executor=lambda: events.append("shutdown"),
+    ))
+    with pytest.raises(RuntimeError, match="serve stopped"):
+        api_server.main()
+    assert events == ["coverage_fault_in", "listen", "serve", "close", "shutdown"]
     assert signal.getsignal(signal.SIGTERM) is old_sigterm

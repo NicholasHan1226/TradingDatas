@@ -258,6 +258,8 @@ _SQLITE_HEADER = b"SQLite format 3\x00"
 # on a two-worker pool during collect activation hung query workers.
 _SNAPSHOT_READER_LOCK_TIMEOUT_SECONDS = 2.0
 _SNAPSHOT_READER_MAX_ATTEMPTS = 5
+_READ_SNAPSHOT_MMAP_BYTES = 1 << 30
+_READ_SNAPSHOT_CACHE_KIB = 65_536
 _FileIdentity = tuple[int, int, int]
 _IngestRunRow = tuple[object, ...]
 
@@ -4414,6 +4416,10 @@ def _open_bound_receipt_database_ro(
         )
         _require_bound_path_identities(binding)
         conn.execute("PRAGMA query_only = ON")
+        # Pager/mmap settings are I/O, not count authority. Catalog coverage
+        # still uses exact COUNT/MIN/MAX on this same verified snapshot.
+        conn.execute(f"PRAGMA mmap_size = {_READ_SNAPSHOT_MMAP_BYTES}")
+        conn.execute(f"PRAGMA cache_size = -{_READ_SNAPSHOT_CACHE_KIB}")
         conn.execute("BEGIN")
         conn.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone()
         table_info = tuple(

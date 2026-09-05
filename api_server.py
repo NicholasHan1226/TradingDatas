@@ -1723,6 +1723,15 @@ class TradingDatasHTTPServer(ThreadingHTTPServer):
 
 
 
+def _fault_in_catalog_coverage_index() -> None:
+    """Fault coverage-index pages before listen. Not a count authority."""
+
+    from catalog_service import fault_in_catalog_coverage_index
+    from runtime_paths import marketdata_sqlite_path
+
+    fault_in_catalog_coverage_index(marketdata_sqlite_path())
+
+
 def main() -> None:
     _ensure_process_config_loaded()
     from catalog_executor import (
@@ -1747,6 +1756,7 @@ def main() -> None:
             # Complete identity/bootstrap before accepting requests. This does
             # not read catalog facts or establish production data health.
             initialize_catalog_executor(build_data_plane_runtime().catalog)
+        _fault_in_catalog_coverage_index()
         httpd = TradingDatasHTTPServer(
             (HOST, PORT),
             Handler,

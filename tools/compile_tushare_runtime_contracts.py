@@ -56,6 +56,10 @@ _CREDENTIAL_TEXT = re.compile(
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SEMANTIC_VERSION = re.compile(r"[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 _EXPECTED_IN_SCOPE_CONTRACTS = 190
+_DEFAULT_MAX_ROWS_PER_ATTEMPT = 10000
+_ROW_LIMIT_COMPLETENESS_REASON = (
+    "response_completeness_unresolved_at_observed_limit"
+)
 _INPUT_FIELD_KEYS = frozenset({"name", "declared_type", "description", "required"})
 _INPUT_DECLARED_TYPES = frozenset(
     {
@@ -276,7 +280,7 @@ _REQUEST_OBSERVATION_PROBE_REASONS = frozenset(
     }
 )
 _REQUEST_OBSERVATION_ACTIVATION_REASONS = _REQUEST_OBSERVATION_PROBE_REASONS | {
-    "response_completeness_unresolved_at_observed_limit"
+    _ROW_LIMIT_COMPLETENESS_REASON
 }
 _WINDOW_FORMATS = _PARAMETER_TRANSFORMS
 
@@ -878,6 +882,48 @@ def _request_resumable_fanout(raw: object, *, label: str) -> dict[str, Any]:
     return result
 
 
+def _row_limit_observation(
+    raw: object,
+    *,
+    api_name: str,
+    activation_reasons: list[str],
+    max_rows_per_attempt: int,
+    label: str,
+) -> tuple[dict[str, Any], bool]:
+    """Keep exact-thousand observations honest without freezing activation.
+
+    `reject_at_limit` stays an explicit ingest-time contract. Unknown
+    completeness below the hard row budget may be recorded as finite
+    coverage; only an observed count above `max_rows_per_attempt` must
+    block activation.
+    """
+
+    row = _mapping(raw, label)
+    _exact_keys(
+        row,
+        frozenset({"observed_count", "detection", "reject_at_limit"}),
+        label,
+    )
+    observed_count = _positive_int(row["observed_count"], f"{label}.observed_count")
+    _text(row["detection"], f"{label}.detection")
+    reject_at_limit = row["reject_at_limit"]
+    if reject_at_limit is not True and reject_at_limit is not False:
+        raise RuntimeContractCompilationError(
+            f"{label}.reject_at_limit must be a boolean"
+        )
+    completeness_blocked = _ROW_LIMIT_COMPLETENESS_REASON in activation_reasons
+    if observed_count > max_rows_per_attempt:
+        if reject_at_limit is not True:
+            raise RuntimeContractCompilationError(
+                f"{api_name} row limit over hard budget must set reject_at_limit"
+            )
+        if not completeness_blocked:
+            raise RuntimeContractCompilationError(
+                f"{api_name} row limit over hard budget must block activation"
+            )
+    return deepcopy(row), completeness_blocked
+
+
 def _request_observation_index(
     raw: Mapping[str, Any],
     *,
@@ -885,6 +931,7 @@ def _request_observation_index(
     transport_observations: Mapping[str, Any],
     official_contract_sha256: str,
     transport_observations_sha256: str,
+    max_rows_per_attempt: int = _DEFAULT_MAX_ROWS_PER_ATTEMPT,
 ) -> dict[str, dict[str, Any]]:
     document = _mapping(deepcopy(raw), "request observations")
     _exact_keys(document, _REQUEST_OBSERVATION_ROOT_KEYS, "request observations")
@@ -1058,27 +1105,15 @@ def _request_observation_index(
             )
         row_limit = entry["row_limit_observation"]
         if row_limit is not None:
-            row = _mapping(row_limit, f"{label}.row_limit_observation")
-            _exact_keys(
-                row,
-                frozenset({"observed_count", "detection", "reject_at_limit"}),
-                f"{label}.row_limit_observation",
+            row_limit, completeness_blocked = _row_limit_observation(
+                row_limit,
+                api_name=api_name,
+                activation_reasons=activation_reasons,
+                max_rows_per_attempt=max_rows_per_attempt,
+                label=f"{label}.row_limit_observation",
             )
-            _positive_int(
-                row["observed_count"], f"{label}.row_limit_observation.observed_count"
-            )
-            if row["reject_at_limit"] is not True:
-                raise RuntimeContractCompilationError(
-                    f"{label}.row_limit_observation.reject_at_limit must be true"
-                )
-            if (
-                "response_completeness_unresolved_at_observed_limit"
-                not in activation_reasons
-            ):
-                raise RuntimeContractCompilationError(
-                    f"{api_name} row limit must block activation"
-                )
-            row_limit_count += 1
+            if completeness_blocked:
+                row_limit_count += 1
         request_shape = _text(entry["request_shape"], f"{label}.request_shape")
         if request_shape not in _REQUEST_SHAPES:
             raise RuntimeContractCompilationError(
@@ -1765,6 +1800,7 @@ def compile_runtime_contract_bundle(
         transport_observations=transport_document,
         official_contract_sha256=official_sha,
         transport_observations_sha256=transport_sha,
+        max_rows_per_attempt=defaults["budgets"]["max_rows_per_attempt"],
     )
     request_provenance = _mapping(
         request_document["provenance"], "request observations.provenance"
