@@ -54,8 +54,8 @@ Developer pitfalls for this slice:
   Chinese uses only the Chinese canonical block. Required terms must appear
   in both languages or `tests/agent-prompts.test.mjs` fails. Do not embed a
   second full prompt in `src/AgentDialog.jsx`.
-- `src/productEvidence.js` is the only public evidence view until a reviewed
-  authenticated projection exists. Do not restore percentages, 90-day charts,
+- `src/productEvidence.js` remains the unbound product placeholder;
+  `CatalogEvidence.jsx` reads authenticated per-interface evidence through `/api/account/catalog`. Do not restore percentages, 90-day charts,
   `observed_example`, or a product slug as `dataset_id`.
   `tests/public-evidence.test.mjs` fail-closes on those substitutions.
 - OTP admission is one atomic D1 statement (global + per-IP). Local checks:
@@ -545,3 +545,7 @@ preserves test identity ownership and orders. Use a separate new browser session
 and sign in to the same synthetic address to verify cross-session readback.
 Run `npm run test:sites` and `npm run build`; do not deploy these test-store
 bindings or claim that simulator results prove a real payment-provider sandbox.
+
+### Authenticated collection evidence
+
+Data remains a public product browser. Signed-in users with an existing data key can read their authorized domestic/news catalog through `/api/account/catalog`. The bridge preserves catalog metadata and removes internal Crypto. Data lists every authorized interface; mapped product pages list related raw interfaces without claiming a finished PIT product. Copyable query bodies use the exact catalog dataset ID and integer schema major. Loading, error/retry, no-connection and empty-filter states do not fall back to saved runtime evidence. No data credential or catalog snapshot is persisted in browser storage.

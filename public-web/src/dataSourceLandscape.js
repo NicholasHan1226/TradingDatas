@@ -5,21 +5,21 @@ export const landscapeMeta = {
     "A maintained source landscape, not a claim that every technically reachable dataset may be redistributed or sold.",
 };
 
-export const connectedCoverage = [
+const allConnectedCoverage = [
   {
     id: "tushare-quicksync",
     provider: "Tushare via QuickSync",
     market: "CN",
     family: "china-markets",
     contractCount: 190,
-    activeCount: 135,
-    pausedCount: 55,
+    activeCount: 136,
+    pausedCount: 54,
     unit: "interfaces",
     collection: "configured",
     evidence: "provider-native registry",
     note: {
-      zh: "190 个标准化运行合同；135 个配置为 active。active 不等于每个接口都已连续稳定采集。",
-      en: "190 normalized runtime contracts; 135 are configured active. Active does not mean every interface has continuous healthy collection.",
+      zh: "190 个标准化运行合同；136 个配置为 active。active 不等于每个接口都已连续稳定采集。",
+      en: "190 normalized runtime contracts; 136 are configured active. Active does not mean every interface has continuous healthy collection.",
     },
   },
   {
@@ -55,7 +55,7 @@ export const connectedCoverage = [
     },
   },
 ];
-export const collectionHistory = [
+const allCollectionHistory = [
   {
     date: "2026-08-27",
     provider: "Tushare / QuickSync",
@@ -88,7 +88,7 @@ export const collectionHistory = [
   },
 ];
 
-export const sourceCandidates = [
+const allSourceCandidates = [
   {
     id: "sse-market-data",
     name: "Shanghai Stock Exchange",
@@ -437,7 +437,7 @@ export const roadmapPhases = [
   {
     id: "P3",
     horizon: { zh: "第三阶段", en: "Third wave" },
-    title: { zh: "全球行情与多交易所加密数据", en: "Global market and multi-venue crypto" },
+    title: { zh: "全球行情数据", en: "Global market data" },
     gates: ["vendor economics", "market-data licence", "historical depth", "isolated runtime"],
   },
   {
@@ -447,3 +447,7 @@ export const roadmapPhases = [
     gates: ["source rights", "privacy review", "coverage bias", "separate add-on entitlement"],
   },
 ];
+
+export const connectedCoverage = allConnectedCoverage.filter(source => source.family !== "crypto");
+export const collectionHistory = allCollectionHistory.filter(event => event.provider !== "Binance");
+export const sourceCandidates = allSourceCandidates.filter(source => source.family !== "crypto");

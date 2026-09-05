@@ -3159,3 +3159,42 @@ def test_default_query_keeps_valid_rows_from_independent_executions(
     assert "row_receipt_proofs" not in result["metadata"]
     with pytest.raises(QueryServiceUnavailable):
         _execute(native_harness, replace(request, include_receipt_proofs=True))
+
+
+def test_small_page_excludes_entire_failed_execution_before_valid_rows(
+    native_harness: dict[str, object], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = native_harness["conn"]
+    dataset = native_harness["dataset"]
+    for index in range(12):
+        receipt = _insert_native_success_receipt(
+            monkeypatch, conn, dataset, execution_id="many-failed-prefixes",
+            call_index=index, page_offset=index,
+            finished_at=f"2026-07-17T03:{index + 1:02d}:00+00:00",
+        )
+        _insert_row(
+            conn, row_key=f"failed-{index}", receipt_id=receipt,
+            payload={"symbol": f"PREFIX_{index:02d}", "trade_date": "20260715"},
+        )
+    _insert_native_failed_receipt(
+        monkeypatch, conn, dataset, execution_id="many-failed-prefixes",
+        call_index=12, finished_at="2026-07-17T03:13:00+00:00",
+    )
+    valid = _insert_native_success_receipt(
+        monkeypatch, conn, dataset, execution_id="independent-valid",
+        call_index=0, page_offset=0,
+    )
+    _insert_row(
+        conn, row_key="valid-after-prefixes", receipt_id=valid,
+        payload={"symbol": "VALID", "trade_date": "20260715"},
+    )
+    conn.commit()
+    monkeypatch.setattr(
+        query_module, "project_dataset_runtime_evidence",
+        lambda *args, **kwargs: _proof_evidence((valid,)),
+    )
+    response = _execute(native_harness, _request(
+        limit=1, filters={"symbol": {"gte": "PREFIX_00"}},
+    ))
+    assert response["data"] == [{"symbol": "VALID", "trade_date": "20260715"}]
+    assert response["next_cursor"] is None

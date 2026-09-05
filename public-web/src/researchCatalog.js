@@ -57,7 +57,7 @@ export const researchProfiles = {
     checks: { en: ["Record publisher, source URL, permissions, and first-seen time.", "Deduplicate syndication and map entities before aggregation.", "Keep labels and validation samples outside model training."], zh: ["记录发布方、来源链接、权限与首次可见时点。", "汇总前去除转载重复并完成实体映射。", "将标签和验证样本与模型训练隔离。"] },
   },
   "crypto-markets": {
-    related: { datasets: ["crypto-binance-spot-5m", "crypto-binance-derivatives"] },
+    related: {},
     limits: { en: "One exchange is not the whole crypto market. Spot, perpetuals, lending protocols, and on-chain transactions have different units, clocks, collateral rules, and coverage.", zh: "单一交易所不代表整个加密市场。现货、永续、借贷协议与链上交易的单位、时间、抵押规则和覆盖范围均不同。" },
     checks: { en: ["Freeze venue, contract type, token universe, and quote currency.", "Separate funding rates, premium indices, and open interest.", "Track contract changes, missing periods, and protocol versions."], zh: ["冻结场所、合约类型、代币范围与计价币。", "区分资金费率、溢价指数与持仓量。", "追踪合约变化、缺失区间与协议版本。"] },
   },

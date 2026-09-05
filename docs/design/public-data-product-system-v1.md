@@ -246,7 +246,7 @@ A category is a discovery and navigation layer, never a dataset or purchasable
 object. For example, `Alternative data` is the category and `Pizza Index` is a
 data product inside it. The same distinction applies to market data,
 company/fundamentals, corporate events, indices/funds, macro/rates,
-news/documents, global markets, and crypto assets. Every data product has its
+news/documents and global markets. Every data product has its
 own stable identity, display mark, contents, sample contract, cadence,
 coverage/stability evidence, access boundary, and addressable detail page.
 
@@ -308,8 +308,7 @@ changing only hue does not create a new category family. The current asset
 families use bars for market data, a modular ledger for company/fundamentals,
 concentric fields for events, segmented arcs for indices/funds, layered
 contours for macro/rates, staggered streams for news/text, crossing fields for
-alternative data, interlocking geographic fields for global markets, and a
-calm faceted lattice for crypto assets.
+alternative data and interlocking geographic fields for global markets.
 
 Catalog maturity (`Observed`, `Planned`, `Pending release`) appears at the start
 of the evidence area on focused lists and details. It must not sit beside the
@@ -318,8 +317,9 @@ receipt window, cadence, and empty-history explanation follow beneath the
 stage. Compact category shelves may place the stage at the bottom of the
 preview because no evidence column is present.
 
-The current public design-contract catalog plans 41 product objects across nine
-categories. This is a roadmap projection, not runtime authority:
+The public design-contract catalog below is a roadmap projection, not runtime
+authority. Crypto is internal-only and excluded from public products, packages,
+service counts and onboarding plans:
 
 | Category | Planned product objects |
 | --- | --- |
@@ -331,13 +331,12 @@ categories. This is a roadmap projection, not runtime authority:
 | News & documents | financial news/flashes; policy/regulation library; broker research; central-bank reports |
 | Alternative data | Pizza Index; Foot Traffic Index; Hiring Activity Index; App Attention Index; Web Attention Index; Shipping Congestion Index; Night Lights Activity; Consumer Price Basket; Notable Investor 13F Holdings |
 | Global markets | Hong Kong equity daily; US equity daily; SEC filings/XBRL; global macro indicators |
-| Crypto assets | Binance spot 5-minute bars; Binance funding/open interest; Coinbase spot market |
 
-The current prototype projection contains 34 planned products and seven
-pending-release candidates; it deliberately shows no public observed count.
-These labels are product-definition content, not runtime evidence, and must be
-replaced by authenticated catalog/receipt/account evidence before any
-production or commercial claim.
+Product-definition labels are not runtime evidence. Product totals derive from
+the public manifest after internal-only exclusions; collection totals derive
+from the authenticated catalog. A product card and a provider dataset are
+different counting units. Public service or continuity claims require the
+corresponding authenticated catalog/receipt/account evidence.
 
 The catalog uses progressive disclosure to keep this heavy material readable.
 Its default state is a lightweight directory of the nine categories, with up

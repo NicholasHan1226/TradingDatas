@@ -27,7 +27,7 @@ export function getBasePlanCards(locale) {
     ...plan, name: plan.name[locale], short: plan.short[locale], label: `BASE DATA / 0${index + 1}`,
     audience: zh ? "相同的基础数据，只需选择适合你的请求频率。" : "The same base data. Choose the request rate that fits your needs.",
     position: zh ? "同一基础数据范围，不按档位缩减" : "The same base-data scope across all tiers",
-    coverage: zh ? "三档相同 · 不含另类数据" : "Same across tiers · no alternative data",
+    coverage: zh ? "三档相同 · 不含 Crypto 与另类数据" : "Same across tiers · excludes Crypto and alternative data",
     history: zh ? "以各数据产品披露为准" : "As disclosed by each data product",
     runtime: zh ? `${plan.requestsPerMinute.toLocaleString("en-US")} 次 / 分钟` : `${plan.requestsPerMinute.toLocaleString("en-US")} requests / minute`,
     includes: zh ? ["相同的基础数据范围", "统一 Catalog / Query 接口", "来源、时间与采集凭证", "不设每日请求额度"] : ["The same base-data scope", "One Catalog / Query interface", "Source, time, and collection receipts", "No daily request quota"],

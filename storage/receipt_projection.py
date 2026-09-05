@@ -3367,7 +3367,18 @@ def classify_row_receipt_proofs(
         for entry in entries
     }
     result: dict[str, ValidatedRowReceiptProof] = {}
-    failed_cohort_success_receipt_ids: list[str] = []
+    # The entire selected execution cohort was validated above. Exclude all
+    # of its successful prefixes when that cohort failed, not only the prefix
+    # that happened to land on this page. Small pages must not exhaust the
+    # bounded query retry loop walking one failed execution receipt at a time.
+    failed_cohort_success_receipt_ids = [
+        entry.receipt_id
+        for entry in entries
+        if entry.dataset_id == dataset.dataset_id
+        and entry.status == "success"
+        and entry.cohort_status == "failed"
+        and type(entry.finished_at) is datetime
+    ]
     for receipt_id in requested:
         entry = by_id.get(receipt_id)
         if (
@@ -3377,7 +3388,6 @@ def classify_row_receipt_proofs(
             and entry.cohort_status == "failed"
             and type(entry.finished_at) is datetime
         ):
-            failed_cohort_success_receipt_ids.append(receipt_id)
             continue
         if (
             entry is None

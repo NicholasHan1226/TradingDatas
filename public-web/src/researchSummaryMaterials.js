@@ -12,7 +12,7 @@ export const researchSummaryMaterials = {
   "Staff Report on Equity and Options Market Structure Conditions in Early 2021": {},
   "Why DeFi Lending? Evidence from Aave V2": {},
   "Form 13F: Official Filing Guidance and EDGAR Data Access": {"datasets":["us-notable-investor-13f"],"recipes":["document-version-ledger"]},
-  "Binance USDⓈ-M Futures Market Data: Funding Rate and Open Interest": {"datasets":["crypto-binance-derivatives"]},
+  "Binance USDⓈ-M Futures Market Data: Funding Rate and Open Interest": {},
   "A Comprehensive Look at The Empirical Performance of Equity Premium Prediction": {"recipes":["adjusted-price-series"]},
   "The Valuation of Risk Assets and the Selection of Risky Investments in Stock Portfolios and Capital Budgets": {},
   "An Intertemporal Capital Asset Pricing Model": {},

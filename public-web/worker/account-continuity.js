@@ -98,12 +98,23 @@ async function openCredential(box,ctx) {
   if(!key || key.length>1024) throw new Error('invalid_connection');
   return key;
 }
-async function upstream(ctx,path,key,init={}) {
+export const ACCOUNT_CATALOG_MAX_BYTES = 2 * 1024 * 1024;
+
+// A projection of the caller-authorized catalog, never a grant or health rewrite.
+export function domesticCatalogProjection(payload) {
+  if (!payload || !Array.isArray(payload.data) || payload.next_cursor != null) throw new Error('invalid_catalog_projection');
+  return {api_version:payload.api_version, catalog_version:payload.catalog_version, request_id:payload.request_id,
+    data:payload.data.filter(row => typeof row?.dataset_id==='string'
+      && (row.dataset_id.startsWith('cn.') || row.dataset_id.startsWith('global.news.'))
+      && !String(row.market || '').toUpperCase().startsWith('CRYPTO')), next_cursor:null};
+}
+
+async function upstream(ctx,path,key,init={},bodyLimit=512*1024) {
   const base=new URL(ctx.env.ACCOUNT_API_BASE);
   if(base.protocol!=='https:' || base.username || base.password || base.search || base.hash) throw new Error('invalid_backend');
   const headers=new Headers({'authorization':`Bearer ${key}`,'accept':'application/json'});
   if(init.body!==undefined) headers.set('content-type','application/json');
-  const response=await ctx.fetchImpl(new URL(path,base).toString(),{...init,headers,redirect:'manual',signal:AbortSignal.timeout(8000)});
+  const response=await ctx.fetchImpl(new URL(path,base).toString(),{...init,headers,redirect:'manual',signal:AbortSignal.timeout(path==='/v1/catalog' && bodyLimit===ACCOUNT_CATALOG_MAX_BYTES?20000:8000)});
   if(response.status>=300 && response.status<400) {await response.body?.cancel(); throw new Error('redirect_rejected');}
   if(!response.ok) {
     if(response.status===400 && isPortalKeyPath(path)) {
@@ -113,7 +124,7 @@ async function upstream(ctx,path,key,init={}) {
     }
     await response.body?.cancel(); return {status:response.status};
   }
-  return {status:response.status,payload:await readJson(response,512*1024)};
+  return {status:response.status,payload:await readJson(response,bodyLimit)};
 }
 function validPortal(portal) {
   return portal && typeof portal.tenant_id==='string' && portal.tenant_id.length>0 && portal.tenant_id.length<=200 && typeof portal.tier==='string'
@@ -174,7 +185,10 @@ async function handleDataAccess(ctx,path) {
   if(!accountCapabilities(ctx.env).connection) return json({error:'subscription_required'},403);
   if(!identityMatches(ctx)) return json({error:'identity_changed'},409);
   const url=new URL(ctx.request.url); let target;
-  if(path==='/api/account/usage') {
+  if(path==='/api/account/catalog') {
+    if(url.search) return json({error:'invalid_request'},400);
+    target='/v1/catalog';
+  } else if(path==='/api/account/usage') {
     const days=url.searchParams.get('days')||'30';
     if(!/^\d{1,2}$/.test(days) || Number(days)<1 || Number(days)>90 || [...url.searchParams.keys()].some(key=>key!=='days')) return json({error:'invalid_request'},400);
     target=`/portal/api/me/usage?days=${days}`;
@@ -194,14 +208,14 @@ async function handleDataAccess(ctx,path) {
     try {body=JSON.stringify(await readJson(ctx.request));} catch {return json({error:'invalid_request'},400);}
   }
   if(!await currentConnection(ctx,connection.box)) return json({error:'identity_changed'},409);
-  const result=await upstream(ctx,target,connection.key,{method:ctx.request.method,body});
+  const result=await upstream(ctx,target,connection.key,{method:ctx.request.method,body},path==='/api/account/catalog'?ACCOUNT_CATALOG_MAX_BYTES:512*1024);
   if(!await currentConnection(ctx,connection.box)) return json({error:'identity_changed'},409);
   // A revoked data credential is not an invalid email session.
   if([401,403].includes(result.status)) return json({error:'subscription_required'},403);
   if(result.status===429) return json({error:'rate_limited'},429);
   if(result.status===400 && result.error) return json({error:result.error},400);
   if(!result.payload) return json({error:'connection_unavailable'},503);
-  return json(result.payload,result.status);
+  return json(path==='/api/account/catalog'?domesticCatalogProjection(result.payload):result.payload,result.status);
 }
 async function currentConnection(ctx,box) {
   return Boolean(await ctx.env.IDENTITY_DB.prepare(`SELECT 1 FROM account_connections WHERE user_id IN (${authorized}) AND credential_box=?`).bind(...authArgs(ctx),box).first());
@@ -246,6 +260,6 @@ export async function handleAccountContinuity(ctx) {
   if(path==='/api/account/bookmarks' || path.startsWith('/api/account/bookmarks/')) return handleLibrary(ctx,path);
   if(path==='/api/account/connection') return handleConnection(ctx);
   if(path.startsWith('/api/account/admin/')) return handleAdmin(ctx,path);
-  if(path==='/api/account/usage' || path==='/api/account/keys' || path.startsWith('/api/account/keys/')) return handleDataAccess(ctx,path);
+  if(path==='/api/account/catalog' || path==='/api/account/usage' || path==='/api/account/keys' || path.startsWith('/api/account/keys/')) return handleDataAccess(ctx,path);
   return null;
 }

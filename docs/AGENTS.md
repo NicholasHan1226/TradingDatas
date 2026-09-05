@@ -22,7 +22,7 @@
 - 当前公共数据面只有 `GET /v1/catalog` 和 `POST /v1/query`。
 - 公共网站只销售和解释原始金融数据。`Use Cases` 与 `Cookbook` 只能教授查询、对齐、连接、清洗和验证方法；不得发布平台研究结论、因子、Alpha、收益、胜率、推荐或交易信号。
 - 示例图表、样本结果和数据组合必须标明数据集、窗口、方法、限制及 synthetic/observed 身份；它们不是 runtime、完整性、授权或生产可用证据。
-- 不记录 opening gate、交易、资金、持仓、风险、预测市场、DuckDB 或旧专用 route 为当前能力。Crypto 只可在独立 Binance 运行面合同中记录为隔离的只读 provider；它不改变公共 API、也不是交易能力。
+- 不记录 opening gate、交易、资金、持仓、风险、预测市场、DuckDB 或旧专用 route 为当前能力。Crypto 仅内部使用，只可在独立 Binance 运行面合同中记录为隔离只读 provider；不进入公共产品、套餐、供数统计或接入排期。Research 外部文献不构成 Crypto 供数承诺。
 - 临时测试数字写入 `STATUS.md`；长期合同写入架构、API 或运维文档。
 - Git 历史足以追溯已删除旧计划；当前树不保留重复历史说明。
-- 接口接入与采集成功口径以 `OPERATIONS.md`「Datas PM 接入口径」为准：Vendor/input quality is immutable external；correct contract + empty/`provider_error` = 记一行后 MOVE ON；empty ≠ success（no fake fills）；不得为源质量发明 catalog <15s 以外的 release gate，也不得冻结队列。每日验收是 GZ cut 不是 GitHub merge；排期底线 2026-09-11 / 2026-09-18 / fund·fut·opt 另波 / 2026-10-09，不得因源质量滑期。
+- 接口接入与采集成功口径以 `OPERATIONS.md`「Datas PM 接入口径」为准：Vendor/input quality is immutable external；correct contract + empty/`provider_error` = 记一行后 MOVE ON；empty ≠ success（no fake fills）；不得为源质量发明 catalog <15s 以外的 release gate，也不得冻结队列。每日验收是 GZ cut 不是 GitHub merge；分批计划、容量估算与检查节点统一见 `OPERATIONS.md`「可执行排期」；不得因源质量停发，也不得把检查日期写成全量上线保证。

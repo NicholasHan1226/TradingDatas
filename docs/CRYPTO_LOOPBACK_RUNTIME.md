@@ -7,6 +7,10 @@ from the server pointer rather than inferred from this document. It does not
 change the A-share API at `127.0.0.1:18082`, any Tushare timer, any A-share
 SQLite file, or any trading authority.
 
+Crypto is internal-only. This runtime is excluded from public product coverage,
+packages, purchase previews, service counts and public onboarding schedules.
+This boundary does not stop existing isolated collection or delete stored data.
+
 ## Fixed isolation contract
 
 | Surface | Runtime value |

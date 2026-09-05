@@ -1,6 +1,6 @@
 # Data source landscape
 
-Last reviewed: 2026-08-27 CST
+Scope reviewed: 2026-09-05 (Asia/Shanghai)
 
 This document defines how TradingDatas researches and presents connected and
 candidate data sources. It is a product-research registry, not runtime
@@ -31,7 +31,7 @@ projection or authenticated `catalog/query` readback.
 The public source page presents that snapshot as a compact material-family
 index. Readers can filter the registry contracts by `active` or `paused` and
 expand a family to inspect its API name, dataset ID and cadence. This is a
-discovery view of every registered interface, not a data-product entitlement,
+discovery view of registered public-scope interfaces, not a data-product entitlement,
 collection-health dashboard or sellability statement.
 
 It also projects the current domestic, read-only, `current` capabilities that
@@ -46,16 +46,18 @@ contracts that are ready for a bounded HTTPS validation or still need a trusted
 seed receipt. It makes no provider call and must never be read as an observation,
 collection, access or sellability claim.
 
-## Current contract counts
+## Coverage and counting boundary
 
-| Surface | Contract coverage | Boundary |
-|---|---:|---|
-| Tushare through QuickSync | 190 interfaces; 135 configured active; 55 paused | Configuration, not a continuous-health claim |
-| Tushare pre-runtime domestic candidates | 25 current domestic read-only capabilities | Formal contract or contract review required; not registry interfaces |
-| Paused-contract preflight queue | 4 ready for bounded HTTPS validation; 4 require a trusted seed receipt | Static contract preflight, not a provider call or observation |
-| Firecrawl | 2 page-collection pipelines | Per-site rights remain source-specific |
-| Binance public market data | 6 data families across a fixed 40-symbol universe, producing 240 dataset objects | 240 objects are not 240 upstream APIs |
-| Tushare domestic discovery scope | 222 read-data capabilities | 32 discovery-only additions are not runtime contracts |
+The generated connected-interface and discovery snapshots are the contract-count
+sources; do not maintain a second fixed count table here. Read the immutable
+runtime catalog separately for stored coverage and current collection state.
+The broader capability catalog includes retired entries, which are excluded
+from the current onboarding queue. Paused preflight candidates must be rebuilt
+from the current registry; an already activated interface must leave that queue.
+
+Crypto and Binance dataset objects are internal-only. They are excluded from
+public coverage totals, source/product cards, packages and the public onboarding
+roadmap. Their runtime contract remains in `../CRYPTO_LOOPBACK_RUNTIME.md`.
 
 ## Source record
 
@@ -136,7 +138,7 @@ Open technical access still requires dataset/series-specific attribution,
 licence, rate-limit and redistribution review. Revision and vintage semantics
 are part of the data contract rather than optional metadata.
 
-### Global markets and crypto
+### Global markets and internal Crypto research
 
 - [Nasdaq Data Link](https://docs.data.nasdaq.com/) — commercial and dataset-specific access.
 - [Coinbase Exchange APIs](https://docs.cdp.coinbase.com/exchange/introduction/welcome)
@@ -146,7 +148,8 @@ are part of the data contract rather than optional metadata.
 - [CoinGecko API](https://docs.coingecko.com/)
 - [DefiLlama API](https://api-docs.defillama.com/)
 
-Public market endpoints are technical candidates only. TradingDatas does not
+The Crypto links above are internal research references, not public product or
+onboarding candidates. Public market endpoints are technical candidates only. TradingDatas does not
 create exchange accounts, request trading permission, or add write/account
 operations to the data plane.
 
@@ -163,10 +166,10 @@ geographic bias, historical stability and redistribution are mandatory gates.
 
 | Phase | Focus | Required exit evidence |
 |---|---|---|
-| P0 | Make current A-share, news and Crypto contracts legible | Registry identity, receipt-bound state, authenticated API readback, rights boundary |
+| P0 | Make current A-share and news contracts legible | Registry identity, receipt-bound state, authenticated API readback, rights boundary |
 | P1 | China exchanges, derivatives, disclosure and macro | Official source, redistribution permission, schema/cadence, bounded canary |
 | P2 | Open global fundamentals and macro | Terms, revision/vintage model, entity mapping, receipt/API readback |
-| P3 | Global market data and multi-venue Crypto | Vendor economics, market-data licence, historical depth, isolated runtime |
+| P3 | Global market data | Vendor economics, market-data licence, historical depth, isolated runtime |
 | P4 | News, web and physical-world alternative data | Source rights, privacy, coverage bias and separate add-on entitlement |
 
 Only a completed phase gate may advance a source from discovery to a runtime

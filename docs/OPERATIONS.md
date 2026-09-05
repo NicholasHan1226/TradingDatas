@@ -486,10 +486,9 @@ Haofei / Datas PM 锁定的计划与运维口径。不新增流程框架、不�
   Merge without GZ cut is incomplete. 每日汇报 / 验收必须以 **GZ running
   SHA** + 适用时的 **dual catalog <15s** + **proving receipts**（vendor
   实际返回行时的非空 SUCCESS）为准。`STATUS.md` / `main` tip 单独不是验收。
-- **Schedule must be executable under the vendor-external policy.** 核心可接
-  接口 2026-09-11 前；其余 vendor-reachable 2026-09-18 前；fund / fut / opt
-  另波。硬底线：2026-10-09 前全部可积接口已上 GZ，或已单列外部 blocker。
-  节奏约每个交易日 2–3 个接口。不得因 vendor quality 滑期。
+- **Schedule must be executable under the vendor-external policy.** 分批范围、
+  容量估算和检查节点以本节「可执行排期」为准；不把 vendor 可达等同于合同已就绪，
+  不把日期写成全量上线保证。Crypto 仅内部使用，不计入公共接入计划。
 
 ### 每日验收（GZ，不是 GitHub merge）
 
@@ -507,15 +506,33 @@ GitHub merge、CI 绿、`STATUS.md` 更新、`main` tip 都不是当日验收。
 
 ### 可执行排期（不得因源质量滑期）
 
-| 节点 | 必须完成 | 不得拿来滑期 |
-| --- | --- | --- |
-| 2026-09-11 | 核心可接接口已上 GZ（合同正确 + 已 cut） | vendor empty / `provider_error` |
-| 2026-09-18 | 其余 vendor-reachable 接口已上 GZ 或已单列外部 blocker | 等源“变稳定” |
-| 另波 | fund / fut / opt，不占用上述核心/可达窗口 | 与核心波混排或互相等待 |
-| 2026-10-09 | 全部可积接口已上 GZ，或已列出外部 blocker | 把外部 blocker 写成工程未完成 |
+当前优先级是先让已有国内数据在前端对应到正式 dataset、展示授权范围内的真实
+采集状态，并完成用户查询回读；这条工作线不等待剩余接口接完，也不等待上游连续稳定。
+Crypto 仅内部使用，不纳入对外能力、套餐、供数统计或本排期。
 
-节奏：约每个交易日 2–3 个可接接口。WIP=1 仍是盘中生产行为默认，但
-vendor emptiness **不得**冻结队列。本表不是 mass-unpause。
+每批选择时从 immutable registry 与合同编译结果重新读取 entitlement、activation、
+probe 和 ingest 状态，并在 `STATUS.md` 记录该批范围、实际发布和下一步。
+`active entitlement` 不等于可立即自动采集；`locked`/`unknown` 单列权限核验，
+`excluded`/`retired` 排除当前交付队列。未注册的 current 候选先补合同，不计作已接入。
+
+| 批次 | 执行范围与验收 | 计划检查节点 |
+| --- | --- | --- |
+| 现有供数整合 | 公开产品到正式 dataset 的映射；已登录用户通过自身 key 读取目录、coverage、state 与 receipt；合法查询体及用户查询回读。页面公开，数据仍认证 | 优先推进，按实际端到端证据交付，不等后续批次 |
+| 就绪接口 | 优先 probe executable 且 ingest ready 的已有权限接口；有界验证、通用 registry/config、planner、发布与 receipt/API 回读 | 2026-09-11 检查核心就绪批；不是所有核心候选保证完成 |
+| 依赖与合同修正 | 先补可复用 seed receipt，再处理请求锚点、必要参数、分区/分页合同；fund/fut/opt 按依赖另波，可就绪即接入，不互相等待 | 2026-09-18 检查已完成批次与剩余工作量，逐项更新下一批范围 |
+| 候选与权限 | current 未注册候选按公共用途和复用程度补合同；locked/unknown 保留明确外部依赖，不伪造授权；excluded/retired 不纳入完成率 | 2026-10-09 复核可积接口发布结果、内部剩余工作及外部依赖；不是全部接口上线承诺 |
+
+容量口径：每交易日约 2–3 个接口只适用于合同可复用、权限已具备、依赖可解的
+普通接入，不是完成保证。若一批有 34 个这样的接口，顺序吞吐至少约 12–17 个交易日；
+若另有 25 个候选全部转为可接，合计 59 个需约 20–30 个交易日，尚未计合同调查。
+这些是工作量示例，实时数量以运行目录和当批记录为准。因此不能同时承诺该节奏与
+9 月 18 日“其余全部完成”。每批回读后更新剩余工作估算；不为追日期 mass-unpause，
+也不把内部合同/查询缺陷归咎于外部源。交易日窗口与工程工作日不同，不从该速率
+直接推算节假日期间的固定交付日期。
+
+只保留既有发布与权限边界。已正确接入的 empty / partial / stale / provider_error
+如实展示、单列源问题并继续下一批，不要求增加观察天数、连续成功率或新的性能门禁。
+WIP=1 仍是盘中生产行为默认；它不禁止独立合同准备与前端工作并行。
 
 ### 外部输入质量（单独列，不计入未完成）
 

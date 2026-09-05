@@ -17,9 +17,10 @@ test("keeps connected contract counts explicit and non-inflated", async () => {
   assert.equal(snapshot.interfaces.length, 192);
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare").length, 190);
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "firecrawl").length, 2);
-  assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare" && item.activation === "active").length, 135);
+  assert.equal(snapshot.interfaces.filter((item) => item.provider === "tushare" && item.activation === "active").length, 136);
   assert.equal(snapshot.interfaces.filter((item) => item.provider === "firecrawl" && item.activation === "active").length, 1);
-  assert.equal(connectedCoverage.find((item) => item.id === "binance-public").contractCount, 6);
+  assert.equal(connectedCoverage.some((item) => item.family === "crypto"), false);
+  assert.equal(sourceCandidates.some((item) => item.family === "crypto"), false);
   assert.equal(connectedCoverage.find((item) => item.id === "firecrawl-news").pausedCount, 1);
 });
 
@@ -42,7 +43,7 @@ test("keeps paused-contract preflight separate from observation and access", asy
   assert.equal(snapshot.authority, "compiled_contract_preflight_only");
   const ready = snapshot.groups.find((group) => group.id === "ready_for_bounded_https_probe");
   const seedRequired = snapshot.groups.find((group) => group.id === "requires_seed_receipt");
-  assert.equal(ready.interfaces.length, 4);
+  assert.equal(ready.interfaces.length, 3);
   assert.equal(ready.interfaces.some((item) => item.apiName === "forecast"), false);
   assert.deepEqual(ready.interfaces.find((item) => item.apiName === "fut_daily"), {
     apiName: "fut_daily", datasetId: "cn.dataset.fut_daily",
@@ -54,7 +55,7 @@ test("keeps paused-contract preflight separate from observation and access", asy
 test("candidate sources carry official evidence, rights state, and a roadmap phase", () => {
   const phaseIds = new Set(roadmapPhases.map((phase) => phase.id));
   assert.equal(landscapeMeta.status, "research_registry");
-  assert.ok(sourceCandidates.length >= 25);
+  assert.ok(sourceCandidates.length >= 20);
   for (const source of sourceCandidates) {
     assert.match(source.officialUrl, /^https?:\/\//);
     assert.ok(source.rights);
@@ -81,7 +82,7 @@ test("candidate sources progressively disclose roadmap phases without a second s
 
 test("public source maintenance guidance matches the reviewed snapshot", async () => {
   const guide = await readFile(new URL("../../docs/product/DATA_SOURCE_LANDSCAPE.md", import.meta.url), "utf8");
-  assert.match(guide, /135 configured active; 55 paused/);
+  assert.match(guide, /Crypto.*internal|internal.*Crypto/);
   assert.match(guide, /compact material-family\s+index/);
   assert.match(guide, /## Updating the public snapshot/);
   assert.match(guide, /landscapeMeta\.reviewedAt/);

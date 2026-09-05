@@ -1,3 +1,4 @@
+import {CatalogProvider, CatalogEvidence} from "./CatalogEvidence.jsx";
 import { AccountCommerce } from "./AccountCommerce.jsx";
 import { getDocumentation } from "./documentation.js";
 import { DocumentationPage } from "./DocumentationPage.jsx";
@@ -435,6 +436,7 @@ function DatasetProductDetail({ item, locale, onNavigate, saved = false, bookmar
               <p>{locale === "zh" ? "这是不可直接执行的模板。先查询 GET /v1/catalog，再填入正式 dataset_id、整数 schema_major、允许的字段与时间筛选。网页产品 ID 不是 API 数据集 ID。" : "This is a non-executable template. Read GET /v1/catalog first, then supply its dataset_id, integer schema_major, allowed fields and time filters. A product slug is not an API dataset ID."}</p>
             </div>
           </section>
+          <CatalogEvidence locale={locale} productId={item.id} />
           <DatasetSample item={item} locale={locale} />
           {(relatedResearch.length || relatedMethods.length) && <section className="dataset-learning-path" aria-labelledby="dataset-learning-title">
             <div className="dataset-learning-heading"><span className="mono-kicker">RESEARCH / PREPARATION</span><h2 id="dataset-learning-title">{locale === "zh" ? "从原始材料继续阅读。" : "Continue from the raw material."}</h2><p>{locale === "zh" ? "这些外部研究与准备方法帮助你理解数据的使用语境、时间边界与检查方式；它们不是 TradingDatas 的结论，也不代表本产品复现了论文数据。" : "These external readings and preparation methods help frame use, timing, and checks. They are not TradingDatas conclusions and do not imply this product reproduces a paper's data."}</p></div>
@@ -443,19 +445,7 @@ function DatasetProductDetail({ item, locale, onNavigate, saved = false, bookmar
               {relatedMethods.map((method) => <a key={method.id} href={`/recipes/${method.id}`} onClick={(event) => onNavigate(event, `/recipes/${method.id}`)}><span>{locale === "zh" ? "准备方法" : "PREPARATION METHOD"}</span><strong>{method.title[locale]}</strong><small>{method.detail}</small><ArrowRight /></a>)}
             </div>
           </section>}
-          <section className="dataset-history">
-            <div><span className="mono-kicker">COLLECTION EVIDENCE</span><h2>{locale === "zh" ? "公开采集稳定性与缺口" : "Public collection stability and gaps"}</h2></div>
-            <StabilityTrack item={item} locale={locale} showStage={false} />
-          </section>
-          <dl className="dataset-evidence-rail">
-            <div><dt>{locale === "zh" ? "候选来源" : "Intended source"}</dt><dd>{item.source}</dd></div>
-            <div><dt>{locale === "zh" ? "最近成功" : "Last success"}</dt><dd>{evidence.value}</dd></div>
-            <div><dt>{locale === "zh" ? "覆盖" : "Coverage"}</dt><dd>{evidence.value}</dd></div>
-            <div><dt>{locale === "zh" ? "合同频率" : "Contract cadence"}</dt><dd>{item.cadence}</dd></div>
-            <div><dt>Receipt</dt><dd>{evidence.value}</dd></div>
-          </dl>
-          <div className="collection-disclosure-roadmap"><span>{locale === "zh" ? "形成真实观测后继续披露" : "Disclosed after real observations exist"}</span><div>{(locale === "zh" ? ["成功 / 空响应 / 失败分布", "数据延迟趋势", "入库行数增长", "字段漂移", "修订量"] : ["success / empty / failure mix", "delivery-lag trend", "stored-row growth", "schema drift", "revision volume"]).map((signal) => <small key={signal}>{signal}</small>)}</div></div>
-          <p className="catalog-authority-note">{locale === "zh" ? "当前页面展示产品合同与示例证据。真实可用性只来自 Registry、SQLite facts/receipts、认证 Catalog/Query 回读与账户授权。" : "This page presents the product contract and example evidence. Live availability comes only from the Registry, SQLite facts/receipts, authenticated Catalog/Query readback, and account entitlement."}</p>
+          <p className="catalog-authority-note">{locale === "zh" ? "产品介绍与合成示例公开展示；关联原始接口的状态来自当前账户的认证目录。实际查询结果与权限以 API 响应为准。" : "Product descriptions and synthetic samples are public; related raw-interface status comes from your authenticated catalog. Query results and grants are determined by the API response."}</p>
         </main>
         <aside className="related-products">
           <span className="mono-kicker">{locale === "zh" ? "相关数据产品" : "RELATED PRODUCTS"}</span>
@@ -763,7 +753,7 @@ export function App() {
   useEffect(() => { if (accountData) setAccountDeletionReceipt(null); }, [accountData]);
 
   useEffect(() => {
-    if ((isAccountRoute(route) || route === "login")) setAccountSessionRequested(true);
+    if ((isAccountRoute(route) || route === "login" || route === "data" || route.startsWith("datasets/"))) setAccountSessionRequested(true);
   }, [route]);
 
   useEffect(() => {
@@ -1279,7 +1269,7 @@ export function App() {
   const accountCategoryLabels = locale === "zh" ? { a_share: "A 股基础数据", crypto: "加密资产", news: "新闻与事件" } : { a_share: "A-share base data", crypto: "Crypto", news: "News & events" };
   const isEmailAccount = accountData?.identity_kind === "email";
   const accountPlanLabel = isEmailAccount && accountData.data_access_state !== "connected" ? (locale === "zh" ? "未连接数据权限" : "No data access connected") : accountData ? (accountPlanLabels[accountData.tier] || accountData.tier) : "";
-  const accountCategories = accountData ? (accountData.data_categories || []).map((category) => accountCategoryLabels[category] || category) : [];
+  const accountCategories = accountData ? (accountData.data_categories || []).filter(category => category !== "crypto").map((category) => accountCategoryLabels[category] || category) : [];
   const accountUsageHistory = accountUsage?.history || [];
   const accountUsagePeak = Math.max(1, ...accountUsageHistory.map((entry) => Number(entry.total) || 0));
 
@@ -1389,7 +1379,6 @@ export function App() {
     { family: "text", label: "新闻与文本", description: "新闻、政策、研报与版本化文档" },
     { family: "alternative", label: "另类数据", description: "活动、关注、供应链与地理观测" },
     { family: "global", label: "全球市场", description: "香港、美国与全球宏观候选" },
-    { family: "crypto", label: "加密资产", description: "隔离的公共只读市场数据" },
   ] : [
     { family: "market", label: "Markets", description: "Prices, trading states, and market reference" },
     { family: "fundamentals", label: "Companies", description: "Identity, disclosures, and ownership" },
@@ -1399,7 +1388,6 @@ export function App() {
     { family: "text", label: "News & text", description: "News, policy, research, and versioned documents" },
     { family: "alternative", label: "Alternative", description: "Activity, attention, supply chain, and geospatial data" },
     { family: "global", label: "Global markets", description: "Hong Kong, US, and global macro candidates" },
-    { family: "crypto", label: "Crypto", description: "Isolated public read-only market data" },
   ];
   const visibleDataProducts = productManifest.objects.datasets.filter((item) => {
     const matchesFamily = dataFamily === "all" || item.family === dataFamily;
@@ -1412,6 +1400,7 @@ export function App() {
   const dataResultTitle = activeDataCategory?.label || (dataStage === "observed_example" ? (locale === "zh" ? "已观测" : "Observed") : dataStage === "pending_open" ? (locale === "zh" ? "待开放" : "Pending release") : (locale === "zh" ? "规划中" : "Planned"));
 
   return (
+    <CatalogProvider account={accountData} checking={accountChecking} error={accountError} active={primaryRoute === "data" || primaryRoute === "datasets"} onRetryAccount={() => setAccountConnectionRevision(value => value + 1)}>
     <div className={`site-shell route-${primaryRoute}`} id="top">
       <header className={`global-header ${primaryRoute === "home" ? "" : "is-page-header"}`}>
         <Brand onNavigate={navigate} />
@@ -1467,15 +1456,16 @@ export function App() {
             <h1>{locale === "zh" ? "找到你需要的数据。" : "Find the data you need."}</h1>
             <p>{locale === "zh" ? "可追溯的数据产品，为研究与生产系统准备。" : "Traceable data products, packaged for research and production."}</p>
             <div className="data-family-filters" aria-label={locale === "zh" ? "数据分类" : "Data categories"}>
-              {(locale === "zh" ? [["all", "全部"], ["market", "行情"], ["fundamentals", "公司与财务"], ["events", "事件"], ["funds", "指数与基金"], ["macro", "宏观与利率"], ["text", "新闻与文本"], ["alternative", "另类数据"], ["global", "全球市场"], ["crypto", "加密资产"]] : [["all", "All"], ["market", "Markets"], ["fundamentals", "Companies"], ["events", "Events"], ["funds", "Indices & funds"], ["macro", "Macro & rates"], ["text", "News & text"], ["alternative", "Alternative"], ["global", "Global markets"], ["crypto", "Crypto"]]).map(([value, label]) => <button key={value} type="button" className={dataFamily === value ? "is-active" : ""} onClick={() => setDataFamily(value)}>{label}</button>)}
+              {(locale === "zh" ? [["all", "全部"], ["market", "行情"], ["fundamentals", "公司与财务"], ["events", "事件"], ["funds", "指数与基金"], ["macro", "宏观与利率"], ["text", "新闻与文本"], ["alternative", "另类数据"], ["global", "全球市场"]] : [["all", "All"], ["market", "Markets"], ["fundamentals", "Companies"], ["events", "Events"], ["funds", "Indices & funds"], ["macro", "Macro & rates"], ["text", "News & text"], ["alternative", "Alternative"], ["global", "Global markets"]]).map(([value, label]) => <button key={value} type="button" className={dataFamily === value ? "is-active" : ""} onClick={() => setDataFamily(value)}>{label}</button>)}
               <span>{locale === "zh" ? "先按分类发现 · 再进入具体数据产品" : "Discover by category · open individual data products"}</span>
             </div>
-            <div className="data-stage-filters" aria-label={locale === "zh" ? "接入状态" : "Onboarding stage"}>
-              <span>{locale === "zh" ? "状态" : "Stage"}</span>
-              {(locale === "zh" ? [["all", "全部"], ["observed_example", "已观测"], ["planned", "规划中"], ["pending_open", "待开放"]] : [["all", "All"], ["observed_example", "Observed"], ["planned", "Planned"], ["pending_open", "Pending release"]]).map(([value, label]) => <button key={value} type="button" className={dataStage === value ? "is-active" : ""} onClick={() => setDataStage(value)}><span>{label}</span><small>{dataStageCounts[value] || 0}</small></button>)}
+            <div className="data-stage-filters" aria-label={locale === "zh" ? "产品规划" : "Product plans"}>
+              <span>{locale === "zh" ? "产品阶段" : "Product stage"}</span>
+              {(locale === "zh" ? [["all", "全部"], ["planned", "规划中"], ["pending_open", "待开放"]] : [["all", "All"], ["planned", "Planned"], ["pending_open", "Pending release"]]).map(([value, label]) => <button key={value} type="button" className={dataStage === value ? "is-active" : ""} onClick={() => setDataStage(value)}><span>{label}</span><small>{dataStageCounts[value] || 0}</small></button>)}
             </div>
           </section>
 
+          <CatalogEvidence locale={locale} query={globalQuery} />
           {showDataDirectory ? <section className="data-category-directory" aria-label={locale === "zh" ? "数据分类目录" : "Data category directory"}>
             <div className="data-directory-summary"><span>{locale === "zh" ? `${dataCategories.length} 个分类 · ${productManifest.objects.datasets.length} 个产品定义` : `${dataCategories.length} categories · ${productManifest.objects.datasets.length} product definitions`}</span><span>{locale === "zh" ? "产品规划，不是实时可用目录" : "Product plans, not a live availability catalog"}</span></div>
             {dataCategories.map((category, categoryIndex) => {
@@ -1760,5 +1750,6 @@ export function App() {
       <footer><Brand onNavigate={navigate} /><p>Raw materials for financial research.</p><span>© 2026 TradingDatas</span></footer>
       <Suspense fallback={null}>{agentOpen && <AgentDialog onClose={() => setAgentOpen(false)} copy={copy} locale={locale} />}</Suspense>
     </div>
+    </CatalogProvider>
   );
 }

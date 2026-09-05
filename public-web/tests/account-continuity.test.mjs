@@ -195,3 +195,46 @@ test('linked key errors reject unknown, malformed and oversized upstream bodies'
     assert.equal(result.status,503); assert.deepEqual(await result.json(),{error:'connection_unavailable'});
   }
 });
+
+test('account catalog reads only the linked credential, filters Crypto and preserves runtime evidence',async()=>{
+  const f=await fixture();
+  assert.equal((await f.request(f.alice,'catalog')).status,403);
+  await f.request(f.alice,'connection','POST',{access_key:'fixture-key-a'});
+  const row={dataset_id:'cn.dataset.daily',market:'CN',runtime:{state:'empty',degraded:true},coverage:{row_count:45}};
+  f.setKeyResponse(()=>Response.json({api_version:'v1',catalog_version:'fixture',data:[row,{dataset_id:'crypto.spot.binance.btcusdt.5m',market:'CRYPTO'},{dataset_id:'cn.fake',market:'CRYPTO_PERP'},{dataset_id:'global.news.flash',market:'GLOBAL'}],next_cursor:null}));
+  const result=await f.request(f.alice,'catalog');
+  assert.equal(result.status,200);assert.equal(result.headers.get('cache-control'),'no-store');assert.equal(result.headers.get('x-content-type-options'),'nosniff');
+  assert.deepEqual((await result.json()).data,[row,{dataset_id:'global.news.flash',market:'GLOBAL'}]);
+  assert.equal(f.calls.at(-1).url,'https://backend.example/v1/catalog');
+  assert.equal(f.calls.at(-1).init.headers.get('authorization'),'Bearer fixture-key-a');
+  assert.equal((await f.request(f.bob,'catalog')).status,403);
+  const before=f.calls.length;
+  assert.equal((await f.request(f.alice,'catalog','GET',undefined,{'x-td-identity':'bob'})).status,409);
+  assert.equal((await f.request(f.alice,'catalog?url=https://evil.example')).status,400);
+  assert.equal((await f.request(f.alice,'catalog','POST',{})).status,405);
+  assert.equal(f.calls.length,before);
+  f.setKeyResponse(()=>Response.json({error:'private upstream details'},{status:503}));
+  const failed=await f.request(f.alice,'catalog');assert.equal(failed.status,503);assert.deepEqual(await failed.json(),{error:'connection_unavailable'});
+});
+
+test('catalog read discards an in-flight result after connection removal or session revocation',async()=>{
+  for(const change of ['disconnect','revoke']) {
+    const f=await fixture();await f.request(f.alice,'connection','POST',{access_key:'fixture-key-a'});
+    f.setKeyResponse(()=>{
+      if(change==='disconnect') f.db.sqlite.prepare('DELETE FROM account_connections WHERE user_id=?').run('alice');
+      else f.db.sqlite.prepare('UPDATE identity_sessions SET revoked_at=? WHERE user_id=?').run(f.now(),'alice');
+      return Response.json({data:[{dataset_id:'cn.dataset.daily'}],next_cursor:null});
+    });
+    const result=await f.request(f.alice,'catalog');assert.equal(result.status,409);assert.deepEqual(await result.json(),{error:'identity_changed'});
+  }
+});
+
+test('catalog bounds the full upstream body and refuses incomplete pagination',async()=>{
+  const f=await fixture();await f.request(f.alice,'connection','POST',{access_key:'fixture-key-a'});
+  f.setKeyResponse(()=>Response.json({data:[{dataset_id:'cn.dataset.daily',fields:[{description:'x'.repeat(600_000)}]}],next_cursor:null}));
+  assert.equal((await f.request(f.alice,'catalog')).status,200);
+  f.setKeyResponse(()=>Response.json({data:[],next_cursor:'next-page'}));
+  assert.equal((await f.request(f.alice,'catalog')).status,503);
+  f.setKeyResponse(()=>Response.json({data:[],padding:'x'.repeat(2*1024*1024)}));
+  assert.equal((await f.request(f.alice,'catalog')).status,503);
+});

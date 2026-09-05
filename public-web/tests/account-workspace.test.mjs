@@ -22,10 +22,10 @@ test("keeps unimplemented identity and commerce capabilities explicit", () => {
   assert.doesNotMatch(appSource, /模拟订单号|mock invoice|verification code sent/i);
 });
 
-test("defers anonymous session resolution until an Account intent", () => {
+test("resolves sessions for Account and authenticated Data evidence only", () => {
   assert.match(appSource, /const \[accountSessionRequested, setAccountSessionRequested\] = useState\(\(\) => \(isAccountRoute\(route\) \|\| route === "login"\)\)/);
   assert.match(appSource, /if \(!accountSessionRequested\) \{[\s\S]*clearAccountView\(\)[\s\S]*return undefined/);
-  assert.match(appSource, /if \(\(isAccountRoute\(route\) \|\| route === "login"\)\) setAccountSessionRequested\(true\)/);
+  assert.match(appSource, /if \(\(isAccountRoute\(route\) \|\| route === "login" \|\| route === "data" \|\| route.startsWith\("datasets\/"\)\)\) setAccountSessionRequested\(true\)/);
   assert.match(appSource, /\}, \[accountConnectionRevision, accountSessionRequested\]\);/);
 });
 

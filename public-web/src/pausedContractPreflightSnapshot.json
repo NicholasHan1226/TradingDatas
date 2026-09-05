@@ -13,10 +13,6 @@
           "datasetId": "cn.dataset.opt_basic"
         },
         {
-          "apiName": "pledge_detail",
-          "datasetId": "cn.dataset.pledge_detail"
-        },
-        {
           "apiName": "stk_nineturn",
           "datasetId": "cn.dataset.stk_nineturn"
         }
