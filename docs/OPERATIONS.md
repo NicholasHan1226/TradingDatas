@@ -1183,6 +1183,23 @@ QuickSync 实质不同，按根合同允许单独 adapter）。其凭证边界�
   `/etc/systemd/system/tradingdatas-provider-native-collect.service.d/20-firecrawl.conf`
   提供；修改凭证文件路径时必须同步该 drop-in，并 `systemctl daemon-reload`。
 
+错误诊断只保留固定文字，不能把旧的 `provider transport failed` 直接解释为网络故障。
+Firecrawl 的失败仍无数据行，HTTP 401/403、402/429 与既有上游 timeout/refusal 分类不变；
+以下本地分类均保留 `provider_error`，不新增错误码或改变重试：
+
+| 固定 error_message | 只读排查边界 |
+|---|---|
+| `firecrawl local access preflight failed` | 本地凭据文件的路径、owner/mode、大小和格式；不输出文件内容，不据此断言远端认证失败 |
+| `firecrawl request preflight failed` | allowlist、registry 请求参数与本地预算门；不请求上游验证 |
+| `firecrawl response structure invalid` | 响应大小、编码、JSON/extraction 结构或既有敏感扫描拒绝；不记录响应正文 |
+| `firecrawl response item invalid` | 缺失或无效的标题、URL、发布日期等既有行校验；整次失败，不跳过坏行伪造成功 |
+| `firecrawl adapter internal failure` | 未归类异常；需离线复现，不能从该提示推断外部故障 |
+
+真实网络异常继续为 `transport_error` 与既有固定 transport 提示。诊断经共享脱敏器处理；
+不得为了保留分类放宽脱敏或输出异常字符串。已写入的历史通用错误不回填分类；
+发布后等下一自然调度的 receipt 检查新提示，不能靠主动补采证明修复。
+这些分类不修改抽取 request schema、字段合同、时效、采集频率或上游权限。
+
 Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，仅作为 on_demand
 补充手段设计，不在自动调度内；激活前需先验证其真实响应契约。
 

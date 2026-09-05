@@ -28,6 +28,8 @@ machinery fail-closes on any leak.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 import hashlib
 import json
@@ -80,6 +82,24 @@ _UPSTREAM_REFUSAL_MARKERS = (
     "captcha",
     "blocked",
 )
+
+
+class _FirecrawlLocalFailure(ValueError):
+    """A local validation phase failed; never retain the original exception."""
+
+    def __init__(self, safe_message: str) -> None:
+        super().__init__(safe_message)
+        self.safe_message = safe_message
+
+
+@contextmanager
+def _diagnostic_phase(safe_message: str) -> Iterator[None]:
+    # Call sites pass literals, never provider data, paths or exception text.
+    # These scopes contain only local validation, never provider requests.
+    try:
+        yield
+    except Exception:
+        raise _FirecrawlLocalFailure(safe_message) from None
 
 
 def _safe_upstream_failure_message(payload: object) -> str:
@@ -387,16 +407,18 @@ class FirecrawlWebCollector:
         api_key: str | None = None
         try:
             if api_name == "scrape_page":
-                api_key = _read_private_key_file(
-                    os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
-                )
+                with _diagnostic_phase("firecrawl local access preflight failed"):
+                    api_key = _read_private_key_file(
+                        os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
+                    )
                 rows = self._scrape_page(
                     params, api_key=api_key, timezone=_LOCAL_TIMEZONE, api_name="scrape_page"
                 )
             elif api_name == "scrape_page_global":
-                api_key = _read_private_key_file(
-                    os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
-                )
+                with _diagnostic_phase("firecrawl local access preflight failed"):
+                    api_key = _read_private_key_file(
+                        os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
+                    )
                 rows = self._scrape_page(
                     params,
                     api_key=api_key,
@@ -405,12 +427,13 @@ class FirecrawlWebCollector:
                     scan_budget=scan_budget,
                 )
             elif api_name == "search_news":
-                api_key = _read_private_key_file(
-                    os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
-                )
+                with _diagnostic_phase("firecrawl local access preflight failed"):
+                    api_key = _read_private_key_file(
+                        os.environ.get(FIRECRAWL_API_KEY_FILE_ENV)
+                    )
                 rows = self._search_news(params, api_key=api_key)
             else:
-                raise ValueError("Firecrawl API is not in the extraction allowlist")
+                raise _FirecrawlLocalFailure("firecrawl request preflight failed")
             return ProviderCallOutcome(
                 state="success" if rows else "empty",
                 rows=tuple(rows),
@@ -441,7 +464,7 @@ class FirecrawlWebCollector:
                 sensitive_values=() if api_key is None else (api_key,),
                 scan_budget=scan_budget,
             )
-        except _FirecrawlUpstreamFailure as exc:
+        except (_FirecrawlUpstreamFailure, _FirecrawlLocalFailure) as exc:
             return ProviderCallOutcome(
                 state="failed",
                 rows=(),
@@ -458,7 +481,10 @@ class FirecrawlWebCollector:
                 rows=(),
                 provider_code=None,
                 error_code="transport_error" if transport else "provider_error",
-                error_message=safe_provider_exception_message(exc),
+                error_message=(
+                    safe_provider_exception_message(exc)
+                    if transport else "firecrawl adapter internal failure"
+                ),
                 sensitive_values=() if api_key is None else (api_key,),
                 scan_budget=scan_budget,
             )
@@ -484,9 +510,10 @@ class FirecrawlWebCollector:
             if response.geturl() != request.full_url:
                 raise OSError("firecrawl origin changed")
             payload = response.read(_MAX_RESPONSE_BYTES + 1)
-        if len(payload) > _MAX_RESPONSE_BYTES:
-            raise ValueError("firecrawl response exceeds the size budget")
-        return json.loads(payload.decode("utf-8"))
+        with _diagnostic_phase("firecrawl response structure invalid"):
+            if len(payload) > _MAX_RESPONSE_BYTES:
+                raise ValueError("firecrawl response exceeds the size budget")
+            return json.loads(payload.decode("utf-8"))
 
     def _scrape_page(
         self,
@@ -497,30 +524,31 @@ class FirecrawlWebCollector:
         api_name: str = "scrape_page",
         scan_budget: SensitiveScanBudget | None = None,
     ) -> list[dict[str, Any]]:
-        if set(params) - _SCRAPE_PARAM_KEYS:
-            raise ValueError("firecrawl scrape params do not match the registry")
-        provenance_mode = params.get("publication_provenance_mode")
-        if "publication_provenance_mode" in params and (
-            api_name != "scrape_page_global" or provenance_mode != "raw_item_v1"
-        ):
-            raise ValueError("firecrawl publication provenance mode is unsupported")
-        self._consume_budget(api_name)
-        url = _canonical_url(params.get("url"))
-        prompt = _non_empty_text(params.get("prompt"), "prompt", max_chars=4096)
-        for key in ("window_start", "window_end"):
-            _non_empty_text(params.get(key), key, max_chars=64)
-        max_age_ms = _bounded_int(
-            params.get("max_age_ms"), "max_age_ms", minimum=0, maximum=_MAX_AGE_MS_LIMIT
-        )
-        timeout_ms = _bounded_int(
-            params.get("timeout_ms"), "timeout_ms", minimum=1, maximum=_MAX_TIMEOUT_MS
-        )
-        raw_schema = _non_empty_text(
-            params.get("extraction_schema"), "extraction_schema", max_chars=16384
-        )
-        schema = json.loads(raw_schema)
-        if type(schema) is not dict:
-            raise ValueError("firecrawl extraction_schema must be a JSON object")
+        with _diagnostic_phase("firecrawl request preflight failed"):
+            if set(params) - _SCRAPE_PARAM_KEYS:
+                raise ValueError("firecrawl scrape params do not match the registry")
+            provenance_mode = params.get("publication_provenance_mode")
+            if "publication_provenance_mode" in params and (
+                api_name != "scrape_page_global" or provenance_mode != "raw_item_v1"
+            ):
+                raise ValueError("firecrawl publication provenance mode is unsupported")
+            self._consume_budget(api_name)
+            url = _canonical_url(params.get("url"))
+            prompt = _non_empty_text(params.get("prompt"), "prompt", max_chars=4096)
+            for key in ("window_start", "window_end"):
+                _non_empty_text(params.get(key), key, max_chars=64)
+            max_age_ms = _bounded_int(
+                params.get("max_age_ms"), "max_age_ms", minimum=0, maximum=_MAX_AGE_MS_LIMIT
+            )
+            timeout_ms = _bounded_int(
+                params.get("timeout_ms"), "timeout_ms", minimum=1, maximum=_MAX_TIMEOUT_MS
+            )
+            raw_schema = _non_empty_text(
+                params.get("extraction_schema"), "extraction_schema", max_chars=16384
+            )
+            schema = json.loads(raw_schema)
+            if type(schema) is not dict:
+                raise ValueError("firecrawl extraction_schema must be a JSON object")
         payload = self._post(
             "/scrape",
             {
@@ -533,53 +561,56 @@ class FirecrawlWebCollector:
         )
         if type(payload) is not dict or payload.get("success") is not True:
             raise _FirecrawlUpstreamFailure(_safe_upstream_failure_message(payload))
-        data = payload.get("data")
-        if type(data) is not dict or type(data.get("json")) is not dict:
-            raise ValueError("firecrawl scrape response lacks the json extraction")
-        items = data["json"].get("items")
-        if type(items) is not list:
-            raise ValueError("firecrawl extraction must produce an items array")
-        if provenance_mode == "raw_item_v1":
-            # Validate the original tree before reserved keys are overwritten
-            # or nested objects become JSON text. Reuse the caller's existing
-            # credential/known-secret/depth/node guard without a larger budget.
-            ProviderCallOutcome(
-                state="success" if items else "empty",
-                rows=tuple(items),
-                provider_code=0,
-                error_code=None,
-                error_message=None,
-                sensitive_values=(api_key,),
-                scan_budget=scan_budget,
-            )
-        return [
-            _normalize_item(
-                item,
-                source=url,
-                time_key="published_at",
-                summary_key=None,
-                timezone=timezone,
-                preserve_publication_provenance=provenance_mode == "raw_item_v1",
-            )
-            for item in items
-        ]
+        with _diagnostic_phase("firecrawl response structure invalid"):
+            data = payload.get("data")
+            if type(data) is not dict or type(data.get("json")) is not dict:
+                raise ValueError("firecrawl scrape response lacks the json extraction")
+            items = data["json"].get("items")
+            if type(items) is not list:
+                raise ValueError("firecrawl extraction must produce an items array")
+            if provenance_mode == "raw_item_v1":
+                # Validate the original tree before reserved keys are overwritten
+                # or nested objects become JSON text. Reuse the caller's existing
+                # credential/known-secret/depth/node guard without a larger budget.
+                ProviderCallOutcome(
+                    state="success" if items else "empty",
+                    rows=tuple(items),
+                    provider_code=0,
+                    error_code=None,
+                    error_message=None,
+                    sensitive_values=(api_key,),
+                    scan_budget=scan_budget,
+                )
+        with _diagnostic_phase("firecrawl response item invalid"):
+            return [
+                _normalize_item(
+                    item,
+                    source=url,
+                    time_key="published_at",
+                    summary_key=None,
+                    timezone=timezone,
+                    preserve_publication_provenance=provenance_mode == "raw_item_v1",
+                )
+                for item in items
+            ]
 
     def _search_news(
         self, params: dict[str, Any], *, api_key: str
     ) -> list[dict[str, Any]]:
-        if set(params) - _SEARCH_PARAM_KEYS:
-            raise ValueError("firecrawl search params do not match the registry")
-        self._consume_budget("search_news")
-        query = _non_empty_text(params.get("query"), "query", max_chars=_MAX_QUERY_CHARS)
-        limit = _bounded_int(
-            params.get("limit", 10), "limit", minimum=1, maximum=_MAX_SEARCH_LIMIT
-        )
-        timeout_ms = _bounded_int(
-            params.get("timeout_ms", 30_000),
-            "timeout_ms",
-            minimum=1,
-            maximum=_MAX_TIMEOUT_MS,
-        )
+        with _diagnostic_phase("firecrawl request preflight failed"):
+            if set(params) - _SEARCH_PARAM_KEYS:
+                raise ValueError("firecrawl search params do not match the registry")
+            self._consume_budget("search_news")
+            query = _non_empty_text(params.get("query"), "query", max_chars=_MAX_QUERY_CHARS)
+            limit = _bounded_int(
+                params.get("limit", 10), "limit", minimum=1, maximum=_MAX_SEARCH_LIMIT
+            )
+            timeout_ms = _bounded_int(
+                params.get("timeout_ms", 30_000),
+                "timeout_ms",
+                minimum=1,
+                maximum=_MAX_TIMEOUT_MS,
+            )
         payload = self._post(
             "/search",
             {
@@ -592,15 +623,17 @@ class FirecrawlWebCollector:
         )
         if type(payload) is not dict or payload.get("success") is not True:
             raise _FirecrawlUpstreamFailure(_safe_upstream_failure_message(payload))
-        data = payload.get("data")
-        if type(data) is not dict or type(data.get("news")) is not list:
-            raise ValueError("firecrawl search response lacks the news array")
-        return [
-            _normalize_item(
-                item,
-                source=_SEARCH_SOURCE_LABEL,
-                time_key="date",
-                summary_key="snippet",
-            )
-            for item in data["news"]
-        ]
+        with _diagnostic_phase("firecrawl response structure invalid"):
+            data = payload.get("data")
+            if type(data) is not dict or type(data.get("news")) is not list:
+                raise ValueError("firecrawl search response lacks the news array")
+        with _diagnostic_phase("firecrawl response item invalid"):
+            return [
+                _normalize_item(
+                    item,
+                    source=_SEARCH_SOURCE_LABEL,
+                    time_key="date",
+                    summary_key="snippet",
+                )
+                for item in data["news"]
+            ]
