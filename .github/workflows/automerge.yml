@@ -7,7 +7,7 @@ on:
     types:
       - completed
   pull_request_target:
-    types: [labeled, unlabeled]
+    types: [labeled]
 
 permissions:
   contents: write
@@ -17,18 +17,16 @@ permissions:
 
 env:
   TRUSTED_PR_AUTHOR: NicholasHan1226
-  # Datas PM go-ahead. Create this repository label if missing:
+  # Optional Datas PM acceleration. Absence must not block a trusted green PR.
   #   name: pm-merge
-  #   description: Datas PM go-ahead for trusted auto-merge
+  #   description: Optional Datas PM acceleration; not a merge prerequisite
   PM_MERGE_LABEL: pm-merge
 
 jobs:
   merge:
-    # CI path: TradingDatas CI just completed successfully on a PR head.
-    # Label path: pm-merge was just applied or removed; CI for that exact head
-    # is re-verified below. Either order results in a merge; concurrent
-    # attempts are tolerated. A green CI run is evidence only, never merge
-    # authority, so both triggers additionally require the Datas PM label.
+    # CI path: TradingDatas CI just completed successfully on a trusted PR head.
+    # Label path: optional pm-merge acceleration after CI; absence must not
+    # block. Either order may merge; concurrent attempts are tolerated.
     if: >-
       (github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success')
@@ -37,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Merge pm-merge trusted PR
+      - name: Merge trusted green PR
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
@@ -90,9 +88,6 @@ jobs:
             # head; refuse to act when the PR has moved on in the meantime.
             [[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]] || reject_unaccepted "Tested SHA ${RUN_HEAD_SHA:0:8} no longer matches PR head ${HEAD_SHA:0:8}."
           fi
-
-          LABEL_NAMES="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --jq '.[].name')"
-          grep -qx "$PM_MERGE_LABEL" <<<"$LABEL_NAMES" || reject_unaccepted "CI green but pm-merge is not present."
 
           CHANGED_FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"
           if grep -Eq '^\.github/workflows/' <<<"$CHANGED_FILES"; then

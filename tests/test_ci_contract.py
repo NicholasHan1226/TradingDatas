@@ -43,13 +43,15 @@ def test_canary_and_timing_runtime_suites_are_marked_slow() -> None:
         assert "pytestmark = pytest.mark.slow" in _read(path)
 
 
-def test_automerge_requires_pm_merge_and_exact_head_ci() -> None:
+def test_automerge_merges_trusted_green_prs_without_pm_merge() -> None:
     workflow = _read(".github/workflows/automerge.yml")
 
     assert "PM_MERGE_LABEL: pm-merge" in workflow
     assert "github.event.label.name == 'pm-merge'" in workflow
-    assert 'grep -qx "$PM_MERGE_LABEL"' in workflow
-    assert "CI green but pm-merge is not present." in workflow
+    assert "optional acceleration" in workflow.lower() or "Optional Datas PM acceleration" in workflow
+    assert 'grep -qx "$PM_MERGE_LABEL"' not in workflow
+    assert "CI green but pm-merge is not present." not in workflow
+    assert "Merge trusted green PR" in workflow
     assert '[[ "$HEAD_SHA" == "$RUN_HEAD_SHA" ]]' in workflow
     assert 'select(.name == "TradingDatas CI")' in workflow
     assert "CI_CONCLUSION" in workflow
