@@ -70,8 +70,8 @@ const allCollectionHistory = [
     status: "registry_snapshot",
     title: { zh: "合同配置更新：138 active、52 paused", en: "Contract configuration updated: 138 active, 52 paused" },
     detail: {
-      zh: "fut_daily 与 opt_basic 配置为按需接入，落库 receipt 仍待验证；stk_nineturn 的采集窗口合同待补齐。上游探测不等于已落库，也不代表连续稳定。",
-      en: "fut_daily and opt_basic are configured for on-demand access; persisted receipts remain to be verified. stk_nineturn still needs a collection-window contract. Upstream probes do not prove persisted data or continuous stability.",
+      zh: "fut_daily 与 opt_basic 配置为按需接入；实际 receipt、覆盖与采集状态请查看账户认证目录。stk_nineturn 的采集窗口合同待补齐。此历史记录只说明合同配置，上游探测不等于已落库或连续稳定。",
+      en: "fut_daily and opt_basic are configured for on-demand access; see the authenticated account catalog for actual receipts, coverage and collection status. stk_nineturn still needs a collection-window contract. This historical entry records contract configuration only; upstream probes do not prove persisted data or continuous stability.",
     },
   },
   {

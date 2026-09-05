@@ -33,7 +33,13 @@ def _restore_test_tree_permissions(tmp_path: Path):
         for name in file_names:
             path = current / name
             if not path.is_symlink():
-                path.chmod(0o644)
+                try:
+                    path.chmod(0o644)
+                except FileNotFoundError:
+                    # Git may remove a transient lock after os.walk lists it.
+                    # An absent file needs no permission restoration; other
+                    # cleanup failures must still surface.
+                    pass
         for name in directory_names:
             path = current / name
             if not path.is_symlink():
@@ -54,6 +60,10 @@ def _repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
+    # Keep fixture commits from launching background Git maintenance that can
+    # race permission restoration. These settings affect only this temp repo.
+    _git(repo, "config", "--local", "maintenance.auto", "false")
+    _git(repo, "config", "--local", "gc.auto", "0")
     _git(repo, "config", "user.email", "test@example.invalid")
     _git(repo, "config", "user.name", "TradingDatas Test")
     (repo / "README.md").write_text("TradingDatas\n", encoding="utf-8")

@@ -40,8 +40,8 @@ test("dates the current contract review while preserving historical observations
   const current = collectionHistory.find((entry) => entry.date === "2026-09-05");
   assert.equal(current.status, "registry_snapshot");
   assert.match(current.title.en, /138 active, 52 paused/);
-  assert.match(current.detail.zh, /落库 receipt 仍待验证/);
-  assert.match(current.detail.en, /persisted receipts remain to be verified/);
+  assert.match(current.detail.zh, /实际 receipt、覆盖与采集状态请查看账户认证目录/);
+  assert.match(current.detail.en, /authenticated account catalog for actual receipts, coverage and collection status/);
   assert.match(collectionHistory.find((entry) => entry.date === "2026-08-27").detail.en, /133 active and 57 paused/);
 });
 
