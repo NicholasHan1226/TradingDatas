@@ -1350,3 +1350,11 @@ checks. This reduces historical payload work; it does not guarantee the unchange
 
 Diagnosis, candidate evidence and unresolved response-contract drift are recorded
 in [the bounded catalog read report](reports/2026-09-05-catalog-bounded-read-diagnosis.md).
+
+### 纯文档 CI 快路径
+
+CI 只对 `.github/scripts/docs_fast_path.py` 中逐项审核的文档路径启用快路径，且必须全部为已有普通文件的内容修改。PR 比较基线到候选，push 比较整个推送范围；自动合并后的 exact-main dispatch 显式启用 `docs_fast_path` 并比较该提交与第一父提交。缺少基线、空差异、未知路径、代码/配置/工作流、文件新增/删除/重命名、符号链接或权限变化均走原测试。`docs/AGENT_INTEGRATIONS.md` 等产品编译输入不在白名单，不能按 Markdown 后缀推断安全。
+
+快路径保留现有 required check 名称，只验证变更文档的差异、非空 UTF-8 内容；不安装运行依赖，不声称代码测试或生产验收已完成。普通手动 dispatch 默认完整测试；TradingDatas 的定时与 `suite=full` 也始终完整执行。文档正文、规则与链接正确性仍由变更审核负责，不新增等待天数或审批流程。分类边界回归可运行 `python3 tests/test_docs_fast_path.py`。回退时 revert 本批 CI 变更即可恢复原测试，无生产状态或数据迁移。
+
+这不改变网站发布触发范围或服务器发布流程。文档快路径结果不能替代运行时变更的完整测试与读回；仅文档修改不要求切换生产 release。
