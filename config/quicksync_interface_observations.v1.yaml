@@ -440,6 +440,7 @@ active_evidence:
   etf_share_size: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   forecast: server-evidence/20260904T-forecast-ts-code-only
   ft_limit: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  fut_daily: server-evidence/20260905-ready3-fut_daily
   fund_div: server-evidence/20260722TQkgWsk-1def337-provider-native
   fund_portfolio: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fund_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -542,6 +543,7 @@ active_evidence:
   stk_rewards: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
   top10_floatholders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
   top10_holders: server-evidence/ashare-wave7-nowindow-exact5-20260812T1912CST
+  opt_basic: server-evidence/20260905-ready3-opt_basic
   pledge_detail: server-evidence/20260905T-pledge-detail-ts-code
   pledge_stat: server-evidence/ashare-wave7-pledge-stat-single-20260812T1947CST
 dependency_seed_authorities:

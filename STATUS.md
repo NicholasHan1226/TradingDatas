@@ -24,9 +24,12 @@
 
 ## 接入计划与下一批
 
-计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。当前 190 个 Tushare 注册接口为 136 active、54 paused；另有 2 个新闻接口。54 个 Tushare 暂停中：34 个已有权限、14 locked、5 excluded、1 unknown。另有 25 个 current 未注册候选与 7 个 retired；后者不列入当前交付队列。
+计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。本批候选配置中，190 个 Tushare 注册接口为 138 active、52 paused；另有 2 个新闻接口。52 个 Tushare 暂停中：32 个已有权限、14 locked、5 excluded、1 unknown。另有 25 个 current 未注册候选与 7 个 retired；后者不列入当前交付队列。
 
-- 先推进同时满足实际 probe executable 与 ingest ready 的 3 项：`fut_daily`、`opt_basic`、`stk_nineturn`。
+- 21:56 在既有 immutable `a3106d68` 上按冻结计划执行 3 次串行真实 HTTPS 探测：`fut_daily` 为 valid_empty，`opt_basic` 为 success / 6000 行（仅 ts_code 探测），`stk_nineturn` 为 valid_empty。逐项 preactivation 编译只允许前两项激活；已更新正式配置，仍为 on_demand，不声称自动采集。本批候选尚待合入、部署及全字段 receipt/API 验收。
+- 证据保留在服务器 `evidence/20260905-ready3/` 的独立 sidecar；计划 SHA-256 为 `e80370da25b922ebe99ea3edbbf7620f733ae31c5ee62b9dee70290cb6d0ac45`，正式 evidence refs 对应 `server-evidence/20260905-ready3-fut_daily` 与 `server-evidence/20260905-ready3-opt_basic`。
+- `stk_nineturn` 的 probe/ingest ready 不等于 activation-ready；datetime 窗口合同及 21:00 发布时段仍待修正。前端由共享编译判定将其单列为采集窗口待补齐，保留可探测说明；源 empty 不阻挡前两项。
+- 公开接口摘要的中英文数量改为从正式 registry 快照派生，已激活项离开预检队列；实际采集状态仍从用户自身授权目录实时读取，不从静态 active 推断健康。
 - 紧接着复核 12 个仅被数量边界完整性疑虑暂停的合同：`bc_otcqt`、`dc_concept_cons`、`dc_member`、`etf_sz_cons`、`fund_daily`、`fund_nav`、`fut_holding`、`fut_wsr`、`index_basic`、`index_weekly`、`kpl_concept_cons`、`opt_daily`。真实有限覆盖可以如实 partial/unverified，不要求先证明全量。
 - `bak_daily`、`fund_adj`、`fund_manager` 目前只是 limit=1/offset=0 探测合同，先补实际分页或窗口。其余 seed、请求锚点与必要参数按依赖推进。12+3 属于待复核/修正，不是本轮已激活。
 - compiler 仍存在把整千数量边界直接升级为 activation blocker 的行为，尚未在本轮修改；其与有限覆盖政策的差距列为下一批优先通用合同修正。不能直接清空 blocker、批量 unpause，或把失败 receipt 改成成功。

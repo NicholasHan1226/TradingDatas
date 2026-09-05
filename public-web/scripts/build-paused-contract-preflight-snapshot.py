@@ -25,6 +25,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from tools.compile_tushare_runtime_contracts import compile_https_probe_plan  # noqa: E402
+from tools.compile_provider_native_registry import (  # noqa: E402
+    _activation_window_is_supported,
+    load_upstream_contract_bundle,
+)
 
 
 CONFIG = ROOT / "config"
@@ -60,6 +64,12 @@ def build_snapshot() -> dict[str, object]:
         run_clock=now,
         scheduled_partition=partition,
     )
+    contracts = {
+        contract["api_name"]: contract
+        for contract in load_upstream_contract_bundle(
+            yaml.safe_load(registered_contracts)
+        )["contracts"]
+    }
     registry = yaml.safe_load((CONFIG / "provider_native_dataset_registry.yaml").read_text(encoding="utf-8"))
     paused = {
         binding["api_name"]: dataset["dataset_id"]
@@ -72,6 +82,7 @@ def build_snapshot() -> dict[str, object]:
     states = {
         "ready_for_bounded_https_probe": [],
         "requires_seed_receipt": [],
+        "requires_activation_window_contract": [],
     }
     for entry in plan["entries"]:
         api_name = entry["api_name"]
@@ -79,7 +90,16 @@ def build_snapshot() -> dict[str, object]:
             continue
         row = {"apiName": api_name, "datasetId": paused[api_name]}
         if entry["probe_state"] == "executable" and entry["ingest_contract_state"] == "ready":
-            states["ready_for_bounded_https_probe"].append(row)
+            # Probe/ingest readiness alone does not imply that the activation
+            # compiler accepts this window. Reuse its exact structural gate.
+            if _activation_window_is_supported(contracts[api_name]):
+                states["ready_for_bounded_https_probe"].append(row)
+            else:
+                states["requires_activation_window_contract"].append({
+                    **row,
+                    "probeState": entry["probe_state"],
+                    "reasonCode": "activation_window_contract_unsupported",
+                })
         elif entry["probe_block_reasons"] == ["dependency_seed_receipt_unresolved"]:
             states["requires_seed_receipt"].append(row)
     return {
@@ -88,7 +108,7 @@ def build_snapshot() -> dict[str, object]:
         "warning": "This static preflight snapshot makes no provider call and proves neither observation, collection, customer access, nor sellability.",
         "groups": [
             {"id": group_id, "interfaces": states[group_id]}
-            for group_id in ("ready_for_bounded_https_probe", "requires_seed_receipt")
+            for group_id in states
         ],
     }
 
