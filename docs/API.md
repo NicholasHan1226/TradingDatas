@@ -706,3 +706,24 @@ known key-management refusals: `invalid_key_label`, `key_limit_reached`,
 are unchanged; this does not add data API endpoints. Unknown or oversized backend
 errors remain unavailable responses, without exposing backend text. A data-key
 refusal does not revoke an independent email identity.
+
+## Public same-origin data gateway
+
+The public base URL is `https://tradingdatas.com`, with exact authenticated
+`GET /v1/catalog` and `POST /v1/query`. `api.tradingdatas.com` remains an unconfigured
+example hostname and is not required for this path. The current upstream uses the
+A-share registry/database; this is not an aggregate of the isolated Crypto API.
+Only authenticated catalog grants determine which datasets a caller can query.
+
+The existing public Worker forwards only the caller's Bearer authorization to
+the existing configured data backend; it never uses website cookies, a connected
+account key, or an internal credential. Query bodies retain their original bytes
+and are bounded to 65,536 bytes, then forwarded with fixed Content-Length.
+Catalog query parameters are checked by the backend; query URL parameters are
+rejected. Unknown V1 routes return JSON 404, not the website shell.
+
+JSON response bodies/status/receipt metadata stream through unchanged with
+`Cache-Control: no-store`; redirects and non-JSON upstream errors are rejected.
+Gateway transport has a 30-second deadline, independent of the existing catalog
+15-second performance target. No cache, data transformation or permission grant
+is introduced. This transport does not prove source completeness or stability.

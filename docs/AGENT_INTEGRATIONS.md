@@ -184,7 +184,10 @@ Add a required phrase to both language paths, or CI fails. Do not put a product
 slug, guessed `schema_major`, or a live hostname into these blocks.
 
 `VITE_TRADINGDATAS_API_BASE_URL` is public build configuration, never a secret
-or proof that a route is live. `apiOrigin()` accepts only `https://host` with
+or proof that a route is live. The public build defaults it to
+`https://tradingdatas.com` for the exact same-origin V1 gateway; an explicitly
+empty override keeps the draft unconfigured. This origin currently exposes the
+A-share registry, not the isolated Crypto service. `apiOrigin()` accepts only `https://host` with
 no userinfo, path, query, or fragment. Anything else, including `http://` and
 `https://host/v1`, stays unconfigured and the prompt uses the placeholder
 `<TRADINGDATA_BASE_URL_FROM_ACCOUNT>`. Unresolved `{{...}}` placeholders and

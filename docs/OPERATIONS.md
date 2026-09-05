@@ -891,7 +891,8 @@ GROUP BY r.dataset_id, r.provider, r.schema_major;
   systemd unit、日志或运行报告。
 - 两个 unit 都必须在启用后分别读回 `active` 与 `enabled`；中继机 origin 和公网
   `/portal/api/me` 无凭据均应返回 `401`，管理 API CORS preflight 应返回 `204`。
-- 该链路只承载管理/客户控制台 API，不改变 `127.0.0.1:18082` 数据 API、本地 SQLite、
+- 该链路承载管理/客户控制台 API，并由官网 Worker 的精确 `/v1/catalog`、
+  `/v1/query` 网关转发调用者自己的 Bearer 认证数据请求；不聚合独立 Crypto 库，不改变 `127.0.0.1:18082` 数据 API、本地 SQLite、
   collector service/timer、provider 凭据或任何用户 API Key。
 
 回退时先在中继机执行
@@ -1378,3 +1379,18 @@ separately; synthetic fixtures are not production consumer proof.
 Rollback disables connection and restores the previous Worker code while retaining
 additive tables and the disable trigger. Do not revoke existing data keys, erase
 connections, restore deleted users or reset the identity store for a UI rollback.
+
+### Same-origin public data routing
+
+Public `https://tradingdatas.com/v1/catalog` and `/v1/query` reuse the existing
+Worker and `ACCOUNT_API_BASE` origin. Inspect origin registry/SQLite bindings,
+authenticated catalog/query and public unauthorized responses separately.
+The September 5 preflight found 18084 and 18082 on the same A-share SQLite and
+registry hash; only 18084 is this gateway's upstream. Crypto remains isolated.
+Per-tenant authorization and minute limits remain backend-enforced; do not trust
+caller forwarding headers or invent client identity through the relay.
+
+Rollback restores the preceding Worker version and published endpoint configuration;
+no DNS, data, token or collection change is required. Keep Account and public data
+acceptance separate. Recheck exact published assets, V1 JSON rejection, streaming
+query framing and real consumer readback before claiming full external availability.

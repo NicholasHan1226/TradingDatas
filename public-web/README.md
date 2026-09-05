@@ -484,3 +484,14 @@ Library and Admin flags remain false. Roll back by disabling connection and
 restoring the preceding Worker version; retain additive tables and the identity
 disable trigger. Existing keys, data facts, sessions and payment settings are not
 rewritten. Live activation and end-to-end user verification are recorded in STATUS.
+
+### Public data access
+
+The same Worker handles exact `/v1/catalog` and `/v1/query` with caller Bearer
+authentication, fixed bounded query bodies and uncached JSON responses. Other
+V1 paths return JSON 404. This path uses the current A-share backend and does not
+aggregate Crypto. Normal builds configure Agent instructions for
+`https://tradingdatas.com`; `VITE_TRADINGDATAS_API_BASE_URL` may explicitly override
+that origin (an empty value leaves instructions unconfigured). Copying instructions
+does not query or authenticate. See the API/OPERATIONS contract and STATUS for
+real deployment and customer acceptance.

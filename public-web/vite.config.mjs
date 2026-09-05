@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import { researchPublicProjection } from "./scripts/research-public-projection.mjs";
 
 export default defineConfig({
+  define: {
+    "import.meta.env.VITE_TRADINGDATAS_API_BASE_URL": JSON.stringify(process.env.VITE_TRADINGDATAS_API_BASE_URL ?? "https://tradingdatas.com"),
+  },
   build: {
     outDir: "dist/client",
     rollupOptions: { output: { manualChunks: { "react-vendor": ["react", "react-dom", "react-dom/client"], "research-catalog": ["./src/researchCatalog.js"] } } },

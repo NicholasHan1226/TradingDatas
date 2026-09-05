@@ -16,6 +16,7 @@ for (const file of [index, worker, hosting]) {
 mkdirSync(path.join(dist, "server"), { recursive: true });
 mkdirSync(path.join(dist, ".openai"), { recursive: true });
 copyFileSync(worker, path.join(dist, "server", "index.js"));
+copyFileSync(path.join(root, "worker", "data-api.js"), path.join(dist, "server", "data-api.js"));
 copyFileSync(path.join(root, "worker", "email-identity.js"), path.join(dist, "server", "email-identity.js"));
 copyFileSync(path.join(root, "worker", "email-templates.js"), path.join(dist, "server", "email-templates.js"));
 copyFileSync(path.join(root, "worker", "identity-retention.js"), path.join(dist, "server", "identity-retention.js"));
