@@ -77,7 +77,7 @@ The public experience has seven durable information areas:
   authorship, year, venue, and outbound attribution;
 - **Pricing**: a small number of complete A-share workflow packages plus
   separately selected alternative-data access;
-- **Doc**: the task-oriented public help hub with a grouped directory and
+- **Docs**: the task-oriented public help hub with a grouped directory and
   authored step-by-step guides, retaining existing `/docs/:slug` addresses.
   It is the platform-wide help hub for product areas, data guidance,
   API/Agents, learning methods, packages, account, schema, pagination, quota,
@@ -113,9 +113,11 @@ must never invent availability or history.
 
 ## Data products, packages, and add-ons
 
-As of the owner's 2026-08-30 decision, payment activation is paused. Prepare the
-selection -> purchase preview -> sign-in return path only, with no orders,
-charges or grants created. Manual renewal/no automatic debit is confirmed.
+The owner resumed account/subscription integration and payment testing on
+2026-09-05. Develop the durable, isolated test flow alongside existing customer
+access; production collection of payment still needs an identified merchant,
+settlement terms and actual provider verification. Manual renewal/no automatic
+debit remains confirmed. Production preview creates no order or data grant.
 Implementation, state distinctions and resumption gates are recorded in
 [Payment flow preparation](design/payment-flow-preparation-v1.md).
 
@@ -135,9 +137,9 @@ itself: authenticated Account readback remains the authority for the effective
 tier, request frequency, expiry, and category access.
 
 Owner-confirmed commercial choices (2026-08-30): support both mobile-phone
-and email sign-in/registration, independently of API keys. Delivery providers,
-verified identity binding, recovery, and production activation are not yet
-implemented. Both credentials must be verified before they can be linked to
+and email sign-in/registration, independently of API keys. Email identity, revocable sessions and explicit existing-key connection are
+implemented; current activation evidence belongs in STATUS. SMS and account
+recovery remain separate follow-up work. Both credentials must be verified before they can be linked to
 the same account; never merge accounts from matching unverified input.
 
 Owner-confirmed account role (2026-08-30): the owner's designated email identity
@@ -145,7 +147,7 @@ is intended to access both the existing private Account and the administrator
 console. Keep one identity with separately authorized workspaces, not two user
 accounts or another customer dashboard. Verification and an explicit server-owned
 administrator role are required; an email string or UI switch cannot grant it.
-Shared administrator sign-in is not implemented by the email identity candidate.
+Shared administrator sign-in is separately gated and is not granted by email login.
 See [owner access contract](design/account-admin-convergence-v1.md#owner-identity-and-two-workspaces).
 
 The approved numeric prices are 99 / 299 / 499 per month. The domestic-first
@@ -187,7 +189,7 @@ readback. It is never hidden inside a base-package comparison table.
 ## Agent connection contract
 
 The public product is Agent-first. Agent/MCP tutorials and templates live at public `/connect`, reached through
-Doc in Account alongside `/docs`. Reading and copying setup material do not require
+Docs in Account alongside `/docs`. Reading and copying setup material do not require
 website login; actual data requests always require an independent API Bearer key. The connection surface provides tailored copy-ready
 setup prompts for Claude, Codex, OpenClaw, Hermes, and a generic HTTP-capable
 agent. Each prompt references a secret credential slot instead of embedding an
@@ -347,8 +349,10 @@ have no daily quota or concurrency ceiling; they are still bounded by their
 for both catalog visibility and query authorization, projected through the
 customer portal, and editable through the admin token API.
 Customer-scoped key listing, creation, and non-current-key disable are also
-implemented; billing, passwordless identity sessions, and account-synced
-bookmarks remain target capabilities rather than production facts.
+implemented. Passwordless email identity and explicit existing-key connection
+are also implemented. Commerce is currently an isolated simulator plus a
+production-unavailable read surface; account-synced bookmarks remain separately
+gated. Production claims require the current STATUS readback.
 
 The confirmed customer identity target supports phone and email within the same
 Account. The current access-key login is an explicitly temporary same-site cookie

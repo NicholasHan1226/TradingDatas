@@ -525,18 +525,19 @@ Location），设 8 秒超时；网络异常返回无敏感详情的 502/504。
 公开 `/docs`、`/docs/:slug`、`/connect` 与本机 `/bookmarks` 不需要网页登录；
 数据 API 的调用者 Bearer 认证保持独立。
 
-### Independent email identity candidate
+### Independent email identity
 
-The existing Login/Account also has a local-only, separately gated email-identity
-implementation. Its control-plane routes are `GET /api/account/auth-methods`,
+The existing Login/Account has a separately gated email-identity
+implementation. Activation and observed release evidence live in STATUS. Its control-plane routes are `GET /api/account/auth-methods`,
 `POST /api/account/email/challenge`, and `POST /api/account/email/verify`.
 Email sessions reuse `/api/account/me` and `DELETE /api/account/session`, but use
 a distinct opaque cookie with server-side revocation in a dedicated identity
 store. Unlike legacy key-cookie clearing, email sign-out requires confirmation
 from that store; a store outage cannot be reported as successful revocation.
 
-The only email-account state implemented is verified and `not_subscribed`, with
-no tenant, data grant, usage or API key access. This does not change catalog/query
+The identity projection remains verified and `not_subscribed`, with no tenant
+or implicit data grant. Explicit existing-key connection exposes independent
+`data_access` and its Portal usage/key authority; commerce is a separate projection. This does not change catalog/query
 or existing Portal authentication. Configured readiness is not delivery evidence;
 missing configuration keeps email login unavailable. Detailed request/response,
 limits, failure and release contracts: [Email identity v1](design/email-identity-v1.md).
@@ -557,7 +558,7 @@ catalog/query codes and do not grant data access.
 | 503 | `identity_unavailable` | Missing Cloudflare `CF-Connecting-IP`, D1/storage throw, or inconsistent admission rows. Do not trust `X-Forwarded-For`. |
 | 503 | `delivery_unavailable` | Provider send failed after admission; an unaccepted challenge row is deleted. |
 
-The local candidate also adds `POST /api/account/profile/deletion`: same-origin
+The identity handler also supports `POST /api/account/profile/deletion`: same-origin
 JSON `{confirmation: "DELETE"}`, `X-TD-Identity` matching the current email identity,
 current email session verified within ten
 minutes, and the separate retention feature flag are required. The server derives
@@ -573,7 +574,7 @@ key session cannot use this route. `me.identity.deletion_available` indicates
 the feature flag only, not maintenance health. Email alone grants no admin/tenant
 authority; see the [retention contract](design/identity-retention-v1.md).
 
-### Account continuity candidate (not deployed)
+### Account continuity
 
 The gated [account/library contract](design/account-library-v1.md) adds explicit
 `POST/DELETE /api/account/connection`, `GET /api/account/bookmarks`,
@@ -593,7 +594,21 @@ writes additionally require recent email verification. Ordinary customer credent
 are rejected. Backend bearer/CORS authentication is unchanged; cookies terminate at
 the same-origin gateway. Cloud bookmarks store only typed resource references, max
 500 per identity; explicit import is atomic and capped at 100 references per action.
-Feature flags remain false and require separate schema/release acceptance.
+Connection, library and admin flags are independent. The current checked-in
+configuration enables connection, while library/admin remain disabled. See STATUS
+for deployment readback; enabling connection does not enable the other features.
+
+### Account commerce
+
+The independent verified-email account exposes `GET /api/account/commerce`,
+`GET /api/account/offers`, `POST /api/account/orders` and
+`GET /api/account/orders/:id`. They require the session's expected
+`X-TD-Identity`; writes retain same-origin protection. The response contract,
+isolated test-store ownership and payment/provisioning semantics live in the
+single [commerce contract](design/customer-identity-commerce-v1.md#account-commerce-api).
+No production commerce store or payment provider is activated by these routes.
+Unavailable commerce is not empty purchase history, and never revokes existing
+Portal access. Website identity and effective data grants remain unchanged.
 
 ## Customer Portal API
 

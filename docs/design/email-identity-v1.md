@@ -1,8 +1,9 @@
 # Email identity inside the existing Account
 
-Status: local implementation candidate, 2026-08-30. Not deployed or enabled in
-production. Resend sending-domain verification is a separate completed check,
-not mailbox-delivery evidence. Authority: [identity/commerce contract](customer-identity-commerce-v1.md).
+Status: implemented independent email identity. Current configuration and fresh
+activation/readback evidence belong in STATUS; provider acceptance and actual
+mailbox delivery remain different checks. Authority:
+[identity/commerce contract](customer-identity-commerce-v1.md).
 
 ## Scope and ownership
 
@@ -27,19 +28,12 @@ on each send and resend, not the manual website language setting. Chinese varian
 map to `zh`; every other or missing language maps to `en`. This presentation hint
 does not influence email verification, account identity, roles or data grants.
 
-The candidate account store is a dedicated Cloudflare D1 binding `IDENTITY_DB`.
-`public-web/worker/identity-schema.sql` is for this store only; it must never run
-against financial facts SQLite or any existing database without explicit review.
-On 2026-08-30, following the owner's renewed go-ahead, the dedicated empty
-`tradingdatas-identity-v1` resource was created and the schema initialized there.
-Its candidate binding is recorded in `public-web/wrangler.jsonc`, with
-`EMAIL_LOGIN_ENABLED="false"`. No Worker release or live binding was changed.
-See the [provisioning checkpoint](../reports/2026-08-30-email-identity-provisioning.md)
-for the exact resource, schema hash, empty-table readback and remaining gates.
-The [August 31 preparation](../reports/2026-08-31-identity-private-provisioning.md)
-adds the account-only deletion schema and privately stages sender/pepper secrets
-in an undeployed old-code Worker version. It does not activate identity or change
-the live service; a later exact-source release must verify secret preservation.
+The account store uses the dedicated Cloudflare D1 binding `IDENTITY_DB`.
+`public-web/worker/identity-schema.sql` belongs only to this control plane,
+never financial facts SQLite. The current checked-in Worker enables email and
+retention; historical provisioning reports preserve the original initialization
+evidence, while STATUS owns later deployment evidence. Existing-key linking is
+explicit and separately gated by the [account continuity contract](account-library-v1.md).
 
 ## Control-plane routes
 
@@ -79,8 +73,9 @@ The authenticated public data API stays `GET /v1/catalog` + `POST /v1/query`.
 - Provider acceptance is not inbox delivery. Known/new emails use the same
   challenge flow. Do not log addresses, codes, cookies, raw IPs or message bodies.
 - A present email cookie never silently falls back to a legacy API-key cookie.
-  Email sessions get 403 on usage/key operations and 409 on key login until
-  sign-out. Verified email login clears the old key cookie.
+  Unconnected email sessions cannot use Portal usage/key operations. Explicit
+  connection proxies the verified existing key; separate key-login switching
+  requires sign-out (409). Verified email login clears the old key cookie.
 - Identity-store outage returns 503, including sign-out; UI must not claim
   revocation. Invalid/expired/disabled sessions return 401. Legacy key-cookie
   logout retains its existing independent semantics.
@@ -123,10 +118,9 @@ New logins require all of `EMAIL_LOGIN_ENABLED="true"`,
 from being collected while scheduled retention is intentionally disabled; it
 does not prove the migration, cron, latest maintenance receipt or backlog health.
 Sender is fixed to
-`TradingDatas <login@account.tradingdatas.com>`. The candidate Worker configuration
-declares the dedicated D1 binding and explicit false email/retention flags; it
-contains no secrets. The UI therefore stays unavailable after configuration-only
-deployment, even if sender secrets are later added. Never put secrets in source,
+`TradingDatas <login@account.tradingdatas.com>`. The checked-in Worker configuration declares the dedicated D1 binding and
+enables email/retention; readiness still requires all bindings and secrets.
+The UI follows auth-methods and does not infer delivery from flags. Never put secrets in source,
 URLs or chat.
 
 Before activation: apply and verify the approved retention policy and additive
@@ -168,7 +162,7 @@ Implementation files (relative to `public-web/`):
 - Packaging/review: `scripts/prepare-sites-build.mjs`,
   `scripts/preview-email-identity.mjs`, `scripts/check-email-runtime.mjs` and
   generated `dist/client` / `dist/server` artifacts. No lockfile change. The D1
-  binding and disabled enable flag are candidate configuration, not a live Worker
+  binding and enable flags are configuration, not by themselves a live Worker
   update. Documentation is synchronized in `public-web/README.md`,
   root `STATUS.md`, `docs/API.md`, `docs/OPERATIONS.md` and the parent identity
   contract. Current verification evidence and remaining gaps live in STATUS.
@@ -180,7 +174,8 @@ module beside the existing Worker; test harnesses and schema are not served.
 
 `node scripts/preview-email-identity.mjs` starts loopback-only port 5195 with an
 in-memory identity store and synthetic `@example.com` messages. Open `/login`
-and `/__test__/mail` to review; no external mail is sent. Restart clears fixtures.
+and `/__test__/mail` to review; no external mail is sent. Restart clears default fixtures; optional separate
+file-backed test identity/commerce stores are documented in public-web/README.
 An optional `node scripts/check-email-runtime.mjs /absolute/path/to/miniflare/dist/src/index.js`
 runs the same Worker against local workerd/D1 with every outgoing request
 intercepted. Neither harness is production evidence or a deployment command.

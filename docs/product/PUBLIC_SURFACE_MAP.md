@@ -10,9 +10,9 @@ live.
 The public website is a product library, not a collection of marketing pages.
 Top-level navigation is Data / Research / Pricing. Features and
 Recipes remain addressable content, not additional top-level items. The
-upper-right Account menu provides Doc and language/theme without login. The
-Account workspace also links to Doc; neither desktop nor mobile primary
-navigation includes it. Doc opens the public `/docs` hub. Object map:
+upper-right Account menu provides Docs and language/theme without login. The
+Account workspace also links to Docs; neither desktop nor mobile primary
+navigation includes it. Docs opens the public `/docs` hub. Object map:
 
 | Section | Object | Question answered | Primary next action |
 | --- | --- | --- | --- |
@@ -25,7 +25,7 @@ navigation includes it. Doc opens the public `/docs` hub. Object map:
 | Account | tenant-owned access state | What can I access and how do I connect it? | manage access or an integration |
 
 Agent/MCP is a public delivery tutorial/template at `/connect`, linked from
-Doc in Account and Docs. Reading or copying it needs no website session; data API
+Docs in Account and Docs. Reading or copying it needs no website session; data API
 requests still require the caller's Bearer credential. It is not the primary
 reason to buy the product. The first promise is trustworthy, point-in-time-aware,
 reproducible financial data.
@@ -187,9 +187,9 @@ Recommended routes:
 /pricing/beta
 ```
 
-### Doc `/docs`
+### Docs `/docs`
 
-Doc is reached from Account, never a desktop/mobile primary navigation item.
+Docs is reached from Account, never a desktop/mobile primary navigation item.
 The public `/docs` hub presents first connection, Agent setup and account help
 first, then a grouped directory spanning getting started, data, APIs, methods
 and account guidance. Desktop uses a persistent directory beside the reading

@@ -1,9 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 
-// Real in-memory SQLite, exposing only the D1 calls used by the identity slice.
-export function identityDb() {
-  const sqlite = new DatabaseSync(':memory:');
+// Real SQLite, memory-only by default; optional isolated file for local restart QA.
+// Exposes only the D1 calls used by the identity slice, never a production binding.
+export function identityDb(filename = ':memory:') {
+  const sqlite = new DatabaseSync(filename);
   sqlite.exec(readFileSync(new URL('../../worker/identity-schema.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../../worker/identity-retention-schema.sql', import.meta.url), 'utf8'));
   sqlite.exec(readFileSync(new URL('../../worker/account-library-schema.sql', import.meta.url), 'utf8'));

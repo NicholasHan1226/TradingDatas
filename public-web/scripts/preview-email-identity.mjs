@@ -1,4 +1,4 @@
-// Local-only acceptance harness: memory-only identity DB and synthetic mail.
+// Local-only acceptance harness: synthetic mail, optional isolated identity persistence.
 // Never imported by the build or Worker. No real network delivery or API keys.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -7,12 +7,14 @@ import { fileURLToPath } from 'node:url';
 import worker from '../worker/index.js';
 import { createEmailIdentityHandler } from '../worker/email-identity.js';
 import { identityDb } from '../tests/helpers/identity-db.mjs';
+import { openCommerceSandbox, assertSeparateSandboxFiles } from './commerce-sandbox.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../dist/client');
 const port=Number(process.env.TD_IDENTITY_PREVIEW_PORT || 5195);
 const origin=`http://127.0.0.1:${port}`;
 const outbox=[];
-const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_RETENTION_ENABLED:'true',ACCOUNT_CONNECTION_ENABLED:'true',ACCOUNT_LIBRARY_ENABLED:'true',ACCOUNT_ADMIN_ENABLED:'true',SESSION_ENCRYPTION_KEY:'local-preview-only-encryption-material',ACCOUNT_API_BASE:'https://account.example.test',IDENTITY_DB:identityDb(),IDENTITY_PEPPER:'local-preview-only-not-a-real-secret-0123456789012345',RESEND_API_KEY:'local-synthetic-only',
+assertSeparateSandboxFiles(process.env.TD_IDENTITY_PREVIEW_DB,process.env.TD_COMMERCE_SANDBOX_DB);
+const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_RETENTION_ENABLED:'true',ACCOUNT_CONNECTION_ENABLED:'true',ACCOUNT_LIBRARY_ENABLED:'true',ACCOUNT_ADMIN_ENABLED:'true',SESSION_ENCRYPTION_KEY:'local-preview-only-encryption-material',ACCOUNT_API_BASE:'https://account.example.test',IDENTITY_DB:identityDb(process.env.TD_IDENTITY_PREVIEW_DB || ':memory:'),IDENTITY_PEPPER:'local-preview-only-not-a-real-secret-0123456789012345',RESEND_API_KEY:'local-synthetic-only',
   ASSETS:{async fetch(request){
     const requested=decodeURIComponent(new URL(request.url).pathname);
     const file=path.resolve(root,`.${requested==='/'?'/index.html':requested}`);
@@ -21,6 +23,8 @@ const env={EMAIL_LOGIN_ENABLED:'true',IDENTITY_RETENTION_ENABLED:'true',ACCOUNT_
       return new Response(body,{headers:{'content-type':type}});
     } catch{return new Response('Not found',{status:404});}
   }}};
+// Opt-in isolated local ledger. Default preview/production has no commerce.
+if(process.env.TD_COMMERCE_SANDBOX_DB) Object.assign(env,{COMMERCE_MODE:'sandbox',COMMERCE_SANDBOX_DB:openCommerceSandbox(process.env.TD_COMMERCE_SANDBOX_DB)});
 const handler=createEmailIdentityHandler({fetchImpl:async (_url,init)=>{
   if(_url.startsWith('https://account.example.test/')) {
     const key=init.headers.get('authorization');
@@ -49,7 +53,7 @@ const server=http.createServer(async (req,res)=>{
     else if(new URL(request.url).pathname==='/__test__/viewport' && req.method==='GET') {
       const params=new URL(request.url).searchParams;
       const width=['390','768','1024'].includes(params.get('width'))?Number(params.get('width')):390;
-      const page=['/docs','/connect','/bookmarks','/account/keys'].includes(params.get('page'))?params.get('page'):'/account';
+      const page=['/docs','/connect','/bookmarks','/account/keys','/account/billing','/account/subscription'].includes(params.get('page'))?params.get('page'):'/account';
       // A real nested layout viewport for responsive review; no app-state injection.
       response=new Response(`<!doctype html><html><meta charset="utf-8"><title>Local account viewport</title><body style="margin:0;background:#d7d9dc"><nav style="padding:12px;font:14px sans-serif">LOCAL SYNTHETIC REVIEW · <a href="?width=390">390px</a> · <a href="?width=768">768px</a></nav><iframe title="Account responsive preview" src="${page}" style="display:block;width:${width}px;height:850px;max-width:100%;border:0;margin:auto"></iframe></body></html>`,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
     }
