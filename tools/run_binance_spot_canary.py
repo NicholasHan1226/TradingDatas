@@ -12,6 +12,7 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import fcntl
 import json
+import sqlite3
 from pathlib import Path
 import sys
 import time
@@ -33,6 +34,11 @@ from dataset_registry import (  # noqa: E402
 )
 from tools.compile_crypto_binance_canary_registry import (  # noqa: E402
     FROZEN_CRYPTO_SYMBOL_COUNT,
+)
+from storage.receipt_projection import (  # noqa: E402
+    RuntimeProjectionError,
+    classify_row_receipt_proofs,
+    open_verified_read_model_snapshot,
 )
 
 FIVE_MINUTES = timedelta(minutes=5)
@@ -210,6 +216,49 @@ def _collect_with_one_provider_retry(
     return tuple(attempts)
 
 
+def _completed_window_receipts(db_path, registry, datasets, window, now):
+    """Reuse only validated success cohorts for this exact request window.
+
+    SQL/JSON merely select bounded candidates; the existing receipt validator
+    decides whether they prove completion. Unknown evidence never skips work.
+    This is called under the collection lock and closes its read snapshot
+    before any missing dataset is collected.
+    """
+    if not db_path.exists():
+        return {}
+    completed = {}
+    try:
+        with open_verified_read_model_snapshot(db_path) as conn:
+            for dataset_id in datasets:
+                rows = conn.execute(
+                    "SELECT run_id, notes FROM ("
+                    "SELECT run_id, notes, status FROM market_ingest_runs "
+                    "WHERE source = ? ORDER BY finished_at DESC, rowid DESC LIMIT 100"
+                    ") WHERE status = 'success'",
+                    (dataset_id,),
+                ).fetchall()
+                for receipt_id, notes in rows:
+                    try:
+                        payload = json.loads(notes)
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(payload, dict) or payload.get("request_window") != window:
+                        continue
+                    try:
+                        proof = classify_row_receipt_proofs(
+                            conn, registry, registry.resolve(dataset_id),
+                            (receipt_id,), now=now,
+                        ).proofs.get(receipt_id)
+                    except (RuntimeProjectionError, ValueError, TypeError):
+                        break
+                    if proof is not None and dict(proof.request_window) == window:
+                        completed[dataset_id] = receipt_id
+                    break
+    except (RuntimeProjectionError, sqlite3.Error):
+        return {}
+    return completed
+
+
 def run(
     *,
     db_path: Path,
@@ -294,7 +343,21 @@ def run(
         collector = BinanceSpotPublicCollector()
         results = []
         for window in windows:
+            completed = (
+                _completed_window_receipts(db_path, registry, datasets, window, now)
+                if backup_wake else {}
+            )
             for dataset_id in datasets:
+                if dataset_id in completed:
+                    results.append({
+                        "dataset_id": dataset_id,
+                        "receipt_ids": [completed[dataset_id]],
+                        "retry_count": 0,
+                        "state": "success",
+                        "window": window,
+                        "collection_action": "reused_completed_receipt",
+                    })
+                    continue
                 attempts = _collect_with_one_provider_retry(
                     db_path=db_path,
                     registry=registry,
@@ -314,6 +377,7 @@ def run(
                         "retry_count": len(attempts) - 1,
                         "state": attempts[-1].status,
                         "window": window,
+                        "collection_action": "collected",
                     }
                 )
         if any(item["state"] != "success" for item in results):
@@ -328,6 +392,10 @@ def run(
                 else "bars"
             ),
             "datasets": results,
+            "skipped_completed_dataset_count": sum(
+                item["collection_action"] == "reused_completed_receipt"
+                for item in results
+            ),
             "lock_wait_seconds": round(lock_held_seconds, 3),
             "mode": "execute",
             "state": "success",
