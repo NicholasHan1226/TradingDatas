@@ -602,7 +602,7 @@ HTTP/consumer readback。
 
 生产发布的权威通道是：**本地已验证的 clean Git commit -> `marketgraph-main` 的
 immutable release staging -> manifest/rollback 验证 -> 原子 `current` 切换 -> service
-与消费者 readback**。目标 ECS 使用 Finance `PRODUCTION_ACCESS.md` 登记的 `marketgraph-main`
+与平台 receipt/认证 API readback**；消费者 readback 另行记录，不作为 TD 独立供数前置条件。目标 ECS 使用 Finance `PRODUCTION_ACCESS.md` 登记的 `marketgraph-main`
 （严格 host-key 校验）进行 root-only
 release 操作；`marketgraph-server` 仅可用于最小权限诊断。服务器工作树能否从 GitHub 拉取，
 只是可选的源码同步能力，绝不能作为“是否可以发布”的前置条件或阻塞结论。
@@ -1279,7 +1279,7 @@ UTF-8回执候选扫描仍使用进程内锁，覆盖Python UDF注册、SQL读�
 Polymarket 的新失败回执不能刷新成功捕获时间：使用 capture 内的 `observed_at`，并核对
 非空 market/snapshot 数量；超过 26 小时无成功捕获、损坏回执或缺失成功捕获报 ALERT，
 最近六份去重回执至少四次失败报 WARN，同一次判断不得同时输出 OK。这仅是运行诊断，
-不取代 SQLite receipt、认证 API 或 activation/stable 门禁。既有 TA 账本告警保持独立，
+不取代 SQLite receipt、认证 API 或启用所需的权限/完整性验证；稳定性只按「接入、供数与质量的边界」记录，不作为统一停服门禁。既有 TA 账本告警保持独立，
 修复 TD 不会抹除或伪造 TA 结果。滚动评估账本的新鲜度检查同时识别旧版顶层
 `entry-*.json` 与当前原子目录 `entry-*/entry.json`；只含空暂存目录或失败退出的目录不算
 成功条目，显示名称使用条目目录名。
