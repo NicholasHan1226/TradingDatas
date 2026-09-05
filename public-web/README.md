@@ -421,7 +421,7 @@ local workerd/D1 verification and the production approval gates are documented i
 [Email identity v1](../docs/design/email-identity-v1.md). The schema file and review
 harness are not public assets. The dedicated remote account DB has been initialized;
 the candidate `wrangler.jsonc` binds it as `IDENTITY_DB` and enables the paired
-email-login/retention flags while keeping connection, library and admin flags off.
+email-login/retention flags while keeping library and admin flags off. The September 5 integration configuration enables connection after the account-only schema application.
 A September 1 dashboard readback confirmed the live binding plus encrypted identity,
 Resend and session-key secret names; at that readback all runtime capability flags
 were still false. Do not use secret presence as delivery proof or assume a later
@@ -468,3 +468,19 @@ then requires `/`, `/account/`, `/data/`, `/research/`, and `/pricing/` to retur
 HTTP `200`, retain the requested effective URL, and contain the exact JavaScript
 asset referenced by that checkout. A local build or a successful upload alone is
 not production evidence.
+
+### Account and existing subscription access
+
+Account → Subscription & data access now includes the explicit existing-key
+connection action. It reads the effective plan, expiry, categories, usage and
+key permissions from Portal; this is not a payment or renewal ledger. Email
+identity remains signed in if the data connection becomes invalid or unavailable;
+the page offers a retry instead of declaring no subscription or zero usage.
+Known key-management refusals use the same safe error codes for both login paths.
+
+The integration release enables only `ACCOUNT_CONNECTION_ENABLED`, after applying
+`worker/account-library-schema.sql` to the existing dedicated identity D1 store.
+Library and Admin flags remain false. Roll back by disabling connection and
+restoring the preceding Worker version; retain additive tables and the identity
+disable trigger. Existing keys, data facts, sessions and payment settings are not
+rewritten. Live activation and end-to-end user verification are recorded in STATUS.

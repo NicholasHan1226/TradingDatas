@@ -20,6 +20,7 @@ copyFileSync(path.join(root, "worker", "email-identity.js"), path.join(dist, "se
 copyFileSync(path.join(root, "worker", "email-templates.js"), path.join(dist, "server", "email-templates.js"));
 copyFileSync(path.join(root, "worker", "identity-retention.js"), path.join(dist, "server", "identity-retention.js"));
 copyFileSync(path.join(root, "worker", "account-continuity.js"), path.join(dist, "server", "account-continuity.js"));
+copyFileSync(path.join(root, "worker", "portal-errors.js"), path.join(dist, "server", "portal-errors.js"));
 copyFileSync(hosting, path.join(dist, ".openai", "hosting.json"));
 // Reuse the versioned admin build. The Worker serves its shell at /admin/;
 // assets remain under /app/. No cookie or credential enters these files.

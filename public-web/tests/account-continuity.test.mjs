@@ -5,7 +5,7 @@ import { createEmailIdentityHandler } from '../worker/email-identity.js';
 import { runIdentityMaintenance } from '../worker/identity-retention.js';
 
 async function fixture() {
-  const db=identityDb(); let clock=1_800_000_000; let upstreamState='active'; const calls=[];
+  const db=identityDb(); let clock=1_800_000_000; let upstreamState='active'; let keyResponse=null; const calls=[];
   const env={IDENTITY_DB:db, IDENTITY_PEPPER:'local-test-only-identity-pepper-value', RESEND_API_KEY:'fixture-only',
     EMAIL_LOGIN_ENABLED:'true', IDENTITY_RETENTION_ENABLED:'true', ACCOUNT_LIBRARY_ENABLED:'true', ACCOUNT_CONNECTION_ENABLED:'true', ACCOUNT_ADMIN_ENABLED:'true',
     SESSION_ENCRYPTION_KEY:'local-only-encryption-material-not-a-real-secret', ACCOUNT_API_BASE:'https://backend.example'};
@@ -19,6 +19,7 @@ async function fixture() {
     if(upstreamState==='tenant_changed') portal.tenant_id='tenant-other';
     if(String(url).endsWith('/portal/api/me')) return Response.json({portal});
     if(String(url).includes('/usage')) return Response.json({portal_usage:{history:[],today_count:7}});
+    if(keyResponse) return keyResponse();
     return Response.json({api_keys:[]});
   }});
   async function user(id) {
@@ -33,7 +34,7 @@ async function fixture() {
     method,headers:{origin:'https://site.example',cookie:`td_identity_session=${actor.token}`,'x-td-identity':actor.id,'content-type':'application/json',...extra},
     body:body===undefined?undefined:JSON.stringify(body),
   }),env);
-  return {db,env,alice,bob,request,calls,setState:v=>upstreamState=v,advance:n=>clock+=n,now:()=>clock};
+  return {db,env,alice,bob,request,calls,setKeyResponse:v=>keyResponse=v,setState:v=>upstreamState=v,advance:n=>clock+=n,now:()=>clock};
 }
 test('cloud library is isolated, idempotent and bound to the expected identity',async()=>{
   const f=await fixture(); const key='dataset:cn-equity-daily';
@@ -152,4 +153,45 @@ test('stale-tab or missing identity cannot delete the newly signed-in account',a
   assert.equal(f.db.sqlite.prepare('SELECT COUNT(*) n FROM identity_users WHERE disabled_at IS NOT NULL').get().n,0);
   const result=await (await f.request(f.bob,'profile/deletion','POST',{confirmation:'DELETE'})).json();
   assert.equal(result.deletion.user_id,'bob');
+});
+
+test('linked key business errors are safe, actionable and still identity scoped',async()=>{
+  const f=await fixture();
+  await f.request(f.alice,'connection','POST',{access_key:'fixture-key-a'});
+  for(const [message,code] of [
+    ['key label must be a string','invalid_key_label'],
+    ['key label must contain 1 to 64 characters','invalid_key_label'],
+    ['customer API key limit reached','key_limit_reached'],
+    ['current credential cannot be disabled','current_key_protected'],
+    ['API key not found','key_not_found'],
+    ['invalid key id','invalid_key_id'],
+    ['API key management requires a token-hash credential','key_management_unavailable'],
+    ['current credential has no delegable data scope','key_scope_required'],
+  ]) {
+    f.setKeyResponse(()=>Response.json({error:message,secret:'never expose'},{status:400}));
+    const result=await f.request(f.alice,'keys','POST',{label:'x'});
+    assert.equal(result.status,400); assert.deepEqual(await result.json(),{error:code});
+    assert.equal(result.headers.get('cache-control'),'no-store');
+    assert.equal(result.headers.get('set-cookie'),null);
+  }
+  const calls=f.calls.length;
+  assert.equal((await f.request(f.alice,'keys','POST',{label:'x'},{'x-td-identity':'bob'})).status,409);
+  assert.equal(f.calls.length,calls);
+  assert.equal((await f.request(f.bob,'keys')).status,403);
+  assert.equal((await (await f.request(f.alice,'me')).json()).identity.email_verified,true);
+});
+test('linked key errors reject unknown, malformed and oversized upstream bodies',async()=>{
+  const f=await fixture();
+  await f.request(f.alice,'connection','POST',{access_key:'fixture-key-a'});
+  for(const reply of [
+    ()=>Response.json({error:'private database path or credential'},{status:400}),
+    ()=>Response.json({error:['API key not found']},{status:400}),
+    ()=>new Response('API key not found',{status:400}),
+    ()=>new Response('{',{status:400,headers:{'content-type':'application/json'}}),
+    ()=>Response.json({error:'API key not found',secret:'x'.repeat(5000)},{status:400}),
+  ]) {
+    f.setKeyResponse(reply);
+    const result=await f.request(f.alice,'keys/key_0123456789abcdef','PATCH',{enabled:false});
+    assert.equal(result.status,503); assert.deepEqual(await result.json(),{error:'connection_unavailable'});
+  }
 });

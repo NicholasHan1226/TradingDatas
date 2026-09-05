@@ -1358,3 +1358,23 @@ CI 只对 `.github/scripts/docs_fast_path.py` 中逐项审核的文档路径启�
 快路径保留现有 required check 名称，只验证变更文档的差异、非空 UTF-8 内容；不安装运行依赖，不声称代码测试或生产验收已完成。普通手动 dispatch 默认完整测试；TradingDatas 的定时与 `suite=full` 也始终完整执行。文档正文、规则与链接正确性仍由变更审核负责，不新增等待天数或审批流程。分类边界回归可运行 `python3 tests/test_docs_fast_path.py`。回退时 revert 本批 CI 变更即可恢复原测试，无生产状态或数据迁移。
 
 这不改变网站发布触发范围或服务器发布流程。文档快路径结果不能替代运行时变更的完整测试与读回；仅文档修改不要求切换生产 release。
+
+### Account connection integration release
+
+Existing email users can connect an already-issued data key from Account →
+Subscription & data access. The Worker rechecks Portal authority for effective
+plan, expiry, categories, usage and key management. Connection is delegated
+existing access, not a purchase or entitlement provision. Backend outages and
+invalid connections have separate retry/reconnect states. Payment remains paused.
+
+Before enabling `ACCOUNT_CONNECTION_ENABLED`, apply the versioned
+`public-web/worker/account-library-schema.sql` to the existing identity D1 only,
+record a recovery bookmark, and verify tables, disable trigger and foreign keys.
+Do not apply it to financial SQLite. Keep library/admin flags false in this
+release and preserve identity/session/email secrets. Verify source/build identity,
+Worker bindings, anonymous denial and a real user-selected email/key connection
+separately; synthetic fixtures are not production consumer proof.
+
+Rollback disables connection and restores the previous Worker code while retaining
+additive tables and the disable trigger. Do not revoke existing data keys, erase
+connections, restore deleted users or reset the identity store for a UI rollback.

@@ -49,6 +49,12 @@ is confirmed. See [implementation and resumption gates](payment-flow-preparation
 
 ## Existing implementation and gaps
 
+2026-09-05 clarification: independent email identity, session lifecycle and explicit
+existing-key connection are implemented. See [account continuity](account-library-v1.md)
+and STATUS for activation; older local-candidate statements below describe the
+original rollout. This integration does not resume the paused checkout or create
+a subscription ledger.
+
 | Capability | Existing surface | Work needed |
 | --- | --- | --- |
 | Browser access | Encrypted eight-hour account cookie wrapping an access key | Stable user identity and independently revocable sessions |

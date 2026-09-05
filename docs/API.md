@@ -696,3 +696,13 @@ key 不可自行停用，防止用户把当前 Account 会话锁死。重新启�
 | `label` | string | 客户可读的 key 名称，1..64 字符 |
 | `created_at` | string | key 创建时间（RFC3339 UTC） |
 | `daily_limit` | number/null | 存量档位每日请求上限（null 或省略 = 无限；商业档不接受） |
+
+### Account key-management business errors
+
+Both same-site account login paths return HTTP 400 with a safe `error` code for
+known key-management refusals: `invalid_key_label`, `key_limit_reached`,
+`current_key_protected`, `key_not_found`, `invalid_key_id`,
+`key_management_unavailable`, `key_scope_required`. These account-control routes
+are unchanged; this does not add data API endpoints. Unknown or oversized backend
+errors remain unavailable responses, without exposing backend text. A data-key
+refusal does not revoke an independent email identity.

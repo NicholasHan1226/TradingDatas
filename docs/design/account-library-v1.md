@@ -1,8 +1,9 @@
 # Account continuity and personal library v1
 
-Status: implemented candidate on `codex/account-library-v1`, dependent on email
-identity PR #397; not released. Verification is recorded separately in the run report.
-Owner decision: continue the existing Account design, email first; SMS and payment stay off.
+Status: implementation merged; 2026-09-05 integration release in preparation.
+Current activation/readback lives in `STATUS.md`; the earlier candidate report is
+historical. This release enables only existing-key account connection. Personal
+library and administrator bridging stay disabled; payment remains paused.
 
 ## Frozen boundary
 
@@ -59,8 +60,9 @@ These are account control-plane routes, not additional public data endpoints:
 - `/api/account/bookmarks/import`: POST `{ keys }`, at most 100 per explicit import.
 - Existing `me`, `usage`, `keys` remain the only customer projections of the backend.
 
-Feature flags default false: `ACCOUNT_CONNECTION_ENABLED`, `ACCOUNT_LIBRARY_ENABLED`,
-`ACCOUNT_ADMIN_ENABLED`.
+The committed integration configuration enables `ACCOUNT_CONNECTION_ENABLED`;
+`ACCOUNT_LIBRARY_ENABLED` and `ACCOUNT_ADMIN_ENABLED` remain false. Apply the
+reviewed account-only schema before this configuration reaches production.
 Additive schema is `public-web/worker/account-library-schema.sql`; applying it is a
 separate reviewed D1 operation. Migration includes dependent-authority revocation on
 profile disable and cascaded personal-library cleanup on explicit profile purge.

@@ -7,7 +7,7 @@
     "ACCOUNT_API_BASE": "https://td-admin-api.tradingagent.cc",
     "EMAIL_LOGIN_ENABLED": "true",
     "IDENTITY_RETENTION_ENABLED": "true",
-    "ACCOUNT_CONNECTION_ENABLED": "false",
+    "ACCOUNT_CONNECTION_ENABLED": "true",
     "ACCOUNT_LIBRARY_ENABLED": "false",
     "ACCOUNT_ADMIN_ENABLED": "false"
   },
