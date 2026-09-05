@@ -36,8 +36,8 @@ provider
 - `contract_ready` 允许继续开发、集成和候选发布；一个数据集失败不阻断其它独立数据集。
 - `observed` 由真实 provider -> SQLite receipt -> authenticated API readback 的客观证据自动形成。
 - `stable` 由适用 cadence 的连续成功和本平台认证 API readback 自动形成，只支持稳定性声明；不等待该状态才接入、发布或按合同供数。消费者独立验收，详见 [运维边界](docs/OPERATIONS.md#接入供数与质量的边界)。
-- 自动晋级只能扩大“内部只读数据可用性”和既有预算内的调度范围，不能绕过 provider 权限、资源预算、我们自己的 receipt 完整性（empty ≠ success）或安全边界。Vendor/input quality is immutable external，不得把上游 completeness 当成晋级或排期门禁。
-- GitHub Actions 是可选验证渠道，不是生产上线门禁。Actions 不可用时，以本地/服务器确定性测试、候选 release 校验和生产 runtime readback 作为发布证据。
+- 能力标签只描述已有证据，不授予权限或扩容，也不作为接入、供数和预算内采集的开关；权限、预算、完整性与源质量按上述运维边界分别处理。
+- 源码合入与发布验证统一遵循根 [AGENTS.md](AGENTS.md) 和 [运维说明](docs/OPERATIONS.md)，不在路线图另设 CI 豁免或重复发布流程。
 - 公共 Data/Features/Recipes/Research/Pricing/Docs/Account 可以在合同层和前端候选中独立推进，但不得在运行面、commerce、授权、再分发和 production readback 完成前伪装为 live，也不得阻断既有数据持续运行。
 - **Datas PM 2026-09-05：** 对齐 Tushare 的是 dataset/coverage 菜单，不是其 ad-hoc API 交付模型。TradingDatas 仍是 agent-first catalog+query 事实层；empty ≠ success。
 - 上游晚发、缺行、限频、文档≠现实、间歇 `provider_error` 是外部 blocker，单独列出；合同正确时不停止下一可接接口，也不计为进度 slip / 未完成。
@@ -102,7 +102,7 @@ mutable data -> /opt/investment-data/tradingdatas/
 - target release 与 rollback release 均可确定性识别；
 - `current` 只做代码版本选择，SQLite 不随代码回滚；
 - systemd service/timer 在既有资源和网络边界内运行；
-- 发布后以 service/timer、receipt、catalog/query 和消费者 readback 验证实际运行；
+- 平台发布后以 service/timer、receipt 和认证 catalog/query 验证实际运行；消费者验收单独记录，不是 TD 独立供数的前置条件；
 - GitHub、服务器 source、effective release、runtime 和数据证据分别陈述，不能互相替代；
 - CI 不可用不停止现有采集与 API；新源码仍须通过既有 PR/CI 门禁，发布工具或服务器验证失败只阻断该发布；
 - 已稳定替代的旧运行入口按引用归零后删除，不长期维持双轨。

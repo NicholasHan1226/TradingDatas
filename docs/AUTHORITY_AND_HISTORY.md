@@ -66,8 +66,9 @@ GitHub Actions 不成为运行权威，也不阻止已上线采集和只读 API 
 不得因 Actions 不可用直推主线或发布未经接受的源码。
 
 合并与 CI 成功后，生产交付还需分别验证：不可变 release/清单、实际服务与定时任务、
-SQLite receipt、认证 catalog/query，以及适用消费者。GitHub commit、PR 或绿色 CI
-均不能单独证明生产已上线或数据稳定；单数据集外部失败按运维口径单列。
+SQLite receipt 与认证 catalog/query。适用消费者的 readback 单独证明其消费状态，
+不阻断 TD 独立供数。GitHub commit、PR 或绿色 CI 均不能单独证明生产已上线或
+数据稳定；单数据集外部失败按运维口径单列。
 
 ## 历史保留原则
 
