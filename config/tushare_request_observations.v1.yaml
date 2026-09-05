@@ -16,7 +16,7 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 785ad72f37df7242773e77f69a35d65f9db273e797fa84a4e01f75e8f9213d3b
+    sha256: 091f901c4b2576eab5b3535fa521e79962f9ed034868a9495ce53256a30dced7
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -70,9 +70,9 @@ counts:
   interfaces: 190
   probe_executable: 137
   probe_blocked: 53
-  ingest_contract_ready: 130
-  ingest_contract_blocked: 60
-  row_limit_ingest_contract_blocked: 15
+  ingest_contract_ready: 129
+  ingest_contract_blocked: 61
+  row_limit_ingest_contract_blocked: 16
 entries:
 - api_name: adj_factor
   scope_labels:
@@ -1328,14 +1328,22 @@ entries:
   # Official input section is 无，可提取全部, not a 名称/类型/必选 table.
   # That documented empty-all has the same strength as sge_basic
   # 不输入为获取全部. Empty parameters are that all-list snapshot.
-  # Do not invent a company name. Activation stays paused.
+  # 2026-09-06 bounded HTTPS probe returned 15371 nonempty rows, over
+  # the 10000 hard budget. This is too-large nonempty, not empty≠success.
+  # Official document snapshot has no input filter to pin. Next honest
+  # step is a narrower request; do not raise the hard budget, activate,
+  # or unpause. reject_at_limit stays true.
   probe_state: executable
   probe_block_reasons: []
-  ingest_contract_state: ready
-  ingest_contract_block_reasons: []
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters: {}
-  row_limit_observation: null
+  row_limit_observation:
+    observed_count: 15371
+    detection: observed_count_exceeds_hard_max_rows_per_attempt
+    reject_at_limit: true
 - api_name: fund_daily
   scope_labels:
   - all

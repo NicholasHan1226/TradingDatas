@@ -97,7 +97,6 @@ def test_checked_in_preflight_snapshot_matches_compiled_registry() -> None:
     assert ready == {
         "bse_mapping",
         "fund_basic",
-        "fund_company",
         "sge_basic",
         "stk_nineturn",
         "stock_hsgt",
@@ -127,7 +126,7 @@ def test_frozen_dump_binds_wip_observations_without_preflight_json_regen() -> No
     )
     assert plan["counts"]["planned"] == 190
     assert plan["counts"]["executable"] == 137
-    assert plan["counts"]["ingest_contract_ready"] == 130
+    assert plan["counts"]["ingest_contract_ready"] == 129
 
 
 def test_probe_executable_single_partition_local_datetime_is_window_ready(

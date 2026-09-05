@@ -181,9 +181,9 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
         "interfaces": 190,
         "probe_executable": 137,
         "probe_blocked": 53,
-        "ingest_contract_ready": 130,
-        "ingest_contract_blocked": 60,
-        "row_limit_ingest_contract_blocked": 15,
+        "ingest_contract_ready": 129,
+        "ingest_contract_blocked": 61,
+        "row_limit_ingest_contract_blocked": 16,
     }
     assert observations["counts"] == {
         "interfaces": len(entries),
@@ -342,11 +342,17 @@ def test_sge_basic_empty_snapshot_is_official_all_list_and_hm_list_stays_blocked
     assert fund_company["request_shape"] == "snapshot_or_date_range"
     assert fund_company["probe_state"] == "executable"
     assert fund_company["probe_block_reasons"] == []
-    assert fund_company["ingest_contract_state"] == "ready"
-    assert fund_company["ingest_contract_block_reasons"] == []
+    assert fund_company["ingest_contract_state"] == "blocked"
+    assert fund_company["ingest_contract_block_reasons"] == [
+        "response_completeness_unresolved_at_observed_limit"
+    ]
     assert fund_company["unresolved_parameter_keys"] == []
     assert fund_company["parameters"] == {}
-    assert fund_company["row_limit_observation"] is None
+    assert fund_company["row_limit_observation"] == {
+        "observed_count": 15371,
+        "detection": "observed_count_exceeds_hard_max_rows_per_attempt",
+        "reject_at_limit": True,
+    }
     assert "setup_date" not in fund_company["parameters"]
 
     hm_list = _entry(observations, "hm_list")
@@ -368,10 +374,14 @@ def test_sge_basic_empty_snapshot_is_official_all_list_and_hm_list_stays_blocked
     assert sge_contract["fanout"] == {"strategy": "none"}
     fund_company_contract = _contract(bundle, "fund_company")
     assert fund_company_contract["probe_state"] == "executable"
-    assert fund_company_contract["ingest_contract_state"] == "ready"
+    assert fund_company_contract["ingest_contract_state"] == "blocked"
+    assert fund_company_contract["ingest_contract_block_reasons"] == [
+        "response_completeness_unresolved_at_observed_limit"
+    ]
     assert fund_company_contract["request_template"] == {}
     assert fund_company_contract["request_variants"] == [{}]
     assert fund_company_contract["fanout"] == {"strategy": "none"}
+    assert fund_company_contract["budgets"]["max_rows_per_attempt"] == 10000
     hm_contract = _contract(bundle, "hm_list")
     assert hm_contract["probe_state"] == "blocked"
     assert hm_contract["ingest_contract_state"] == "blocked"
@@ -385,7 +395,10 @@ def test_sge_basic_empty_snapshot_is_official_all_list_and_hm_list_stays_blocked
     fund_company_probe = _entry(plan, "fund_company")
     assert fund_company_probe["probe_state"] == "executable"
     assert fund_company_probe["params"] == {}
-    assert fund_company_probe["ingest_contract_state"] == "ready"
+    assert fund_company_probe["ingest_contract_state"] == "blocked"
+    assert fund_company_probe["ingest_contract_block_reasons"] == [
+        "response_completeness_unresolved_at_observed_limit"
+    ]
     hm_probe = _entry(plan, "hm_list")
     assert hm_probe["probe_state"] == "blocked"
     assert hm_probe["params"] == {}
@@ -1510,7 +1523,7 @@ def test_row_limit_over_hard_budget_still_requires_activation_block() -> None:
     assert isinstance(counts, dict)
     counts["ingest_contract_ready"] = 130
     counts["ingest_contract_blocked"] = 60
-    counts["row_limit_ingest_contract_blocked"] = 14
+    counts["row_limit_ingest_contract_blocked"] = 15
 
     with pytest.raises(
         RuntimeContractCompilationError,
@@ -1771,8 +1784,8 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
         "planned": 190,
         "executable": 137,
         "blocked": 53,
-        "ingest_contract_ready": 130,
-        "ingest_contract_blocked": 60,
+        "ingest_contract_ready": 129,
+        "ingest_contract_blocked": 61,
     }
 
     daily = _entry(plan, "daily")
@@ -1839,8 +1852,8 @@ def test_checked_probe_authorities_compile_without_test_rebinding() -> None:
         "planned": 190,
         "executable": 137,
         "blocked": 53,
-        "ingest_contract_ready": 130,
-        "ingest_contract_blocked": 60,
+        "ingest_contract_ready": 129,
+        "ingest_contract_blocked": 61,
     }
 
 
@@ -1860,8 +1873,8 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
         "planned": 190,
         "executable": 157,
         "blocked": 33,
-        "ingest_contract_ready": 148,
-        "ingest_contract_blocked": 42,
+        "ingest_contract_ready": 147,
+        "ingest_contract_blocked": 43,
     }
     express = _entry(plan, "express")
     assert express["probe_state"] == "executable"
