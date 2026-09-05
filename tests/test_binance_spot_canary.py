@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
@@ -352,6 +353,15 @@ def test_bounded_lock_waits_for_the_holder_to_release(tmp_path) -> None:
             lock.close()
     finally:
         thread.join()
+
+
+def test_closed_bar_lock_wait_stays_at_300_seconds() -> None:
+    assert spot_canary._LOCK_WAIT_SECONDS == 300.0
+    assert spot_canary._BACKUP_LOCK_WAIT_SECONDS == 0.0
+    source = Path(spot_canary.__file__).read_text(encoding="utf-8")
+    assert "_LOCK_WAIT_SECONDS = 300.0" in source
+    assert "_LOCK_WAIT_SECONDS = 120" not in source
+    assert "_LOCK_WAIT_SECONDS = 120.0" not in source
 
 
 def test_bounded_lock_times_out_while_the_lock_stays_held(tmp_path) -> None:

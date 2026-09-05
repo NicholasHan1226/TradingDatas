@@ -1,0 +1,16 @@
+[Unit]
+Description=Wake isolated TradingDatas Crypto closed-5m collection 60s after slot close
+
+[Timer]
+# Same latest_closed_window as the :00/:05 primary. Fires only when the
+# primary oneshot never started, so a missed close-aligned wake still writes
+# the just-closed bar at close+60s. Persistent catch-up stays on this :01/:06
+# second and does not share OnCalendar with USDM or book-ticker.
+OnCalendar=*-*-* *:1/5:00
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=tradingdatas-crypto-binance-collect-retry.service
+
+[Install]
+WantedBy=timers.target

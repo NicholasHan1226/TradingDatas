@@ -138,7 +138,10 @@ def _private_lock(path: Path):
 # lock, so a 120s budget lost the race by seconds on nearly every slot (the
 # book-ticker collector sat at 115s waits or timed out).  300s still bounds a
 # genuinely stuck holder while covering batch holders several minutes long.
+# Do not restore 120s: that timeout skipped the close-aligned oneshot and left
+# the first success for the next Persistent slot (close+300s).
 _LOCK_WAIT_SECONDS = 300.0
+_BACKUP_LOCK_WAIT_SECONDS = 0.0
 _LOCK_RETRY_INTERVAL = 0.5
 
 
@@ -216,12 +219,20 @@ def run(
     collect_rules: bool = False,
     collect_book_ticker: bool = False,
     backfill_days: int | None = None,
+    backup_wake: bool = False,
+    lock_wait_seconds: float | None = None,
 ) -> dict[str, object]:
     registry = load_dataset_registry(BINANCE_CANARY_REGISTRY_PATH)
     if collect_rules and collect_book_ticker:
         raise ValueError("Crypto collector mode is ambiguous")
+    if backup_wake and (collect_rules or collect_book_ticker or backfill_days is not None):
+        raise ValueError("backup wake only applies to closed-5m bars")
     if (collect_rules or collect_book_ticker) and backfill_days is not None:
         raise ValueError("current snapshots do not support historical backfill")
+    if lock_wait_seconds is None:
+        lock_wait_seconds = (
+            _BACKUP_LOCK_WAIT_SECONDS if backup_wake else _LOCK_WAIT_SECONDS
+        )
     datasets = (
         _rule_datasets(registry)
         if collect_rules
@@ -262,8 +273,23 @@ def run(
     ):
         raise RuntimeError("Binance canary mode is required")
     lock_wait_started = time.monotonic()
-    lock = _bounded_lock(lock_path)
-    lock_wait_seconds = time.monotonic() - lock_wait_started
+    try:
+        lock = _bounded_lock(lock_path, wait_seconds=lock_wait_seconds)
+    except RuntimeError:
+        if backup_wake:
+            return {
+                "backfill_days": backfill_days,
+                "collection_kind": "bars",
+                "lock_wait_seconds": round(time.monotonic() - lock_wait_started, 3),
+                "mode": "execute",
+                "state": "skipped_lock_held",
+                "window_count": len(windows),
+                "windows": list(windows),
+                "will_call_provider": False,
+                "will_write_database": False,
+            }
+        raise
+    lock_held_seconds = time.monotonic() - lock_wait_started
     try:
         collector = BinanceSpotPublicCollector()
         results = []
@@ -302,7 +328,7 @@ def run(
                 else "bars"
             ),
             "datasets": results,
-            "lock_wait_seconds": round(lock_wait_seconds, 3),
+            "lock_wait_seconds": round(lock_held_seconds, 3),
             "mode": "execute",
             "state": "success",
             "window_count": len(windows),
@@ -322,6 +348,7 @@ def main() -> int:
     parser.add_argument("--rules", action="store_true")
     parser.add_argument("--book-ticker", action="store_true")
     parser.add_argument("--backfill-days", type=int)
+    parser.add_argument("--backup-wake", action="store_true")
     args = parser.parse_args()
     now = datetime.now(timezone.utc)
     try:
@@ -333,6 +360,7 @@ def main() -> int:
             collect_rules=args.rules,
             collect_book_ticker=args.book_ticker,
             backfill_days=args.backfill_days,
+            backup_wake=args.backup_wake,
         )
     except Exception as error:  # noqa: BLE001 - preserve the systemd nonzero failure boundary
         print(
