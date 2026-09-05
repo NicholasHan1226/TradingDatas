@@ -16,9 +16,9 @@ npm run dev
 ```
 
 The prototype includes the confirmed public-home visual direction and the compact
-`Data / Research / Pricing / Help & setup` floating navigation. Global search spans data,
+`Data / Research / Pricing` floating navigation. Global search spans data,
 external research, methods and documentation; compatibility routes for Features,
-Recipes remain directly addressable. Help & setup exposes public `/docs`,
+Recipes remain directly addressable. Doc in Account exposes public `/docs`,
 `/docs/:slug` and `/connect` tutorials/templates; `/bookmarks` is the public
 browser-local library. Language/theme are available without login in the
 upper-right menu. Account is private, with overview/subscription/usage/keys/
@@ -503,3 +503,13 @@ aggregate Crypto. Normal builds configure Agent instructions for
 that origin (an empty value leaves instructions unconfigured). Copying instructions
 does not query or authenticate. See the API/OPERATIONS contract and STATUS for
 real deployment and customer acceptance.
+
+## Doc content and reader
+
+`src/documentation.js` holds bilingual guide content under the existing stable
+`/docs/:slug` routes. `DocumentationPage.jsx` renders the task-oriented hub,
+grouped directory and reader; `documentation.css` owns its responsive layout.
+Global search and page metadata reuse these records. Update authored guides
+when product/API/account behavior changes, keeping paused commerce explicit.
+Verify both languages, desktop/mobile navigation, article anchors and direct
+links with `npm run test:sites`, `npm run build` and browser review.

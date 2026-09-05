@@ -84,11 +84,13 @@ Marketing, content, and client-side state are never runtime evidence.
    preparation methods;
 3. **Pricing** — three request-rate tiers sharing the same base data; alternative-data
    commerce is a later independent surface and is not part of the main page;
-4. **Help & setup** — public documentation and Agent/MCP tutorials/templates.
 
-The header is a compact floating rounded surface containing the four primary
+The Account menu and Account workspace expose **Doc** for public documentation
+and Agent/MCP setup; Doc is absent from desktop and mobile primary navigation.
+
+The header is a compact floating rounded surface containing the three primary
 destinations, one global search field, Bookmarks, and the Account icon. Its
-desktop hierarchy stays single-layer: Data, Research, Pricing and Help & setup are quiet
+desktop hierarchy stays single-layer: Data, Research and Pricing are quiet
 text links placed directly on the shared surface, with a fine current-location
 underline instead of a nested segmented pill or filled active tab. Desktop
 search uses a bounded responsive width so it remains prominent without taking
@@ -99,7 +101,7 @@ search spans datasets, external research, preparation methods, and
 documentation. Data, Research, the expanded research library, and Documentation
 do not duplicate keyword search boxes; they retain only task-specific taxonomy
 and status controls. On mobile, global search moves into the expanded floating
-navigation. Help & setup opens public `/docs` and `/connect`; language and
+navigation. Doc in Account opens public `/docs` and `/connect`; language and
 appearance are available without login in the upper-right menu. Account is
 private and contains personal access, usage, keys, billing and security.
 Bookmarks remain explicitly browser-local until authenticated sync exists.
@@ -492,13 +494,25 @@ The purchase path is dataset/detail or Pricing -> add-on summary -> checkout ->
 payment confirmation -> server entitlement readback -> Console. Base-package
 checkout must never silently include or auto-charge an alternative add-on.
 
-### 5.6 Docs hub
+### 5.6 Doc hub
 
-Docs is not an API-only marketing hero. It is the common explanation layer for
-the whole public product and provides search plus five stable categories:
-Get started, Data guide, API & Agents, Learning & methods, and Plans & account.
-API quickstart remains a prominent module inside Docs, while full product-area
-guidance remains equally discoverable.
+Doc is reached from Account, never a desktop/mobile primary navigation item.
+The public `/docs` hub presents first connection, Agent setup and account help
+first, then a grouped directory spanning getting started, data, APIs, methods
+and account guidance. Desktop uses a persistent directory beside the reading
+column; mobile uses a native collapsible directory. Detail pages have specific
+authored steps, on-page links, relevant next actions and adjacent guides. Keep
+existing `/docs/:slug` URLs. Avoid oversized marketing headings, equal-height
+card grids, internal authority panels and generic placeholder articles.
+
+`public-web/src/documentation.js` is the single authored bilingual content source
+for the directory, article body and global search metadata; platform and API
+contracts remain authoritative for factual statements. Examples are copy-only.
+Email identity is distinct from existing API access, and purchase/renewal stays
+paused until the commerce service is available.
+
+Current `/v1/catalog` and `/v1/query` remain the only public data API contract.
+Future canonical/PIT/feature endpoints must not be described as live.
 
 ### 5.7 Account and Agent Connections
 
@@ -630,7 +644,7 @@ method, and emphasis; they do not encode price movement or runtime health.
 
 ## 7. Component contract
 
-- **GlobalNav**: one floating rounded surface with Data, Research, Pricing, Help & setup,
+- **GlobalNav**: one floating rounded surface with Data, Research, Pricing,
   global search, Bookmarks, and Account; desktop primary links use a Hovvi-like
   single-layer text treatment and fine current-location underline, never a
   nested pill. The upper-right menu owns guest-accessible language/theme; help

@@ -8,9 +8,11 @@ live.
 ## 1. Navigation logic
 
 The public website is a product library, not a collection of marketing pages.
-Top-level navigation is Data / Research / Pricing / Help & setup. Features and
+Top-level navigation is Data / Research / Pricing. Features and
 Recipes remain addressable content, not additional top-level items. The
-upper-right menu provides language/theme without login. Object map:
+upper-right Account menu provides Doc and language/theme without login. The
+Account workspace also links to Doc; neither desktop nor mobile primary
+navigation includes it. Doc opens the public `/docs` hub. Object map:
 
 | Section | Object | Question answered | Primary next action |
 | --- | --- | --- | --- |
@@ -23,7 +25,7 @@ upper-right menu provides language/theme without login. Object map:
 | Account | tenant-owned access state | What can I access and how do I connect it? | manage access or an integration |
 
 Agent/MCP is a public delivery tutorial/template at `/connect`, linked from
-Help & setup and Docs. Reading or copying it needs no website session; data API
+Doc in Account and Docs. Reading or copying it needs no website session; data API
 requests still require the caller's Bearer credential. It is not the primary
 reason to buy the product. The first promise is trustworthy, point-in-time-aware,
 reproducible financial data.
@@ -185,21 +187,25 @@ Recommended routes:
 /pricing/beta
 ```
 
-### Docs `/docs`
+### Doc `/docs`
 
-Docs is the explanation layer for the entire website, not an API hero page.
-Categories:
+Doc is reached from Account, never a desktop/mobile primary navigation item.
+The public `/docs` hub presents first connection, Agent setup and account help
+first, then a grouped directory spanning getting started, data, APIs, methods
+and account guidance. Desktop uses a persistent directory beside the reading
+column; mobile uses a native collapsible directory. Detail pages have specific
+authored steps, on-page links, relevant next actions and adjacent guides. Keep
+existing `/docs/:slug` URLs. Avoid oversized marketing headings, equal-height
+card grids, internal authority panels and generic placeholder articles.
 
-- platform and product model;
-- data model, IDs, schema, coverage, receipts, PIT and revisions;
-- API and Agents/MCP;
-- Features and Recipes;
-- packages, account, billing and security;
-- policy: license, corrections, deprecation, status and changelog.
+`public-web/src/documentation.js` is the single authored bilingual content source
+for the directory, article body and global search metadata; platform and API
+contracts remain authoritative for factual statements. Examples are copy-only.
+Email identity is distinct from existing API access, and purchase/renewal stays
+paused until the commerce service is available.
 
-Every card opens a real article route and names its authority source. Current
-`/v1/catalog` and `/v1/query` remain the only public API contract. Future
-canonical/PIT/feature endpoints must not be documented as live.
+Current `/v1/catalog` and `/v1/query` remain the only public data API contract.
+Future canonical/PIT/feature endpoints must not be described as live.
 
 ### Login `/login`
 
@@ -229,7 +235,7 @@ unavailable while commerce is paused; website login never grants API access.
 ### Utilities
 
 `/status`, `/changelog`, `/corrections`, and license/support material belong in
-the footer and Docs utility navigation. They should not compete with the four
+the footer and Docs utility navigation. They should not compete with the three
 primary destinations in the global header.
 
 ## 4. Product-object relations

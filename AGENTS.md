@@ -16,7 +16,7 @@ TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金�
 
 ## 公共产品与教学内容边界
 
-TradingDatas 对外销售的是可信、可追溯、可复现的金融数据原料。公共网站顶栏固定为 `Data`、`Research`、`Pricing`、`Help & setup`；Features、Recipes 保留公共详情入口，Account 是独立私有工作区；`Research` 按 TradingDatas 自有分类体系整理外部论文，`Recipes` 回答“如何正确准备和组合数据”。它们是发现、购买、学习和管理同一个数据产品的界面，不是新的研究或交易 authority。Agent/MCP 是公开 `/connect` 与 Docs 下的交付方式，不是首要购买理由。
+TradingDatas 对外销售的是可信、可追溯、可复现的金融数据原料。公共网站顶栏固定为 `Data`、`Research`、`Pricing`；Features、Recipes 保留公共详情入口，Account 是独立私有工作区，菜单及工作区内以 `Doc` 提供公开文档入口，不放入桌面或移动端主导航；`Research` 按 TradingDatas 自有分类体系整理外部论文，`Recipes` 回答“如何正确准备和组合数据”。它们是发现、购买、学习和管理同一个数据产品的界面，不是新的研究或交易 authority。Agent/MCP 是公开 `/connect` 与 Docs 下的交付方式，不是首要购买理由。
 
 - `Data` 只展示 registry 与 catalog/query 可证明的数据身份、字段、覆盖、更新、lineage、样本和限制。静态文案不能把 paused/unobserved 写成已有可查询数据，也不能把 degraded 写成 fresh/完整；已有可验证的 degraded 数据可按 API 合同如实供数，也不能从 provider 文档或一次 HTTP 200 推断历史完整性。
 - `Research` 只整理、分类和展示外部行业论文或研究，保留作者、年份、期刊/来源和外部链接，并可映射所需原始数据材料；不得改写成 TradingDatas 自有结论、推荐、绩效或数据产品 benchmark。论文元数据与摘要须标明外部来源，静态示例不得冒充已上线数据库。
