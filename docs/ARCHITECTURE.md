@@ -290,8 +290,8 @@ provider/transport、schema major、quality/freshness/lineage 与 receipt 口径
   entity graph。
 - 自建另类数据源遵循同一 provider adapter、raw payload、receipt 与 catalog/query 合同，
   先作为客观数据发布。任何关联、特征、预测或策略解释均由读取侧承担。
-- 跨市场图谱、相关性、候选、预测、资金与交易判断属于 MarketGraph 或 TradingAgent 的
-  读取侧职责。TradingDatas 只交付带来源和时间证据的数据快照，不能在数据平台内形成
+- 跨市场图谱、相关性、候选、预测、资金与交易判断属于 TradingAgent/Quant Core 的
+  读取侧职责。MarketGraph 已退役，不是新的开发或运行入口。TradingDatas 只交付带来源和时间证据的数据快照，不能在数据平台内形成
   交易信号或反向控制采集。
 
 ## 扩展模型

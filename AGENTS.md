@@ -198,7 +198,7 @@ reviewer 只能按冻结合同阻断 P0/P1，不得在候选冻结后扩大范�
 
 ## 运维与诊断纪律
 
-- 读模型 SQLite 库内只允许 `provider_dataset_rows` 与 `market_ingest_runs` 两个对象；任何额外表、索引或视图都会使调度校验 fail-closed。运维备份、统计和诊断一律用库外 ATTACH 临时文件完成，不在业务库内创建中转对象。
+- 读模型 SQLite 的权威表只有 `provider_dataset_rows` 与 `market_ingest_runs`；允许的表结构与索引以 `storage/schema_contract.py` 为唯一合同源，包含其显式登记的事实/收据读取索引。未登记的表、索引或视图及不兼容定义仍 fail closed；不得因旧文档的“两个对象”表述删除合法索引。运维备份、统计和诊断一律用库外 ATTACH 临时文件完成，不在业务库内创建中转对象。
 - 比较任何时间戳前先统一时区与格式：数据行内的本地时间是 naive 墙钟，采集回执时间是 RFC3339 UTC（含 `T`/`Z`）；必须先换算到同一时钟再比较，禁止直接字符串比较。SQLite 中 RFC3339 字符串与 `datetime('now')` 的空格格式不可互比。
 
 ## 并行协作

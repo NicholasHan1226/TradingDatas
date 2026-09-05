@@ -175,13 +175,17 @@ authority 校验器，目标 dataset 的损坏回执仍 fail closed，不使用�
 
 `market_ingest_runs` 是追加式收据运行日志。收据历史、evidence 与 journal 的验证读取必须按
 目标 dataset 隔离：已知其它 dataset 的行不消耗该 dataset 的读取预算，未知 source 的 tombstone
-行仍须纳入验证，避免以索引跳过未知 authority。`market_ingest_runs_source_idx (source)` 是可选的
-单列索引合同：旧 SQLite 在索引缺失时仍可验证；目标 release 首次成功写入 receipt 时，会在同一
-写入事务内幂等创建该索引。若存在同名但列定义不精确的自定义索引，schema 验证必须失败，不能
+行仍须纳入验证，避免以索引跳过未知 authority。当前合同登记
+`market_ingest_runs_source_idx (source)` 与
+`market_ingest_runs_source_finished_idx (source, finished_at DESC)` 两个可选收据索引；
+完整表/索引定义以 `storage/schema_contract.py` 为准，不从运维文字另建 schema。
+旧 SQLite 在这些索引缺失时仍可验证；目标 release 首次成功写入 receipt 时，会在同一
+写入事务内幂等创建缺少的索引。若存在同名但列定义不兼容的自定义索引，schema 验证必须失败，不能
 继续读取或静默替换。该变更不需要单独数据库迁移，也不表示 production release 已切换。
 
-若已验证的 release 需要回退索引本身，可在维护窗口执行
-`DROP INDEX market_ingest_runs_source_idx`；不得删除 `market_ingest_runs` 或任一 receipt/fact。
+若已验证的 release 需要回退索引本身，先按 schema 合同和目标回滚版本冻结精确索引范围，
+再于维护窗口移除需要回退的索引；不得因一般园艺、旧文档或“只允许两个对象”的表述删除
+合法索引，也不得删除 `market_ingest_runs` 或任一 receipt/fact。
 代码回滚继续遵循 immutable release 切换与同层 receipt/API readback，索引缺失在旧 release 中是
 允许状态。
 
