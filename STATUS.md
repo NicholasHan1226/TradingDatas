@@ -1,41 +1,28 @@
 # TradingDatas 当前状态
 
-观察时间：2026-09-05 19:12 Asia/Shanghai。本页是可替换的运行快照；源码、运行版本、数据状态和外部入口分别核验。
+观察时间：2026-09-05 20:11 Asia/Shanghai。本页记录当前发布与运行事实；源码、公开网站、数据运行面和真实商业开通分别验收。
 
-## Doc 入口与内容重构
+## 账户、订阅与 Docs
 
-- [#492](https://github.com/NicholasHan1226/TradingDatas/pull/492) 已合入 `76b77b35a502b4502d78c7403ce142ffaf20af0b`。候选 `9eb165cf` 的四个必需检查通过；GitHub 工作流汇总状态存在延迟，检查证据见 [33962059229](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33962059229)。精确主线 CI 见 [33962626043](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33962626043)。
-- Cloudflare 发布 [33962626040](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33962626040) 成功。19:12 正式浏览器资源 `index-D2DGDnxv.js` 匹配；顶栏仅数据/研究/套餐，账户菜单使用 `Doc`，免登录打开 Doc 与 Query 正文、章节跳转均通过。
-- Doc 保留 13 个既有地址，补齐中英双语使用内容；首页为任务入口与分组目录，桌面常驻目录，手机折叠目录。正文有章节、复制示例、相关入口和相邻文章；目录、正文、搜索与页面标题复用同一内容源。
-- 294 项前端测试、构建和 diff 检查通过；本地浏览器验证桌面、390px 手机、768px 平板、中英文/明暗、目录收起、章节刷新、搜索、复制与未找到页。新上下文规则发现及规范/README 渲染通过。没有更改账户权限、支付或采集运行版本。
+- [PR #495](https://github.com/NicholasHan1226/TradingDatas/pull/495) 已合入 `e5e374a24b341fd27bb5b31fc2f98cef20d2d9d4`。候选 [33964732178](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33964732178) 四组检查通过；精确主线检查入口为 [33965230844](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33965230844)，状态以运行结果为准。
+- Cloudflare [33965231922](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33965231922) 成功。20:10 正式资源 `index-qtd5VsfW.js` 与发布一致，Docs 公共页面/账户菜单及 `/account/billing` → `/login?next=%2Faccount%2Fbilling` 通过。auth-methods 为 email=true/phone=false；guest commerce/offers/orders 为 JSON 404，明确无效邮箱 session 的 commerce 为 401，guest `/v1/catalog` 为 401，均 no-store；未创建订单。
+- 订阅/订单账本与现有数据权限分开显示，账本不可用不阻断邮箱登录、已有密钥连接、有效期和用量。
+- 生产未绑定 commerce 数据库或测试模式，不能创建订单、收款或发放新的数据权限。账本未接通明确显示不可确认记录，不将它显示成“从未购买”。
+- 独立本地持久化模拟器覆盖订单、价格/条款版本快照、所有权、幂等、重复事件、开通失败重试及重启读回。这不是支付服务商 sandbox，也不是正式购买或续费。
+- Docs 保留 13 个公开地址和原有双语目录、正文、搜索内容源。入口仅在账户菜单/工作区，顶栏继续数据、研究、套餐。
+- 313 项网站测试、构建/打包及独立审核通过；实际浏览器验证合成邮箱登录返回账单、订单/模拟结算、重启持久化、连接已有密钥、刷新/分区切换、中英/明暗与 390/768px。最终修复重复 React key，实际交互后始终只有一个订阅面板，无控制台错误。
+- 真实验证码送达、普通客户本人连接和成功 catalog/query 尚待指定验收邮箱/账户。尚未代发真实邮件、创建客户密钥或执行付款。
 
-## 公开导航与登录流程（18:39 发布记录，导航标签以上节为准）
+## 数据运行与性能
 
-- #490 已合入 `0a3753128ff54024305c16ea45a5d6eb8ca06f3c`，最终候选 `ddc43562` 四组 CI 与 Cloudflare 发布 [33961142751](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33961142751) 通过；精确主线 CI 见 [33961142792](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33961142792)。
-- 顶栏为数据、研究、套餐、帮助与接入；`/docs`、文档详情、`/connect`、`/bookmarks` 公开，语言/外观直接在右上菜单切换。账户只保留个人概览、订阅、用量、密钥、账单与安全。
-- 18:39 正式浏览器资源 `index-BJ4iKG44.js` 匹配发布。未登录 `/account` → `/login?next=%2Faccount`；`/account/subscription` → 保留该分区的登录页。公开帮助、接入、收藏直接访问通过。没有发送真实验证码或执行客户操作。
-- 私有路由先验证未知会话，仅确认 guest 后跳转；不可用显示重试。本机收藏独立于身份状态，不自动上传或切换云库。云收藏 adapter/后端仍保留为未启用候选，当前 UI 不提供云导入。
-- 289 项 public-web 测试、构建、diff 与相关文档渲染通过；合成邮箱登录回原密钥分区、退出、身份 503 时公开收藏和刷新保留、中英明暗、390px 手机菜单/768px 平板布局、菜单互斥及 Esc 焦点回归均已验证。新上下文规则发现通过。本轮只改公共网站与文档，没有数据库迁移或采集运行切换。
+- PR #494 已合入 `3a2e534091079e28d1955ee0a2fca8c1bb1c2590`，精确主线 CI [33964421197](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33964421197) 通过。改动复用同一回执绑定的校验结果，不改存储模式、索引、HTTP 超时或 worker 数。
+- 两个候选目录各 1071 文件验证通过。A 股隔离候选实际首次认证目录为 200 / 16.251 秒 / 192 项；Crypto 正常初始化后为 200 / 11.576 秒 / 240 项。A 股尚未达既有 15 秒目标，本轮未切换数据运行版本。
+- A 股和 Crypto current 仍为 `a093d407d23fe6cf7f82c1fb2a27359c82b7d803`，各 1056 文件清单验证通过，现有服务 active。本轮只启动并回收独立诊断进程，未更改线上服务、timer、数据库内容或凭据。
+- 20:08 现有运行认证读回：A 股 200 / 16.433 秒 / 192 项，Crypto 200 / 6.973 秒 / 240 项；`cn.dataset.fina_mainbz` 查询 200 / 0.286 秒 / 1 行，partial/degraded、lineage complete，两个 current 在读回前后相同。该读回是内部凭据验收，不是普通客户或冷启动验收。
+- 源 empty/partial/stale/provider_error 继续分别按合同展示；不以全量 stable 阻断接入、开发、发布或供数。商户配置与消费者验收也不是已有数据服务的统一开关。
 
-## 账户与对外接口
+## 当前入口与未完成项
 
-- 账户整合 #487 已合入 `122208dd37ce97fdd45ae6230ddffd8e48a3cbba` 并由 Cloudflare 发布。Account 的「订阅与数据访问」连接已有密钥，读取后端有效套餐、有效期、数据分类、用量和密钥管理；邮箱身份不因数据权限不可读而退出。未读取到权限不表示取消订阅或零用量。
-- 身份 D1 应用既有账户 schema：两表、两触发器与外键检查通过；用户/会话前后均为零。connection/email/retention 已启用，library/admin 保持禁用；原秘密配置名称保留。回退可关闭 connection 并恢复前版 Worker，保留追加 schema 与账户禁用撤销触发器，不回滚金融数据或已发密钥。
-- 同域数据入口 #488 合入 `d2e8d30b02621c0b5f16c0cddc8c0cf136b9c89a` 并发布：`https://tradingdatas.com/v1/catalog` 与 `/v1/query`。默认 Agent 地址同步，独立 api 子域名不再是此入口的前置条件。当前仅转发既有 A股数据面，未聚合隔离 Crypto 数据面。
-- 网关只转发调用者 Bearer；不使用邮箱 Cookie、已连接的账户密钥或内部凭据代替调用者。JSON/receipt/错误语义与 no-store 保留，查询体固定原字节与 Content-Length，最多 64 KiB，传输截止 30 秒；这不修改既有目录性能目标。
-- 17:56 官网实测：guest catalog/query 为 JSON 401、未知路径 JSON 404、OPTIONS 204、无效测试密钥 401，均 no-store。实际浏览器资源 `index-BAaUY0e4.js` 与发布版本匹配；这证明路由和认证拒绝，不是普通客户成功查询。
-- 最终候选本地 287 项 public-web 测试与构建通过；真实 workerd 验证原查询字节、Content-Length 与 Cookie 隔离；文件配置和环境覆盖通过。实际浏览器覆盖 synthetic 邮箱/已有密钥连接、中英明暗账户及 390px 页面。账户 #487 候选与精确主线 CI 均通过；网关 #488 候选四组 CI 与 Cloudflare 发布均通过，精确主线 CI 记录为 [33959241069](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33959241069)，状态以该运行读回为准。
-- 真实用户的验证码送达、本人连接密钥和普通客户 catalog/query 成功读回仍待验证；未代发真实邮件、创建真实客户凭据或执行付款。在线支付继续暂停；这里交付的是已有权限管理，不是新购、续费或正式订阅账本。
+长期合同：[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md)、[账户与订阅](docs/design/customer-identity-commerce-v1.md)。本轮证据：[账户整合](docs/reports/2026-09-05-account-commerce-integration.md)、[目录优化](docs/reports/2026-09-05-catalog-binding-memo.md)。历史快照由 Git 保存，不再在当前页累积旧导航和发布段落。
 
-## 不可变数据运行与质量
-
-- #485 运行基线 `a093d407d23fe6cf7f82c1fb2a27359c82b7d803`。16:44 发布轮 A股/Crypto current、1056 文件清单及实际进程已核验，11 个定时器恢复。此轮账户/Worker 不切换这两个运行面。回退代码 `3ad50fc4ca325dea25b49914d5d6189e860cf033` 保留，不回滚数据。
-- 前轮目录 A股 192 项、Crypto 240 项身份摘要一致；A股首次 15.591 秒、后续 4.332 秒，Crypto 7.793 秒。此轮 17:35 既有账户上游 A股目录认证 200/17.998 秒/192 项，数据库路径与目录身份一致；财务查询继续 partial/degraded 且 lineage 完整。
-- 冷读仍未满足 15 秒性能目标，有限读回不是持续 SLA。当前服务输出既有质量事实，不通过清除质量条件制造成功；新闻 provider_error、周末时效、未观测和暂停独立展示。
-- 源 empty/partial/stale/provider_error 不要求全量 stable 才接入、开发、发布或按合同供数；授权、合同和存储身份校验继续保留。接入口径唯一正文见 [OPERATIONS](docs/OPERATIONS.md)。
-
-## 当前入口与下一步
-
-[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md) 保存长期合同；本页记录发布状态，历史由 Git 与 [reports](docs/reports/README.md) 追溯。源码 HEAD 与 immutable runtime 分别读取，不为仅文档提交重启服务。
-
-下一步优先完成真实客户连接及查询验收、缩短目录冷读；支付恢复需明确商户/结算与订阅合同。`api.tradingdatas.com` DNS 尚未配置，控制台登录仍待完成，但既有官网同域入口独立交付。#395 settlement identity/迁移草稿不在本轮范围。
+剩余：指定真实验收邮箱及普通客户数据权限；明确既有支付渠道/商户、结算币种后接入服务商测试并验收；继续降低 A 股首次目录延迟并完成双并发与实际运行切换。`api.tradingdatas.com` DNS 未配置不阻断现有官网同域入口。#395 settlement identity/迁移草稿不在本轮范围。
