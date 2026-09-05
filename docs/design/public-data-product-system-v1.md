@@ -84,11 +84,13 @@ Marketing, content, and client-side state are never runtime evidence.
    preparation methods;
 3. **Pricing** — three request-rate tiers sharing the same base data; alternative-data
    commerce is a later independent surface and is not part of the main page;
-4. **Help & setup** — public documentation and Agent/MCP tutorials/templates.
 
-The header is a compact floating rounded surface containing the four primary
+The Account menu and Account workspace expose **Doc** for public documentation
+and Agent/MCP setup; Doc is absent from desktop and mobile primary navigation.
+
+The header is a compact floating rounded surface containing the three primary
 destinations, one global search field, Bookmarks, and the Account icon. Its
-desktop hierarchy stays single-layer: Data, Research, Pricing and Help & setup are quiet
+desktop hierarchy stays single-layer: Data, Research and Pricing are quiet
 text links placed directly on the shared surface, with a fine current-location
 underline instead of a nested segmented pill or filled active tab. Desktop
 search uses a bounded responsive width so it remains prominent without taking
@@ -99,7 +101,7 @@ search spans datasets, external research, preparation methods, and
 documentation. Data, Research, the expanded research library, and Documentation
 do not duplicate keyword search boxes; they retain only task-specific taxonomy
 and status controls. On mobile, global search moves into the expanded floating
-navigation. Help & setup opens public `/docs` and `/connect`; language and
+navigation. Doc in Account opens public `/docs` and `/connect`; language and
 appearance are available without login in the upper-right menu. Account is
 private and contains personal access, usage, keys, billing and security.
 Bookmarks remain explicitly browser-local until authenticated sync exists.
@@ -630,7 +632,7 @@ method, and emphasis; they do not encode price movement or runtime health.
 
 ## 7. Component contract
 
-- **GlobalNav**: one floating rounded surface with Data, Research, Pricing, Help & setup,
+- **GlobalNav**: one floating rounded surface with Data, Research, Pricing,
   global search, Bookmarks, and Account; desktop primary links use a Hovvi-like
   single-layer text treatment and fine current-location underline, never a
   nested pill. The upper-right menu owns guest-accessible language/theme; help

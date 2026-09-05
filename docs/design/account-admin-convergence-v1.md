@@ -22,7 +22,7 @@ TradingDatas has one customer-facing account experience and one restricted admin
 
 Public help shortcuts open `/docs`, `/docs/:slug` and `/connect`; `/bookmarks`
 is the browser-local library. These are not private Account sections. The top
-header is Data / Research / Pricing / Help & setup with guest-accessible
+header is Data / Research / Pricing with guest-accessible
 language/theme in its upper-right menu.
 
 `/account` and `/account/:section` require a verified session. Unknown sessions

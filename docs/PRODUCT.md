@@ -83,7 +83,7 @@ The public experience has seven durable information areas:
 - **Account**: private overview, subscription, expiry, usage, API keys, billing
   and security, with shortcuts to public help. Public `/docs`, `/connect` and
   browser-local `/bookmarks` do not require login. The top navigation is
-  Data / Research / Pricing / Help & setup; language and appearance live in
+  Data / Research / Pricing; language and appearance live in
   the upper-right menu and work before login.
 
 `Recipes` replaces the vague `Cookbook` label. A Recipe answers both questions
@@ -185,7 +185,7 @@ readback. It is never hidden inside a base-package comparison table.
 ## Agent connection contract
 
 The public product is Agent-first. Agent/MCP tutorials and templates live at public `/connect`, reached through
-Help & setup alongside `/docs`. Reading and copying setup material do not require
+Doc in Account alongside `/docs`. Reading and copying setup material do not require
 website login; actual data requests always require an independent API Bearer key. The connection surface provides tailored copy-ready
 setup prompts for Claude, Codex, OpenClaw, Hermes, and a generic HTTP-capable
 agent. Each prompt references a secret credential slot instead of embedding an

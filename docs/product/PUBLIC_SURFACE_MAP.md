@@ -8,9 +8,11 @@ live.
 ## 1. Navigation logic
 
 The public website is a product library, not a collection of marketing pages.
-Top-level navigation is Data / Research / Pricing / Help & setup. Features and
+Top-level navigation is Data / Research / Pricing. Features and
 Recipes remain addressable content, not additional top-level items. The
-upper-right menu provides language/theme without login. Object map:
+upper-right Account menu provides Doc and language/theme without login. The
+Account workspace also links to Doc; neither desktop nor mobile primary
+navigation includes it. Doc opens the public `/docs` hub. Object map:
 
 | Section | Object | Question answered | Primary next action |
 | --- | --- | --- | --- |
@@ -23,7 +25,7 @@ upper-right menu provides language/theme without login. Object map:
 | Account | tenant-owned access state | What can I access and how do I connect it? | manage access or an integration |
 
 Agent/MCP is a public delivery tutorial/template at `/connect`, linked from
-Help & setup and Docs. Reading or copying it needs no website session; data API
+Doc in Account and Docs. Reading or copying it needs no website session; data API
 requests still require the caller's Bearer credential. It is not the primary
 reason to buy the product. The first promise is trustworthy, point-in-time-aware,
 reproducible financial data.

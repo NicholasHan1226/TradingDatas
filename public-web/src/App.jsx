@@ -93,7 +93,7 @@ function getResearchRelatedObjects(paper, locale) {
 
 const messages = {
   en: {
-    nav: ["Data", "Research", "Pricing", "Help & setup"],
+    nav: ["Data", "Research", "Pricing"],
     eyebrow: "RAW MATERIALS FOR FINANCIAL RESEARCH",
     title: "Research-ready\nfinancial data.",
     subtitle: "One API for high-quality, traceable, composable financial data.",
@@ -156,7 +156,7 @@ const messages = {
     menu: "Open navigation",
   },
   zh: {
-    nav: ["数据", "研究", "套餐", "帮助与接入"],
+    nav: ["数据", "研究", "套餐"],
     eyebrow: "金融研究的高质量原料",
     title: "面向研究的\n金融数据。",
     subtitle: "一个接口，获得高质量、可追溯、可组合的金融数据。",
@@ -1121,7 +1121,7 @@ export function App() {
 
   const primaryRoute = route.split("/")[0];
   const routeSlug = route.split("/").slice(1).join("/");
-  const sections = ["data", "research", "pricing", "docs"];
+  const sections = ["data", "research", "pricing"];
   const navPaths = sections.map((section) => `/${section}`);
   function goTo(path, replace = false) {
     if (route === "research") {
@@ -1435,7 +1435,7 @@ export function App() {
       <header className={`global-header ${primaryRoute === "home" ? "" : "is-page-header"}`}>
         <Brand onNavigate={navigate} />
         <nav className="desktop-nav" aria-label="Primary navigation">
-          {copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])} aria-current={(primaryRoute === sections[index] || (primaryRoute === "connect" && sections[index] === "docs")) ? "page" : undefined}>{label}</a>)}
+          {copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])} aria-current={primaryRoute === sections[index] ? "page" : undefined}>{label}</a>)}
         </nav>
         {renderGlobalSearch("desktop-global-search")}
         <div className="header-actions">
@@ -1444,7 +1444,7 @@ export function App() {
             <button className="icon-button account-button" type="button" aria-label={locale === "zh" ? "账户与设置" : "Account and settings"} aria-expanded={accountMenuOpen} onClick={() => { setMobileOpen(false); setAccountMenuOpen((value) => !value); }}><UserCircle size={30} weight="thin" /></button>
             {accountMenuOpen && <div className="account-menu-popover">
               <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? (accountData.email || accountData.tenant_id) : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountPlanLabel} · 已登录` : `${accountPlanLabel} · signed in`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
-              <section><button type="button" onClick={() => openAccountSection("overview")}>{locale === "zh" ? "我的账户" : "My account"}<ArrowRight /></button><button type="button" onClick={() => goTo("/docs")}>{locale === "zh" ? "帮助与接入" : "Help & setup"}<ArrowRight /></button></section>
+              <section><button type="button" onClick={() => openAccountSection("overview")}>{locale === "zh" ? "我的账户" : "My account"}<ArrowRight /></button><button type="button" onClick={() => goTo("/docs")}>Doc<ArrowRight /></button></section>
               <section className="public-preferences"><span>{copy.language}</span><div className="segmented">{[["system",copy.system],["zh","中文"],["en","English"]].map(([value,label]) => <button key={value} type="button" aria-pressed={localeChoice === value} onClick={() => chooseLocale(value)}>{label}</button>)}</div><span>{copy.appearance}</span><div className="segmented">{[["system",copy.system],["light",locale === "zh" ? "明亮" : "Light"],["dark",locale === "zh" ? "暗色" : "Dark"]].map(([value,label]) => <button key={value} type="button" aria-pressed={themeChoice === value} onClick={() => chooseTheme(value)}>{label}</button>)}</div></section>
             </div>}
           </div>
@@ -1667,7 +1667,7 @@ export function App() {
                     {group.items.map((item) => <button key={item.key} type="button" className={accountSection === item.key ? "is-active" : ""} onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}
                   </div>
                 ))}
-<div className="account-nav-group"><a href="/docs" onClick={event => navigate(event,"/docs")}>{locale === "zh" ? "帮助与接入" : "Help & setup"}</a><a href="/connect" onClick={event => navigate(event,"/connect")}>Agent / MCP</a></div>
+<div className="account-nav-group"><a href="/docs" onClick={event => navigate(event,"/docs")}>Doc</a><a href="/connect" onClick={event => navigate(event,"/connect")}>Agent / MCP</a></div>
               </aside>}
               <article className="account-detail">
                 {primaryRoute === "account" && <div className="account-detail-head">

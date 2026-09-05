@@ -16,9 +16,9 @@ npm run dev
 ```
 
 The prototype includes the confirmed public-home visual direction and the compact
-`Data / Research / Pricing / Help & setup` floating navigation. Global search spans data,
+`Data / Research / Pricing` floating navigation. Global search spans data,
 external research, methods and documentation; compatibility routes for Features,
-Recipes remain directly addressable. Help & setup exposes public `/docs`,
+Recipes remain directly addressable. Doc in Account exposes public `/docs`,
 `/docs/:slug` and `/connect` tutorials/templates; `/bookmarks` is the public
 browser-local library. Language/theme are available without login in the
 upper-right menu. Account is private, with overview/subscription/usage/keys/
