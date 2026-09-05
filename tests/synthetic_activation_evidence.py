@@ -10,6 +10,30 @@ import yaml
 _AUTOMATIC_REQUEST_WINDOW_FORMATS = frozenset(
     {"yyyymmdd", "yyyymm", "yyyy_qn", "yyyyww"}
 )
+_DATE_PARTITION_CADENCE_CLASSES = frozenset(
+    {
+        "daily_reference",
+        "monthly",
+        "postclose_daily",
+        "prior_open_morning",
+        "quarterly_reporting",
+        "weekly",
+    }
+)
+
+
+def _is_single_partition_local_datetime_window(window: dict[str, object]) -> bool:
+    start = window["range_start_key"]
+    required_keys = window["required_keys"]
+    formats = window["formats"]
+    assert isinstance(required_keys, list)
+    assert isinstance(formats, dict)
+    return (
+        start == window["range_end_key"]
+        and set(required_keys) == {start}
+        and window["max_span_days"] == 1
+        and set(formats.values()) == {"local_datetime_seconds"}
+    )
 
 
 def _activation_window_is_supported(contract: Mapping[str, object]) -> bool:
@@ -25,13 +49,21 @@ def _activation_window_is_supported(contract: Mapping[str, object]) -> bool:
     if formats <= _AUTOMATIC_REQUEST_WINDOW_FORMATS:
         return True
     fanout = contract["fanout"]
+    assert isinstance(fanout, dict)
+    if (
+        _is_single_partition_local_datetime_window(window)
+        and contract["cadence_class"] in _DATE_PARTITION_CADENCE_CLASSES
+        and fanout["strategy"] == "none"
+    ):
+        return True
     completeness = contract["response_completeness"]
     primary_key = contract["primary_key"]
-    assert isinstance(fanout, dict)
-    assert isinstance(completeness, dict)
     assert isinstance(primary_key, list)
     if formats != {"local_datetime_seconds"} or not bool(primary_key):
         return False
+    if completeness is None:
+        return False
+    assert isinstance(completeness, dict)
     if (
         contract["cadence_class"] == "on_demand"
         and fanout["strategy"] == "literal_values"

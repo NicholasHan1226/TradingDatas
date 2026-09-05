@@ -64,14 +64,19 @@ test("keeps paused-contract preflight separate from observation and access", asy
   assert.equal(snapshot.authority, "compiled_contract_preflight_only");
   const ready = snapshot.groups.find((group) => group.id === "ready_for_bounded_https_probe");
   const seedRequired = snapshot.groups.find((group) => group.id === "requires_seed_receipt");
-  assert.equal(ready.interfaces.length, 0);
+  assert.equal(ready.interfaces.length, 6);
+  assert.deepEqual(ready.interfaces.map((item) => item.apiName), [
+    "bse_mapping",
+    "fund_basic",
+    "fund_company",
+    "sge_basic",
+    "stk_nineturn",
+    "stock_hsgt",
+  ]);
   const windowRequired = snapshot.groups.find((group) => group.id === "requires_activation_window_contract");
-  assert.deepEqual(windowRequired.interfaces, [{
-    apiName: "stk_nineturn", datasetId: "cn.dataset.stk_nineturn",
-    probeState: "executable", reasonCode: "activation_window_contract_unsupported",
-  }]);
+  assert.deepEqual(windowRequired.interfaces, []);
   assert.equal(snapshot.groups.some((group) => group.interfaces.some((item) => ["fut_daily", "opt_basic"].includes(item.apiName))), false);
-  assert.equal(seedRequired.interfaces.length, 4);
+  assert.equal(seedRequired.interfaces.length, 14);
   assert.equal(snapshot.warning.includes("no provider call"), true);
 });
 

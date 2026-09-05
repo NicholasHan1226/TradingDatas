@@ -728,6 +728,162 @@ def test_fut_daily_contract_rejects_rows_at_declared_limit() -> None:
         )
 
 
+def _opt_basic_contract() -> tuple[DatasetDefinition, ProviderBinding]:
+    registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    dataset = registry.resolve("cn.dataset.opt_basic")
+    return dataset, registry.provider_binding(dataset.dataset_id, "tushare")
+
+
+def test_opt_basic_mainline_contract_stays_on_demand_snapshot() -> None:
+    dataset, binding = _opt_basic_contract()
+
+    assert dataset.cadence_class == "on_demand"
+    assert dataset.primary_key == ()
+    assert binding.entitlement_state == "active"
+    assert binding.activation_state == "active"
+    assert binding.probe_state == "executable"
+    assert binding.ingest_contract_state == "ready"
+    assert binding.request_shape == "snapshot_or_date_range"
+    assert dict(binding.request_template) == {}
+    assert binding.request_window_policy is None
+    assert binding.response_completeness is None
+    assert binding.requested_fields == ()
+    assert binding.fanout is not None and binding.fanout.strategy == "none"
+    assert binding.pagination is not None and binding.pagination.strategy == "none"
+    assert binding.max_rows_per_attempt == 10000
+
+
+def test_ready3_on_demand_collect_plan_selects_non_zero_honest_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Local plan only: mainline config can be selected. Not a production receipt."""
+
+    live = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: live)
+    monkeypatch.setattr(
+        runner,
+        "TushareCollector",
+        lambda: pytest.fail("plan mode must not construct a provider collector"),
+    )
+    db_path = tmp_path / "must-not-be-created.sqlite"
+
+    fut_code = runner.main(
+        [
+            "--db-path",
+            str(db_path),
+            "--dataset-id",
+            "cn.dataset.fut_daily",
+            "--request-window-json",
+            '{"trade_date":"20260803"}',
+        ]
+    )
+    fut_plan = json.loads(capsys.readouterr().out)
+    assert fut_code == runner.EXIT_SUCCESS
+    assert fut_plan == {
+        "dataset_id": "cn.dataset.fut_daily",
+        "mode": "plan",
+        "parameter_keys": ["trade_date"],
+        "provider": "tushare",
+        "provider_api": "fut_daily",
+        "request_window_keys": ["trade_date"],
+        "requested_field_count": 15,
+        "state": "planned",
+        "will_call_provider": False,
+        "will_write_database": False,
+    }
+    assert "20260803" not in json.dumps(fut_plan)
+
+    opt_code = runner.main(
+        [
+            "--db-path",
+            str(db_path),
+            "--dataset-id",
+            "cn.dataset.opt_basic",
+            "--request-window-json",
+            "{}",
+        ]
+    )
+    opt_plan = json.loads(capsys.readouterr().out)
+    assert opt_code == runner.EXIT_SUCCESS
+    assert opt_plan == {
+        "dataset_id": "cn.dataset.opt_basic",
+        "mode": "plan",
+        "parameter_keys": [],
+        "provider": "tushare",
+        "provider_api": "opt_basic",
+        "request_window_keys": [],
+        "requested_field_count": 0,
+        "state": "planned",
+        "will_call_provider": False,
+        "will_write_database": False,
+    }
+
+    manifest = tmp_path / "ready3-on-demand.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "items": [
+                    {
+                        "dataset_id": "cn.dataset.fut_daily",
+                        "request_window": {"trade_date": "20260803"},
+                    },
+                    {"dataset_id": "cn.dataset.opt_basic", "request_window": {}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    batch_code = runner.main(["--db-path", str(db_path), "--batch-file", str(manifest)])
+    batch_plan = json.loads(capsys.readouterr().out)
+    assert batch_code == runner.EXIT_SUCCESS
+    assert batch_plan == {
+        "batch_item_count": 2,
+        "dataset_ids": ["cn.dataset.fut_daily", "cn.dataset.opt_basic"],
+        "mode": "plan",
+        "state": "planned",
+        "will_call_provider": False,
+        "will_write_database": False,
+    }
+    assert "20260803" not in json.dumps(batch_plan)
+    assert not db_path.exists()
+
+
+def test_ready3_fut_daily_collect_plan_rejects_missing_trade_date_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    live = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
+    monkeypatch.setattr(runner, "load_runtime_dataset_registry", lambda: live)
+    monkeypatch.setattr(
+        runner,
+        "TushareCollector",
+        lambda: pytest.fail("plan mode must not construct a provider collector"),
+    )
+    db_path = tmp_path / "must-not-be-created.sqlite"
+
+    missing_window = runner.main(
+        [
+            "--db-path",
+            str(db_path),
+            "--dataset-id",
+            "cn.dataset.fut_daily",
+            "--request-window-json",
+            "{}",
+        ]
+    )
+    assert missing_window == runner.EXIT_VALIDATION
+    assert json.loads(capsys.readouterr().out) == {
+        "error_code": "invalid_request",
+        "mode": "plan",
+        "state": "validation",
+    }
+    assert not db_path.exists()
+
+
 def _fut_index_daily_contract() -> tuple[DatasetDefinition, ProviderBinding]:
     registry = load_dataset_registry(ROOT / "config" / "provider_native_dataset_registry.yaml")
     dataset = registry.resolve("cn.dataset.fut_index_daily")

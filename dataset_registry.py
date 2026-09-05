@@ -999,8 +999,6 @@ def _provider_parameter_name(value: Any, path: str) -> str:
 def _provider_input_fields(raw: Any, path: str) -> tuple[ProviderInputField, ...]:
     if not isinstance(raw, list):
         raise ValueError(f"{path} must be a list")
-    if not raw:
-        raise ValueError(f"{path} must not be empty")
     normalized: list[ProviderInputField] = []
     seen: set[str] = set()
     for index, raw_field in enumerate(raw):

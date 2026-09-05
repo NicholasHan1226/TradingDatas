@@ -17,6 +17,7 @@ from catalog_service import (
     CatalogService,
     CatalogFilters,
     DatasetQueryability,
+    _provider_native_queryability_reasons,
     inspect_dataset_queryability,
     is_catalog_discoverable,
     is_initial_release_eligible,
@@ -495,7 +496,7 @@ def real_catalog_harness(
     monkeypatch.setattr(
         catalog_module,
         "inspect_dataset_queryability",
-        lambda _conn, dataset: DatasetQueryability(
+        lambda _conn, dataset, **_kwargs: DatasetQueryability(
             queryable=dataset is not stale,
             reasons=() if dataset is not stale else ("primary_table_unavailable",),
         ),
@@ -852,9 +853,13 @@ def test_catalog_service_uses_one_snapshot_projection_and_same_connection(
     original_inspect = catalog_module.inspect_dataset_queryability
     inspected_connections: list[sqlite3.Connection] = []
 
-    def inspect(conn: sqlite3.Connection, dataset: DatasetDefinition):
+    def inspect(
+        conn: sqlite3.Connection,
+        dataset: DatasetDefinition,
+        **kwargs: object,
+    ):
         inspected_connections.append(conn)
-        return original_inspect(conn, dataset)
+        return original_inspect(conn, dataset, **kwargs)
 
     monkeypatch.setattr(catalog_module, "inspect_dataset_queryability", inspect)
 
@@ -1647,6 +1652,23 @@ def test_queryability_reports_only_frozen_physical_reason_enums() -> None:
         False,
         ("primary_table_unavailable",),
     )
+
+
+def test_queryability_reuses_schema_probe_on_the_same_snapshot() -> None:
+    dataset = _catalog_dataset("cn.physical.contract")
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA_SQL)
+    reasons = _provider_native_queryability_reasons(conn)
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    first = inspect_dataset_queryability(conn, dataset, schema_reasons=reasons)
+    second = inspect_dataset_queryability(conn, dataset, schema_reasons=reasons)
+    replayed = [item for item in statements if "PRAGMA" in item.upper()]
+    conn.set_trace_callback(None)
+    conn.close()
+    assert first == second == DatasetQueryability(True, ())
+    assert reasons == ()
+    assert replayed == []
 
 
 def test_queryability_sqlite_failure_is_not_downgraded_to_a_row_reason() -> None:

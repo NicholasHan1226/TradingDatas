@@ -3,22 +3,87 @@
   "groups": [
     {
       "id": "ready_for_bounded_https_probe",
-      "interfaces": []
+      "interfaces": [
+        {
+          "apiName": "bse_mapping",
+          "datasetId": "cn.dataset.bse_mapping"
+        },
+        {
+          "apiName": "fund_basic",
+          "datasetId": "cn.dataset.fund_basic"
+        },
+        {
+          "apiName": "fund_company",
+          "datasetId": "cn.dataset.fund_company"
+        },
+        {
+          "apiName": "sge_basic",
+          "datasetId": "cn.dataset.sge_basic"
+        },
+        {
+          "apiName": "stk_nineturn",
+          "datasetId": "cn.dataset.stk_nineturn"
+        },
+        {
+          "apiName": "stock_hsgt",
+          "datasetId": "cn.dataset.stock_hsgt"
+        }
+      ]
     },
     {
       "id": "requires_seed_receipt",
       "interfaces": [
         {
+          "apiName": "ci_index_member",
+          "datasetId": "cn.dataset.ci_index_member"
+        },
+        {
+          "apiName": "dc_concept_cons",
+          "datasetId": "cn.dataset.dc_concept_cons"
+        },
+        {
+          "apiName": "dc_member",
+          "datasetId": "cn.dataset.dc_member"
+        },
+        {
           "apiName": "etf_mins",
           "datasetId": "cn.dataset.etf_mins"
+        },
+        {
+          "apiName": "etf_sz_cons",
+          "datasetId": "cn.dataset.etf_sz_cons"
         },
         {
           "apiName": "ft_mins",
           "datasetId": "cn.dataset.ft_mins"
         },
         {
+          "apiName": "fund_daily",
+          "datasetId": "cn.dataset.fund_daily"
+        },
+        {
+          "apiName": "fund_nav",
+          "datasetId": "cn.dataset.fund_nav"
+        },
+        {
+          "apiName": "fut_holding",
+          "datasetId": "cn.dataset.fut_holding"
+        },
+        {
+          "apiName": "fut_wsr",
+          "datasetId": "cn.dataset.fut_wsr"
+        },
+        {
           "apiName": "index_daily",
           "datasetId": "cn.dataset.index_daily"
+        },
+        {
+          "apiName": "index_member_all",
+          "datasetId": "cn.dataset.index_member_all"
+        },
+        {
+          "apiName": "index_weekly",
+          "datasetId": "cn.dataset.index_weekly"
         },
         {
           "apiName": "index_weight",
@@ -28,14 +93,7 @@
     },
     {
       "id": "requires_activation_window_contract",
-      "interfaces": [
-        {
-          "apiName": "stk_nineturn",
-          "datasetId": "cn.dataset.stk_nineturn",
-          "probeState": "executable",
-          "reasonCode": "activation_window_contract_unsupported"
-        }
-      ]
+      "interfaces": []
     }
   ],
   "schemaVersion": 1,

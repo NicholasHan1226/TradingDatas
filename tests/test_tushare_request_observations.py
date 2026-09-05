@@ -120,11 +120,20 @@ def _compile_plan(
     dataset_field_values: list[dict[str, object]] | None = None,
     registered_contract_bundle: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    registered_bytes = (
-        _bytes(UPSTREAM_CONTRACTS)
-        if registered_contract_bundle is None
-        else _yaml_bytes(registered_contract_bundle)
-    )
+    if registered_contract_bundle is None:
+        # Request observations may add fanout before the frozen dump is
+        # regenerated. Probe plans must bind a matching compiled bundle.
+        registered_contract_bundle = _compile(
+            request_observations=request_observations
+        )
+        if request_observations is None:
+            request_observations = _yaml(REQUEST_OBSERVATIONS)
+        else:
+            request_observations = deepcopy(request_observations)
+        request_observations["provenance"]["registered_contract_bundle"][
+            "sha256"
+        ] = hashlib.sha256(_yaml_bytes(registered_contract_bundle)).hexdigest()
+    registered_bytes = _yaml_bytes(registered_contract_bundle)
     request_bytes = (
         _bytes(REQUEST_OBSERVATIONS)
         if request_observations is None
@@ -170,10 +179,10 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert len(set(api_names)) == 190
     assert observations["counts"] == {
         "interfaces": 190,
-        "probe_executable": 140,
-        "probe_blocked": 50,
-        "ingest_contract_ready": 125,
-        "ingest_contract_blocked": 65,
+        "probe_executable": 137,
+        "probe_blocked": 53,
+        "ingest_contract_ready": 130,
+        "ingest_contract_blocked": 60,
         "row_limit_ingest_contract_blocked": 15,
     }
     assert observations["counts"] == {
@@ -189,13 +198,18 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
             entry["ingest_contract_state"] == "blocked" for entry in entries
         ),
         "row_limit_ingest_contract_blocked": sum(
-            entry["row_limit_observation"] is not None for entry in entries
+            entry["row_limit_observation"] is not None
+            and "response_completeness_unresolved_at_observed_limit"
+            in entry["ingest_contract_block_reasons"]
+            for entry in entries
         ),
     }
 
     seed_apis = {
         "cb_basic",
+        "dc_index",
         "etf_basic",
+        "fund_basic",
         "fut_basic",
         "index_basic",
         "index_classify",
@@ -208,12 +222,57 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     )
 
     fund_nav = _entry(observations, "fund_nav")
-    assert fund_nav["probe_state"] == "executable"
-    assert fund_nav["probe_block_reasons"] == []
+    assert fund_nav["probe_state"] == "blocked"
+    assert fund_nav["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
     assert fund_nav["ingest_contract_state"] == "blocked"
     assert fund_nav["ingest_contract_block_reasons"] == [
-        "response_completeness_unresolved_at_observed_limit"
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
     ]
+
+    fund_daily = _entry(observations, "fund_daily")
+    assert fund_daily["ingest_contract_state"] == "blocked"
+    assert fund_daily["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert fund_daily["row_limit_observation"] == {
+        "observed_count": 2000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    dc_concept_cons = _entry(observations, "dc_concept_cons")
+    assert dc_concept_cons["ingest_contract_state"] == "blocked"
+    assert dc_concept_cons["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert dc_concept_cons["row_limit_observation"] == {
+        "observed_count": 3000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    opt_daily = _entry(observations, "opt_daily")
+    assert opt_daily["ingest_contract_state"] == "blocked"
+    assert opt_daily["parameters"]["exchange"] == {
+        "source": "literal",
+        "value": "SSE",
+    }
+    assert opt_daily["request_variants"] == [
+        {"exchange": "SSE"},
+        {"exchange": "SZSE"},
+        {"exchange": "CFFEX"},
+        {"exchange": "DCE"},
+        {"exchange": "SHFE"},
+        {"exchange": "CZCE"},
+    ]
+    assert opt_daily["row_limit_observation"] == {
+        "observed_count": 15000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
 
     news = _entry(observations, "news")
     assert news["probe_state"] == "executable"
@@ -222,6 +281,953 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert news["parameters"]["src"] == {"source": "literal", "value": "sina"}
     assert news["ingest_contract_state"] == "ready"
     assert news["ingest_contract_block_reasons"] == []
+
+
+def test_fund_basic_uses_documented_market_literals_as_request_anchor() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    fund_basic = _entry(observations, "fund_basic")
+    assert fund_basic["request_shape"] == "snapshot_or_date_range"
+    assert fund_basic["probe_state"] == "executable"
+    assert fund_basic["probe_block_reasons"] == []
+    assert fund_basic["ingest_contract_state"] == "ready"
+    assert fund_basic["ingest_contract_block_reasons"] == []
+    assert fund_basic["unresolved_parameter_keys"] == []
+    assert fund_basic["parameters"] == {
+        "market": {"source": "literal", "value": "E"}
+    }
+    assert fund_basic["request_variants"] == [
+        {"market": "E"},
+        {"market": "O"},
+    ]
+    assert "status" not in fund_basic["parameters"]
+    assert "ts_code" not in fund_basic["parameters"]
+    assert fund_basic["row_limit_observation"] is None
+
+    bundle = _compile()
+    contract = _contract(bundle, "fund_basic")
+    assert contract["probe_state"] == "executable"
+    assert contract["ingest_contract_state"] == "ready"
+    assert contract["request_template"] == {"market": "E"}
+    assert contract["request_variants"] == [
+        {"market": "E"},
+        {"market": "O"},
+    ]
+    assert contract["fanout"] == {"strategy": "none"}
+
+    plan = _compile_plan()
+    probe = _entry(plan, "fund_basic")
+    assert probe["probe_state"] == "executable"
+    assert probe["probe_block_reasons"] == []
+    assert probe["params"] == {"market": "E"}
+    assert probe["ingest_contract_state"] == "ready"
+    assert probe["ingest_contract_block_reasons"] == []
+
+
+def test_sge_basic_empty_snapshot_is_official_all_list_and_hm_list_stays_blocked() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    sge_basic = _entry(observations, "sge_basic")
+    assert sge_basic["request_shape"] == "snapshot_or_date_range"
+    assert sge_basic["probe_state"] == "executable"
+    assert sge_basic["probe_block_reasons"] == []
+    assert sge_basic["ingest_contract_state"] == "ready"
+    assert sge_basic["ingest_contract_block_reasons"] == []
+    assert sge_basic["unresolved_parameter_keys"] == []
+    assert sge_basic["parameters"] == {}
+    assert sge_basic["row_limit_observation"] is None
+    assert "ts_code" not in sge_basic
+
+    fund_company = _entry(observations, "fund_company")
+    assert fund_company["request_shape"] == "snapshot_or_date_range"
+    assert fund_company["probe_state"] == "executable"
+    assert fund_company["probe_block_reasons"] == []
+    assert fund_company["ingest_contract_state"] == "ready"
+    assert fund_company["ingest_contract_block_reasons"] == []
+    assert fund_company["unresolved_parameter_keys"] == []
+    assert fund_company["parameters"] == {}
+    assert fund_company["row_limit_observation"] is None
+    assert "setup_date" not in fund_company["parameters"]
+
+    hm_list = _entry(observations, "hm_list")
+    assert hm_list["request_shape"] == "snapshot_or_date_range"
+    assert hm_list["probe_state"] == "blocked"
+    assert hm_list["probe_block_reasons"] == ["request_anchor_unresolved"]
+    assert hm_list["ingest_contract_state"] == "blocked"
+    assert hm_list["ingest_contract_block_reasons"] == ["request_anchor_unresolved"]
+    assert hm_list["unresolved_parameter_keys"] == []
+    assert hm_list["parameters"] == {}
+    assert "name" not in hm_list["parameters"]
+
+    bundle = _compile()
+    sge_contract = _contract(bundle, "sge_basic")
+    assert sge_contract["probe_state"] == "executable"
+    assert sge_contract["ingest_contract_state"] == "ready"
+    assert sge_contract["request_template"] == {}
+    assert sge_contract["request_variants"] == [{}]
+    assert sge_contract["fanout"] == {"strategy": "none"}
+    fund_company_contract = _contract(bundle, "fund_company")
+    assert fund_company_contract["probe_state"] == "executable"
+    assert fund_company_contract["ingest_contract_state"] == "ready"
+    assert fund_company_contract["request_template"] == {}
+    assert fund_company_contract["request_variants"] == [{}]
+    assert fund_company_contract["fanout"] == {"strategy": "none"}
+    hm_contract = _contract(bundle, "hm_list")
+    assert hm_contract["probe_state"] == "blocked"
+    assert hm_contract["ingest_contract_state"] == "blocked"
+    assert hm_contract["request_template"] == {}
+
+    plan = _compile_plan()
+    sge_probe = _entry(plan, "sge_basic")
+    assert sge_probe["probe_state"] == "executable"
+    assert sge_probe["params"] == {}
+    assert sge_probe["ingest_contract_state"] == "ready"
+    fund_company_probe = _entry(plan, "fund_company")
+    assert fund_company_probe["probe_state"] == "executable"
+    assert fund_company_probe["params"] == {}
+    assert fund_company_probe["ingest_contract_state"] == "ready"
+    hm_probe = _entry(plan, "hm_list")
+    assert hm_probe["probe_state"] == "blocked"
+    assert hm_probe["params"] == {}
+    assert hm_probe["ingest_contract_state"] == "blocked"
+
+
+def test_bse_mapping_empty_snapshot_does_not_guess_codes() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    bse_mapping = _entry(observations, "bse_mapping")
+    assert bse_mapping["request_shape"] == "snapshot_or_date_range"
+    assert bse_mapping["probe_state"] == "executable"
+    assert bse_mapping["probe_block_reasons"] == []
+    assert bse_mapping["ingest_contract_state"] == "ready"
+    assert bse_mapping["ingest_contract_block_reasons"] == []
+    assert bse_mapping["unresolved_parameter_keys"] == []
+    assert bse_mapping["parameters"] == {}
+    assert bse_mapping["row_limit_observation"] is None
+    assert "o_code" not in bse_mapping["parameters"]
+    assert "n_code" not in bse_mapping["parameters"]
+
+    ths_index = _entry(observations, "ths_index")
+    assert ths_index["probe_state"] == "blocked"
+    assert ths_index["probe_block_reasons"] == ["request_anchor_unresolved"]
+    assert "exchange" not in ths_index["parameters"]
+
+    index_basic = _entry(observations, "index_basic")
+    assert index_basic["probe_state"] == "executable"
+    assert index_basic["ingest_contract_state"] == "blocked"
+    assert index_basic["parameters"] == {"market": {"source": "literal", "value": "SSE"}}
+    assert index_basic["request_variants"] == [
+        {"market": "MSCI"},
+        {"market": "CSI"},
+        {"market": "SSE"},
+        {"market": "SZSE"},
+        {"market": "CICC"},
+        {"market": "SW"},
+        {"market": "OTH"},
+    ]
+    assert index_basic["row_limit_observation"] == {
+        "observed_count": 6000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+
+    stock_hsgt = _entry(observations, "stock_hsgt")
+    assert stock_hsgt["probe_state"] == "executable"
+    assert stock_hsgt["ingest_contract_state"] == "ready"
+    assert stock_hsgt["parameters"] == {
+        "trade_date": {
+            "source": "run_clock",
+            "transform": "yyyymmdd",
+            "offset_seconds": 0,
+        },
+        "type": {"source": "literal", "value": "HK_SZ"},
+    }
+    assert stock_hsgt["request_variants"] == [
+        {"type": "HK_SZ"},
+        {"type": "SZ_HK"},
+        {"type": "HK_SH"},
+        {"type": "SH_HK"},
+    ]
+    assert stock_hsgt["row_limit_observation"] is None
+
+    bc_otcqt = _entry(observations, "bc_otcqt")
+    assert bc_otcqt["probe_state"] == "executable"
+    assert bc_otcqt["ingest_contract_state"] == "blocked"
+    assert list(bc_otcqt["parameters"]) == ["trade_date"]
+    assert "ts_code" not in bc_otcqt["parameters"]
+    assert "bank" not in bc_otcqt["parameters"]
+
+    bundle = _compile()
+    contract = _contract(bundle, "bse_mapping")
+    assert contract["probe_state"] == "executable"
+    assert contract["ingest_contract_state"] == "ready"
+    assert contract["request_template"] == {}
+    assert contract["request_variants"] == [{}]
+    assert contract["fanout"] == {"strategy": "none"}
+    index_contract = _contract(bundle, "index_basic")
+    assert index_contract["ingest_contract_state"] == "blocked"
+    assert index_contract["request_template"] == {"market": "SSE"}
+    assert index_contract["request_variants"] == [
+        {"market": "MSCI"},
+        {"market": "CSI"},
+        {"market": "SSE"},
+        {"market": "SZSE"},
+        {"market": "CICC"},
+        {"market": "SW"},
+        {"market": "OTH"},
+    ]
+    hsgt_contract = _contract(bundle, "stock_hsgt")
+    assert hsgt_contract["probe_state"] == "executable"
+    assert hsgt_contract["ingest_contract_state"] == "ready"
+    assert hsgt_contract["request_template"] == {
+        "trade_date": "${window.trade_date}",
+        "type": "HK_SZ",
+    }
+    assert hsgt_contract["request_variants"] == [
+        {"type": "HK_SZ"},
+        {"type": "SZ_HK"},
+        {"type": "HK_SH"},
+        {"type": "SH_HK"},
+    ]
+
+    plan = _compile_plan()
+    probe = _entry(plan, "bse_mapping")
+    assert probe["probe_state"] == "executable"
+    assert probe["params"] == {}
+    assert probe["ingest_contract_state"] == "ready"
+
+
+def test_index_weekly_uses_index_basic_seed_fanout_without_clearing_completeness() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    index_weekly = _entry(observations, "index_weekly")
+    assert index_weekly["request_shape"] == "entity_fanout"
+    assert index_weekly["probe_state"] == "blocked"
+    assert index_weekly["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert index_weekly["ingest_contract_state"] == "blocked"
+    assert index_weekly["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert index_weekly["row_limit_observation"] == {
+        "observed_count": 1000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    assert index_weekly["parameters"]["ts_code"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.index_basic",
+        "field": "ts_code",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert index_weekly["parameters"]["trade_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert index_weekly["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+
+    bundle = _compile()
+    contract = _contract(bundle, "index_weekly")
+    assert contract["ingest_contract_state"] == "blocked"
+    assert contract["request_template"] == {"trade_date": "${window.trade_date}"}
+    assert contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.dataset.index_basic",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert "response_completeness_unresolved_at_observed_limit" in contract[
+        "ingest_contract_block_reasons"
+    ]
+
+    seed = {
+        "dataset_id": "cn.dataset.index_basic",
+        "field": "ts_code",
+        "value": "000300.SH",
+        "receipt_id": "receipt-index-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(bundle)
+    ).hexdigest()
+    plan = _compile_plan(
+        request_observations=observations,
+        registered_contract_bundle=bundle,
+        dataset_field_values=[seed],
+    )
+    probe = _entry(plan, "index_weekly")
+    assert probe["probe_state"] == "executable"
+    assert probe["params"] == {
+        "trade_date": "20260721",
+        "ts_code": "000300.SH",
+    }
+    assert probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in probe[
+        "ingest_contract_block_reasons"
+    ]
+
+
+def test_ci_index_member_and_index_member_all_use_security_master_fanout_without_clearing_completeness() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    expected = {
+        "ci_index_member": 5000,
+        "index_member_all": 2000,
+    }
+    for api_name, observed_count in expected.items():
+        entry = _entry(observations, api_name)
+        assert entry["request_shape"] == "entity_fanout"
+        assert entry["probe_state"] == "blocked"
+        assert entry["probe_block_reasons"] == [
+            "dependency_seed_receipt_unresolved"
+        ]
+        assert entry["ingest_contract_state"] == "blocked"
+        assert entry["ingest_contract_block_reasons"] == [
+            "dependency_seed_receipt_unresolved",
+            "response_completeness_unresolved_at_observed_limit",
+        ]
+        assert entry["row_limit_observation"] == {
+            "observed_count": observed_count,
+            "detection": "observed_count_equals_round_provider_style_boundary",
+            "reject_at_limit": True,
+        }
+        assert entry["parameters"]["is_new"] == {"source": "literal", "value": "Y"}
+        assert entry["parameters"]["ts_code"] == {
+            "source": "dataset_field",
+            "dataset_id": "cn.equity.security_master",
+            "field": "ts_code",
+            "requires_fresh_success_receipt": True,
+            "batch_size": 1,
+        }
+        assert "l1_code" not in entry["parameters"]
+        assert "l2_code" not in entry["parameters"]
+        assert "l3_code" not in entry["parameters"]
+        dumped = yaml.safe_dump(entry)
+        assert "cn.dataset.index_member" not in dumped
+        assert dumped.count("index_member") == 1
+        assert entry["resumable_fanout"] == {
+            "cursor_contract_version": 2,
+            "max_batches_per_run": 1,
+        }
+
+    bundle = _compile()
+    seed = {
+        "dataset_id": "cn.equity.security_master",
+        "field": "ts_code",
+        "value": "600000.SH",
+        "receipt_id": "receipt-stock-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "2.0.0",
+        "fresh": True,
+    }
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(bundle)
+    ).hexdigest()
+    plan = _compile_plan(
+        request_observations=observations,
+        registered_contract_bundle=bundle,
+        dataset_field_values=[seed],
+    )
+    for api_name in expected:
+        contract = _contract(bundle, api_name)
+        assert contract["ingest_contract_state"] == "blocked"
+        assert contract["request_template"] == {"is_new": "Y"}
+        assert contract["fanout"] == {
+            "strategy": "dataset_field",
+            "parameter": "ts_code",
+            "source_dataset_id": "cn.equity.security_master",
+            "source_field": "ts_code",
+            "batch_size": 1,
+        }
+        assert "response_completeness_unresolved_at_observed_limit" in contract[
+            "ingest_contract_block_reasons"
+        ]
+        probe = _entry(plan, api_name)
+        assert probe["probe_state"] == "executable"
+        assert probe["params"] == {"is_new": "Y", "ts_code": "600000.SH"}
+        assert probe["ingest_contract_state"] == "blocked"
+        assert "response_completeness_unresolved_at_observed_limit" in probe[
+            "ingest_contract_block_reasons"
+        ]
+
+
+def test_fund_nav_uses_fund_basic_seed_fanout_without_clearing_completeness() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    fund_nav = _entry(observations, "fund_nav")
+    assert fund_nav["request_shape"] == "entity_fanout"
+    assert fund_nav["probe_state"] == "blocked"
+    assert fund_nav["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert fund_nav["ingest_contract_state"] == "blocked"
+    assert fund_nav["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert fund_nav["row_limit_observation"] == {
+        "observed_count": 6000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    assert fund_nav["parameters"]["ts_code"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.fund_basic",
+        "field": "ts_code",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert fund_nav["parameters"]["nav_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert "etf_basic" not in yaml.safe_dump(fund_nav)
+    assert fund_nav["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+
+    bundle = _compile()
+    contract = _contract(bundle, "fund_nav")
+    assert contract["ingest_contract_state"] == "blocked"
+    assert contract["request_template"] == {"nav_date": "${window.nav_date}"}
+    assert contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.dataset.fund_basic",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert contract["resumable_fanout"] == fund_nav["resumable_fanout"]
+    assert "response_completeness_unresolved_at_observed_limit" in contract[
+        "ingest_contract_block_reasons"
+    ]
+
+    seed = {
+        "dataset_id": "cn.dataset.fund_basic",
+        "field": "ts_code",
+        "value": "510300.OF",
+        "receipt_id": "receipt-fund-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(bundle)
+    ).hexdigest()
+    plan = _compile_plan(
+        request_observations=observations,
+        registered_contract_bundle=bundle,
+        dataset_field_values=[seed],
+    )
+    probe = _entry(plan, "fund_nav")
+    assert probe["probe_state"] == "executable"
+    assert probe["params"] == {
+        "nav_date": "20260721",
+        "ts_code": "510300.OF",
+    }
+    assert probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in probe[
+        "ingest_contract_block_reasons"
+    ]
+
+
+def test_fund_daily_and_dc_concept_cons_use_existing_seed_fanout_without_clearing_completeness() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    fund_daily = _entry(observations, "fund_daily")
+    assert fund_daily["request_shape"] == "entity_fanout"
+    assert fund_daily["probe_state"] == "blocked"
+    assert fund_daily["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert fund_daily["parameters"]["ts_code"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.etf_basic",
+        "field": "ts_code",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert fund_daily["parameters"]["trade_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert "fund_basic" not in yaml.safe_dump(fund_daily)
+    assert fund_daily["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+
+    dc_concept_cons = _entry(observations, "dc_concept_cons")
+    assert dc_concept_cons["request_shape"] == "entity_fanout"
+    assert dc_concept_cons["parameters"]["theme_code"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.dc_concept",
+        "field": "theme_code",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert dc_concept_cons["parameters"]["trade_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert dc_concept_cons["resumable_fanout"] == fund_daily["resumable_fanout"]
+
+    bundle = _compile()
+    fund_contract = _contract(bundle, "fund_daily")
+    assert fund_contract["ingest_contract_state"] == "blocked"
+    assert fund_contract["request_template"] == {"trade_date": "${window.trade_date}"}
+    assert fund_contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.dataset.etf_basic",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert fund_contract["resumable_fanout"] == fund_daily["resumable_fanout"]
+    dc_contract = _contract(bundle, "dc_concept_cons")
+    assert dc_contract["ingest_contract_state"] == "blocked"
+    assert dc_contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "theme_code",
+        "source_dataset_id": "cn.dataset.dc_concept",
+        "source_field": "theme_code",
+        "batch_size": 1,
+    }
+
+    etf_seed = {
+        "dataset_id": "cn.dataset.etf_basic",
+        "field": "ts_code",
+        "value": "510300.SH",
+        "receipt_id": "receipt-etf-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    theme_seed = {
+        "dataset_id": "cn.dataset.dc_concept",
+        "field": "theme_code",
+        "value": "000001.DC",
+        "receipt_id": "receipt-dc-concept-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "2.0.0",
+        "fresh": True,
+    }
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(bundle)
+    ).hexdigest()
+    plan = _compile_plan(
+        request_observations=observations,
+        registered_contract_bundle=bundle,
+        dataset_field_values=[etf_seed, theme_seed],
+    )
+    fund_probe = _entry(plan, "fund_daily")
+    assert fund_probe["probe_state"] == "executable"
+    assert fund_probe["params"] == {
+        "trade_date": "20260721",
+        "ts_code": "510300.SH",
+    }
+    assert fund_probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in fund_probe[
+        "ingest_contract_block_reasons"
+    ]
+    theme_probe = _entry(plan, "dc_concept_cons")
+    assert theme_probe["probe_state"] == "executable"
+    assert theme_probe["params"] == {
+        "theme_code": "000001.DC",
+        "trade_date": "20260721",
+    }
+    assert theme_probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in theme_probe[
+        "ingest_contract_block_reasons"
+    ]
+
+
+def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_completeness() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    etf_sz_cons = _entry(observations, "etf_sz_cons")
+    assert etf_sz_cons["request_shape"] == "entity_fanout"
+    assert etf_sz_cons["probe_state"] == "blocked"
+    assert etf_sz_cons["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert etf_sz_cons["ingest_contract_state"] == "blocked"
+    assert etf_sz_cons["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert etf_sz_cons["row_limit_observation"] == {
+        "observed_count": 3000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    assert etf_sz_cons["parameters"]["ts_code"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.etf_basic",
+        "field": "ts_code",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert etf_sz_cons["parameters"]["trade_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert "source_equals" not in etf_sz_cons["parameters"]["ts_code"]
+    assert etf_sz_cons["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+
+    dc_member = _entry(observations, "dc_member")
+    assert dc_member["request_shape"] == "entity_fanout"
+    assert dc_member["probe_state"] == "blocked"
+    assert dc_member["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert dc_member["ingest_contract_state"] == "blocked"
+    assert dc_member["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert dc_member["row_limit_observation"] == {
+        "observed_count": 5000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    assert dc_member["parameters"]["ts_code"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.dc_index",
+        "field": "ts_code",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert dc_member["parameters"]["trade_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert dc_member["resumable_fanout"] == etf_sz_cons["resumable_fanout"]
+
+    kpl_concept_cons = _entry(observations, "kpl_concept_cons")
+    assert kpl_concept_cons["request_shape"] == "snapshot_or_date_range"
+    assert kpl_concept_cons["probe_state"] == "executable"
+    assert kpl_concept_cons["parameters"] == {
+        "trade_date": {
+            "source": "run_clock",
+            "transform": "yyyymmdd",
+            "offset_seconds": 0,
+        }
+    }
+    assert kpl_concept_cons["ingest_contract_state"] == "blocked"
+    assert kpl_concept_cons["ingest_contract_block_reasons"] == [
+        "response_completeness_unresolved_at_observed_limit"
+    ]
+    dumped = yaml.safe_dump(kpl_concept_cons)
+    assert "cn.dataset.kpl_concept" not in dumped
+    assert "dataset_field" not in dumped
+
+    bundle = _compile()
+    etf_contract = _contract(bundle, "etf_sz_cons")
+    assert etf_contract["ingest_contract_state"] == "blocked"
+    assert etf_contract["request_template"] == {"trade_date": "${window.trade_date}"}
+    assert etf_contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.dataset.etf_basic",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    assert etf_contract["resumable_fanout"] == etf_sz_cons["resumable_fanout"]
+    dc_contract = _contract(bundle, "dc_member")
+    assert dc_contract["ingest_contract_state"] == "blocked"
+    assert dc_contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.dataset.dc_index",
+        "source_field": "ts_code",
+        "batch_size": 1,
+    }
+    kpl_contract = _contract(bundle, "kpl_concept_cons")
+    assert kpl_contract["fanout"] == {"strategy": "none"}
+    assert kpl_contract["ingest_contract_state"] == "blocked"
+
+    etf_seed = {
+        "dataset_id": "cn.dataset.etf_basic",
+        "field": "ts_code",
+        "value": "159915.SZ",
+        "receipt_id": "receipt-etf-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    dc_index_seed = {
+        "dataset_id": "cn.dataset.dc_index",
+        "field": "ts_code",
+        "value": "BK0473.DC",
+        "receipt_id": "receipt-dc-index-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(bundle)
+    ).hexdigest()
+    plan = _compile_plan(
+        request_observations=observations,
+        registered_contract_bundle=bundle,
+        dataset_field_values=[etf_seed, dc_index_seed],
+    )
+    etf_probe = _entry(plan, "etf_sz_cons")
+    assert etf_probe["probe_state"] == "executable"
+    assert etf_probe["params"] == {
+        "trade_date": "20260721",
+        "ts_code": "159915.SZ",
+    }
+    assert etf_probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in etf_probe[
+        "ingest_contract_block_reasons"
+    ]
+    dc_probe = _entry(plan, "dc_member")
+    assert dc_probe["probe_state"] == "executable"
+    assert dc_probe["params"] == {
+        "trade_date": "20260721",
+        "ts_code": "BK0473.DC",
+    }
+    assert dc_probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in dc_probe[
+        "ingest_contract_block_reasons"
+    ]
+    kpl_probe = _entry(plan, "kpl_concept_cons")
+    assert kpl_probe["probe_state"] == "executable"
+    assert kpl_probe["params"] == {"trade_date": "20260721"}
+    assert kpl_probe["ingest_contract_state"] == "blocked"
+    assert kpl_probe["ingest_contract_block_reasons"] == [
+        "response_completeness_unresolved_at_observed_limit"
+    ]
+
+
+def test_fut_holding_and_fut_wsr_use_existing_seed_fanout_without_clearing_completeness() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    fut_holding = _entry(observations, "fut_holding")
+    assert fut_holding["request_shape"] == "entity_fanout"
+    assert fut_holding["probe_state"] == "blocked"
+    assert fut_holding["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert fut_holding["ingest_contract_state"] == "blocked"
+    assert fut_holding["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert fut_holding["row_limit_observation"] == {
+        "observed_count": 2000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    assert fut_holding["parameters"]["symbol"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.fut_basic",
+        "field": "symbol",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert fut_holding["parameters"]["trade_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert "ts_code" not in fut_holding["parameters"]
+    assert fut_holding["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+
+    fut_wsr = _entry(observations, "fut_wsr")
+    assert fut_wsr["request_shape"] == "entity_fanout"
+    assert fut_wsr["probe_state"] == "blocked"
+    assert fut_wsr["probe_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert fut_wsr["ingest_contract_state"] == "blocked"
+    assert fut_wsr["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
+    ]
+    assert fut_wsr["row_limit_observation"] == {
+        "observed_count": 1000,
+        "detection": "observed_count_equals_round_provider_style_boundary",
+        "reject_at_limit": True,
+    }
+    assert fut_wsr["parameters"]["symbol"] == {
+        "source": "dataset_field",
+        "dataset_id": "cn.dataset.fut_basic",
+        "field": "fut_code",
+        "requires_fresh_success_receipt": True,
+        "batch_size": 1,
+    }
+    assert fut_wsr["parameters"]["trade_date"] == {
+        "source": "run_clock",
+        "transform": "yyyymmdd",
+        "offset_seconds": 0,
+    }
+    assert fut_wsr["resumable_fanout"] == fut_holding["resumable_fanout"]
+
+    bundle = _compile()
+    holding_contract = _contract(bundle, "fut_holding")
+    assert holding_contract["ingest_contract_state"] == "blocked"
+    assert holding_contract["request_template"] == {
+        "trade_date": "${window.trade_date}"
+    }
+    assert holding_contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "symbol",
+        "source_dataset_id": "cn.dataset.fut_basic",
+        "source_field": "symbol",
+        "batch_size": 1,
+    }
+    assert holding_contract["resumable_fanout"] == fut_holding["resumable_fanout"]
+    wsr_contract = _contract(bundle, "fut_wsr")
+    assert wsr_contract["ingest_contract_state"] == "blocked"
+    assert wsr_contract["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "symbol",
+        "source_dataset_id": "cn.dataset.fut_basic",
+        "source_field": "fut_code",
+        "batch_size": 1,
+    }
+
+    symbol_seed = {
+        "dataset_id": "cn.dataset.fut_basic",
+        "field": "symbol",
+        "value": "cu2509",
+        "receipt_id": "receipt-fut-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    fut_code_seed = {
+        "dataset_id": "cn.dataset.fut_basic",
+        "field": "fut_code",
+        "value": "CU",
+        "receipt_id": "receipt-fut-basic-20260718",
+        "receipt_state": "success",
+        "data_through": "20260718",
+        "schema_version": "1.0.0",
+        "fresh": True,
+    }
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(bundle)
+    ).hexdigest()
+    plan = _compile_plan(
+        request_observations=observations,
+        registered_contract_bundle=bundle,
+        dataset_field_values=[symbol_seed, fut_code_seed],
+    )
+    holding_probe = _entry(plan, "fut_holding")
+    assert holding_probe["probe_state"] == "executable"
+    assert holding_probe["params"] == {
+        "symbol": "cu2509",
+        "trade_date": "20260721",
+    }
+    assert holding_probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in holding_probe[
+        "ingest_contract_block_reasons"
+    ]
+    wsr_probe = _entry(plan, "fut_wsr")
+    assert wsr_probe["probe_state"] == "executable"
+    assert wsr_probe["params"] == {
+        "symbol": "CU",
+        "trade_date": "20260721",
+    }
+    assert wsr_probe["ingest_contract_state"] == "blocked"
+    assert "response_completeness_unresolved_at_observed_limit" in wsr_probe[
+        "ingest_contract_block_reasons"
+    ]
+
+
+def test_probe_only_limit_offset_replaced_by_reusable_date_windows() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    expected = {
+        "bak_daily": (
+            "trade_date",
+            {
+                "source": "run_clock",
+                "transform": "yyyymmdd",
+                "offset_seconds": 0,
+            },
+        ),
+        "fund_adj": (
+            "trade_date",
+            {
+                "source": "run_clock",
+                "transform": "yyyymmdd",
+                "offset_seconds": 0,
+            },
+        ),
+        "fund_manager": (
+            "ann_date",
+            {
+                "source": "run_clock",
+                "transform": "yyyymmdd",
+                "offset_seconds": 0,
+            },
+        ),
+    }
+
+    for api_name, (window_key, window) in expected.items():
+        entry = _entry(observations, api_name)
+        assert entry["request_shape"] == "snapshot_or_date_range"
+        assert entry["probe_state"] == "executable"
+        assert entry["ingest_contract_state"] == "blocked"
+        assert entry["ingest_contract_block_reasons"] == [
+            "response_completeness_unresolved_at_observed_limit"
+        ]
+        assert entry["parameters"] == {window_key: window}
+        assert "limit" not in entry["parameters"]
+        assert "offset" not in entry["parameters"]
+        assert entry.get("pagination_max_pages", 1) == 1
+        assert entry["row_limit_observation"] is None
+
+    bundle = _compile()
+    compiled = {
+        "bak_daily": ("trade_date", "${window.trade_date}"),
+        "fund_adj": ("trade_date", "${window.trade_date}"),
+        "fund_manager": ("ann_date", "${window.ann_date}"),
+    }
+    for api_name, (window_key, placeholder) in compiled.items():
+        contract = _contract(bundle, api_name)
+        assert contract["ingest_contract_state"] == "blocked"
+        assert contract["request_template"] == {window_key: placeholder}
+        assert contract["pagination"] == {"strategy": "none"}
+        assert contract["request_window_policy"] is not None
+        assert contract["request_window_policy"]["formats"][window_key] == "yyyymmdd"
 
 
 def test_reviewed_active_requests_are_frozen_without_guessing() -> None:
@@ -399,10 +1405,11 @@ def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() ->
     }
 
     fund_nav = _contract(bundle, "fund_nav")
-    assert fund_nav["probe_state"] == "executable"
+    assert fund_nav["probe_state"] == "blocked"
     assert fund_nav["ingest_contract_state"] == "blocked"
     assert fund_nav["ingest_contract_block_reasons"] == [
-        "response_completeness_unresolved_at_observed_limit"
+        "dependency_seed_receipt_unresolved",
+        "response_completeness_unresolved_at_observed_limit",
     ]
 
     news = _contract(bundle, "news")
@@ -413,6 +1420,128 @@ def test_catalog_only_requests_compile_into_the_existing_generic_data_plane() ->
         "start_date": "${window.start_date}",
     }
     assert news["request_variants"] == [{}]
+
+
+def _set_row_limit_ready(
+    observations: dict[str, object],
+    api_name: str,
+    *,
+    reject_at_limit: bool,
+) -> None:
+    entry = _entry(observations, api_name)
+    row_limit = entry["row_limit_observation"]
+    assert isinstance(row_limit, dict)
+    row_limit["reject_at_limit"] = reject_at_limit
+    had_completeness = (
+        "response_completeness_unresolved_at_observed_limit"
+        in entry["ingest_contract_block_reasons"]
+    )
+    entry["ingest_contract_block_reasons"] = [
+        reason
+        for reason in entry["ingest_contract_block_reasons"]
+        if reason != "response_completeness_unresolved_at_observed_limit"
+    ]
+    if not entry["ingest_contract_block_reasons"]:
+        was_blocked = entry["ingest_contract_state"] == "blocked"
+        entry["ingest_contract_state"] = "ready"
+        if was_blocked:
+            counts = observations["counts"]
+            assert isinstance(counts, dict)
+            counts["ingest_contract_ready"] = int(counts["ingest_contract_ready"]) + 1
+            counts["ingest_contract_blocked"] = int(counts["ingest_contract_blocked"]) - 1
+    if had_completeness:
+        counts = observations["counts"]
+        assert isinstance(counts, dict)
+        counts["row_limit_ingest_contract_blocked"] = (
+            int(counts["row_limit_ingest_contract_blocked"]) - 1
+        )
+
+
+def test_row_limit_under_hard_budget_allows_finite_coverage_without_activation_block() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    for api_name, expected_count in (("fund_daily", 2000), ("dc_concept_cons", 3000)):
+        entry = _entry(observations, api_name)
+        row_limit = entry["row_limit_observation"]
+        assert isinstance(row_limit, dict)
+        assert row_limit["observed_count"] == expected_count
+        assert row_limit["observed_count"] < 10000
+        _set_row_limit_ready(observations, api_name, reject_at_limit=False)
+
+    bundle = _compile(request_observations=observations)
+    for api_name in ("fund_daily", "dc_concept_cons"):
+        contract = _contract(bundle, api_name)
+        assert contract["ingest_contract_state"] == "blocked"
+        assert contract["ingest_contract_block_reasons"] == [
+            "dependency_seed_receipt_unresolved"
+        ]
+        assert contract["budgets"]["max_rows_per_attempt"] == 10000
+        assert contract["request_template"] == {"trade_date": "${window.trade_date}"}
+
+
+def test_row_limit_under_hard_budget_keeps_explicit_reject_at_limit_without_forcing_block() -> (
+    None
+):
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    row_limit = _entry(observations, "fund_daily")["row_limit_observation"]
+    assert isinstance(row_limit, dict)
+    assert row_limit["reject_at_limit"] is True
+    _set_row_limit_ready(observations, "fund_daily", reject_at_limit=True)
+
+    bundle = _compile(request_observations=observations)
+    contract = _contract(bundle, "fund_daily")
+    assert contract["ingest_contract_state"] == "blocked"
+    assert contract["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert contract["budgets"]["max_rows_per_attempt"] == 10000
+
+
+def test_row_limit_over_hard_budget_still_requires_activation_block() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    entry = _entry(observations, "opt_daily")
+    row_limit = entry["row_limit_observation"]
+    assert isinstance(row_limit, dict)
+    assert row_limit["observed_count"] == 15000
+    entry["ingest_contract_state"] = "ready"
+    entry["ingest_contract_block_reasons"] = []
+    counts = observations["counts"]
+    assert isinstance(counts, dict)
+    counts["ingest_contract_ready"] = 130
+    counts["ingest_contract_blocked"] = 60
+    counts["row_limit_ingest_contract_blocked"] = 14
+
+    with pytest.raises(
+        RuntimeContractCompilationError,
+        match="over hard budget must block activation",
+    ):
+        _compile(request_observations=observations)
+
+
+def test_row_limit_over_hard_budget_cannot_clear_reject_at_limit() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    row_limit = _entry(observations, "opt_daily")["row_limit_observation"]
+    assert isinstance(row_limit, dict)
+    row_limit["reject_at_limit"] = False
+
+    with pytest.raises(
+        RuntimeContractCompilationError,
+        match="over hard budget must set reject_at_limit",
+    ):
+        _compile(request_observations=observations)
+
+
+def test_row_limit_reject_at_limit_must_be_boolean() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    row_limit = _entry(observations, "fund_daily")["row_limit_observation"]
+    assert isinstance(row_limit, dict)
+    row_limit["reject_at_limit"] = "true"
+
+    with pytest.raises(
+        RuntimeContractCompilationError, match="reject_at_limit must be a boolean"
+    ):
+        _compile(request_observations=observations)
 
 
 def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values() -> (
@@ -640,10 +1769,10 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 140,
-        "blocked": 50,
-        "ingest_contract_ready": 125,
-        "ingest_contract_blocked": 65,
+        "executable": 137,
+        "blocked": 53,
+        "ingest_contract_ready": 130,
+        "ingest_contract_blocked": 60,
     }
 
     daily = _entry(plan, "daily")
@@ -671,6 +1800,15 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     assert daily_basic["probe_block_reasons"] == []
     assert daily_basic["params"] == {"trade_date": "20260718"}
 
+    bak_daily = _entry(plan, "bak_daily")
+    assert bak_daily["probe_state"] == "executable"
+    assert bak_daily["ingest_contract_state"] == "blocked"
+    assert bak_daily["params"] == {"trade_date": "20260721"}
+    fund_adj = _entry(plan, "fund_adj")
+    assert fund_adj["params"] == {"trade_date": "20260721"}
+    fund_manager = _entry(plan, "fund_manager")
+    assert fund_manager["params"] == {"ann_date": "20260721"}
+
     rt_min = _entry(plan, "rt_min")
     assert rt_min["probe_state"] == "executable"
     assert rt_min["probe_block_reasons"] == []
@@ -684,10 +1822,26 @@ def test_checked_probe_authorities_compile_without_test_rebinding() -> None:
         ]
         == _sha(UPSTREAM_CONTRACTS)
     )
-    plan = _compile_plan()
-    assert plan["provenance"]["request_observations_sha256"] == _sha(
-        REQUEST_OBSERVATIONS
+    plan = compile_https_probe_plan(
+        _bytes(DOCUMENTS),
+        _bytes(REQUEST_OBSERVATIONS),
+        _bytes(TRANSPORT_OBSERVATIONS),
+        registered_contract_bundle=_bytes(UPSTREAM_CONTRACTS),
+        official_contract_sha256=_sha(DOCUMENTS),
+        transport_observations_sha256=_sha(TRANSPORT_OBSERVATIONS),
+        request_observations_sha256=_sha(REQUEST_OBSERVATIONS),
+        expected_commit="7d65743732fb178c3120438fb7d3aa19a34cabfa",
+        run_clock=datetime(2026, 7, 21, 10, 30, tzinfo=timezone.utc),
+        scheduled_partition="20260718",
     )
+    assert plan["counts"]["planned"] == 190
+    assert plan["counts"] == {
+        "planned": 190,
+        "executable": 137,
+        "blocked": 53,
+        "ingest_contract_ready": 130,
+        "ingest_contract_blocked": 60,
+    }
 
 
 def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -> None:
@@ -704,10 +1858,10 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
     plan = _compile_plan(dataset_field_values=[seed])
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 158,
-        "blocked": 32,
-        "ingest_contract_ready": 143,
-        "ingest_contract_blocked": 47,
+        "executable": 157,
+        "blocked": 33,
+        "ingest_contract_ready": 148,
+        "ingest_contract_blocked": 42,
     }
     express = _entry(plan, "express")
     assert express["probe_state"] == "executable"
@@ -837,15 +1991,20 @@ def test_probe_plan_rejects_seed_schema_drift_and_blocked_producer() -> None:
         _compile_plan(dataset_field_values=[seed])
 
     observations = _yaml(REQUEST_OBSERVATIONS)
+    live_bundle = _compile(request_observations=observations)
     producer = _entry(observations, "stock_basic")
     producer["probe_state"] = "blocked"
     producer["probe_block_reasons"] = ["request_anchor_unresolved"]
-    observations["counts"]["probe_executable"] = 139
-    observations["counts"]["probe_blocked"] = 51
+    observations["counts"]["probe_executable"] = 136
+    observations["counts"]["probe_blocked"] = 54
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(live_bundle)
+    ).hexdigest()
     seed["schema_version"] = "2.0.0"
     with pytest.raises(RuntimeContractCompilationError, match="producer.*executable"):
         _compile_plan(
             request_observations=observations,
+            registered_contract_bundle=live_bundle,
             dataset_field_values=[seed],
         )
 
@@ -897,10 +2056,14 @@ def test_probe_plan_is_pure_and_does_not_require_migration_profile(
 ) -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
     observations["provenance"].pop("migration_request_profiles")
+    live_bundle = _compile(request_observations=observations)
+    observations["provenance"]["registered_contract_bundle"]["sha256"] = hashlib.sha256(
+        _yaml_bytes(live_bundle)
+    ).hexdigest()
     observation_bytes = _yaml_bytes(observations)
     document_bytes = _bytes(DOCUMENTS)
     transport_bytes = _bytes(TRANSPORT_OBSERVATIONS)
-    registered_bytes = _bytes(UPSTREAM_CONTRACTS)
+    registered_bytes = _yaml_bytes(live_bundle)
     official_sha = _sha(DOCUMENTS)
     transport_sha = _sha(TRANSPORT_OBSERVATIONS)
     request_sha = hashlib.sha256(observation_bytes).hexdigest()
@@ -1001,7 +2164,7 @@ def test_runtime_compiler_rejects_content_drift_behind_frozen_authority_sha(
         document_bytes = _yaml_bytes(document)
     elif authority == "request":
         request = _yaml(REQUEST_OBSERVATIONS)
-        _entry(request, "bak_daily")["parameters"]["limit"]["value"] = 2
+        _entry(request, "bak_daily")["parameters"]["trade_date"]["offset_seconds"] = 86400
         request_bytes = _yaml_bytes(request)
     elif authority == "transport":
         transport = _yaml(TRANSPORT_OBSERVATIONS)
@@ -1053,7 +2216,7 @@ def test_request_observation_contract_fails_closed(
     elif mutation == "either_or_unmapped":
         _entry(observations, "daily_basic")["parameters"] = {}
     elif mutation == "required_unknown_executable":
-        item = _entry(observations, "fund_company")
+        item = _entry(observations, "stock_company")
         item["probe_state"] = "executable"
         item["probe_block_reasons"] = []
     elif mutation == "executable_with_reason":

@@ -6,7 +6,7 @@ profile_id: tushare-request-profiles.v1
 provider: tushare
 source_documents:
   snapshot_id: tushare-official-document-contracts.v1
-  sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
+  sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   contract_count: 190
 excluded_existing_activations:
 - daily
@@ -280,11 +280,9 @@ groups:
   exact_setup_day:
     execution_state: executable
     reason: clock_static_literal_ready
-    parameters:
-      setup_date:
-        source: observed_at
-        transform: yyyymmdd
-        offset_seconds: 0
+    # Official fund_company input is documented empty-all
+    # (无，可提取全部). Do not invent setup_date.
+    parameters: {}
     api_names:
     - fund_company
   bounded_day_range:

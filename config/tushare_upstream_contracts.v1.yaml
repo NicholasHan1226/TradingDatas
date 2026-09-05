@@ -821,18 +821,22 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
-  request_template: {}
+  request_template:
+    trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
     strategy: none
   pagination:
-    strategy: offset
-    limit_parameter: limit
-    offset_parameter: offset
-    page_size: 1
-    max_pages: 1
-  request_window_policy: null
+    strategy: none
+  request_window_policy:
+    required_keys:
+    - trade_date
+    formats:
+      trade_date: yyyymmdd
+    range_start_key: trade_date
+    range_end_key: trade_date
+    max_span_days: 1
   response_completeness: null
   requested_fields: []
   budgets:
@@ -3039,12 +3043,10 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: blocked
-  probe_block_reasons:
-  - request_anchor_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
 - dataset_id: cn.dataset.cashflow
   aliases:
   - tushare.cashflow
@@ -6702,12 +6704,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
-  request_template: {}
+  request_shape: entity_fanout
+  request_template:
+    is_new: Y
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.equity.security_master
+    source_field: ts_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy: null
@@ -6721,10 +6731,10 @@ contracts:
   reviewed_type_overrides: []
   probe_state: blocked
   probe_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.cn_cpi
   aliases:
@@ -9136,13 +9146,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: theme_code
+    source_dataset_id: cn.dataset.dc_concept
+    source_field: theme_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -9161,10 +9178,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.dc_daily
   aliases:
@@ -9628,13 +9647,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.dataset.dc_index
+    source_field: ts_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -9653,10 +9679,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.disclosure_date
   aliases:
@@ -10878,13 +10906,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.dataset.etf_basic
+    source_field: ts_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -10903,10 +10938,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.express
   aliases:
@@ -13412,18 +13449,22 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
-  request_template: {}
+  request_template:
+    trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
     strategy: none
   pagination:
-    strategy: offset
-    limit_parameter: limit
-    offset_parameter: offset
-    page_size: 1
-    max_pages: 1
-  request_window_policy: null
+    strategy: none
+  request_window_policy:
+    required_keys:
+    - trade_date
+    formats:
+      trade_date: yyyymmdd
+    range_start_key: trade_date
+    range_end_key: trade_date
+    max_span_days: 1
   response_completeness: null
   requested_fields: []
   budgets:
@@ -13675,9 +13716,11 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
-  request_template: {}
+  request_template:
+    market: E
   request_variants:
-  - {}
+  - market: E
+  - market: O
   fanout:
     strategy: none
   pagination:
@@ -13691,12 +13734,10 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: blocked
-  probe_block_reasons:
-  - request_anchor_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
 - dataset_id: cn.dataset.fund_company
   aliases:
   - tushare.fund_company
@@ -13709,61 +13750,7 @@ contracts:
   source_document_url: https://tushare.pro/wctapi/documents/118.md
   source_document_sha256: 2558e361fbc684ab1071434c2ee6afa65df6f3e16e2dd00a3ece105239965797
   schema_version: 1.0.0
-  input_fields:
-  - name: name
-    declared_source_type: str
-    required: null
-  - name: shortname
-    declared_source_type: str
-    required: null
-  - name: short_enname
-    declared_source_type: str
-    required: null
-  - name: province
-    declared_source_type: str
-    required: null
-  - name: city
-    declared_source_type: str
-    required: null
-  - name: address
-    declared_source_type: str
-    required: null
-  - name: phone
-    declared_source_type: str
-    required: null
-  - name: office
-    declared_source_type: str
-    required: null
-  - name: website
-    declared_source_type: str
-    required: null
-  - name: chairman
-    declared_source_type: str
-    required: null
-  - name: manager
-    declared_source_type: str
-    required: null
-  - name: reg_capital
-    declared_source_type: float
-    required: null
-  - name: setup_date
-    declared_source_type: str
-    required: null
-  - name: end_date
-    declared_source_type: str
-    required: null
-  - name: employees
-    declared_source_type: float
-    required: null
-  - name: main_business
-    declared_source_type: str
-    required: null
-  - name: org_code
-    declared_source_type: str
-    required: null
-  - name: credit_code
-    declared_source_type: str
-    required: null
+  input_fields: []
   fields:
   - name: name
     declared_source_type: str
@@ -13940,12 +13927,10 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: blocked
-  probe_block_reasons:
-  - official_requiredness_unknown
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - official_requiredness_unknown
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
 - dataset_id: cn.dataset.fund_daily
   aliases:
   - tushare.fund_daily
@@ -14074,13 +14059,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.dataset.etf_basic
+    source_field: ts_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -14099,10 +14091,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.fund_div
   aliases:
@@ -15240,18 +15234,22 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
-  request_template: {}
+  request_template:
+    ann_date: ${window.ann_date}
   request_variants:
   - {}
   fanout:
     strategy: none
   pagination:
-    strategy: offset
-    limit_parameter: limit
-    offset_parameter: offset
-    page_size: 1
-    max_pages: 1
-  request_window_policy: null
+    strategy: none
+  request_window_policy:
+    required_keys:
+    - ann_date
+    formats:
+      ann_date: yyyymmdd
+    range_start_key: ann_date
+    range_end_key: ann_date
+    max_span_days: 1
   response_completeness: null
   requested_fields: []
   budgets:
@@ -15380,13 +15378,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     nav_date: ${window.nav_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.dataset.fund_basic
+    source_field: ts_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -15405,10 +15410,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.fund_portfolio
   aliases:
@@ -16212,13 +16219,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: symbol
+    source_dataset_id: cn.dataset.fut_basic
+    source_field: symbol
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -16237,10 +16251,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.fut_index_daily
   aliases:
@@ -17445,13 +17461,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: symbol
+    source_dataset_id: cn.dataset.fut_basic
+    source_field: fut_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -17470,10 +17493,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.gz_index
   aliases:
@@ -19908,7 +19933,7 @@ contracts:
   provider: tushare
   api_name: index_basic
   source_document_url: https://tushare.pro/wctapi/documents/94.md
-  source_document_sha256: 5dbbbda563f880297ff67d55b5c82a867ee4f253c2044e1ad56887627e66e6c8
+  source_document_sha256: d61a1551efc5d119b5588c9cc875eb6318b4c7c2a295851deffa1c81f19773e1
   schema_version: 1.0.0
   input_fields:
   - name: ts_code
@@ -20049,9 +20074,16 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
-  request_template: {}
+  request_template:
+    market: SSE
   request_variants:
-  - {}
+  - market: MSCI
+  - market: CSI
+  - market: SSE
+  - market: SZSE
+  - market: CICC
+  - market: SW
+  - market: OTH
   fanout:
     strategy: none
   pagination:
@@ -20678,12 +20710,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
-  request_template: {}
+  request_shape: entity_fanout
+  request_template:
+    is_new: Y
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.equity.security_master
+    source_field: ts_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy: null
@@ -20697,10 +20737,10 @@ contracts:
   reviewed_type_overrides: []
   probe_state: blocked
   probe_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.index_monthly
   aliases:
@@ -20987,13 +21027,20 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.dataset.index_basic
+    source_field: ts_code
+    batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -21012,10 +21059,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.index_weight
   aliases:
@@ -26022,9 +26071,15 @@ contracts:
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
   request_template:
+    exchange: SSE
     trade_date: ${window.trade_date}
   request_variants:
-  - {}
+  - exchange: SSE
+  - exchange: SZSE
+  - exchange: CFFEX
+  - exchange: DCE
+  - exchange: SHFE
+  - exchange: CZCE
   fanout:
     strategy: none
   pagination:
@@ -29120,12 +29175,10 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: blocked
-  probe_block_reasons:
-  - request_anchor_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
 - dataset_id: cn.dataset.sge_daily
   aliases:
   - tushare.sge_daily
@@ -35317,14 +35370,26 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
-  request_template: {}
+  request_template:
+    trade_date: ${window.trade_date}
+    type: HK_SZ
   request_variants:
-  - {}
+  - type: HK_SZ
+  - type: SZ_HK
+  - type: HK_SH
+  - type: SH_HK
   fanout:
     strategy: none
   pagination:
     strategy: none
-  request_window_policy: null
+  request_window_policy:
+    required_keys:
+    - trade_date
+    formats:
+      trade_date: yyyymmdd
+    range_start_key: trade_date
+    range_end_key: trade_date
+    max_span_days: 1
   response_completeness: null
   requested_fields: []
   budgets:
@@ -35333,14 +35398,10 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: blocked
-  probe_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
 - dataset_id: cn.dataset.stock_st
   aliases:
   - tushare.stock_st

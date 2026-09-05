@@ -46,6 +46,7 @@ _QUERYABILITY_REASONS = frozenset(
 )
 _PROVIDER_NATIVE_STORAGE_KIND = "provider_native_rows"
 _PROVIDER_NATIVE_TABLE = "provider_dataset_rows"
+_PROVIDER_NATIVE_COVERAGE_INDEX = "provider_dataset_rows_coverage_idx"
 _PROVIDER_NATIVE_COLUMNS = {
     "dataset_id": "TEXT",
     "provider": "TEXT",
@@ -158,6 +159,8 @@ def is_initial_release_eligible(dataset: DatasetDefinition) -> bool:
 def inspect_dataset_queryability(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
+    *,
+    schema_reasons: tuple[str, ...] | None = None,
 ) -> DatasetQueryability:
     """Inspect the generic-query physical contract without changing SQLite."""
 
@@ -177,15 +180,30 @@ def inspect_dataset_queryability(
     ):
         return DatasetQueryability(False, ("primary_table_unavailable",))
 
+    reasons = (
+        schema_reasons
+        if schema_reasons is not None
+        else _provider_native_queryability_reasons(conn)
+    )
+    return DatasetQueryability(not reasons, reasons)
+
+
+def _provider_native_queryability_reasons(
+    conn: sqlite3.Connection,
+) -> tuple[str, ...]:
+    """Inspect the shared provider-native table contract for this snapshot."""
+
     try:
-        table_rows = conn.execute("PRAGMA main.table_list").fetchall()
+        table_rows = conn.execute(
+            f"PRAGMA main.table_list('{_PROVIDER_NATIVE_TABLE}')"
+        ).fetchall()
         matching = [
             row
             for row in table_rows
             if len(row) >= 6 and row[0] == "main" and row[1] == _PROVIDER_NATIVE_TABLE
         ]
         if len(matching) != 1 or matching[0][2] != "table":
-            return DatasetQueryability(False, ("primary_table_unavailable",))
+            return ("primary_table_unavailable",)
 
         reasons: set[str] = set()
 
@@ -220,8 +238,7 @@ def inspect_dataset_queryability(
             "catalog queryability inspection failed closed"
         ) from None
 
-    normalized = tuple(sorted(reasons))
-    return DatasetQueryability(not normalized, normalized)
+    return tuple(sorted(reasons))
 
 
 def _canonical_json_bytes(value: object) -> bytes:
@@ -345,14 +362,23 @@ def _matches_filters(
     return True
 
 
+def _provider_dataset_row_indexes(conn: sqlite3.Connection) -> frozenset[str]:
+    return frozenset(
+        row[1] for row in conn.execute("PRAGMA index_list(provider_dataset_rows)")
+    )
+
+
 def _dataset_coverage(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
+    *,
+    indexes: frozenset[str] | None = None,
 ) -> dict[str, object]:
     """Aggregate stored-row coverage for one dataset from the same snapshot."""
 
-    indexes = {row[1] for row in conn.execute("PRAGMA index_list(provider_dataset_rows)")}
-    if "provider_dataset_rows_coverage_idx" not in indexes:
+    if indexes is None:
+        indexes = _provider_dataset_row_indexes(conn)
+    if _PROVIDER_NATIVE_COVERAGE_INDEX not in indexes:
         # Legacy stores may lack the optional writer-created coverage index.
         # Keep one scan there; the read path never creates schema objects.
         row_count, earliest, latest = conn.execute(
@@ -386,14 +412,41 @@ def _dataset_coverage(
     }
 
 
+def fault_in_catalog_coverage_index(db_path: Path) -> None:
+    """Fault coverage-index pages into the OS cache before HTTP listen.
+
+    The counted value is discarded. Every later catalog request still opens a
+    new verified snapshot and recomputes exact COUNT/MIN/MAX. This is cold I/O
+    warmup, not coverage authority.
+    """
+
+    if not isinstance(db_path, Path):
+        raise TypeError("db_path must be pathlib.Path")
+    canonical_path = Path(os.path.abspath(os.fspath(db_path)))
+    if db_path != canonical_path:
+        raise ValueError("db_path must be canonical")
+    with open_verified_read_model_snapshot(canonical_path) as conn:
+        if _PROVIDER_NATIVE_COVERAGE_INDEX in _provider_dataset_row_indexes(conn):
+            conn.execute(
+                "SELECT COUNT(*) FROM provider_dataset_rows "
+                f"INDEXED BY {_PROVIDER_NATIVE_COVERAGE_INDEX}"
+            ).fetchone()
+            return
+        conn.execute("SELECT COUNT(*) FROM provider_dataset_rows").fetchone()
+
+
 def _serialize_dataset(
     conn: sqlite3.Connection,
     dataset: DatasetDefinition,
     runtime: Mapping[str, object],
     *,
     max_in_values: int,
+    schema_reasons: tuple[str, ...] | None = None,
+    indexes: frozenset[str] | None = None,
 ) -> dict[str, object]:
-    queryability = inspect_dataset_queryability(conn, dataset)
+    queryability = inspect_dataset_queryability(
+        conn, dataset, schema_reasons=schema_reasons
+    )
     filter_operators = {
         field_name: list(operators)
         for field_name, operators in dataset.filter_operators.items()
@@ -447,7 +500,7 @@ def _serialize_dataset(
             "queryable": queryability.queryable,
             "reasons": list(queryability.reasons),
         },
-        "coverage": _dataset_coverage(conn, dataset),
+        "coverage": _dataset_coverage(conn, dataset, indexes=indexes),
         "runtime": {
             "state": runtime["state"],
             "degraded": runtime["degraded"],
@@ -603,12 +656,18 @@ class CatalogService:
             candidates = filtered[: effective_limit + 1]
             has_more = len(candidates) > effective_limit
             selected = candidates[:effective_limit]
+            schema_reasons = (
+                _provider_native_queryability_reasons(conn) if selected else None
+            )
+            indexes = _provider_dataset_row_indexes(conn) if selected else None
             data = [
                 _serialize_dataset(
                     conn,
                     dataset,
                     runtime,
                     max_in_values=self._registry.query_defaults.max_in_values,
+                    schema_reasons=schema_reasons,
+                    indexes=indexes,
                 )
                 for dataset, runtime in selected
             ]

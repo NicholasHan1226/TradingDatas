@@ -847,6 +847,16 @@ def test_planner_renders_each_runtime_window_from_partition_frequency(
     assert dict(plans[0].request_window) == {"period": expected}
 
 
+def test_planner_encodes_prior_open_day_as_midnight_local_datetime() -> None:
+    registry = _window_registry("local_datetime_seconds", "prior_open_morning")
+    binding = registry.datasets[0].provider_bindings[0]
+    window = cadence_planner._window(  # noqa: SLF001
+        binding, date(2026, 9, 4), date(2026, 9, 4)
+    )
+
+    assert dict(window) == {"period": "2026-09-04 00:00:00"}
+
+
 def test_broker_recommend_retained_month_partition_is_covered_for_planning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -954,6 +964,49 @@ def test_active_on_demand_window_is_never_automatically_planned() -> None:
     assert [(item.dataset_id, item.state) for item in skips] == [
         (registry.datasets[0].dataset_id, "on_demand")
     ]
+
+
+def test_ready3_fut_daily_opt_basic_stay_on_demand_and_are_never_auto_planned() -> (
+    None
+):
+    live = _active_registry()
+    expected = ("cn.dataset.fut_daily", "cn.dataset.opt_basic")
+    for dataset_id in expected:
+        dataset = live.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == "on_demand"
+        assert binding.entitlement_state == "active"
+        assert binding.activation_state == "active"
+        assert binding.probe_state == "executable"
+        assert binding.ingest_contract_state == "ready"
+
+    fut_daily = live.resolve("cn.dataset.fut_daily")
+    fut_binding = fut_daily.provider_bindings[0]
+    assert fut_daily.primary_key == ("trade_date", "ts_code")
+    assert dict(fut_binding.request_template) == {"trade_date": "${window.trade_date}"}
+    assert fut_binding.request_window_policy is not None
+    assert fut_binding.request_window_policy.required_keys == ("trade_date",)
+    assert fut_binding.max_rows_per_attempt == 10000
+
+    opt_basic = live.resolve("cn.dataset.opt_basic")
+    opt_binding = opt_basic.provider_bindings[0]
+    assert opt_basic.primary_key == ()
+    assert dict(opt_binding.request_template) == {}
+    assert opt_binding.request_window_policy is None
+    assert opt_binding.max_rows_per_attempt == 10000
+
+    subset = DatasetRegistry(tuple(live.resolve(dataset_id) for dataset_id in expected))
+    plans, skips = cadence_planner.plan_runs(
+        registry=subset,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        state=cadence_planner.PlannerState(MappingProxyType({})),
+        now=datetime(2026, 7, 20, 21, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    assert plans == ()
+    assert {(item.dataset_id, item.state) for item in skips} == {
+        (dataset_id, "on_demand") for dataset_id in expected
+    }
 
 
 def test_planner_rejects_naive_run_clock_before_window_generation() -> None:

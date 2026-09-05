@@ -539,8 +539,10 @@ def test_compiler_projects_all_input_fields_byte_for_byte() -> None:
     assert set(bindings) == set(contracts)
     for api_name, contract in contracts.items():
         input_fields = contract["input_fields"]
-        assert input_fields
         assert bindings[api_name]["input_fields"] == input_fields
+        if api_name == "fund_company":
+            assert input_fields == []
+            continue
         assert all(
             set(input_field) == {"name", "declared_source_type", "required"}
             for input_field in input_fields
@@ -794,6 +796,101 @@ def test_fresh_https_evidence_promotes_bounded_on_demand_local_event_window() ->
         if item["provider_bindings"][0]["api_name"] == "major_news"
     )
     assert paused_binding["activation_state"] == "paused"
+
+
+def test_stk_nineturn_single_partition_datetime_is_supported_and_stays_paused() -> None:
+    bundle = _bundle()
+    contract = next(
+        item
+        for item in bundle["contracts"]
+        if isinstance(item, dict) and item["api_name"] == "stk_nineturn"
+    )
+    window = contract["request_window_policy"]
+    assert isinstance(window, dict)
+    assert contract["cadence_class"] == "postclose_daily"
+    assert window["formats"] == {"trade_date": "local_datetime_seconds"}
+    assert window["range_start_key"] == window["range_end_key"] == "trade_date"
+    assert compiler_module._activation_window_is_supported(contract) is True
+
+    registry = compile_provider_native_registry(
+        bundle, observations_document=_observations()
+    )
+    binding = next(
+        dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["api_name"] == "stk_nineturn"
+    )
+    assert binding["activation_state"] == "paused"
+    assert binding["probe_state"] == "executable"
+    assert binding["ingest_contract_state"] == "ready"
+
+
+def test_fresh_https_evidence_promotes_single_partition_local_datetime_window() -> None:
+    """Midnight date partitions reuse the planner; session ranges stay closed."""
+
+    bundle = _bundle()
+    contracts = bundle["contracts"]
+    assert isinstance(contracts, list)
+    nineturn = next(
+        item
+        for item in contracts
+        if isinstance(item, dict) and item["api_name"] == "stk_nineturn"
+    )
+    observations = _observations()
+    active_evidence = observations["active_evidence"]
+    assert isinstance(active_evidence, dict)
+    active_evidence.pop("stk_nineturn", None)
+
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name="stk_nineturn",
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    binding = next(
+        dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+        if dataset["provider_bindings"][0]["api_name"] == "stk_nineturn"
+    )
+    assert binding["activation_state"] == "active"
+    assert set(binding["request_window_policy"]["formats"].values()) == {
+        "local_datetime_seconds"
+    }
+
+    nineturn["cadence_class"] = "session_minute"
+    paused_registry = compile_provider_native_registry(
+        bundle,
+        observations_document=observations,
+        activation_evidence_document=build_synthetic_activation_evidence(
+            bundle,
+            observations,
+            promoted_api_name="stk_nineturn",
+        ),
+        compilation_mode="preactivation_candidate",
+    )
+    paused_binding = next(
+        item["provider_bindings"][0]
+        for item in paused_registry["datasets"]
+        if item["provider_bindings"][0]["api_name"] == "stk_nineturn"
+    )
+    assert paused_binding["activation_state"] == "paused"
+
+    nineturn["cadence_class"] = "prior_open_morning"
+    nineturn["request_window_policy"] = {
+        "required_keys": ["start_date", "end_date"],
+        "formats": {
+            "start_date": "local_datetime_seconds",
+            "end_date": "local_datetime_seconds",
+        },
+        "range_start_key": "start_date",
+        "range_end_key": "end_date",
+        "max_span_days": 1,
+    }
+    assert compiler_module._activation_window_is_supported(nineturn) is False
 
 
 def test_partial_https_evidence_promotes_only_its_verified_cohort() -> None:
@@ -2021,8 +2118,8 @@ def test_bundle_contracts_fail_closed(
             "required.*boolean or null",
         ),
         (
-            lambda item: item.update(input_fields=[]),
-            "input_fields.*must not be empty",
+            lambda item: item["input_fields"].append({"name": "1bad", "declared_source_type": "str", "required": False}),  # type: ignore[index,union-attr]
+            "provider parameter grammar",
         ),
     ],
 )

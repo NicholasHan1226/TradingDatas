@@ -1,6 +1,7 @@
 """Coverage retains exact aggregates while avoiding per-row MIN/MAX work."""
 
 import sqlite3
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -72,4 +73,59 @@ def test_coverage_uses_fewer_vm_steps_without_changing_values():
     conn.set_progress_handler(None, 0)
     assert tuple(after.values()) == before
     assert candidate_steps < baseline_steps * 0.5
+    plan = "\n".join(
+        row[-1]
+        for row in conn.execute(
+            "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM provider_dataset_rows "
+            "INDEXED BY provider_dataset_rows_coverage_idx "
+            "WHERE dataset_id='chosen' AND schema_major=1"
+        )
+    )
+    assert "COVERING INDEX provider_dataset_rows_coverage_idx" in plan
     conn.close()
+
+
+def test_coverage_prefetch_discards_count_and_keeps_exact_aggregates(
+    tmp_path: Path,
+) -> None:
+    from catalog_service import _dataset_coverage, fault_in_catalog_coverage_index
+    from storage.receipt_projection import RuntimeProjectionError
+    from storage.schema import SCHEMA_SQL
+    from storage.sqlite_authority_lock import sqlite_authority_lock
+
+    db_path = tmp_path / "provider_native.sqlite"
+    writer = sqlite3.connect(db_path)
+    try:
+        writer.executescript(SCHEMA_SQL)
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.executemany(
+            """INSERT INTO provider_dataset_rows
+               (dataset_id, provider, schema_major, ingested_schema_version,
+                row_key, observed_at, partition_value, payload_json,
+                payload_hash, quality_state, quality_issues_json,
+                collected_at, receipt_id, revision)
+               VALUES (?, 'tushare', 1, 'v1', ?, ?, NULL, '{}', ?, 'valid', '[]',
+                       '2026-09-05T00:00:00Z', ?, 1)""",
+            [
+                ("chosen", "k1", "2026-09-01T00:00:00Z", "h1", "receipt:1"),
+                ("chosen", "k2", "2026-09-05T00:00:00Z", "h2", "receipt:1"),
+                ("other", "k9", "2030-01-01T00:00:00Z", "h9", "receipt:2"),
+            ],
+        )
+        writer.commit()
+        with sqlite_authority_lock(db_path, mode="exclusive", create=True):
+            pass
+        before = writer.execute(
+            "SELECT COUNT(*), MIN(observed_at), MAX(observed_at) "
+            "FROM provider_dataset_rows WHERE dataset_id='chosen' AND schema_major=1"
+        ).fetchone()
+        fault_in_catalog_coverage_index(db_path)
+        after = _dataset_coverage(
+            writer, SimpleNamespace(dataset_id="chosen", schema_major=1)
+        )
+        assert tuple(after.values()) == before
+        missing = tmp_path / "missing.sqlite"
+        with pytest.raises(RuntimeProjectionError):
+            fault_in_catalog_coverage_index(missing)
+    finally:
+        writer.close()

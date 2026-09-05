@@ -7,7 +7,7 @@ production_ready: false
 provenance:
   official_contracts:
     path: config/tushare_document_contracts.v1.yaml
-    sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
+    sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
     sha256: ec7bbf84f4792f1b57b58b9bbcedcef2f173cf1de424e19e14d76c5bc8e530b6
@@ -16,10 +16,10 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 8dcd0dfd7fd739cfa40686130df91321d3ff96c24c589ea0a45bbd1764bd116e
+    sha256: 785ad72f37df7242773e77f69a35d65f9db273e797fa84a4e01f75e8f9213d3b
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
-    sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
+    sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
     authority: false
     role: reviewed_mapping_hint_only
   matrix_evidence:
@@ -68,10 +68,10 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 140
-  probe_blocked: 50
-  ingest_contract_ready: 125
-  ingest_contract_blocked: 65
+  probe_executable: 137
+  probe_blocked: 53
+  ingest_contract_ready: 130
+  ingest_contract_blocked: 60
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -131,6 +131,10 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # limit=1/offset=0 was a probe-only page and cannot prove completeness.
+  # Official trade_date is the reusable snapshot window (same shape as
+  # bak_basic / adj_factor). Ingest stays blocked until a live window
+  # probe observes a finite page; do not invent completeness.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -138,12 +142,10 @@ entries:
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
-    limit:
-      source: literal
-      value: 1
-    offset:
-      source: literal
-      value: 0
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
   row_limit_observation: null
 - api_name: balancesheet
   scope_labels:
@@ -199,6 +201,9 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # trade_date window is official. Official ts_code has no registered
+  # bond master seed; cb_basic is convertibles, not OTC quotes. Keep
+  # the completeness block. Do not invent a bank list.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -288,12 +293,13 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  probe_state: blocked
-  probe_block_reasons:
-  - request_anchor_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  # Official o_code/n_code are optional (N). The contract is the mapping
+  # table itself; empty snapshot is the honest request. Do not invent
+  # old or new codes. Activation stays paused in the registry.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
   unresolved_parameter_keys: []
   parameters: {}
   row_limit_observation: null
@@ -536,16 +542,33 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
+  # Empty snapshot already returned 5000 rows and is not an all-list
+  # contract. Official is_new defaults to Y; official ts_code is 股票代码
+  # and fans out from the existing executable security_master seed. Do
+  # not invent l1/l2/l3 codes or alias unregistered index_member. Ingest
+  # stays blocked on the observed-limit reason; do not invent completeness.
   probe_state: blocked
   probe_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
-  parameters: {}
+  parameters:
+    is_new:
+      source: literal
+      value: Y
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 5000
     detection: observed_count_equals_round_provider_style_boundary
@@ -786,18 +809,33 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # trade_date-only returned 3000 rows (under the 10000 hard budget) and
+  # cannot be a later activation snapshot. Official theme_code fans out
+  # from the existing executable dc_concept seed. Ingest stays blocked
+  # on the observed-limit reason; do not invent completeness.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
+    theme_code:
+      source: dataset_field
+      dataset_id: cn.dataset.dc_concept
+      field: theme_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
     trade_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 3000
     detection: observed_count_equals_round_provider_style_boundary
@@ -844,11 +882,17 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # trade_date-only returned 5000 rows (under the 10000 hard budget) and
+  # cannot be a later activation snapshot. Official ts_code is the board
+  # index and fans out from the existing executable dc_index seed. Ingest
+  # stays blocked on the observed-limit reason; do not invent completeness.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
@@ -856,6 +900,15 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.dc_index
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 5000
     detection: observed_count_equals_round_provider_style_boundary
@@ -994,11 +1047,18 @@ entries:
   - all
   - gaps
   transport_observation_class: schema_subset
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # trade_date-only returned 3000 rows (under the 10000 hard budget) and
+  # cannot be a later activation snapshot. Official ts_code fans out from
+  # the existing executable etf_basic seed. Do not invent an SZ exchange
+  # filter without observed etf_basic.exchange values. Ingest stays
+  # blocked on the observed-limit reason; do not invent completeness.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
@@ -1006,6 +1066,15 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.etf_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 3000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1210,78 +1279,9 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - response_completeness_unresolved_at_observed_limit
-  unresolved_parameter_keys: []
-  parameters:
-    limit:
-      source: literal
-      value: 1
-    offset:
-      source: literal
-      value: 0
-  row_limit_observation: null
-- api_name: fund_basic
-  scope_labels:
-  - all
-  - gaps
-  transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: blocked
-  probe_block_reasons:
-  - request_anchor_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - request_anchor_unresolved
-  unresolved_parameter_keys: []
-  parameters: {}
-  row_limit_observation: null
-- api_name: fund_company
-  scope_labels:
-  - all
-  - gaps
-  transport_observation_class: quality_anomaly
-  request_shape: snapshot_or_date_range
-  probe_state: blocked
-  probe_block_reasons:
-  - official_requiredness_unknown
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - official_requiredness_unknown
-  unresolved_parameter_keys:
-  - address
-  - chairman
-  - city
-  - credit_code
-  - employees
-  - end_date
-  - main_business
-  - manager
-  - name
-  - office
-  - org_code
-  - phone
-  - province
-  - reg_capital
-  - setup_date
-  - short_enname
-  - shortname
-  - website
-  parameters:
-    setup_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
-  row_limit_observation: null
-- api_name: fund_daily
-  scope_labels:
-  - all
-  - gaps
-  transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
+  # limit=1/offset=0 was a probe-only page and cannot prove completeness.
+  # Official trade_date is the reusable snapshot window. Ingest stays
+  # blocked until a live window probe; do not invent completeness.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -1293,6 +1293,83 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+  row_limit_observation: null
+- api_name: fund_basic
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: snapshot_or_date_range
+  # Empty snapshot is the old unbounded list (场内+场外 公募). Official
+  # market is E场内 / O场外 with 默认E; those documented literals are the
+  # request anchor. status D/I/L is optional with no official default, so
+  # it stays unmapped rather than guessed. ts_code has no non-circular
+  # seed. Activation stays paused in the registry; this slice only
+  # resolves the request mapping.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters:
+    market:
+      source: literal
+      value: E
+  request_variants:
+  - market: E
+  - market: O
+  row_limit_observation: null
+- api_name: fund_company
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: quality_anomaly
+  request_shape: snapshot_or_date_range
+  # Official input section is 无，可提取全部, not a 名称/类型/必选 table.
+  # That documented empty-all has the same strength as sge_basic
+  # 不输入为获取全部. Empty parameters are that all-list snapshot.
+  # Do not invent a company name. Activation stays paused.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters: {}
+  row_limit_observation: null
+- api_name: fund_daily
+  scope_labels:
+  - all
+  - gaps
+  transport_observation_class: validated_contract_match
+  request_shape: entity_fanout
+  # Official fund_daily is ETF daily bars. trade_date-only returned 2000
+  # rows (under the 10000 hard budget) and cannot be a later activation
+  # snapshot. ts_code fans out from the existing executable etf_basic
+  # seed. fund_basic stays unused: its probe/ingest are blocked on
+  # request_anchor_unresolved; do not invent that seed. Ingest stays
+  # blocked on the observed-limit reason; do not invent completeness.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
+  - response_completeness_unresolved_at_observed_limit
+  unresolved_parameter_keys: []
+  parameters:
+    trade_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.etf_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 2000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1337,6 +1414,10 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # limit=1/offset=0 was a probe-only page and cannot prove completeness.
+  # Official ann_date is the reusable snapshot window (same shape as
+  # fund_portfolio). Ingest stays blocked until a live window probe;
+  # do not invent completeness or a guessed page size.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -1344,23 +1425,29 @@ entries:
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
-    limit:
-      source: literal
-      value: 1
-    offset:
-      source: literal
-      value: 0
+    ann_date:
+      source: run_clock
+      transform: yyyymmdd
+      offset_seconds: 0
   row_limit_observation: null
 - api_name: fund_nav
   scope_labels:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # nav_date-only returned 6000 rows (under the 10000 hard budget) and
+  # cannot be a later activation snapshot. Official ts_code is a 公募
+  # 基金 code (二选一 with nav_date) and now fans out from the executable
+  # fund_basic seed. Do not invent etf_basic. Keep the nav_date window.
+  # Ingest stays blocked on the observed-limit reason; do not invent
+  # completeness. Do not unpause registry activation.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
@@ -1368,6 +1455,15 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.fund_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 6000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1451,11 +1547,18 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # trade_date-only returned 2000 rows (under the 10000 hard budget) and
+  # cannot be a later activation snapshot. Official symbol is 合约或产品
+  # 代码 and fans out from the existing executable fut_basic.symbol
+  # (交易标识). Do not invent ts_code as a request parameter. Ingest
+  # stays blocked on the observed-limit reason; do not invent completeness.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
@@ -1463,6 +1566,15 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    symbol:
+      source: dataset_field
+      dataset_id: cn.dataset.fut_basic
+      field: symbol
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 2000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1584,11 +1696,18 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # trade_date-only returned 1000 rows (under the 10000 hard budget) and
+  # cannot be a later activation snapshot. Official symbol is 产品代码 and
+  # fans out from the existing executable fut_basic.fut_code (合约产品
+  # 代码). Do not invent a separate product-universe seed. Ingest stays
+  # blocked on the observed-limit reason; do not invent completeness.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
@@ -1596,6 +1715,15 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    symbol:
+      source: dataset_field
+      dataset_id: cn.dataset.fut_basic
+      field: fut_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 1000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1657,6 +1785,9 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # Official input is optional name only. There is no 不输入为获取全部
+  # sentence, so empty implied-all is a guess. Do not invent a 游资
+  # name. Keep the request-anchor block.
   probe_state: blocked
   probe_block_reasons:
   - request_anchor_unresolved
@@ -1768,13 +1899,29 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # Official 市场说明(market) table is now in the document snapshot
+  # (doc 94, sha d61a1551...). Documented default is SSE; keep every
+  # official market code. Empty snapshot stayed at the observed
+  # 6000-row page. Per-market completeness is unobserved; ingest
+  # stays blocked. Do not activate.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
-  parameters: {}
+  parameters:
+    market:
+      source: literal
+      value: SSE
+  request_variants:
+  - market: MSCI
+  - market: CSI
+  - market: SSE
+  - market: SZSE
+  - market: CICC
+  - market: SW
+  - market: OTH
   row_limit_observation:
     observed_count: 6000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1841,16 +1988,33 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
+  # Empty snapshot already returned 2000 rows and is not an all-list
+  # contract. Official is_new defaults to Y; official ts_code is 股票代码
+  # and fans out from the existing executable security_master seed. Do
+  # not invent l1/l2/l3 codes or alias unregistered index_member. Ingest
+  # stays blocked on the observed-limit reason; do not invent completeness.
   probe_state: blocked
   probe_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
-  parameters: {}
+  parameters:
+    is_new:
+      source: literal
+      value: Y
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 2000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1877,11 +2041,18 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # trade_date-only returned 1000 rows (under the 10000 hard budget) and
+  # cannot be a later activation snapshot. Official ts_code fans out from
+  # the existing registered index_basic seed. Keep the trade_date window.
+  # Ingest stays blocked on the observed-limit reason; do not invent
+  # completeness. Do not unpause registry activation.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
@@ -1889,6 +2060,15 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.index_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation:
     observed_count: 1000
     detection: observed_count_equals_round_provider_style_boundary
@@ -1957,6 +2137,10 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # Official ts_code is a KP theme (xxxxxx.KP). kpl_concept is in the
+  # capability catalog but is not a registered 190-interface dataset, so
+  # there is no honest seed. Keep the trade_date window; do not invent a
+  # seed or clear the observed 3000-row completeness blocker.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -2156,6 +2340,10 @@ entries:
   - gaps
   transport_observation_class: schema_subset
   request_shape: snapshot_or_date_range
+  # Official ts_code/bmk_type/bmk_level are optional (N). bmk_type and
+  # bmk_level are Chinese labels, not request codes, and there is no
+  # 不输入为获取全部 sentence. Do not invent an empty-all snapshot or
+  # an index_basic fanout of ETF benchmark rows.
   probe_state: blocked
   probe_block_reasons:
   - request_anchor_unresolved
@@ -2449,6 +2637,10 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # Official exchange is SSE/SZSE/CFFEX/DCE/SHFE/CZCE. No documented
+  # default; template uses first-listed SSE. trade_date-only observed
+  # 15000 > 10000. Per-exchange counts are unobserved; ingest stays
+  # blocked. Do not raise the hard budget.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -2456,10 +2648,20 @@ entries:
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
+    exchange:
+      source: literal
+      value: SSE
     trade_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+  request_variants:
+  - exchange: SSE
+  - exchange: SZSE
+  - exchange: CFFEX
+  - exchange: DCE
+  - exchange: SHFE
+  - exchange: CZCE
   row_limit_observation:
     observed_count: 15000
     detection: observed_count_equals_round_provider_style_boundary
@@ -8839,12 +9041,13 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  probe_state: blocked
-  probe_block_reasons:
-  - request_anchor_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - request_anchor_unresolved
+  # Official ts_code is optional and 不输入为获取全部. Empty parameters
+  # are that documented all-list snapshot. Do not invent a contract
+  # code. Activation stays paused in the registry.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
   unresolved_parameter_keys: []
   parameters: {}
   row_limit_observation: null
@@ -9366,21 +9569,29 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  probe_state: blocked
-  probe_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - required_enum_unresolved
-  - required_parameter_unresolved
-  unresolved_parameter_keys:
-  - type
+  # Official 类型 table is now in the document snapshot
+  # (doc 398, sha c49e3313...). Required type values are
+  # HK_SZ/SZ_HK/HK_SH/SH_HK. Template uses first-listed HK_SZ.
+  # Keep the existing trade_date window. Ingest reasons are empty;
+  # do not activate.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
   parameters:
     trade_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+    type:
+      source: literal
+      value: HK_SZ
+  request_variants:
+  - type: HK_SZ
+  - type: SZ_HK
+  - type: HK_SH
+  - type: SH_HK
   row_limit_observation: null
 - api_name: stock_st
   scope_labels:
@@ -9555,6 +9766,9 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # Official exchange is A/HK/US with no documented default. Do not
+  # invent exchange=A. Official type literals stay unused until a
+  # documented default or registered seed exists.
   probe_state: blocked
   probe_block_reasons:
   - request_anchor_unresolved
