@@ -5618,8 +5618,9 @@ def test_recent_scan_index_seek_matches_window_and_avoids_history_payload_work()
     assert tuple(row.raw for row in fallback) == expected
 
 
+@pytest.mark.parametrize("unfiltered_first", [False, True])
 def test_binding_validation_memo_preserves_binding_and_rewritten_row_semantics(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, unfiltered_first: bool,
 ) -> None:
     conn = _memory_db()
     dataset = _dataset()
@@ -5643,20 +5644,21 @@ def test_binding_validation_memo_preserves_binding_and_rewritten_row_semantics(
 
     monkeypatch.setattr(projection_module, "_validate_receipt_row", counted)
     cache: dict = {}
-    for expected in (binding, other_binding, None):
+    order = (None, binding, other_binding) if unfiltered_first else (binding, other_binding, None)
+    for expected in order:
         baseline = original(scanned, dataset, known, now, expected)
         for _ in range(2):
             assert projection_module._validate_receipt_row_memoized(
                 scanned, dataset, known, now, expected, cache
             ) == baseline
-    assert calls == 3
+    assert calls == 2
     _tamper_notes(conn, receipt_id, "status", "failed")
     changed = projection_module._scan_ingest_run_rows_by_ids(conn, (receipt_id,))[0]
     for expected in (binding, other_binding, None):
         assert projection_module._validate_receipt_row_memoized(
             changed, dataset, known, now, expected, cache
         ) == original(changed, dataset, known, now, expected)
-    assert calls == 6
+    assert calls == 4
 
 
 def test_binding_memo_recomputes_read_clock_rejection(
@@ -5673,13 +5675,13 @@ def test_binding_memo_recomputes_read_clock_rejection(
     rows = projection_module._scan_ingest_run_rows_by_ids(conn, (receipt_id,))
     cache: dict = {}
     results = []
-    for now in (
-        datetime(2026, 7, 14, 23, tzinfo=timezone.utc),
-        datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    for expected, now in (
+        (None, datetime(2026, 7, 14, 23, tzinfo=timezone.utc)),
+        (binding, datetime(2026, 7, 15, 1, tzinfo=timezone.utc)),
     ):
         kwargs = dict(
             now=now, known_dataset_ids=frozenset({dataset.dataset_id}),
-            rows=rows, expected_binding=binding,
+            rows=rows, expected_binding=expected,
         )
         baseline = projection_module._project_dataset_runtime(conn, dataset, **kwargs)
         cached = projection_module._project_dataset_runtime(
@@ -5690,3 +5692,45 @@ def test_binding_memo_recomputes_read_clock_rejection(
     assert len(cache) == 1
     assert "receipt_timestamp_in_future" in results[0].reasons
     assert "receipt_timestamp_in_future" not in results[1].reasons
+
+
+@pytest.mark.parametrize("field,value", [
+    ("provider", "unregistered"),
+    ("provider_api", None),
+    ("adapter_version", "wrong-version"),
+    ("status", "failed"),
+])
+@pytest.mark.parametrize("unfiltered_first", [False, True])
+def test_binding_memo_preserves_malformed_receipt_errors(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: object,
+    unfiltered_first: bool,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset()
+    binding = dataset.provider_bindings[0]
+    receipt_id = _insert_receipt(
+        monkeypatch, conn, status="success", attempt_id="malformed-binding-memo",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00", data_through="20260715",
+    )
+    _tamper_notes(conn, receipt_id, field, value)
+    scanned = projection_module._scan_ingest_run_rows_by_ids(conn, (receipt_id,))[0]
+    known = frozenset({dataset.dataset_id})
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    wrong = replace(binding, adapter_version="other-version")
+    order = (None, binding, wrong) if unfiltered_first else (wrong, binding, None)
+    cache: dict = {}
+    for expected in order * 2:
+        baseline = projection_module._validate_receipt_row(
+            scanned, dataset, known, now, expected
+        )
+        actual = projection_module._validate_receipt_row_memoized(
+            scanned, dataset, known, now, expected, cache
+        )
+        assert actual == baseline
+    # A wrong binding suppresses only errors after binding selection. Envelope
+    # and unknown provider errors must still be visible to that filtered read.
+    unfiltered = projection_module._validate_receipt_row(
+        scanned, dataset, known, now, None
+    )
+    assert isinstance(unfiltered, projection_module._InvalidReceipt)
