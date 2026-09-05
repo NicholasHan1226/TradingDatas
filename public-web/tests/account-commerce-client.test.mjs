@@ -58,10 +58,20 @@ test("a delayed read rejected after account switch cannot publish stale records"
   finish(Response.json(sandbox));
   await assert.rejects(request, /identity changed/);
 });
-test("both rendered commerce sections reset all private state on identity changes", async () => {
+test("commerce and connection siblings retain distinct stable keys during identity revalidation", async () => {
   const { readFile } = await import("node:fs/promises");
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-  const instances = app.match(/<AccountCommerce[^>]+\/>/g);
-  assert.equal(instances.length, 2);
-  for (const instance of instances) assert.match(instance, /key=\{accountData.user_id \|\| accountData.tenant_id\}/);
+  const instances = [...app.matchAll(/<(AccountCommerce|AccountConnection) key=\{(.*?)\} account=/g)];
+  assert.equal(instances.length, 3);
+  // Evaluate the actual JSX key expressions for the same email identity: the
+  // original three expressions all produced user-A, breaking reconciliation.
+  const keyFunctions = instances.map(([, , expression]) => new Function("accountData", `return (${expression});`));
+  const identity = { user_id: "user-A", tenant_id: "tenant-A" };
+  const keys = keyFunctions.map(key => key(identity));
+  assert.equal(new Set(keys).size, 3, "commerce sections must not share AccountConnection's sibling key");
+  assert.deepEqual(keyFunctions.map(key => key({ ...identity })), keys, "refresh preserves each component instance");
+  assert.deepEqual(keyFunctions.map(key => key({ ...identity, tenant_id: "connected-tenant" })), keys, "connecting data does not change the email identity key");
+  keyFunctions.forEach((key, index) => assert.notEqual(key({ user_id: "user-B", tenant_id: "tenant-A" }), keys[index], "identity changes remount private state"));
+  const commerceKeys = instances.map(([source], index) => source.includes("AccountCommerce") ? keyFunctions[index] : null).filter(Boolean);
+  for (const key of commerceKeys) assert.notEqual(key({ tenant_id: "legacy-A" }), key({ tenant_id: "legacy-B" }), "legacy identity changes also remount");
 });

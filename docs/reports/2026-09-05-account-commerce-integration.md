@@ -28,6 +28,12 @@ The current contract is [Customer identity and commerce](../design/customer-iden
 - Docs remains public under unchanged paths, reached from Account, not primary nav.
   Old current-document claims that email/connection were disabled were removed.
 
+- Final browser regression found duplicate React sibling keys after connecting an
+  existing data account. Namespaced commerce keys fix the repeated panels.
+  Fresh synthetic login, connection, record refresh, billing/subscription switches
+  and page reload each retain one commerce region with no console warnings/errors.
+  The rebuilt candidate again passes all 313 tests.
+
 ## Release boundary and remaining evidence
 
 This is simulator development, **not payment-provider sandbox integration**.
