@@ -2265,7 +2265,7 @@ def test_receipt_scan_row_budget_fails_closed(
         )
 
 
-def test_registry_projection_scans_ingest_runs_once_with_a_hard_limit() -> None:
+def test_empty_registry_projection_bounds_source_discovery_without_payload_scan() -> None:
     conn = _memory_db()
     statements: list[str] = []
     conn.set_trace_callback(statements.append)
@@ -2282,8 +2282,9 @@ def test_registry_projection_scans_ingest_runs_once_with_a_hard_limit() -> None:
     assert len(receipt_scans) == 1
     assert "WHERE source" not in receipt_scans[0]
     assert "run_id LIKE" not in receipt_scans[0]
-    assert "ROW_NUMBER() OVER" in receipt_scans[0]
-    assert "rn <=" in receipt_scans[0]
+    assert "SELECT DISTINCT source" in receipt_scans[0]
+    assert f"LIMIT {projection_module._MAX_INGEST_RUN_SCAN_ROWS + 1}" in receipt_scans[0]
+    assert "notes" not in receipt_scans[0]
 
 
 def test_registry_projection_classifies_each_ingest_row_once(
@@ -5576,3 +5577,42 @@ def test_cn_prewindow_rejects_symlink_schedule(
             _dataset(cadence_class="session_minute"),
             datetime.fromisoformat("2026-08-31T00:00:00+08:00"),
         )
+
+
+def test_recent_scan_index_seek_matches_window_and_avoids_history_payload_work() -> None:
+    conn = _memory_db()
+    # Synthetic history with foreign sources and equal timestamps at the cutoff.
+    conn.executemany(
+        "INSERT INTO market_ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ((f"seek-{i}", "2026-01-01", f"2026-01-{1 + i // 500:02d}",
+          "success", ("cn.equity.daily", "foreign.source")[i % 2],
+          1, 1, json.dumps({"legacy": "x" * 1000})) for i in range(10000)),
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS market_ingest_runs_source_finished_idx "
+        "ON market_ingest_runs(source, finished_at DESC)"
+    )
+    conn.commit()
+    steps = 0
+
+    def count_steps() -> int:
+        nonlocal steps
+        steps += 1
+        return 0
+
+    conn.set_progress_handler(count_steps, 100)
+    expected = tuple(tuple(row) for row in conn.execute(
+        projection_module._RECENT_INGEST_RUN_QUERY, (100,)
+    ))
+    old_steps = steps
+    steps = 0
+    actual = projection_module._scan_recent_ingest_run_rows(conn, per_dataset_limit=100)
+    new_steps = steps
+    conn.set_progress_handler(None, 0)
+    assert tuple(row.raw for row in actual) == expected
+    assert len(actual) == 200
+    assert new_steps < old_steps // 2
+    # No optional index is required for correctness on older read-only stores.
+    conn.execute("DROP INDEX market_ingest_runs_source_finished_idx")
+    fallback = projection_module._scan_recent_ingest_run_rows(conn, per_dataset_limit=100)
+    assert tuple(row.raw for row in fallback) == expected

@@ -195,9 +195,11 @@ window contract are defined in the metrics-dump section below.
 
 The candidate runner `tools/run_binance_usdm_canary.py` accepts no provider,
 symbol, field, or registry path input. Per run it collects, for every frozen
-symbol, one trailing 48-hour funding-rate window ending at the latest
-realized eight-hour funding boundary (deduplication covers the overlap; a new
-funding row appears only every eight hours) and the two latest closed
+symbol, one trailing 48-hour funding-rate window ending at the observed UTC
+millisecond (deduplication covers overlap; no eight-hour event cadence is assumed).
+Fractional-second events are retained up to that inclusive bound; future events
+remain excluded by the collector. This changes only the request window, not the
+v1 payload, mark-price contract or append-only identity. It also collects the two latest closed
 five-minute open-interest boundaries. It shares
 `/opt/investment-data/tradingdatas-crypto/collect.lock` with the Spot collector so writers on
 the same isolated SQLite stay serial; its timer is staggered two minutes

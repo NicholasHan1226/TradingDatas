@@ -425,11 +425,11 @@ def test_usdm_funding_rate_collection_is_idempotent_by_payload_identity(
     assert first.receipt_ids != second.receipt_ids
 
 
-def test_usdm_funding_rate_window_tracks_realized_eight_hour_boundaries() -> None:
-    window = funding_rate_window(datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc))
+def test_usdm_funding_rate_window_uses_observed_time_without_assuming_cadence() -> None:
+    window = funding_rate_window(datetime(2026, 7, 28, 9, 47, 0, 2345, tzinfo=timezone.utc))
     assert window == {
-        "start_time": "2026-07-26T08:00:00Z",
-        "end_time": "2026-07-28T08:00:00Z",
+        "start_time": "2026-07-26T09:47:00.002Z",
+        "end_time": "2026-07-28T09:47:00.002Z",
     }
 
 
@@ -705,3 +705,18 @@ def test_usdm_main_failure_output_includes_error_detail(
     payload = json.loads(capsys.readouterr().out)
     assert payload["state"] == "failed"
     assert "collection lock is still held after 120s" in payload["error"]
+
+
+def test_funding_window_retains_fractional_settlement_without_future_events(monkeypatch):
+    now = datetime(2026, 7, 28, 16, 0, 0, 3000, tzinfo=timezone.utc)
+    window = funding_rate_window(now)
+    boundary_ms = int(now.timestamp() * 1000)
+    collector = BinanceUsdmPublicCollector()
+    monkeypatch.setattr(collector, "_get", lambda path, query: [
+        {"symbol": "BTCUSDT", "fundingTime": boundary_ms + delta, "fundingRate": "0.0001"}
+        for delta in (-1, 0, 1)
+    ])
+    outcome = collector.collect_outcome("fundingRate_btcusdt", {"symbol": "BTCUSDT", **window})
+    assert outcome.state == "success"
+    assert [row["funding_time_ms"] for row in outcome.rows] == [boundary_ms - 1, boundary_ms]
+    assert all(set(row) == {"symbol", "funding_time_ms", "funding_time", "funding_rate"} for row in outcome.rows)
