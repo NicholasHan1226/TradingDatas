@@ -691,3 +691,97 @@ def test_plan_mode_rejects_the_paused_flash_dataset(
         "mode": "plan",
         "state": "validation",
     }
+
+
+@pytest.mark.parametrize("api_name", ["scrape_page", "scrape_page_global", "search_news"])
+def test_credential_diagnostic_is_local_and_never_requests(monkeypatch, api_name):
+    def rejected_key(path):
+        raise OSError("synthetic-secret-and-private-path")
+
+    monkeypatch.setattr(firecrawl_collector, "_read_private_key_file", rejected_key)
+    monkeypatch.setattr(
+        firecrawl_collector._OPENER, "open",
+        lambda *a, **kw: pytest.fail("preflight must not request upstream"),
+    )
+    result = FirecrawlWebCollector().collect_outcome(api_name, {})
+    assert (result.state, result.rows, result.error_code, result.error_message) == (
+        "failed", (), "provider_error", "firecrawl local access preflight failed",
+    )
+
+
+@pytest.mark.parametrize("api_name", ["scrape_page", "scrape_page_global", "search_news"])
+@pytest.mark.parametrize("failure", ["request", "structure", "item", "network", "internal"])
+def test_failure_phase_diagnostics_remain_redacted_and_fail_closed(
+    tmp_path, monkeypatch, api_name, failure,
+):
+    from copy import deepcopy
+    from urllib.error import URLError
+
+    _key_file(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        firecrawl_collector._OPENER, "open",
+        lambda *a, **kw: pytest.fail("synthetic test must not request upstream"),
+    )
+    search = api_name == "search_news"
+    params = {"query": "synthetic", "limit": 1, "timeout_ms": 30000} if search else dict(_SCRAPE_PARAMS)
+    payload = deepcopy(_SEARCH_PAYLOAD if search else _SCRAPE_PAYLOAD)
+    if failure == "request":
+        params["unexpected"] = "synthetic-secret"
+    elif failure == "structure":
+        payload["data"] = {"synthetic-secret": API_KEY}
+    elif failure == "item":
+        items = payload["data"]["news"] if search else payload["data"]["json"]["items"]
+        # Keep a valid first item: a bad later item must not emit partial rows.
+        invalid = dict(items[0])
+        invalid.pop("date" if search else "published_at")
+        items.append(invalid)
+
+    calls = []
+    def post(*args, **kwargs):
+        calls.append(True)
+        if failure == "network":
+            raise URLError("synthetic-secret " + API_KEY)
+        if failure == "internal":
+            raise RuntimeError("synthetic-secret " + API_KEY)
+        return payload
+
+    collector = FirecrawlWebCollector()
+    monkeypatch.setattr(collector, "_post", post)
+    result = collector.collect_outcome(api_name, params)
+    expected = {
+        "request": "firecrawl request preflight failed",
+        "structure": "firecrawl response structure invalid",
+        "item": "firecrawl response item invalid",
+        "network": "provider transport unavailable",
+        "internal": "firecrawl adapter internal failure",
+    }
+    assert result.state == "failed" and result.rows == ()
+    assert result.error_code == ("transport_error" if failure == "network" else "provider_error")
+    assert result.error_message == expected[failure]
+    assert len(calls) == (0 if failure == "request" else 1)
+    assert API_KEY not in result.error_message
+    assert "synthetic-secret" not in result.error_message
+
+
+@pytest.mark.parametrize("payload", [b'{"private":', b'\xff', b'x' * 33])
+def test_response_decoding_diagnostic_does_not_leak_body(tmp_path, monkeypatch, payload):
+    _key_file(tmp_path, monkeypatch)
+    monkeypatch.setattr(firecrawl_collector, "_MAX_RESPONSE_BYTES", 32)
+
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def geturl(self):
+            return firecrawl_collector.FIRECRAWL_API_URL + "/scrape"
+        def read(self, size):
+            assert size == 33
+            return payload
+
+    monkeypatch.setattr(firecrawl_collector._OPENER, "open", lambda *a, **kw: Response())
+    result = FirecrawlWebCollector().collect_outcome("scrape_page", dict(_SCRAPE_PARAMS))
+    assert (result.state, result.rows, result.error_code, result.error_message) == (
+        "failed", (), "provider_error", "firecrawl response structure invalid",
+    )
