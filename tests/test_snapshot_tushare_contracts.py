@@ -79,6 +79,50 @@ def test_parse_document_rejects_missing_output_table() -> None:
         parse_document(_capability(), DOCUMENT.split(b"**\xe8\xbe\x93\xe5\x87\xba")[0])
 
 
+def test_parse_document_keeps_documented_empty_all_input_without_stealing_output() -> (
+    None
+):
+    document = """## 基金管理人
+
+接口：fund_company
+描述：获取公募基金管理人列表
+
+**输入参数**
+
+无，可提取全部
+
+**输出参数**
+
+名称 | 类型 | 默认显示 | 描述
+--- | ---- | ---- | ----
+name | str | Y | 基金公司名称
+shortname | str | Y | 简称
+""".encode()
+    contract = parse_document(
+        {
+            **_capability(),
+            "api_name": "fund_company",
+            "doc_url": "https://tushare.pro/wctapi/documents/118.md",
+        },
+        document,
+    )
+    assert contract.input_fields == ()
+    assert [field["name"] for field in contract.output_fields] == [
+        "name",
+        "shortname",
+    ]
+    assert contract.note_tables == ()
+
+
+def test_parse_document_does_not_treat_limit_prose_as_empty_all() -> None:
+    document = DOCUMENT.replace(
+        "名称 | 类型 | 必选 | 描述\n--- | --- | --- | ---\nts_code | str | N | stock code\ntrade_date | str | N | date\n".encode(),
+        "一次可提取全部数据\n".encode(),
+    )
+    with pytest.raises(ContractSnapshotError, match="input table is missing"):
+        parse_document(_capability(), document)
+
+
 def test_parse_document_ignores_inline_output_words_and_preserves_blank_cells() -> None:
     document = (
         DOCUMENT.replace(
@@ -280,5 +324,11 @@ def test_checked_in_contracts_expose_honest_probe_readiness() -> None:
     stock_company = next(
         contract for contract in contracts if contract["api_name"] == "stock_company"
     )
+    assert fund_company["input_fields"] == []
     assert "note_tables" not in fund_company
+    assert [field["name"] for field in stock_company["input_fields"]] == [
+        "ts_code",
+        "exchange",
+    ]
+    assert all(field["required"] == "" for field in stock_company["input_fields"])
     assert "note_tables" not in stock_company

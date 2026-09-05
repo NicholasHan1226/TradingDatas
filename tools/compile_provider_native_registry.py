@@ -692,8 +692,6 @@ def _string_list(value: object, label: str, *, allow_empty: bool = False) -> lis
 
 def _input_fields(value: object, label: str) -> list[dict[str, Any]]:
     fields = _sequence(value, label)
-    if not fields:
-        raise ValueError(f"{label} must not be empty")
     normalized: list[dict[str, Any]] = []
     seen: set[str] = set()
     for index, raw_field in enumerate(fields):

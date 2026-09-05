@@ -2,7 +2,7 @@ version: 1
 policy_id: tushare-cadence-policy.v1
 provider: tushare
 source_snapshot_id: tushare-official-document-contracts.v1
-source_snapshot_canonical_sha256: 80450852870a281438dfe322a895f00f22291fd2a24b5141b95a161c7ec3710b
+source_snapshot_canonical_sha256: f20de3b3e023c1c9981425ef133253ee1d6a21d46322f233400f5b3bd4abed6a
 entries:
 - api_name: adj_factor
   # trade_date snapshot published with the daily bar after close.  The

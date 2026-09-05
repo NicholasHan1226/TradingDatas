@@ -23,6 +23,7 @@ _SAFE_API_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _TABLE_SEPARATOR = re.compile(r":?-{3,}:?\Z")
 _NOTE_TABLE_SEPARATOR = re.compile(r":?-{2,}:?\Z")
 _MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
+_DOCUMENTED_EMPTY_ALL = frozenset({"无，可提取全部"})
 
 
 class ContractSnapshotError(RuntimeError):
@@ -88,17 +89,41 @@ def _find_section(lines: list[str], label: str) -> int:
 
 
 def _find_field_table_header(
-    lines: list[str], section_index: int, *, section: str
+    lines: list[str],
+    section_index: int,
+    *,
+    section: str,
+    stop_index: int | None = None,
 ) -> tuple[int, list[str]]:
-    for index in range(section_index + 1, min(len(lines), section_index + 40)):
+    end_index = len(lines) if stop_index is None else stop_index
+    end_index = min(end_index, section_index + 40, len(lines))
+    for index in range(section_index + 1, end_index):
+        if _visible_heading(lines[index]) is not None:
+            break
         if "|" not in lines[index]:
             continue
         candidate = _table_cells(lines[index])
-        if len(candidate) < 3 or index + 1 >= len(lines):
+        if len(candidate) < 3 or index + 1 >= end_index:
             continue
         if _is_separator_row(lines[index + 1], len(candidate)):
             return index, candidate
     raise ContractSnapshotError(f"{section} table is missing")
+
+
+def _input_section_is_documented_empty_all(
+    lines: list[str], *, start_index: int, stop_index: int
+) -> bool:
+    prose: list[str] = []
+    for line in lines[start_index + 1 : stop_index]:
+        if _visible_heading(line) is not None:
+            break
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "|" in stripped:
+            return False
+        prose.append(stripped)
+    return len(prose) == 1 and prose[0] in _DOCUMENTED_EMPTY_ALL
 
 
 def _parse_generic_table(
@@ -195,10 +220,14 @@ def _collect_note_tables(
 
 
 def _parse_table(
-    lines: list[str], section_index: int, *, section: str
+    lines: list[str],
+    section_index: int,
+    *,
+    section: str,
+    stop_index: int | None = None,
 ) -> tuple[tuple[Mapping[str, str], ...], int]:
     header_index, headers = _find_field_table_header(
-        lines, section_index, section=section
+        lines, section_index, section=section, stop_index=stop_index
     )
 
     normalized_headers = [_canonical_heading(header) for header in headers]
@@ -283,12 +312,20 @@ def parse_document(capability: Mapping[str, Any], body: bytes) -> DocumentContra
             ("接口", "数据说明", "调取说明", "描述", "更新时间", "更新频率")
         )
     )
-    input_fields, input_header_index = _parse_table(
-        lines, input_index, section="input"
-    )
+    skip_header_indexes: set[int] = set()
+    if _input_section_is_documented_empty_all(
+        lines, start_index=input_index, stop_index=output_index
+    ):
+        input_fields = ()
+    else:
+        input_fields, input_header_index = _parse_table(
+            lines, input_index, section="input", stop_index=output_index
+        )
+        skip_header_indexes.add(input_header_index)
     output_fields, output_header_index = _parse_table(
         lines, output_index, section="output"
     )
+    skip_header_indexes.add(output_header_index)
     return DocumentContract(
         api_name=api_name,
         doc_url=doc_url,
@@ -302,7 +339,7 @@ def parse_document(capability: Mapping[str, Any], body: bytes) -> DocumentContra
         note_tables=_collect_note_tables(
             lines,
             start_index=input_index + 1,
-            skip_header_indexes={input_header_index, output_header_index},
+            skip_header_indexes=skip_header_indexes,
         ),
     )
 

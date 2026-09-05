@@ -64,10 +64,11 @@ test("keeps paused-contract preflight separate from observation and access", asy
   assert.equal(snapshot.authority, "compiled_contract_preflight_only");
   const ready = snapshot.groups.find((group) => group.id === "ready_for_bounded_https_probe");
   const seedRequired = snapshot.groups.find((group) => group.id === "requires_seed_receipt");
-  assert.equal(ready.interfaces.length, 5);
+  assert.equal(ready.interfaces.length, 6);
   assert.deepEqual(ready.interfaces.map((item) => item.apiName), [
     "bse_mapping",
     "fund_basic",
+    "fund_company",
     "sge_basic",
     "stk_nineturn",
     "stock_hsgt",

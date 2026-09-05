@@ -410,12 +410,16 @@ variants 收窄，仍因 observed 6000 行完整性未决保持阻断。
 `ths_index` 的 `exchange=A` 不是文档默认值。`stock_hsgt` 官方 `类型` 表已进入冻结
 文档快照（HK_SZ/SZ_HK/HK_SH/SH_HK，默认 HK_SZ），请求按官方 type variants
 收窄，ingest 原因已空，仍 paused，未激活。`fund_company` 官方输入段是
-「无，可提取全部」，没有 名称/类型/必选表，也没有输入后说明/枚举表，保持
-`official_requiredness_unknown`。`stock_company` 输入表表头是「必须」不是
-「必选」，且没有输入后交易所说明表，保持 `official_requiredness_unknown` 与
-`request_anchor_unresolved`。`hm_list` 与 `opt_daily` 继续保持阻断：`opt_daily`
-已按官方 `exchange`（SSE/SZSE/CFFEX/DCE/SHFE/CZCE）收窄，trade_date-only 仍观测
-15000 行超过 10000 硬预算，分所行数未观测。这不是 activation。
+「无，可提取全部」，文档快照不再把输出表误读成输入；空 snapshot 与
+`sge_basic` 的「不输入为获取全部」同强度，probe executable / ingest ready，
+仍 paused，未激活。`stock_company` 输入表表头是「必须」不是「必选」，且没有
+输入后交易所说明表，保持 `official_requiredness_unknown` 与
+`request_anchor_unresolved`。`hm_list` 没有「不输入为获取全部」句，示例
+`hm_list()` 不能当作 empty-all。`mkt_idx_bmk` 的「单次可以提取全部列表」是
+限量句，不是输入 empty-all。`ths_index` / `ths_member` 仍无文档默认值或
+empty-all。`opt_daily` 已按官方 `exchange`（SSE/SZSE/CFFEX/DCE/SHFE/CZCE）
+收窄，trade_date-only 仍观测 15000 行超过 10000 硬预算，分所行数未观测。
+这不是 activation。
 
 ## 国际新闻原始发布时间与精度
 

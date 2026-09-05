@@ -657,8 +657,12 @@ def test_documented_input_type_tokens_and_unknown_requiredness_are_preserved() -
         "required": False,
     }
     fund_company = by_api["fund_company"]["input_fields"]
-    assert fund_company
-    assert all(field["required"] is None for field in fund_company)
+    assert fund_company == []
+    stock_company = {
+        field["name"]: field for field in by_api["stock_company"]["input_fields"]
+    }
+    assert stock_company
+    assert all(field["required"] is None for field in stock_company.values())
 
 
 def test_compiler_is_deterministic_and_does_not_mutate_inputs() -> None:

@@ -282,8 +282,10 @@ def test_generic_registry_materializes_frozen_storage_and_request_contract(
             "missing key.*input_fields",
         ),
         (
-            lambda binding: binding.update(input_fields=[]),
-            "input_fields.*must not be empty",
+            lambda binding: binding["input_fields"].append(  # type: ignore[index,union-attr]
+                {"name": "1bad", "declared_source_type": "str", "required": False}
+            ),
+            "provider parameter name grammar",
         ),
         (
             lambda binding: binding["input_fields"].append(  # type: ignore[index,union-attr]

@@ -539,8 +539,10 @@ def test_compiler_projects_all_input_fields_byte_for_byte() -> None:
     assert set(bindings) == set(contracts)
     for api_name, contract in contracts.items():
         input_fields = contract["input_fields"]
-        assert input_fields
         assert bindings[api_name]["input_fields"] == input_fields
+        if api_name == "fund_company":
+            assert input_fields == []
+            continue
         assert all(
             set(input_field) == {"name", "declared_source_type", "required"}
             for input_field in input_fields
@@ -2116,8 +2118,8 @@ def test_bundle_contracts_fail_closed(
             "required.*boolean or null",
         ),
         (
-            lambda item: item.update(input_fields=[]),
-            "input_fields.*must not be empty",
+            lambda item: item["input_fields"].append({"name": "1bad", "declared_source_type": "str", "required": False}),  # type: ignore[index,union-attr]
+            "provider parameter grammar",
         ),
     ],
 )

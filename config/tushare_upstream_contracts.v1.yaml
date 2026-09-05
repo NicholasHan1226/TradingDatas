@@ -13750,61 +13750,7 @@ contracts:
   source_document_url: https://tushare.pro/wctapi/documents/118.md
   source_document_sha256: 2558e361fbc684ab1071434c2ee6afa65df6f3e16e2dd00a3ece105239965797
   schema_version: 1.0.0
-  input_fields:
-  - name: name
-    declared_source_type: str
-    required: null
-  - name: shortname
-    declared_source_type: str
-    required: null
-  - name: short_enname
-    declared_source_type: str
-    required: null
-  - name: province
-    declared_source_type: str
-    required: null
-  - name: city
-    declared_source_type: str
-    required: null
-  - name: address
-    declared_source_type: str
-    required: null
-  - name: phone
-    declared_source_type: str
-    required: null
-  - name: office
-    declared_source_type: str
-    required: null
-  - name: website
-    declared_source_type: str
-    required: null
-  - name: chairman
-    declared_source_type: str
-    required: null
-  - name: manager
-    declared_source_type: str
-    required: null
-  - name: reg_capital
-    declared_source_type: float
-    required: null
-  - name: setup_date
-    declared_source_type: str
-    required: null
-  - name: end_date
-    declared_source_type: str
-    required: null
-  - name: employees
-    declared_source_type: float
-    required: null
-  - name: main_business
-    declared_source_type: str
-    required: null
-  - name: org_code
-    declared_source_type: str
-    required: null
-  - name: credit_code
-    declared_source_type: str
-    required: null
+  input_fields: []
   fields:
   - name: name
     declared_source_type: str
@@ -13981,12 +13927,10 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: blocked
-  probe_block_reasons:
-  - official_requiredness_unknown
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - official_requiredness_unknown
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
 - dataset_id: cn.dataset.fund_daily
   aliases:
   - tushare.fund_daily

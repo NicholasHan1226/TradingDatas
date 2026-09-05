@@ -7,7 +7,7 @@ production_ready: false
 provenance:
   official_contracts:
     path: config/tushare_document_contracts.v1.yaml
-    sha256: b436912460c4aaaae751c589500781d4316b50473869a5fefe2bc61813c58816
+    sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
     sha256: ec7bbf84f4792f1b57b58b9bbcedcef2f173cf1de424e19e14d76c5bc8e530b6
@@ -16,10 +16,10 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 9fd92ba2aa0189139c7884276746f4563020b3ea71b424fda6a627cf60358051
+    sha256: 785ad72f37df7242773e77f69a35d65f9db273e797fa84a4e01f75e8f9213d3b
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
-    sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
+    sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
     authority: false
     role: reviewed_mapping_hint_only
   matrix_evidence:
@@ -68,10 +68,10 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 136
-  probe_blocked: 54
-  ingest_contract_ready: 129
-  ingest_contract_blocked: 61
+  probe_executable: 137
+  probe_blocked: 53
+  ingest_contract_ready: 130
+  ingest_contract_blocked: 60
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -1325,36 +1325,16 @@ entries:
   - gaps
   transport_observation_class: quality_anomaly
   request_shape: snapshot_or_date_range
-  probe_state: blocked
-  probe_block_reasons:
-  - official_requiredness_unknown
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - official_requiredness_unknown
-  unresolved_parameter_keys:
-  - address
-  - chairman
-  - city
-  - credit_code
-  - employees
-  - end_date
-  - main_business
-  - manager
-  - name
-  - office
-  - org_code
-  - phone
-  - province
-  - reg_capital
-  - setup_date
-  - short_enname
-  - shortname
-  - website
-  parameters:
-    setup_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
+  # Official input section is 无，可提取全部, not a 名称/类型/必选 table.
+  # That documented empty-all has the same strength as sge_basic
+  # 不输入为获取全部. Empty parameters are that all-list snapshot.
+  # Do not invent a company name. Activation stays paused.
+  probe_state: executable
+  probe_block_reasons: []
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
+  unresolved_parameter_keys: []
+  parameters: {}
   row_limit_observation: null
 - api_name: fund_daily
   scope_labels:

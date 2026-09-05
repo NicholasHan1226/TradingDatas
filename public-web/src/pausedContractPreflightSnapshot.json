@@ -13,6 +13,10 @@
           "datasetId": "cn.dataset.fund_basic"
         },
         {
+          "apiName": "fund_company",
+          "datasetId": "cn.dataset.fund_company"
+        },
+        {
           "apiName": "sge_basic",
           "datasetId": "cn.dataset.sge_basic"
         },
