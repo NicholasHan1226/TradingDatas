@@ -164,6 +164,8 @@ transaction receipt 同事务，再通过固定 catalog/query API readback。
 
 ## 本地验证
 
+纯文档修改使用保留检查名称的窄范围 CI 快路径；代码、配置、产品编译输入及未知文件仍完整测试。具体白名单、强制完整运行和发布证据边界见 [运维文档](docs/OPERATIONS.md#纯文档-ci-快路径)。
+
 ```bash
 uv run --python 3.12 --with-requirements requirements.txt python -m pytest -q
 uv run --python 3.12 --with-requirements requirements.txt ruff check <changed-python-paths>

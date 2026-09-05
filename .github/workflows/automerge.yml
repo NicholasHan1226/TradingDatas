@@ -133,6 +133,7 @@ jobs:
                   exit 0
                 }
                 gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/dispatches" \
+                  -f "inputs[docs_fast_path]=true" \
                   -f ref=main \
                   -f 'inputs[suite]=pr' \
                   -f "inputs[expected_sha]=$MERGE_SHA"
