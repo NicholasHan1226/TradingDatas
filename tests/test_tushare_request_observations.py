@@ -170,10 +170,10 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert len(set(api_names)) == 190
     assert observations["counts"] == {
         "interfaces": 190,
-        "probe_executable": 141,
-        "probe_blocked": 49,
-        "ingest_contract_ready": 126,
-        "ingest_contract_blocked": 64,
+        "probe_executable": 140,
+        "probe_blocked": 50,
+        "ingest_contract_ready": 125,
+        "ingest_contract_blocked": 65,
         "row_limit_ingest_contract_blocked": 15,
     }
     assert observations["counts"] == {
@@ -527,9 +527,21 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
     assert "start_date" not in _entry(observations, "fina_mainbz")["parameters"]
     assert "end_date" not in _entry(observations, "fina_mainbz")["parameters"]
     assert _contract(bundle, "pledge_detail")["cadence_class"] == "event"
-    assert _contract(bundle, "pledge_detail")["request_template"] == {
-        "ann_date": "${window.ann_date}"
+    assert _contract(bundle, "pledge_detail")["request_template"] == {}
+    assert _contract(bundle, "pledge_detail")["request_window_policy"] is None
+    assert _contract(bundle, "pledge_detail")["fanout"] == {
+        "strategy": "dataset_field",
+        "parameter": "ts_code",
+        "source_dataset_id": "cn.equity.security_master",
+        "source_field": "ts_code",
+        "batch_size": 1,
     }
+    assert _contract(bundle, "pledge_detail")["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+    assert "ann_date" not in _entry(observations, "pledge_detail")["parameters"]
+    assert "ts_code" in _entry(observations, "pledge_detail")["parameters"]
     assert _contract(bundle, "top10_cb_holders")["cadence_class"] == "event"
     assert _contract(bundle, "top10_cb_holders")["fanout"] == {
         "strategy": "dataset_field",
@@ -628,10 +640,10 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
     }
     assert plan["counts"] == {
         "planned": 190,
-        "executable": 141,
-        "blocked": 49,
-        "ingest_contract_ready": 126,
-        "ingest_contract_blocked": 64,
+        "executable": 140,
+        "blocked": 50,
+        "ingest_contract_ready": 125,
+        "ingest_contract_blocked": 65,
     }
 
     daily = _entry(plan, "daily")
@@ -828,8 +840,8 @@ def test_probe_plan_rejects_seed_schema_drift_and_blocked_producer() -> None:
     producer = _entry(observations, "stock_basic")
     producer["probe_state"] = "blocked"
     producer["probe_block_reasons"] = ["request_anchor_unresolved"]
-    observations["counts"]["probe_executable"] = 140
-    observations["counts"]["probe_blocked"] = 50
+    observations["counts"]["probe_executable"] = 139
+    observations["counts"]["probe_blocked"] = 51
     seed["schema_version"] = "2.0.0"
     with pytest.raises(RuntimeContractCompilationError, match="producer.*executable"):
         _compile_plan(

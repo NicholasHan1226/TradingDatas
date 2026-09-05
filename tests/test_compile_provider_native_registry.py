@@ -1513,7 +1513,7 @@ def test_wave4_exact8_active_evidence_is_formal_and_fail_closed() -> None:
     assert "stk_nineturn" not in active
     assert not active & {"cb_price_chg"}
     assert active_evidence.get("forecast") == "server-evidence/20260904T-forecast-ts-code-only"
-    assert active_evidence.get("pledge_detail") == "server-evidence/20260905T-pledge-detail-event"
+    assert active_evidence.get("pledge_detail") == "server-evidence/20260905T-pledge-detail-ts-code"
     assert "stk_nineturn" not in active_evidence
 
 

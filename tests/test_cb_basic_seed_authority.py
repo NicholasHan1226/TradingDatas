@@ -40,6 +40,7 @@ SECURITY_MASTER_DEPENDENTS = {
     "fina_mainbz",
     "forecast",
     "income",
+    "pledge_detail",
     "pledge_stat",
     "rt_k",
     "rt_min_daily",
@@ -162,7 +163,7 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         assert binding["ingest_contract_state"] == "ready"
         assert binding["ingest_contract_block_reasons"] == []
         assert binding["activation_state"] == (
-            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"forecast", "pledge_stat", "rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
+            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"forecast", "pledge_detail", "pledge_stat", "rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
         )
 
     active_evidence = observations["active_evidence"]
