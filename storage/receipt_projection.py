@@ -1490,7 +1490,9 @@ def _is_valid_unmapped_tushare_attempt(
 # cache is keyed by row content, not run_id, so a restored or rewritten row
 # with a recycled run_id is always re-validated. The expected provider binding
 # is also part of the key: interface/history reads retain their exact binding
-# filter while reusing validation of unchanged receipts.
+# filter while reusing validation of unchanged receipts. Unfiltered reads share
+# the resolved owning binding key: passing that same binding cannot reject a
+# row that the unfiltered validator accepts (or change any earlier rejection).
 _RECEIPT_VALIDATION_CACHE_LIMIT = 250_000
 _RECEIPT_VALIDATION_CACHE_LOCK = threading.Lock()
 
@@ -1518,9 +1520,20 @@ def _validate_receipt_row_memoized(
         return _validate_receipt_row(
             scanned, dataset, known_dataset_ids, now, expected_binding
         )
+    cache_binding = expected_binding
+    if cache_binding is None and scanned.payload is not None:
+        try:
+            cache_binding = _binding_for_payload(
+                dataset, scanned.payload.get("provider"),
+                scanned.payload.get("provider_api"),
+            )
+        except ValueError:
+            # Invalid/unresolvable identities keep the original unfiltered key.
+            # Validation, including its early envelope errors, is unchanged.
+            pass
     key = (
         dataset.dataset_id,
-        hashlib.sha256(repr((scanned.raw, expected_binding)).encode("utf-8")).hexdigest(),
+        hashlib.sha256(repr((scanned.raw, cache_binding)).encode("utf-8")).hexdigest(),
     )
     with _RECEIPT_VALIDATION_CACHE_LOCK:
         if key in cache:
