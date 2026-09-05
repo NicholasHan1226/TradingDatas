@@ -357,12 +357,26 @@ catalog/query worker 挂在长租约上，也不得把该 503 当作盲目重启
 
 TradingDatas 不提供 provider 专用公共 route、SQL、SQLite 路径或交易控制接口。新增 dataset 不得新增 route。
 
+## Website Account catalog bridge
+
+`GET /api/account/catalog` is a same-site website Account route, forwarding the
+connected user's data key to the existing authenticated `GET /v1/catalog`.
+It is not a new provider endpoint or an anonymous data API. It exposes only the
+user-authorized non-Crypto catalog projection; no service credential may supply
+broader coverage. Missing sessions, missing connected keys and upstream errors
+must remain distinct UI states. Public product pages may explain contracts
+without login; runtime collection evidence requires the Account bridge.
+`coverage.row_count` and `queryability` do not prove that a chosen query returns
+rows, and one catalog snapshot does not prove continuous stability.
+
 ## Admin Console API
 
 ### Account category entitlement status
 
-Customer data access is grouped into A-share, Crypto, and News using the stable
-keys `a_share`, `crypto`, and `news`. Token records and admin mutations accept
+Public customer products cover A-share and News. The backend retains the stable
+keys `a_share`, `crypto`, and `news` for internal and legacy compatibility; Crypto
+is internal-only and is not a public product, package, or routed data capability.
+Token records and admin mutations accept
 `data_categories` as a JSON array of these keys. The server maps them to the
 active registry's `market`/`domain` metadata and applies the resulting exact
 dataset grants to both `GET /v1/catalog` and `POST /v1/query`.

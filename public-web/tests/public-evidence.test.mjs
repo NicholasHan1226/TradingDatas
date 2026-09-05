@@ -37,7 +37,7 @@ test('query template cannot mistake a product slug for a catalog dataset', () =>
 test('samples and history disclose their evidence class beside the content', async () => {
   const source = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
   assert.match(source, /Synthetic sample · not market data/);
-  assert.match(source, /COLLECTION EVIDENCE/);
+  assert.match(source, /CatalogEvidence locale=\{locale\} productId=\{item.id\}/);
   assert.doesNotMatch(source, /90 DAY COLLECTION HISTORY/);
   assert.match(source, /buildQueryTemplate\(\)/);
 });

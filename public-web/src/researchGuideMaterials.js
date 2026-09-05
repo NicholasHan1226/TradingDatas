@@ -10,7 +10,7 @@ export const researchGuideMaterials = {
   "Modeling and Forecasting Realized Volatility": { datasets: ["cn-equity-minute"], recipes: ["minute-bar-gaps"] },
   "Intraday Information Efficiency on the Chinese Equity Market": { datasets: ["cn-equity-minute"], recipes: ["minute-bar-gaps"] },
   "Giving Content to Investor Sentiment: The Role of Media in the Stock Market": { datasets: ["cn-news-flashes"], recipes: ["document-version-ledger"] },
-  "Trading and Arbitrage in Cryptocurrency Markets": datasets("crypto-binance-spot-5m"),
+  "Trading and Arbitrage in Cryptocurrency Markets": {},
   "Portfolio Selection": recipes("adjusted-price-series"),
   "Capital Asset Prices: A Theory of Market Equilibrium under Conditions of Risk": recipes("adjusted-price-series"),
   "A Five-Factor Asset Pricing Model": recipes("pit-fundamentals-panel", "adjusted-price-series"),
@@ -43,7 +43,7 @@ export const researchGuideMaterials = {
   "Parsimonious Modeling of Yield Curves": datasets("cn-yield-curve"),
   "Forecasting the Term Structure of Government Bond Yields": datasets("cn-yield-curve"),
   "The Real Value of China's Stock Market": datasets("cn-equity-daily", "cn-company-master", "cn-market-reference"),
-  "Risks and Returns of Cryptocurrency": datasets("crypto-binance-spot-5m"),
+  "Risks and Returns of Cryptocurrency": {},
   "Bitcoin: Economics, Technology, and Governance": {},
   "Tokenomics: Dynamic Adoption and Valuation": {},
 };

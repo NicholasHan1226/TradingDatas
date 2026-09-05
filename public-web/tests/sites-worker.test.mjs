@@ -180,3 +180,28 @@ test("emits the files required by Sites packaging", async () => {
   await access(new URL("../dist/server/email-templates.js", import.meta.url));
   await access(new URL("../dist/.openai/hosting.json", import.meta.url));
 });
+
+test('legacy key account catalog requires its verified tenant and excludes Crypto without anonymous fallback',async()=>{
+  const originalFetch=globalThis.fetch;const calls=[];let catalogStatus=200;
+  globalThis.fetch=async(request,init)=>{
+    const path=new URL(request).pathname;calls.push(path);
+    assert.equal(new Headers(init.headers).get('authorization'),'Bearer fixture-catalog-key');
+    if(path==='/portal/api/me') return Response.json({portal:{tenant_id:'tenant-a',tier:'basic'}});
+    assert.equal(path,'/v1/catalog');
+    return Response.json(catalogStatus===200?{data:[{dataset_id:'cn.dataset.daily',market:'CN',runtime:{state:'stale'}},{dataset_id:'crypto.spot.example',market:'CRYPTO'}],next_cursor:null}:{error:'private upstream error'},{status:catalogStatus});
+  };
+  try {
+    const env={ACCOUNT_API_BASE:'https://backend.example',SESSION_ENCRYPTION_KEY:'fixture-only-encryption-material-long-enough'};
+    const login=await worker.fetch(new Request('https://site.example/api/account/session',{method:'POST',headers:{origin:'https://site.example'},body:JSON.stringify({access_key:'fixture-catalog-key'})}),env);
+    const cookie=login.headers.get('set-cookie').split(';')[0];
+    const read=(identity='tenant-a',extra='',useCookie=true,method='GET')=>worker.fetch(new Request(`https://site.example/api/account/catalog${extra}`,{method,headers:{...(useCookie?{cookie}:{}),'x-td-identity':identity}}),env);
+    const result=await read();assert.equal(result.status,200);assert.equal(result.headers.get('cache-control'),'no-store');assert.equal(result.headers.get('x-content-type-options'),'nosniff');
+    assert.deepEqual((await result.json()).data,[{dataset_id:'cn.dataset.daily',market:'CN',runtime:{state:'stale'}}]);
+    assert.equal((await read('tenant-b')).status,409);
+    const before=calls.length;
+    assert.equal((await read('')).status,409);assert.equal((await read('tenant-a','?url=https://evil.example')).status,400);
+    assert.equal((await read('tenant-a','',false)).status,401);assert.equal((await read('tenant-a','',true,'POST')).status,405);
+    assert.equal(calls.length,before);
+    catalogStatus=503;const failure=await read();assert.equal(failure.status,503);assert.deepEqual(await failure.json(),{error:'connection_unavailable'});
+  } finally {globalThis.fetch=originalFetch;}
+});

@@ -268,8 +268,6 @@ Customer access is organized by data category, not by upstream vendor route.
 The initial product navigation is:
 
 - **A-share**: mainland China equities and related reference/fundamental data;
-- **Crypto**: approved public cryptocurrency market datasets running in their
-  isolated provider data plane;
 - **News**: objective news/announcement/event datasets, independent of whether
   the upstream transport is Tushare, Firecrawl, or a future provider.
 
@@ -277,6 +275,12 @@ The registry remains the technical authority. Product categories map to its
 `market` and `domain` metadata; adding a provider never adds a provider-specific
 public endpoint. News is a content domain rather than a market, so future UI and
 access policy must not overload one ambiguous field to represent both concepts.
+
+Crypto is internal-only. Its isolated collection, stored evidence and compatible
+internal category key remain available internally, but it is excluded from public
+Data products, packages, purchase previews, service counts and onboarding plans.
+Crypto-related external Research literature may remain; it does not promise a
+corresponding TradingDatas service.
 
 ## Account access and limits
 
@@ -290,7 +294,7 @@ AND per-minute request limit
 ```
 
 - Endpoint scope decides whether the key may discover or query data.
-- Category entitlement decides which A-share, Crypto, News, or future datasets
+- Category entitlement decides which A-share, News, or approved future datasets
   appear in catalog and may be queried.
 - The commercial tier supplies only a rolling per-minute request ceiling: 200
   for Basic, 600 for Professional, and 1000 for Flagship. There is no daily
@@ -363,7 +367,10 @@ unchanged. The initial payment direction is active monthly/yearly payment and
 manual renewal, not automatic debit; personal-Alipay eligibility and signing
 remain unverified. See `design/personal-alipay-checkout-v1.md` for the launch gates.
 
-The stable category keys are `a_share`, `crypto`, and `news`. Existing token
+The backend category keys remain `a_share`, `crypto`, and `news` for internal
+and legacy compatibility. Public products and commercial selections include
+only `a_share` and `news`; retaining `crypto` in the schema grants no public
+Crypto capability. Existing token
 records that omit `data_categories` retain their previous all-current-category
 access for compatibility; an explicit empty list grants no dataset access.
 Unknown category values fail closed during token configuration load or admin

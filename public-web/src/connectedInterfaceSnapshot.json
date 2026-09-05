@@ -344,7 +344,7 @@
     {
       "activation": "active",
       "apiName": "fina_mainbz",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.fina_mainbz",
       "entitlement": "active",
@@ -372,9 +372,9 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "pledge_detail",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.pledge_detail",
       "entitlement": "active",
@@ -424,7 +424,7 @@
     {
       "activation": "active",
       "apiName": "top10_cb_holders",
-      "cadence": "on_demand",
+      "cadence": "event",
       "category": "fundamentals",
       "datasetId": "cn.dataset.top10_cb_holders",
       "entitlement": "active",

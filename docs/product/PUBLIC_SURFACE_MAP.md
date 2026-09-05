@@ -91,8 +91,26 @@ Recommended routes:
 Dataset detail must show stable identity, current capability level, provider
 and license boundary, fields, primary key, cadence, coverage, freshness,
 receipt/lineage evidence, known limitations, related features/recipes, a bounded
-sample, and the access path. Availability comes from generated public artifacts,
-never from page copy.
+sample, and the access path. Static product definitions do not establish runtime
+availability. Data and product pages remain publicly readable; authenticated
+collection evidence uses `GET /api/account/catalog`, the same-site Account
+session bridge to the existing `GET /v1/catalog`. It uses only the current user's
+connected data key, with no service token and no anonymous data grant. This is
+an Account bridge, not another provider data endpoint.
+
+Guests see a login prompt; accounts without a connected key see the connection
+path. Authorized users can inspect every non-Crypto dataset returned for their
+key, including stored coverage, runtime state and receipt evidence. Errors and
+expired authorization remain visible and retryable; static definitions never
+masquerade as a successful runtime response. `queryable` means the query contract
+is available, not that a specific query returns rows. One snapshot is not a
+trend, continuity statistic or stable-service promise.
+
+Product-to-dataset mappings use actual registered identifiers. Copyable query
+examples must satisfy the current query schema; planned or unmatched products
+must not invent a dataset ID or claim coverage. Crypto is internal-only and is
+excluded from public Data products, catalog projections, packages and service
+counts. Crypto-related external Research records remain educational content.
 
 ### Features `/features`
 

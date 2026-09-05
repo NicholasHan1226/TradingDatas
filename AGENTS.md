@@ -4,9 +4,9 @@
 
 TradingDatas 是一个类似 Tushare 的、面向公共用户但所有数据请求均需认证的 provider-neutral 金融数据平台。它是 `Finance/TradingDatas` 下的独立仓库，不是 TradingAgent 模块。Tushare 是首个已接入上游；未来可以增加新闻、公告、研报、政策、互动和客观舆情等 provider。产品背景、Agent-first 消费模型、数据分类和账户权限目标以 `docs/PRODUCT.md` 为核心事实源。
 
-产品主要服务 Claude、Codex、OpenClaw、Hermes 等可调用 HTTP 工具的 Agent。用户侧按 A 股、加密资产、新闻等产品分类发现数据；技术 registry 仍以 `market` 与 `domain` 分开表达，公共 API 永远保持 catalog/query 两个 provider-neutral 端点。
+产品主要服务 Claude、Codex、OpenClaw、Hermes 等可调用 HTTP 工具的 Agent。用户侧按 A 股、新闻等产品分类发现数据；技术 registry 仍以 `market` 与 `domain` 分开表达，公共 API 永远保持 catalog/query 两个 provider-neutral 端点。
 
-商业权限模型是 endpoint scope、数据分类 allowlist 与每分钟请求上限三者取交集。商业套餐按 200/600/1000 次每分钟区分，不设每日查询额度，也不设置商业档并发上限。`data_categories` 只允许 `a_share`、`crypto`、`news`，由后端根据 immutable registry 推导 dataset grants，并在 catalog/query 同时强制执行；缺字段的存量 Token 保持兼容全量，显式空列表无数据授权，未知值 fail closed。当前代码已让 `basic`/`standard`/`flagship` 使用滚动 60 秒窗口、忽略旧配置残留的 `daily_limit`/`max_concurrent`，并在管理写入时拒绝商业档这两个非空字段；生产是否生效仍须 exact-main 发布及认证 readback。
+商业权限模型是 endpoint scope、数据分类 allowlist 与每分钟请求上限三者取交集。商业套餐按 200/600/1000 次每分钟区分，不设每日查询额度，也不设置商业档并发上限。对外套餐与客户能力只包含 `a_share`、`news`；底层 `data_categories` 为内部运行及存量兼容保留 `a_share`、`crypto`、`news`，由后端根据 immutable registry 推导 dataset grants，并在 catalog/query 同时强制执行；缺字段的存量 Token 保持兼容全量，显式空列表无数据授权，未知值 fail closed。当前代码已让 `basic`/`standard`/`flagship` 使用滚动 60 秒窗口、忽略旧配置残留的 `daily_limit`/`max_concurrent`，并在管理写入时拒绝商业档这两个非空字段；生产是否生效仍须 exact-main 发布及认证 readback。
 
 当前主目标：所有属于首期境内只读范围、且当前 QuickSync 账号经真实调用确认允许访问的 Tushare 数据集，按照注册频率稳定采集到 SQLite，并通过 `GET /v1/catalog` 与 `POST /v1/query` 供内部调用。Binance 公共现货行情与同一冻结 40 个 USDT 标的的 USDⓈ-M 永续 funding rate / open interest 公共只读历史共同构成独立的第二 provider 纵向切片，必须使用独立 OS 服务账号、release、SQLite、内部 API 认证材料、loopback 端口和 timer，且继续复用同一固定 API；不得影响 A 股运行面，也不得创建或使用 Binance 账户/API key。
 
@@ -16,9 +16,12 @@ TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金�
 
 ## 公共产品与教学内容边界
 
+Crypto 仅供内部使用，不纳入对外数据目录、可供数数量、套餐、购买预览、客户能力或公共接入排期；独立采集、存量数据和内部权限兼容保持。Research 可保留加密资产相关外部文献，但不得将文献映射成对外 Crypto 供数承诺。
+
 TradingDatas 对外销售的是可信、可追溯、可复现的金融数据原料。公共网站顶栏固定为 `Data`、`Research`、`Pricing`；Features、Recipes 保留公共详情入口，Account 是独立私有工作区，菜单及工作区内以 `Docs` 提供公开文档入口，不放入桌面或移动端主导航；`Research` 按 TradingDatas 自有分类体系整理外部论文，`Recipes` 回答“如何正确准备和组合数据”。它们是发现、购买、学习和管理同一个数据产品的界面，不是新的研究或交易 authority。Agent/MCP 是公开 `/connect` 与 Docs 下的交付方式，不是首要购买理由。
 
 - `Data` 只展示 registry 与 catalog/query 可证明的数据身份、字段、覆盖、更新、lineage、样本和限制。静态文案不能把 paused/unobserved 写成已有可查询数据，也不能把 degraded 写成 fresh/完整；已有可验证的 degraded 数据可按 API 合同如实供数，也不能从 provider 文档或一次 HTTP 200 推断历史完整性。
+- Data 与产品详情保持公开；真实采集证据通过账户会话 `GET /api/account/catalog` 桥接既有 `/v1/catalog`，仅使用当前用户已连接的数据 key，不放入服务 token，不提供匿名数据授权。展示其授权范围内全部非 Crypto 数据集与真实 coverage/state/receipt；`queryable` 不等于查询有行，单次快照不等于趋势或稳定性。产品映射须使用正式 dataset ID，可复制请求须符合当前查询合同；这不是新增 provider 数据端点。
 - `Research` 只整理、分类和展示外部行业论文或研究，保留作者、年份、期刊/来源和外部链接，并可映射所需原始数据材料；不得改写成 TradingDatas 自有结论、推荐、绩效或数据产品 benchmark。论文元数据与摘要须标明外部来源，静态示例不得冒充已上线数据库。
 - `Features` 只允许透明、版本化的衍生数据，必须公开公式、输入、时间/as-of 对齐、缺失/修订策略、测试与限制；它不是因子排名、信号、策略或建议。当前 Feature Plane 未实现，相关页面只能标记为 `product definition` 或 `planned`。
 - `Recipes` 只教授查询、连接、时间/as-of 对齐、复权、缺失处理、去重和验证；示例必须列 dataset IDs、窗口、方法、输出 schema、限制及 synthetic/observed 身份。
@@ -171,7 +174,7 @@ QuickSync 的账号级限频、每日额度与并发上限在证据冻结前不�
 
 当前交付采用广度优先：valid rows 与 receipts 立即保留和积累；单个 dataset 的 empty、partial、429、provider `5xx` 或 cadence 失败只降级该 dataset。合同正确时记外部 blocker 后 MOVE ON，不把源质量当成工程未完成，也不为等源变好冻结队列。locked、excluded、unknown 或 required params 未解决的 dataset 显式暂停。稳定性继续按 dataset 独立积累，不能被用作延迟全部接口接入的全局门禁。
 
-**Datas PM 接入口径（2026-09-05 Asia/Shanghai）：** 上游晚发、缺行、限频、文档≠现实、间歇 `provider_error` 是外部 blocker，不是工程未完成；合同正确时必须单独列出，不得停止下一可接接口，也不得计为进度 slip / 未完成。优先最小诚实合同（request shape + cadence + empty≠success）；除非否则无法得到 SUCCESS，否则不得新增 cadence class、VIP transport、完整性重写、worker 上调或 catalog 超时变更。双认证 catalog <15s 仍是既有部署安全门，不发明额外 release gate。盘中生产行为变更默认 WIP=1，但 vendor emptiness 不得冻结队列。我们拥有 registry/shape、cadence/planner、fanout、activation、merge→GZ cut，以及 vendor 实际返回行时的非空 SUCCESS；不拥有把 vendor 数据变好、伪造非空、把 empty 写成 success，或等源“变稳定”再发。对齐 Tushare 的是 dataset/coverage 菜单，不是其 ad-hoc API 交付模型；empty receipt 不是 success，但合同正确时的 empty/`provider_error` 是外部事实，不是重设计理由。正确合同上 GZ 后，vendor-side empty/`provider_error` 只记短外部-blocker 行并继续下一可接接口；仅内部 shape/cadence 错误才重开。**Daily acceptance = actual GZ deployment, not GitHub merge alone**（运行代码/配置 merge 而未 GZ cut = incomplete；纯文档按 PR/CI 与主线同步验收，不要求重启；数据面每日验收 = GZ running SHA + 适用时 dual catalog <15s + proving receipts；`STATUS.md` / `main` tip 不是验收）。排期：核心可接 2026-09-11、其余 vendor-reachable 2026-09-18、fund/fut/opt 另波、硬底线 2026-10-09 或已列外部 blocker；约每个交易日 2–3 个接口，不得因源质量滑期。本口径不是 mass-unpause。完整运维正文见 `docs/OPERATIONS.md`「Datas PM 接入口径」。
+**Datas PM 接入口径（2026-09-05 Asia/Shanghai）：** 上游晚发、缺行、限频、文档≠现实、间歇 `provider_error` 是外部 blocker，不是工程未完成；合同正确时必须单独列出，不得停止下一可接接口，也不得计为进度 slip / 未完成。优先最小诚实合同（request shape + cadence + empty≠success）；除非否则无法得到 SUCCESS，否则不得新增 cadence class、VIP transport、完整性重写、worker 上调或 catalog 超时变更。双认证 catalog <15s 仍是既有部署安全门，不发明额外 release gate。盘中生产行为变更默认 WIP=1，但 vendor emptiness 不得冻结队列。我们拥有 registry/shape、cadence/planner、fanout、activation、merge→GZ cut，以及 vendor 实际返回行时的非空 SUCCESS；不拥有把 vendor 数据变好、伪造非空、把 empty 写成 success，或等源“变稳定”再发。对齐 Tushare 的是 dataset/coverage 菜单，不是其 ad-hoc API 交付模型；empty receipt 不是 success，但合同正确时的 empty/`provider_error` 是外部事实，不是重设计理由。正确合同上 GZ 后，vendor-side empty/`provider_error` 只记短外部-blocker 行并继续下一可接接口；仅内部 shape/cadence 错误才重开。**Daily acceptance = actual GZ deployment, not GitHub merge alone**（运行代码/配置 merge 而未 GZ cut = incomplete；纯文档按 PR/CI 与主线同步验收，不要求重启；数据面每日验收 = GZ running SHA + 适用时 dual catalog <15s + proving receipts；`STATUS.md` / `main` tip 不是验收）。分批计划、容量与检查节点以 `docs/OPERATIONS.md`「可执行排期」为唯一入口；日期不是所有剩余接口的上线保证，不得因源质量停发。本口径不是 mass-unpause。完整运维正文见 `docs/OPERATIONS.md`「Datas PM 接入口径」。
 
 ## clean-slate 与退役
 

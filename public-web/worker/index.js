@@ -1,3 +1,4 @@
+import { ACCOUNT_CATALOG_MAX_BYTES, domesticCatalogProjection } from './account-continuity.js';
 import { handleDataApi } from './data-api.js';
 import { portalKeyError, isPortalKeyPath } from './portal-errors.js';
 import { handleEmailIdentity } from "./email-identity.js";
@@ -15,6 +16,7 @@ function jsonResponse(payload, status = 200, extraHeaders = {}) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
       ...extraHeaders,
     },
   });
@@ -131,6 +133,7 @@ async function upstreamRequest(env, path, accessKey, init = {}) {
 }
 
 function accountUpstreamPath(url) {
+  if (url.pathname === "/api/account/catalog") return "/v1/catalog";
   if (url.pathname === "/api/account/me") return "/portal/api/me";
   if (url.pathname === "/api/account/usage") return `/portal/api/me/usage${url.search}`;
   if (url.pathname === "/api/account/keys") return "/portal/api/me/keys";
@@ -185,6 +188,21 @@ async function handleAccountApi(request, env) {
 
   const session = await openSession(readCookie(request, SESSION_COOKIE), env.SESSION_ENCRYPTION_KEY);
   if (!session) return jsonResponse({ error: "unauthenticated" }, 401, { "set-cookie": sessionCookie("", 0) });
+  const isCatalog = url.pathname === "/api/account/catalog";
+  if (isCatalog) {
+    if (url.search) return jsonResponse({ error: "invalid_request" }, 400);
+    const expected = request.headers.get("x-td-identity");
+    if (!expected) return jsonResponse({ error: "identity_changed" }, 409);
+    const me = await upstreamRequest(env, "/portal/api/me", session.token);
+    if (!me.ok) {
+      await me.body?.cancel();
+      return jsonResponse({ error: [401,403].includes(me.status) ? "subscription_required" : "connection_unavailable" }, [401,403].includes(me.status) ? 403 : 503);
+    }
+    let portal;
+    try { portal = JSON.parse(await boundedText(me, MAX_ACCOUNT_BODY_BYTES)).portal; }
+    catch { return jsonResponse({ error: "connection_unavailable" }, 503); }
+    if (typeof portal?.tenant_id !== "string" || portal.tenant_id !== expected) return jsonResponse({ error: "identity_changed" }, 409);
+  }
   const headers = new Headers();
   let body;
   if (request.method !== "GET") {
@@ -193,6 +211,16 @@ async function handleAccountApi(request, env) {
     catch { return jsonResponse({ error: "invalid_request" }, 400); }
   }
   const response = await upstreamRequest(env, upstreamPath, session.token, { method: request.method, headers, body });
+  if (isCatalog) {
+    if (!response.ok) {
+      await response.body?.cancel();
+      return jsonResponse({ error: response.status === 429 ? "rate_limited" : [401,403].includes(response.status) ? "subscription_required" : "connection_unavailable" }, response.status === 429 ? 429 : [401,403].includes(response.status) ? 403 : 503);
+    }
+    try {
+      if (!response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) throw new Error("invalid_catalog");
+      return jsonResponse(domesticCatalogProjection(JSON.parse(await boundedText(response, ACCOUNT_CATALOG_MAX_BYTES))));
+    } catch { return jsonResponse({ error: "connection_unavailable" }, 503); }
+  }
   if (response.status === 400 && isPortalKeyPath(upstreamPath)) {
     let error = null;
     try {
