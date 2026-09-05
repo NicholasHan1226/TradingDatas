@@ -1,8 +1,10 @@
 # TradingDatas 当前状态
 
-最后更新：2026-09-05 01:05 CST（Datas PM 口径锁定 + 00:28 读回 +
-三面园艺收口；文档层，**不**构成数据面目的变更或新的 GZ 发布）。
-历史决策见 [`docs/adr/`](docs/adr/)，本轮读回见
+最后更新：2026-09-05 12:05 CST（next-wave 三接口合同已上 GZ
+`edef9a56`；下方 Datas PM 口径与 00:28 读回原文保留，不重写）。
+本轮读回见
+[`docs/reports/2026-09-05-next-wave-onboarding.md`](docs/reports/2026-09-05-next-wave-onboarding.md)；
+00:28 读回见
 [`docs/reports/2026-09-05-ann-date-event-readback.md`](docs/reports/2026-09-05-ann-date-event-readback.md)。
 运维正文见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)「Datas PM 接入口径」。
 Daily acceptance = GZ running SHA + 适用时 dual catalog <15s + proving
@@ -45,6 +47,36 @@ Haofei / Datas PM 2026-09-05 Asia/Shanghai 口径已写入核心入口：
 文档 tip 的 GZ cut 可以做，但不改变数据面目的，也不把本页写成已验收。Pages 未改
 `static/**` / `public-web/**`，不应触发。下方 00:28 读回与 2026-09-04
 园艺段落仍是当时分层读回，不因本口径重写。
+
+## 2026-09-05 12:05 CST next-wave 三接口（合同已 cut）
+
+分层记录，不是全宇宙 stable。00:28 读回与上方 PM 锁原文仍有效。
+
+- **选定（改 activation 前已写名）：** `cn.dataset.fina_mainbz`、
+  `cn.dataset.pledge_detail`、`cn.dataset.top10_cb_holders`。不是
+  ann_date 族。`stk_nineturn` 保持暂停。
+- **GitHub：** #475 `f1ab528a` 激活三接口；#476 `edef9a56` 把
+  `pledge_detail` 从错误的 `ann_date` snapshot 改成 ts_code-only
+  fanout（GZ `f1ab528a` 实锤 QuickSync 20002 必选 `ts_code`）。作者
+  NicholasHan1226，CI 绿后 `pm-merge`。#395 仍 draft。
+- **GZ files：** A 股与 crypto `current` 均为
+  `edef9a56f5f4233188d95d9694bac253fea0b840`，`verify-current`
+  `verified=true`（`file_count=1051`，`tree=46e09cab…`）。回滚点
+  `f1ab528a`。GitHub merge ≠ 本指针。
+- **双认证 catalog 冷启动对（edef9a56 切链后）：** A 股 7.80s / crypto
+  12.54s，均 <15s。匿名 18082/18083 **401**。A 股 token 打 18083 也是
+  **401**。
+- **认证 catalog 12:05：** 192 项：success 86 / empty 44 / paused 55 /
+  unobserved 2（`stk_mins`、`top10_floatholders`）/ stale 3 / failed 2。
+- **proving receipts：** `fina_mainbz` SUCCESS，coverage 337，query 5 行，
+  `receipt:a193ff87…` / `data_through=2026-09-05T03:47:07.579724Z`。
+  `pledge_detail` 与 `top10_cb_holders` 首批 fanout 为合法 empty
+  （`provider_returned_no_rows`）；合同正确，不是未完成。
+- **内部已关：** `f1ab528a` 上 `pledge_detail` `ann_date` snapshot →
+  QuickSync 20002 必选 `ts_code`；#476 已改 ts_code-only。
+- **外部短行（不计 slip）：** 上述两接口 empty；`global.news.flash`
+  firecrawl；`major_news` 502；周末 `margin*` stale。ann_date 族
+  `max_batches_per_run` 未动。
 
 ## 2026-09-05 01:05 CST 三面园艺收口
 
@@ -635,27 +667,27 @@ NameError 修复；调度器预算耗尽改 skipped 语义并新增错误码静�
 
 ## 下一步
 
-1. #350/#378 与 #454–#463 已在 GZ `current=d6e90fe6` 上运行；2026-09-05
-   00:28–00:35 CST 认证 catalog/query 已读回，见
-   [`docs/reports/2026-09-05-ann-date-event-readback.md`](docs/reports/2026-09-05-ann-date-event-readback.md)。
-   冻结的 ann_date 事件族靠既有 `partition_continuation` 跨周期收敛
-   （`20260830` 已观察到 297/5976 unique batches），**不是**「未发 GZ」、
-   也不是单轮扫完。不要为加速而改 `max_batches_per_run`（会换 config hash、
-   丢掉已开始日期的续采身份）。`top10_floatholders` 仍是 on_demand /
-   unobserved（无 ann_date 窗，不是本族）。income 最新空窗时默认 query 0 行
-   保持诚实 empty，不单独立项改 query 合同。
-2. 依 #354 新诊断字段观察 firecrawl 失败类别分布（timeout / refused / other），
+1. Next-wave 三接口已在 GZ `current=edef9a56` 上运行，见
+   [`docs/reports/2026-09-05-next-wave-onboarding.md`](docs/reports/2026-09-05-next-wave-onboarding.md)。
+   下一波仍从 paused / unobserved 里挑 2–3 个 vendor-reachable、可用
+   registry/config 修的接口；不要动 ann_date 族
+   `max_batches_per_run`。`stk_nineturn` 仍暂停。`stk_mins` /
+   `top10_floatholders` 仍是 on_demand / unobserved。
+2. 冻结的 ann_date 事件族靠既有 `partition_continuation` 跨周期收敛
+   （00:28 读回 `20260830` 已观察到 297/5976 unique batches），**不是**
+   单轮扫完。income 最新空窗时默认 query 0 行保持诚实 empty。
+3. 依 #354 新诊断字段观察 firecrawl 失败类别分布（timeout / refused / other），
    决定 timeout_ms 上调或换源；顺手改进 validation_failed 的空
-   `validation_reasons` 缺口。
-3. #349：fina_mainbz 按探针提案落地（单码全史快照扇出 + 去 type 过滤），
-   先解 dependency_seed_receipt_unresolved。
-4. #327 WAL 代码已落地（可写 open 请求 WAL；生产 journal 切换仍待 write-pause +
+   `validation_reasons` 缺口。`global.news.flash` 仍是外部 failed。
+4. #349 本波已用 registry/config 落地（ts_code-only event fanout）；
+   GZ 非空 SUCCESS。不要再当未完成。
+5. #327 WAL 代码已落地（可写 open 请求 WAL；生产 journal 切换仍待 write-pause +
    exact-main，本仓不自动部署 GZ）。
-5. 已合入远程源分支已在 2026-09-04 删除（80 条）。无开放 PR 的未合入远程分支
+6. 已合入远程源分支已在 2026-09-04 删除（80 条）。无开放 PR 的未合入远程分支
    仍保留 recovery/agent/wire/release 与吃不准的关闭 PR 分支；
    `fix/rt-min-daily-scan-budget`、`fix/firecrawl-bare-time-anchor` 仍在 origin，
    不是合入候选。#446/#464/#465/#466/#467/#468/#469 已合入 main；仅 #395 仍开着。
-6. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
+7. 发生值得长期追溯的异常、生产验收或迁移时，在 `docs/reports/YYYY-MM-DD-*.md` 新建日期化
    报告；普通变更由 Git history 追溯。
-7. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
+8. 下一次 material observation 直接替换本页，不追加事故年表，也不把这里的 SHA、count 或
    timer 状态复制进长期 API/Operations 合同。
