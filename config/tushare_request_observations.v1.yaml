@@ -10,13 +10,13 @@ provenance:
     sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 25c297ba41e8334583893cca486a84b0ac8ce908de96f3356ed01b625cfad115
+    sha256: c3a7361ac4c3ce43b9799a2550082eaf05a40ffa921336715334d2b1de3708e1
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 14b7dde7d2af57d2053551d979605f5f542c7ab4c3703ec85c62964cf5bfd867
+    sha256: 8dcd0dfd7fd739cfa40686130df91321d3ff96c24c589ea0a45bbd1764bd116e
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -68,10 +68,10 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 141
-  probe_blocked: 49
-  ingest_contract_ready: 126
-  ingest_contract_blocked: 64
+  probe_executable: 140
+  probe_blocked: 50
+  ingest_contract_ready: 125
+  ingest_contract_blocked: 65
   row_limit_ingest_contract_blocked: 15
 entries:
 - api_name: adj_factor
@@ -2500,17 +2500,28 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  probe_state: executable
-  probe_block_reasons: []
-  ingest_contract_state: ready
-  ingest_contract_block_reasons: []
+  request_shape: entity_fanout
+  # Official table marks ts_code optional.  GZ f1ab528a ann_date-only
+  # 20260905 returned provider_error 20002: pledge_detail 须提供必选参数
+  # ts_code.  Empty ≠ success.  Drop the date filter; ts_code-only
+  # fanout matches pledge_stat.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
+  ingest_contract_state: blocked
+  ingest_contract_block_reasons:
+  - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
-    ann_date:
-      source: run_clock
-      transform: yyyymmdd
-      offset_seconds: 0
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.equity.security_master
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: pledge_stat
   scope_labels:

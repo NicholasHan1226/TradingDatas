@@ -4643,7 +4643,7 @@ def test_next_wave_20260905_is_active_and_plans_bounded_event_windows(
     }
     assert planned["cn.dataset.fina_mainbz"] == {}
     assert planned["cn.dataset.top10_cb_holders"] == {}
-    assert planned["cn.dataset.pledge_detail"] == {"ann_date": "20260905"}
+    assert planned["cn.dataset.pledge_detail"] == {}
     assert len(planned) == 3
     skipped = {item.dataset_id: item.state for item in automatic.skipped}
     assert skipped.get("cn.dataset.stk_nineturn") == "paused"
