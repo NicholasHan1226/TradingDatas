@@ -99,6 +99,7 @@ _FILE_URI_PATTERN = re.compile(r"(?<![A-Za-z0-9])file:(?=\S)", re.IGNORECASE)
 _WINDOWS_DRIVE_PATH_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])[A-Za-z]:(?=\S)", re.IGNORECASE
 )
+_CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x1f]")
 _SQLITE_HEADER = b"SQLite format 3\x00"
 
 _FileIdentity = tuple[int, int, int]
@@ -118,7 +119,7 @@ def _require_text(value: object, field_name: str) -> str:
         raise ValueError(
             f"{field_name} must be non-empty without surrounding whitespace"
         )
-    if any(ord(character) < 32 for character in value):
+    if _CONTROL_CHARACTER_PATTERN.search(value):
         raise ValueError(f"{field_name} must not contain control characters")
     return value
 

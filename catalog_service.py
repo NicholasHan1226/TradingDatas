@@ -351,11 +351,33 @@ def _dataset_coverage(
 ) -> dict[str, object]:
     """Aggregate stored-row coverage for one dataset from the same snapshot."""
 
+    indexes = {row[1] for row in conn.execute("PRAGMA index_list(provider_dataset_rows)")}
+    if "provider_dataset_rows_coverage_idx" not in indexes:
+        # Legacy stores may lack the optional writer-created coverage index.
+        # Keep one scan there; the read path never creates schema objects.
+        row_count, earliest, latest = conn.execute(
+            """SELECT COUNT(*), MIN(observed_at), MAX(observed_at)
+               FROM provider_dataset_rows
+               WHERE dataset_id = ? AND schema_major = ?""",
+            (dataset.dataset_id, dataset.schema_major),
+        ).fetchone()
+        return {
+            "row_count": row_count,
+            "earliest_observed_at": earliest,
+            "latest_observed_at": latest,
+        }
     row_count, earliest, latest = conn.execute(
-        """SELECT COUNT(*), MIN(observed_at), MAX(observed_at)
-           FROM provider_dataset_rows
-           WHERE dataset_id = ? AND schema_major = ?""",
-        (dataset.dataset_id, dataset.schema_major),
+        # Separate scalar aggregates let SQLite seek the endpoints of the
+        # existing coverage index instead of comparing every timestamp twice.
+        # One statement also preserves the snapshot for direct callers.
+        """SELECT
+           (SELECT COUNT(*) FROM provider_dataset_rows
+            WHERE dataset_id = ? AND schema_major = ?),
+           (SELECT MIN(observed_at) FROM provider_dataset_rows
+            WHERE dataset_id = ? AND schema_major = ?),
+           (SELECT MAX(observed_at) FROM provider_dataset_rows
+            WHERE dataset_id = ? AND schema_major = ?)""",
+        (dataset.dataset_id, dataset.schema_major) * 3,
     ).fetchone()
     return {
         "row_count": row_count,

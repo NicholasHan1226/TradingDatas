@@ -5616,3 +5616,77 @@ def test_recent_scan_index_seek_matches_window_and_avoids_history_payload_work()
     conn.execute("DROP INDEX market_ingest_runs_source_finished_idx")
     fallback = projection_module._scan_recent_ingest_run_rows(conn, per_dataset_limit=100)
     assert tuple(row.raw for row in fallback) == expected
+
+
+def test_binding_validation_memo_preserves_binding_and_rewritten_row_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset()
+    binding = dataset.provider_bindings[0]
+    other_binding = replace(binding, adapter_version="other-version")
+    receipt_id = _insert_receipt(
+        monkeypatch, conn, status="success", attempt_id="binding-memo",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00", data_through="20260715",
+    )
+    now = datetime(2026, 7, 15, 1, tzinfo=timezone.utc)
+    known = frozenset({dataset.dataset_id})
+    scanned = projection_module._scan_ingest_run_rows_by_ids(conn, (receipt_id,))[0]
+    original = projection_module._validate_receipt_row
+    calls = 0
+
+    def counted(*args: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args)
+
+    monkeypatch.setattr(projection_module, "_validate_receipt_row", counted)
+    cache: dict = {}
+    for expected in (binding, other_binding, None):
+        baseline = original(scanned, dataset, known, now, expected)
+        for _ in range(2):
+            assert projection_module._validate_receipt_row_memoized(
+                scanned, dataset, known, now, expected, cache
+            ) == baseline
+    assert calls == 3
+    _tamper_notes(conn, receipt_id, "status", "failed")
+    changed = projection_module._scan_ingest_run_rows_by_ids(conn, (receipt_id,))[0]
+    for expected in (binding, other_binding, None):
+        assert projection_module._validate_receipt_row_memoized(
+            changed, dataset, known, now, expected, cache
+        ) == original(changed, dataset, known, now, expected)
+    assert calls == 6
+
+
+def test_binding_memo_recomputes_read_clock_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _memory_db()
+    dataset = _dataset()
+    binding = dataset.provider_bindings[0]
+    receipt_id = _insert_receipt(
+        monkeypatch, conn, status="success", attempt_id="binding-clock",
+        started_at="2026-07-15T00:00:00+00:00",
+        finished_at="2026-07-15T00:01:00+00:00", data_through="20260715",
+    )
+    rows = projection_module._scan_ingest_run_rows_by_ids(conn, (receipt_id,))
+    cache: dict = {}
+    results = []
+    for now in (
+        datetime(2026, 7, 14, 23, tzinfo=timezone.utc),
+        datetime(2026, 7, 15, 1, tzinfo=timezone.utc),
+    ):
+        kwargs = dict(
+            now=now, known_dataset_ids=frozenset({dataset.dataset_id}),
+            rows=rows, expected_binding=binding,
+        )
+        baseline = projection_module._project_dataset_runtime(conn, dataset, **kwargs)
+        cached = projection_module._project_dataset_runtime(
+            conn, dataset, validation_cache=cache, **kwargs
+        )
+        assert cached == baseline
+        results.append(cached)
+    assert len(cache) == 1
+    assert "receipt_timestamp_in_future" in results[0].reasons
+    assert "receipt_timestamp_in_future" not in results[1].reasons
