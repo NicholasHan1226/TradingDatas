@@ -61,16 +61,13 @@ stable
 
 ## GitHub Actions
 
-GitHub Actions 是可选的远端验证渠道，不是运行权威，也不是生产上线的必要条件。Actions 不可用时，发布仍可由以下证据完成：
+GitHub Actions 不成为运行权威，也不阻止已上线采集和只读 API 按现有合同继续运行。
+源码合入仍遵守根 `AGENTS.md` 的 PR 与精确候选 CI 门禁；本地测试不能替代该门禁，
+不得因 Actions 不可用直推主线或发布未经接受的源码。
 
-1. 候选源码的确定性本地/服务器验证；
-2. immutable release 建立与版本核对；
-3. systemd/service/timer 运行读回；
-4. SQLite receipt；
-5. authenticated catalog/query readback；
-6. 适用消费者 readback。
-
-没有上述运行证据时，GitHub 上的 commit、PR 或绿色 CI 也不能单独证明生产已上线。
+合并与 CI 成功后，生产交付还需分别验证：不可变 release/清单、实际服务与定时任务、
+SQLite receipt、认证 catalog/query，以及适用消费者。GitHub commit、PR 或绿色 CI
+均不能单独证明生产已上线或数据稳定；单数据集外部失败按运维口径单列。
 
 ## 历史保留原则
 

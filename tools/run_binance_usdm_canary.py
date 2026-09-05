@@ -63,15 +63,17 @@ def _perp_datasets(registry, suffix: str) -> tuple[str, ...]:
 
 
 def funding_rate_window(now: datetime) -> dict[str, str]:
-    """Return a trailing 48h window ending at the latest realized funding time."""
+    """Return a trailing 48h window ending at the observed UTC millisecond."""
 
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("clock must be timezone-aware")
-    minute = now.astimezone(timezone.utc).replace(second=0, microsecond=0)
-    boundary = minute.replace(minute=0) - timedelta(hours=minute.hour % 8)
+    observed = now.astimezone(timezone.utc)
+    boundary = observed.replace(microsecond=(observed.microsecond // 1000) * 1000)
     return {
-        "start_time": _utc(boundary - _FUNDING_LOOKBACK),
-        "end_time": _utc(boundary),
+        "start_time": (boundary - _FUNDING_LOOKBACK)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z"),
+        "end_time": boundary.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
     }
 
 

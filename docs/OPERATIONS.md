@@ -1290,3 +1290,19 @@ without the expected-identity check; disable deletion if such a rollback is requ
 Never remove schemas, cloud libraries, raw financial facts or legacy API keys as
 deployment cleanup. Key rotation invalidates encrypted connections and requires
 explicit reconnect; it is not performed automatically by the application.
+
+### Catalog recent-receipt read cost
+
+The catalog seed window still selects the latest 100 receipts per source, with
+`finished_at DESC, rowid DESC` ordering, the existing total scan budget and full
+execution-sibling validation. When the existing optional
+`market_ingest_runs_source_finished_idx` is present, discovery reads source keys
+from a covering index and seeks each bounded suffix instead of ranking all
+historical receipt payloads. Legacy stores without that index retain the original
+window query; the read path never creates indexes. Every request continues to use
+a fresh verified SQLite snapshot, with no TTL/cache authority or relaxed quality
+checks. This reduces historical payload work; it does not guarantee the unchanged
+15-second authenticated dual-catalog release gate under production load.
+
+Diagnosis, candidate evidence and unresolved response-contract drift are recorded
+in [the bounded catalog read report](reports/2026-09-05-catalog-bounded-read-diagnosis.md).

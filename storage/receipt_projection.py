@@ -989,13 +989,45 @@ def _scan_recent_ingest_run_rows(
         raise TypeError("conn must be sqlite3.Connection")
     if type(per_dataset_limit) is not int or per_dataset_limit <= 0:
         raise ValueError("per_dataset_limit must be a positive integer")
-    raw_rows = tuple(
-        tuple(row)
-        for row in conn.execute(
-            _RECENT_INGEST_RUN_QUERY,
-            (per_dataset_limit,),
+    indexes = {row[1] for row in conn.execute("PRAGMA index_list(market_ingest_runs)")}
+    if "market_ingest_runs_source_finished_idx" not in indexes:
+        # Legacy read-only stores may lack the optional writer-created index.
+        # Retain the single-scan implementation there, never create an index.
+        raw_rows = tuple(
+            tuple(row) for row in conn.execute(
+                _RECENT_INGEST_RUN_QUERY, (per_dataset_limit,)
+            ).fetchall()
+        )
+    else:
+        # The window-function plan visits every historical notes payload before
+        # filtering rn. Enumerate sources from the covering index, then seek the
+        # same ordered suffix; old payloads never enter the result pipeline.
+        # IS preserves the original NULL-source partition for fail-closed
+        # classification. Include foreign sources, not only registry identities.
+        sources = conn.execute(
+            "SELECT DISTINCT source FROM market_ingest_runs ORDER BY source LIMIT ?",
+            (_MAX_INGEST_RUN_SCAN_ROWS + 1,),
         ).fetchall()
-    )
+        if len(sources) > _MAX_INGEST_RUN_SCAN_ROWS:
+            raise RuntimeProjectionError("receipt scan row budget exceeded")
+        recent_by_source = _RECEIPT_QUERY.replace(
+            "FROM market_ingest_runs\nLIMIT ?",
+            "FROM market_ingest_runs WHERE rowid IN ("
+            "SELECT rowid FROM market_ingest_runs WHERE source IS ? "
+            "ORDER BY finished_at DESC, rowid DESC LIMIT ?) "
+            "ORDER BY finished_at DESC, rowid DESC",
+        )
+        selected: list[tuple[object, ...]] = []
+        for (source,) in sources:
+            remaining = _MAX_INGEST_RUN_SCAN_ROWS - len(selected)
+            selected.extend(
+                tuple(row) for row in conn.execute(
+                    recent_by_source, (source, min(per_dataset_limit, remaining + 1))
+                ).fetchall()
+            )
+            if len(selected) > _MAX_INGEST_RUN_SCAN_ROWS:
+                raise RuntimeProjectionError("receipt scan row budget exceeded")
+        raw_rows = tuple(selected)
     if len(raw_rows) > _MAX_INGEST_RUN_SCAN_ROWS:
         raise RuntimeProjectionError("receipt scan row budget exceeded")
     return tuple(_classify_ingest_run_row(row) for row in raw_rows)
