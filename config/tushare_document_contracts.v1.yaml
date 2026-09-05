@@ -9343,13 +9343,13 @@ contracts:
     default_display: Y
 - api_name: index_basic
   doc_url: https://tushare.pro/wctapi/documents/94.md
-  doc_sha256: 5dbbbda563f880297ff67d55b5c82a867ee4f253c2044e1ad56887627e66e6c8
+  doc_sha256: d61a1551efc5d119b5588c9cc875eb6318b4c7c2a295851deffa1c81f19773e1
   title: 指数基本信息
   category: 指数专题
   description: 获取指数基础信息。
   notes:
   - 接口：index_basic，可以通过[**数据工具**](https://tushare.pro/webclient/)调试和查看数据。
-  - 描述：获取指数基础信息。
+  - 描述：获取指数基础信息，数据起始时间1990-01-01，每天18点更新，2000积分起，单次返回8000行。
   input_fields:
   - name: ts_code
     declared_type: str
@@ -9428,6 +9428,26 @@ contracts:
     declared_type: str
     description: 终止日期
     default_display: ''
+  note_tables:
+  - heading: 市场说明(market)
+    headers:
+    - 市场代码
+    - 说明
+    rows:
+    - 市场代码: MSCI
+      说明: MSCI指数
+    - 市场代码: CSI
+      说明: 中证指数
+    - 市场代码: SSE
+      说明: 上交所指数
+    - 市场代码: SZSE
+      说明: 深交所指数
+    - 市场代码: CICC
+      说明: 中金指数
+    - 市场代码: SW
+      说明: 申万指数
+    - 市场代码: OTH
+      说明: 其他指数
 - api_name: index_classify
   doc_url: https://tushare.pro/wctapi/documents/181.md
   doc_sha256: eb05bccbf652e7c9754e98d27377a45d7898473c2dbcf8ada27c7ce8b355cb46

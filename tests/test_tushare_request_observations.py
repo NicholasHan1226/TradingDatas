@@ -256,6 +256,18 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     }
     opt_daily = _entry(observations, "opt_daily")
     assert opt_daily["ingest_contract_state"] == "blocked"
+    assert opt_daily["parameters"]["exchange"] == {
+        "source": "literal",
+        "value": "SSE",
+    }
+    assert opt_daily["request_variants"] == [
+        {"exchange": "SSE"},
+        {"exchange": "SZSE"},
+        {"exchange": "CFFEX"},
+        {"exchange": "DCE"},
+        {"exchange": "SHFE"},
+        {"exchange": "CZCE"},
+    ]
     assert opt_daily["row_limit_observation"] == {
         "observed_count": 15000,
         "detection": "observed_count_equals_round_provider_style_boundary",
@@ -381,8 +393,16 @@ def test_bse_mapping_empty_snapshot_does_not_guess_codes() -> None:
     index_basic = _entry(observations, "index_basic")
     assert index_basic["probe_state"] == "executable"
     assert index_basic["ingest_contract_state"] == "blocked"
-    assert index_basic["parameters"] == {}
-    assert "market" not in index_basic["parameters"]
+    assert index_basic["parameters"] == {"market": {"source": "literal", "value": "SSE"}}
+    assert index_basic["request_variants"] == [
+        {"market": "MSCI"},
+        {"market": "CSI"},
+        {"market": "SSE"},
+        {"market": "SZSE"},
+        {"market": "CICC"},
+        {"market": "SW"},
+        {"market": "OTH"},
+    ]
     assert index_basic["row_limit_observation"] == {
         "observed_count": 6000,
         "detection": "observed_count_equals_round_provider_style_boundary",
@@ -403,6 +423,18 @@ def test_bse_mapping_empty_snapshot_does_not_guess_codes() -> None:
     assert contract["request_template"] == {}
     assert contract["request_variants"] == [{}]
     assert contract["fanout"] == {"strategy": "none"}
+    index_contract = _contract(bundle, "index_basic")
+    assert index_contract["ingest_contract_state"] == "blocked"
+    assert index_contract["request_template"] == {"market": "SSE"}
+    assert index_contract["request_variants"] == [
+        {"market": "MSCI"},
+        {"market": "CSI"},
+        {"market": "SSE"},
+        {"market": "SZSE"},
+        {"market": "CICC"},
+        {"market": "SW"},
+        {"market": "OTH"},
+    ]
 
     plan = _compile_plan()
     probe = _entry(plan, "bse_mapping")

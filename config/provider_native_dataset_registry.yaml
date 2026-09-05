@@ -18562,9 +18562,16 @@ datasets:
       declared_source_type: str
       required: false
     request_shape: snapshot_or_date_range
-    request_template: {}
+    request_template:
+      market: SSE
     request_variants:
-    - {}
+    - market: MSCI
+    - market: CSI
+    - market: SSE
+    - market: SZSE
+    - market: CICC
+    - market: SW
+    - market: OTH
     fanout:
       strategy: none
     pagination:
@@ -24455,9 +24462,15 @@ datasets:
       required: false
     request_shape: snapshot_or_date_range
     request_template:
+      exchange: SSE
       trade_date: ${window.trade_date}
     request_variants:
-    - {}
+    - exchange: SSE
+    - exchange: SZSE
+    - exchange: CFFEX
+    - exchange: DCE
+    - exchange: SHFE
+    - exchange: CZCE
     fanout:
       strategy: none
     pagination:

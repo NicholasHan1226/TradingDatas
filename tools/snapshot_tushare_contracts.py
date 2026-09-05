@@ -21,6 +21,7 @@ _ALLOWED_HOST = "tushare.pro"
 _ALLOWED_PATH = re.compile(r"/wctapi/documents/[0-9]+\.md\Z")
 _SAFE_API_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _TABLE_SEPARATOR = re.compile(r":?-{3,}:?\Z")
+_NOTE_TABLE_SEPARATOR = re.compile(r":?-{2,}:?\Z")
 _MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 
 
@@ -39,6 +40,7 @@ class DocumentContract:
     notes: tuple[str, ...]
     input_fields: tuple[Mapping[str, str], ...]
     output_fields: tuple[Mapping[str, str], ...]
+    note_tables: tuple[Mapping[str, Any], ...] = ()
 
 
 def _canonical_heading(line: str) -> str:
@@ -54,11 +56,25 @@ def _table_cells(line: str) -> list[str]:
     return [cell.strip() for cell in stripped.split("|")]
 
 
-def _is_separator_row(line: str, expected_columns: int) -> bool:
+def _is_separator_row(
+    line: str, expected_columns: int, *, pattern: re.Pattern[str] = _TABLE_SEPARATOR
+) -> bool:
     cells = _table_cells(line)
     return len(cells) == expected_columns and all(
-        _TABLE_SEPARATOR.fullmatch(cell.replace(" ", "")) is not None for cell in cells
+        pattern.fullmatch(cell.replace(" ", "")) is not None for cell in cells
     )
+
+
+def _visible_heading(line: str) -> str | None:
+    stripped = line.strip()
+    if stripped.startswith("```") or not stripped:
+        return None
+    if stripped.startswith("#"):
+        text = stripped.lstrip("#").strip()
+        return text or None
+    if stripped.startswith("**") and stripped.endswith("**") and len(stripped) > 4:
+        return stripped[2:-2].strip() or None
+    return None
 
 
 def _find_section(lines: list[str], label: str) -> int:
@@ -71,11 +87,9 @@ def _find_section(lines: list[str], label: str) -> int:
     raise ContractSnapshotError(f"document is missing {label}")
 
 
-def _parse_table(
+def _find_field_table_header(
     lines: list[str], section_index: int, *, section: str
-) -> tuple[Mapping[str, str], ...]:
-    header_index: int | None = None
-    headers: list[str] = []
+) -> tuple[int, list[str]]:
     for index in range(section_index + 1, min(len(lines), section_index + 40)):
         if "|" not in lines[index]:
             continue
@@ -83,11 +97,109 @@ def _parse_table(
         if len(candidate) < 3 or index + 1 >= len(lines):
             continue
         if _is_separator_row(lines[index + 1], len(candidate)):
-            header_index = index
-            headers = candidate
-            break
-    if header_index is None:
-        raise ContractSnapshotError(f"{section} table is missing")
+            return index, candidate
+    raise ContractSnapshotError(f"{section} table is missing")
+
+
+def _parse_generic_table(
+    lines: list[str], header_index: int
+) -> tuple[list[str], tuple[Mapping[str, str], ...], int] | None:
+    if header_index + 1 >= len(lines) or "|" not in lines[header_index]:
+        return None
+    headers = _table_cells(lines[header_index])
+    if len(headers) < 2 or any(not header for header in headers):
+        return None
+    if len(headers) != len(set(headers)):
+        return None
+    if not _is_separator_row(
+        lines[header_index + 1], len(headers), pattern=_NOTE_TABLE_SEPARATOR
+    ):
+        return None
+    rows: list[Mapping[str, str]] = []
+    end_index = header_index + 2
+    for offset, line in enumerate(lines[header_index + 2 :], start=header_index + 2):
+        stripped = line.strip()
+        if not stripped:
+            if rows:
+                end_index = offset
+                break
+            continue
+        if stripped.startswith("```") or _visible_heading(line) is not None:
+            if rows:
+                end_index = offset
+                break
+            continue
+        if "|" not in line:
+            if rows:
+                end_index = offset
+                break
+            continue
+        cells = _table_cells(line)
+        if _is_separator_row(line, len(cells), pattern=_NOTE_TABLE_SEPARATOR):
+            if rows:
+                end_index = offset
+                break
+            continue
+        if len(cells) < len(headers):
+            raise ContractSnapshotError("note table row has too few cells")
+        if len(cells) > len(headers):
+            cells = cells[: len(headers) - 1] + [" | ".join(cells[len(headers) - 1 :])]
+        rows.append(dict(zip(headers, cells)))
+        end_index = offset + 1
+    if not rows:
+        return None
+    return headers, tuple(rows), end_index
+
+
+def _collect_note_tables(
+    lines: list[str],
+    *,
+    start_index: int,
+    skip_header_indexes: set[int],
+) -> tuple[Mapping[str, Any], ...]:
+    tables: list[Mapping[str, Any]] = []
+    in_fence = False
+    heading = ""
+    index = start_index
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            index += 1
+            continue
+        if in_fence:
+            index += 1
+            continue
+        visible = _visible_heading(lines[index])
+        if visible is not None:
+            heading = visible
+            index += 1
+            continue
+        if index in skip_header_indexes:
+            index += 1
+            continue
+        parsed = _parse_generic_table(lines, index)
+        if parsed is None:
+            index += 1
+            continue
+        headers, rows, end_index = parsed
+        tables.append(
+            {
+                "heading": heading,
+                "headers": list(headers),
+                "rows": [dict(row) for row in rows],
+            }
+        )
+        index = end_index
+    return tuple(tables)
+
+
+def _parse_table(
+    lines: list[str], section_index: int, *, section: str
+) -> tuple[tuple[Mapping[str, str], ...], int]:
+    header_index, headers = _find_field_table_header(
+        lines, section_index, section=section
+    )
 
     normalized_headers = [_canonical_heading(header) for header in headers]
     required_names = {"名称", "类型", "描述"}
@@ -138,7 +250,7 @@ def _parse_table(
         rows.append(field)
     if not rows:
         raise ContractSnapshotError(f"{section} table has no rows")
-    return tuple(rows)
+    return tuple(rows), header_index
 
 
 def parse_document(capability: Mapping[str, Any], body: bytes) -> DocumentContract:
@@ -171,6 +283,12 @@ def parse_document(capability: Mapping[str, Any], body: bytes) -> DocumentContra
             ("接口", "数据说明", "调取说明", "描述", "更新时间", "更新频率")
         )
     )
+    input_fields, input_header_index = _parse_table(
+        lines, input_index, section="input"
+    )
+    output_fields, output_header_index = _parse_table(
+        lines, output_index, section="output"
+    )
     return DocumentContract(
         api_name=api_name,
         doc_url=doc_url,
@@ -179,8 +297,13 @@ def parse_document(capability: Mapping[str, Any], body: bytes) -> DocumentContra
         category=str(capability.get("category") or "").strip(),
         description=str(capability.get("description") or "").strip(),
         notes=notes,
-        input_fields=_parse_table(lines, input_index, section="input"),
-        output_fields=_parse_table(lines, output_index, section="output"),
+        input_fields=input_fields,
+        output_fields=output_fields,
+        note_tables=_collect_note_tables(
+            lines,
+            start_index=input_index + 1,
+            skip_header_indexes={input_header_index, output_header_index},
+        ),
     )
 
 
@@ -245,7 +368,7 @@ def _load_catalog(path: Path) -> tuple[Mapping[str, Any], list[Mapping[str, Any]
 
 
 def _contract_payload(contract: DocumentContract) -> dict[str, Any]:
-    return {
+    payload = {
         "api_name": contract.api_name,
         "doc_url": contract.doc_url,
         "doc_sha256": contract.doc_sha256,
@@ -256,6 +379,9 @@ def _contract_payload(contract: DocumentContract) -> dict[str, Any]:
         "input_fields": [dict(field) for field in contract.input_fields],
         "output_fields": [dict(field) for field in contract.output_fields],
     }
+    if contract.note_tables:
+        payload["note_tables"] = [dict(table) for table in contract.note_tables]
+    return payload
 
 
 def snapshot_contracts(
@@ -266,8 +392,35 @@ def snapshot_contracts(
     timeout_seconds: float,
     max_attempts: int,
     workers: int = 8,
+    only_api_names: frozenset[str] | None = None,
 ) -> None:
     catalog, capabilities = _load_catalog(catalog_path)
+    existing_by_api: dict[str, dict[str, Any]] | None = None
+    if only_api_names:
+        available = {str(item["api_name"]) for item in capabilities}
+        missing = sorted(only_api_names - available)
+        if missing:
+            raise ContractSnapshotError(
+                "unknown --only API(s): " + ",".join(missing)
+            )
+        if not output_path.is_file():
+            raise ContractSnapshotError(
+                "refreshing selected APIs requires an existing snapshot"
+            )
+        existing = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+        if not isinstance(existing, dict) or not isinstance(
+            existing.get("contracts"), list
+        ):
+            raise ContractSnapshotError("existing snapshot is invalid")
+        existing_by_api = {}
+        for item in existing["contracts"]:
+            if isinstance(item, dict) and isinstance(item.get("api_name"), str):
+                existing_by_api[item["api_name"]] = item
+        capabilities = [
+            item
+            for item in capabilities
+            if str(item["api_name"]) in only_api_names
+        ]
     contracts: list[DocumentContract] = []
     errors: list[str] = []
     if cache_dir is not None:
@@ -305,6 +458,20 @@ def snapshot_contracts(
     if errors:
         raise ContractSnapshotError("contract snapshot failed:\n" + "\n".join(errors))
 
+    refreshed = {
+        contract.api_name: _contract_payload(contract) for contract in contracts
+    }
+    if existing_by_api is not None:
+        merged = dict(existing_by_api)
+        merged.update(refreshed)
+        contract_payloads = [
+            merged[api_name] for api_name in sorted(merged)
+        ]
+    else:
+        contract_payloads = [
+            refreshed[api_name] for api_name in sorted(refreshed)
+        ]
+
     payload = {
         "version": 1,
         "snapshot_id": "tushare-official-document-contracts.v1",
@@ -312,11 +479,8 @@ def snapshot_contracts(
         "source_catalog_id": catalog.get("catalog_id"),
         "source_catalog_sha256": hashlib.sha256(catalog_path.read_bytes()).hexdigest(),
         "pinned_commit": (catalog.get("provenance") or {}).get("pinned_commit"),
-        "counts": {"in_scope_contracts": len(contracts), "parse_errors": 0},
-        "contracts": [
-            _contract_payload(contract)
-            for contract in sorted(contracts, key=lambda item: item.api_name)
-        ],
+        "counts": {"in_scope_contracts": len(contract_payloads), "parse_errors": 0},
+        "contracts": contract_payloads,
     }
     rendered = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False, width=120)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -338,6 +502,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--timeout-seconds", type=float, default=20.0)
     parser.add_argument("--max-attempts", type=_positive_int, default=3)
     parser.add_argument("--workers", type=_positive_int, default=8)
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="API",
+        help="Refresh only these in-scope APIs and merge them into the existing snapshot.",
+    )
     args = parser.parse_args(argv)
     if not 0 < args.timeout_seconds <= 120:
         parser.error("--timeout-seconds must be in (0, 120]")
@@ -348,6 +519,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         timeout_seconds=args.timeout_seconds,
         max_attempts=args.max_attempts,
         workers=args.workers,
+        only_api_names=frozenset(args.only) if args.only else None,
     )
     return 0
 

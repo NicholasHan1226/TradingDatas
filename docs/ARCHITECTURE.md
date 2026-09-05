@@ -161,7 +161,7 @@ event 扫描周期。它仍保留合同、历史 facts/receipts 与手工有界�
 systemd 或环境文件不得再用 `/current/config/...` 覆盖它们。这样 `current` 即使在另一次
 受控发布中切换，已启动进程也不会混用两个 release 的代码与配置。
 
-官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表与更新说明，冻结 URL 和内容哈希；`config/tushare_cadence_policy.v1.yaml` 是 190 个已有正式文档合同的唯一 cadence authority，按排序 `api_name` 精确覆盖、逐项绑定官方文档 SHA，并只允许九个通用 cadence class、正 freshness SLA 和固定安全闭集内且与 cadence 语义一致的 reason code；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。更具体的 reviewed contract cadence/SLA 优先于该通用政策，`reviewed_contract_exact` 只能用于 reviewed bundle 中 cadence/SLA 精确一致的合同。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。
+官方接口文档只通过批量 compiler 进入 registry：`tools/snapshot_tushare_contracts.py` 读取固定能力目录，批量解析输入/输出表、更新说明和输入后的通用说明/枚举表，冻结 URL 和内容哈希；`config/tushare_cadence_policy.v1.yaml` 是 190 个已有正式文档合同的唯一 cadence authority，按排序 `api_name` 精确覆盖、逐项绑定官方文档 SHA，并只允许九个通用 cadence class、正 freshness SLA 和固定安全闭集内且与 cadence 语义一致的 reason code；`tools/compile_tushare_runtime_contracts.py` 保留已复核合同，并把其余官方接口编译为可发现但 paused 的 append-only 合同；registry compiler 再结合独立 activation/entitlement 声明生成运行 registry。更具体的 reviewed contract cadence/SLA 优先于该通用政策，`reviewed_contract_exact` 只能用于 reviewed bundle 中 cadence/SLA 精确一致的合同。不能确定的 entitlement、主键、频率或参数模板必须保持 paused，不用猜测填充。
 
 activation evidence 不能绕过 provider payload 的绝对扫描上限。registry compiler 按声明字段数通用、确定性地收窄 active binding 的 `max_rows_per_attempt`；字段、深度或最小窗口在现有绝对上限内无法安全编译时，该 binding 继续保持 paused。runtime 仍复核同一硬上限，不因单个 dataset 放宽。runtime compiler 不再把硬行预算内的整千边界自动升为 activation blocker；`reject_at_limit` 保持显式布尔；观测行数超过硬 `max_rows_per_attempt` 仍必须阻断，不得清空 blocker 或放宽预算以求通过。
 

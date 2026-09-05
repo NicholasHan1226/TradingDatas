@@ -7,7 +7,7 @@ production_ready: false
 provenance:
   official_contracts:
     path: config/tushare_document_contracts.v1.yaml
-    sha256: 66868bdfac97ad335467cc2167f6fc55749850e1af21c5c77be6b43c69e6f834
+    sha256: 06ddd10f130f22f0c87c114609b8700990154632687880b2fe5a30efb91ae685
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
     sha256: ec7bbf84f4792f1b57b58b9bbcedcef2f173cf1de424e19e14d76c5bc8e530b6
@@ -16,7 +16,7 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: f00ad7512027ced924a3a2b00ede390013160df317acaff215cdc7e4f7d9c804
+    sha256: e0592329fd7b47f934c04b1da917de2c06e5814ecb1a0a00054828a99bc3604b
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 3c43f5d118eeb7390a2126191c036082561ba81e373cc19af2a3c48967793438
@@ -1919,17 +1919,29 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  # Official market says 默认SSE, 详见下方说明, but the market table is
-  # not in the frozen document snapshot. Do not invent CSI/SZSE/other
-  # codes or silently drop them by mapping SSE alone. Empty snapshot
-  # stays completeness-blocked at the observed 6000-row page.
+  # Official 市场说明(market) table is now in the document snapshot
+  # (doc 94, sha d61a1551...). Documented default is SSE; keep every
+  # official market code. Empty snapshot stayed at the observed
+  # 6000-row page. Per-market completeness is unobserved; ingest
+  # stays blocked. Do not activate.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
-  parameters: {}
+  parameters:
+    market:
+      source: literal
+      value: SSE
+  request_variants:
+  - market: MSCI
+  - market: CSI
+  - market: SSE
+  - market: SZSE
+  - market: CICC
+  - market: SW
+  - market: OTH
   row_limit_observation:
     observed_count: 6000
     detection: observed_count_equals_round_provider_style_boundary
@@ -2645,6 +2657,10 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
+  # Official exchange is SSE/SZSE/CFFEX/DCE/SHFE/CZCE. No documented
+  # default; template uses first-listed SSE. trade_date-only observed
+  # 15000 > 10000. Per-exchange counts are unobserved; ingest stays
+  # blocked. Do not raise the hard budget.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -2652,10 +2668,20 @@ entries:
   - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
+    exchange:
+      source: literal
+      value: SSE
     trade_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
+  request_variants:
+  - exchange: SSE
+  - exchange: SZSE
+  - exchange: CFFEX
+  - exchange: DCE
+  - exchange: SHFE
+  - exchange: CZCE
   row_limit_observation:
     observed_count: 15000
     detection: observed_count_equals_round_provider_style_boundary

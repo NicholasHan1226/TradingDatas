@@ -38,7 +38,40 @@ def test_parse_document_freezes_input_and_output_contract() -> None:
         "close",
     ]
     assert contract.output_fields[-1]["declared_type"] == "float"
+    assert contract.note_tables == ()
     assert len(contract.doc_sha256) == 64
+
+
+def test_parse_document_retains_post_input_note_tables() -> None:
+    document = DOCUMENT.replace(
+        b"close | float | Y | close",
+        b"""close | float | Y | close
+
+**\xe5\xb8\x82\xe5\x9c\xba\xe8\xaf\xb4\xe6\x98\x8e(market)**
+
+\xe5\xb8\x82\xe5\x9c\xba\xe4\xbb\xa3\xe7\xa0\x81 | \xe8\xaf\xb4\xe6\x98\x8e
+-- | --
+SSE | \xe4\xb8\x8a\xe4\xba\xa4\xe6\x89\x80\xe6\x8c\x87\xe6\x95\xb0
+SZSE | \xe6\xb7\xb1\xe4\xba\xa4\xe6\x89\x80\xe6\x8c\x87\xe6\x95\xb0
+
+```
+ignored | table
+-- | --
+NOPE | skip
+```
+""",
+    )
+    contract = parse_document(_capability(), document)
+    assert contract.note_tables == (
+        {
+            "heading": "市场说明(market)",
+            "headers": ["市场代码", "说明"],
+            "rows": [
+                {"市场代码": "SSE", "说明": "上交所指数"},
+                {"市场代码": "SZSE", "说明": "深交所指数"},
+            ],
+        },
+    )
 
 
 def test_parse_document_rejects_missing_output_table() -> None:
@@ -122,6 +155,73 @@ def test_snapshot_uses_only_in_scope_and_is_deterministic(
     assert [item["api_name"] for item in payload["contracts"]] == ["daily"]
 
 
+def test_snapshot_only_refreshes_selected_api_into_existing_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = tmp_path / "catalog.yaml"
+    output = tmp_path / "contracts.yaml"
+    catalog.write_text(
+        yaml.safe_dump(
+            {
+                "catalog_id": "catalog.v1",
+                "provenance": {"pinned_commit": "abc123"},
+                "capabilities": [
+                    {**_capability(), "scope_state": "in_scope"},
+                    {
+                        **_capability(),
+                        "api_name": "index_basic",
+                        "doc_url": "https://tushare.pro/wctapi/documents/94.md",
+                        "scope_state": "in_scope",
+                    },
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "tools.snapshot_tushare_contracts.fetch_document",
+        lambda *_args, **_kwargs: DOCUMENT,
+    )
+    snapshot_contracts(
+        catalog,
+        output,
+        cache_dir=None,
+        timeout_seconds=1,
+        max_attempts=1,
+        workers=1,
+    )
+    refreshed = DOCUMENT.replace(
+        b"close | float | Y | close",
+        b"close | float | Y | close\n\n**market**\n\ncode | name\n-- | --\nSSE | shanghai\n",
+    )
+    monkeypatch.setattr(
+        "tools.snapshot_tushare_contracts.fetch_document",
+        lambda *_args, **_kwargs: refreshed,
+    )
+    snapshot_contracts(
+        catalog,
+        output,
+        cache_dir=None,
+        timeout_seconds=1,
+        max_attempts=1,
+        workers=1,
+        only_api_names=frozenset({"index_basic"}),
+    )
+    payload = yaml.safe_load(output.read_text(encoding="utf-8"))
+    by_api = {item["api_name"]: item for item in payload["contracts"]}
+    assert set(by_api) == {"daily", "index_basic"}
+    assert "note_tables" not in by_api["daily"]
+    assert by_api["index_basic"]["note_tables"] == [
+        {
+            "heading": "market",
+            "headers": ["code", "name"],
+            "rows": [{"code": "SSE", "name": "shanghai"}],
+        }
+    ]
+
+
 def test_checked_in_contracts_expose_honest_probe_readiness() -> None:
     root = Path(__file__).resolve().parents[1]
     payload = yaml.safe_load(
@@ -143,3 +243,20 @@ def test_checked_in_contracts_expose_honest_probe_readiness() -> None:
     assert sum(not names for names in required_names.values()) == 144
     assert sum(bool(names) for names in required_names.values()) == 46
     assert required_names["news"] == ("start_date", "end_date", "src")
+    index_basic = next(
+        contract for contract in contracts if contract["api_name"] == "index_basic"
+    )
+    assert index_basic["doc_url"] == "https://tushare.pro/wctapi/documents/94.md"
+    assert (
+        index_basic["doc_sha256"]
+        == "d61a1551efc5d119b5588c9cc875eb6318b4c7c2a295851deffa1c81f19773e1"
+    )
+    assert [row["市场代码"] for row in index_basic["note_tables"][0]["rows"]] == [
+        "MSCI",
+        "CSI",
+        "SSE",
+        "SZSE",
+        "CICC",
+        "SW",
+        "OTH",
+    ]

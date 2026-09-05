@@ -2,7 +2,7 @@ version: 1
 policy_id: tushare-cadence-policy.v1
 provider: tushare
 source_snapshot_id: tushare-official-document-contracts.v1
-source_snapshot_canonical_sha256: 6de2a7b8dfb1d75e5f15375773c9863f14fdba23f6dbfa56b8b597b1a5b5d22f
+source_snapshot_canonical_sha256: fa71e01258d58b1dec1899ecde1ccd2de4ded7dda79ac8b5218c14f0678a1839
 entries:
 - api_name: adj_factor
   # trade_date snapshot published with the daily bar after close.  The
@@ -468,7 +468,7 @@ entries:
 - api_name: index_basic
   cadence_class: on_demand
   freshness_sla_seconds: 86400
-  source_document_sha256: 5dbbbda563f880297ff67d55b5c82a867ee4f253c2044e1ad56887627e66e6c8
+  source_document_sha256: d61a1551efc5d119b5588c9cc875eb6318b4c7c2a295851deffa1c81f19773e1
   reason_code: no_document_frequency_evidence
 - api_name: index_classify
   cadence_class: weekly

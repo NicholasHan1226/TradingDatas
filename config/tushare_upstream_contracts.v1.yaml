@@ -19989,7 +19989,7 @@ contracts:
   provider: tushare
   api_name: index_basic
   source_document_url: https://tushare.pro/wctapi/documents/94.md
-  source_document_sha256: 5dbbbda563f880297ff67d55b5c82a867ee4f253c2044e1ad56887627e66e6c8
+  source_document_sha256: d61a1551efc5d119b5588c9cc875eb6318b4c7c2a295851deffa1c81f19773e1
   schema_version: 1.0.0
   input_fields:
   - name: ts_code
@@ -20130,9 +20130,16 @@ contracts:
   required_scope: market_data
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
-  request_template: {}
+  request_template:
+    market: SSE
   request_variants:
-  - {}
+  - market: MSCI
+  - market: CSI
+  - market: SSE
+  - market: SZSE
+  - market: CICC
+  - market: SW
+  - market: OTH
   fanout:
     strategy: none
   pagination:
@@ -26120,9 +26127,15 @@ contracts:
   quota_class: beta_standard
   request_shape: snapshot_or_date_range
   request_template:
+    exchange: SSE
     trade_date: ${window.trade_date}
   request_variants:
-  - {}
+  - exchange: SSE
+  - exchange: SZSE
+  - exchange: CFFEX
+  - exchange: DCE
+  - exchange: SHFE
+  - exchange: CZCE
   fanout:
     strategy: none
   pagination:

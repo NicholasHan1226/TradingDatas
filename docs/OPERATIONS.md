@@ -404,9 +404,13 @@ empty 仍是 empty，不是 success；历史 trusted-empty 分区保持 empty。
 news.flash、rt_etf_min*）保持暂停。`bse_mapping` 只把空 snapshot 写成可探测请求
 （官方 `o_code`/`n_code` 均为 N，不得猜代码）；`index_weekly` 改为已注册
 `index_basic.ts_code` fanout，仍保留 observed-limit ingest block。`bc_otcqt`
-没有已注册债券主数据 seed，`index_basic` 的 market 表不在冻结文档快照中，
+没有已注册债券主数据 seed，`index_basic` 的官方 `市场说明(market)` 表已进入冻结文档快照
+（MSCI/CSI/SSE/SZSE/CICC/SW/OTH，默认 SSE），请求按官方 market
+variants 收窄，仍因 observed 6000 行完整性未决保持阻断。
 `ths_index` 的 `exchange=A` 不是文档默认值，`stock_company` 官方 requiredness
-未知，`hm_list` 与 `opt_daily` 15000 行超预算继续保持阻断。这不是 activation。
+未知，`hm_list` 与 `opt_daily` 继续保持阻断：`opt_daily` 已按官方
+`exchange`（SSE/SZSE/CFFEX/DCE/SHFE/CZCE）收窄，trade_date-only 仍观测
+15000 行超过 10000 硬预算，分所行数未观测。这不是 activation。
 
 ## 国际新闻原始发布时间与精度
 
