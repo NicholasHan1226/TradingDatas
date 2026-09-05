@@ -176,13 +176,13 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
 
     for api in (
         "cb_price_chg",
-        "pledge_detail",
-        "stk_nineturn",
         "opt_basic",
         "opt_daily",
     ):
         binding = bindings[api]["provider_bindings"][0]
         assert binding["activation_state"] == "paused"
+    assert bindings["pledge_detail"]["provider_bindings"][0]["activation_state"] == "active"
+    assert bindings["stk_nineturn"]["provider_bindings"][0]["activation_state"] == "paused"
     assert bindings["forecast"]["provider_bindings"][0]["activation_state"] == "active"
     binding = bindings["cb_price_chg"]["provider_bindings"][0]
     assert binding["probe_state"] == "blocked"
@@ -212,8 +212,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 135
-    assert len(bindings) - active_count == 55
+    assert active_count == 136
+    assert len(bindings) - active_count == 54
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:

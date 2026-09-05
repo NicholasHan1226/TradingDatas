@@ -298,10 +298,13 @@ entries:
   source_document_sha256: 9f0674906f6e042b1de527d5a087285c59c8046b4508cb2e09cfa592311b21d4
   reason_code: doc_explicit_event
 - api_name: fina_mainbz
-  cadence_class: on_demand
+  # QuickSync exposes no ann_date.  Run-clock start/end + type=P + batch 10
+  # is the #349 seed/window miss.  Empty ≠ success.  Same ts_code-only
+  # entity_fanout as pledge_stat / forecast; event lets the timer plan it.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: c71ef9b216b9f4431f7c643511729839e536ac7528a83e998d3bca2a37aa6bc9
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: forecast
   # Regular forecast is official single-stock history (forecast_vip is the
   # all-names date/period API and is not this transport).  GZ ac458530
@@ -667,10 +670,14 @@ entries:
   source_document_sha256: 9f0782cb8963ddcf414305056b094f2a52ff29bd35be44677941aaad0109508e
   reason_code: ambiguous_insufficient_document_frequency
 - api_name: pledge_detail
-  cadence_class: on_demand
+  # Official doc has no frequency.  ann_date snapshot uses the same event
+  # window as disclosure_date / share_float / stk_holdernumber so a 16:30
+  # postclose sweep cannot trusted-empty the announcement day.
+  # Empty ≠ success.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 5c87560857e3fa3af7c4a6395cbad9fc79d26571c2503bb6f67f49c057a1e15a
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: pledge_stat
   # 2026-08-29 #350: grouped with the report family (never-scheduled
   # on_demand).  Windowless single-code history fanout; event still
@@ -973,10 +980,14 @@ entries:
   source_document_sha256: 9b1e34bda0fdfaeb68e1874792c6dc4ef45c71881b17b17a910ee2721850cea1
   reason_code: no_document_frequency_evidence
 - api_name: top10_cb_holders
-  cadence_class: on_demand
+  # Already entitled/active but on_demand never schedules, so catalog stays
+  # unobserved.  Event + existing cb_basic ts_code fanout lets the timer
+  # plan a bounded batch.  Empty ≠ success.  top10_floatholders stays
+  # on_demand.
+  cadence_class: event
   freshness_sla_seconds: 86400
   source_document_sha256: 18853f1802b15afe66d60cda35237420f1e3ca66bba3d2ced56e1f1b28426281
-  reason_code: no_document_frequency_evidence
+  reason_code: doc_explicit_event
 - api_name: top10_floatholders
   cadence_class: on_demand
   freshness_sla_seconds: 86400

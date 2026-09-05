@@ -4301,7 +4301,6 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.opt_basic",
         "cn.dataset.opt_daily",
         "cn.dataset.opt_mins",
-        "cn.dataset.pledge_detail",
         "cn.dataset.rt_etf_k",
         "cn.dataset.rt_etf_min",
         "cn.dataset.rt_etf_min_daily",
@@ -4334,6 +4333,11 @@ _CASHFLOW_EXPRESS_DATASET_IDS = (
 )
 _FORECAST_DATASET_ID = "cn.dataset.forecast"
 _FINA_AUDIT_DATASET_ID = "cn.dataset.fina_audit"
+_NEXT_WAVE_20260905_DATASET_IDS = (
+    "cn.dataset.fina_mainbz",
+    "cn.dataset.pledge_detail",
+    "cn.dataset.top10_cb_holders",
+)
 _MARGIN_DATASET_IDS = (
     "cn.dataset.margin",
     "cn.dataset.margin_detail",
@@ -4595,6 +4599,54 @@ def test_forecast_is_active_and_plans_undated_ts_code_fanout(
     assert skipped.get(_FORECAST_DATASET_ID) != "paused"
     assert skipped.get("cn.news.flash") == "paused"
     assert skipped.get("cn.dataset.fund_daily") == "paused"
+
+
+def test_next_wave_20260905_is_active_and_plans_bounded_event_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _active_registry()
+    paused = {
+        dataset.dataset_id
+        for dataset in registry.datasets
+        if dataset.provider_bindings[0].activation_state == "paused"
+    }
+    assert paused == _PAUSED_DATASET_IDS
+    for dataset_id in _NEXT_WAVE_20260905_DATASET_IDS:
+        assert dataset_id not in paused
+        dataset = registry.resolve(dataset_id)
+        binding = dataset.provider_bindings[0]
+        assert dataset.cadence_class == "event"
+        assert binding.activation_state == "active"
+        assert binding.entitlement_state == "active"
+        assert binding.probe_state == "executable"
+        assert binding.ingest_contract_state == "ready"
+
+    db_path = tmp_path / "facts.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 9, 4): True})
+        conn.commit()
+
+    automatic = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=datetime(2026, 9, 5, 10, 40, tzinfo=ZoneInfo("Asia/Shanghai")),
+        execute=False,
+        cadence_class="event",
+    )
+    planned = {
+        plan.dataset_id: dict(plan.request_window)
+        for plan in automatic.plans
+        if plan.dataset_id in _NEXT_WAVE_20260905_DATASET_IDS
+    }
+    assert planned["cn.dataset.fina_mainbz"] == {}
+    assert planned["cn.dataset.top10_cb_holders"] == {}
+    assert planned["cn.dataset.pledge_detail"] == {"ann_date": "20260905"}
+    assert len(planned) == 3
+    skipped = {item.dataset_id: item.state for item in automatic.skipped}
+    assert skipped.get("cn.dataset.stk_nineturn") == "paused"
 
 
 def test_fina_audit_is_active_and_plans_undated_ts_code_fanout(

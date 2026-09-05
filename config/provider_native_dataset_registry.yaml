@@ -11669,7 +11669,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -11702,10 +11702,7 @@ datasets:
       declared_source_type: str
       required: false
     request_shape: entity_fanout
-    request_template:
-      end_date: ${window.end_date}
-      start_date: ${window.start_date}
-      type: P
+    request_template: {}
     request_variants:
     - {}
     fanout:
@@ -11713,19 +11710,13 @@ datasets:
       parameter: ts_code
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
-      batch_size: 10
+      batch_size: 1
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
-    request_window_policy:
-      required_keys:
-      - start_date
-      - end_date
-      formats:
-        end_date: yyyymmdd
-        start_date: yyyymmdd
-      range_start_key: start_date
-      range_end_key: end_date
-      max_span_days: 1
+    request_window_policy: null
     response_completeness: null
     requested_fields: []
     max_batch_bytes: 67108864
@@ -24655,7 +24646,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -24664,7 +24655,7 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_pledge_detail
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
     ingest_contract_state: ready
@@ -35118,7 +35109,7 @@ datasets:
   entity_type: provider_row
   data_classification: objective_factual
   schema_version: 1.0.0
-  cadence_class: on_demand
+  cadence_class: event
   timezone: Asia/Shanghai
   freshness_sla_seconds: 86400
   provider_bindings:
@@ -35157,6 +35148,9 @@ datasets:
       source_dataset_id: cn.dataset.cb_basic
       source_field: ts_code
       batch_size: 1
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy: null
