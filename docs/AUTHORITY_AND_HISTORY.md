@@ -57,7 +57,7 @@ observed
 stable
 ```
 
-这些层级描述证据与稳定性，不是接入、供数、正常发布或预算内采集的统一开关；消费者 readback 只决定消费者自身的稳定声明。详见 [接入、供数与质量的边界](OPERATIONS.md#接入供数与质量的边界)。provider 权限、请求预算、我们自己的 receipt 完整性（empty ≠ success，不得伪造非空）和资源安全仍是硬边界。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，不是晋级未完成，也不阻塞下一可接接口。单个 dataset 失败只降级该 dataset。
+这些层级描述证据与稳定性，不是接入、供数、正常发布或预算内采集的统一开关；消费者 readback 只决定消费者自身的稳定声明。详见 [接入、供数与质量的边界](OPERATIONS.md#接入供数与质量的边界)。provider 权限、请求预算、我们自己的 receipt 完整性（empty ≠ success，不得伪造非空）和资源安全仍是硬边界。Vendor/input quality is immutable external：合同正确时的 empty / `provider_error` 是外部 blocker，不是接入工程未完成；稳定性标签仍按真实证据保留，也不阻塞下一可接接口。单个 dataset 失败只降级该 dataset。
 
 ## GitHub Actions
 

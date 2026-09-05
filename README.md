@@ -42,7 +42,7 @@ TradingDatas 不做预测、策略、候选、资金、持仓、风控、订单�
 | `observed` | 一次有界的真实 receipt 与固定 `catalog/query` 回读 | 如实标注的只读供数与预算内采集；对外权限另行核对 | 连续健康、历史 PIT、稳定性承诺 |
 | `stable` | 跨适用 cadence 连续成功及本平台认证 API 回读 | 对该数据集的连续稳定能力声明 | 消费者自动合格、超出证据的 SLA 或完整性保证 |
 
-缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制连续稳定声明，不阻断正常发布、按合同对外供数或预算内采集。degraded 数据按既有查询合同和真实质量标识提供，TD 供数不等待 TA/Copilot 消费验收；权限、完整性与资源约束各自保留。见 [接入、供数与质量的边界](docs/OPERATIONS.md#接入供数与质量的边界)。合同正确时的 empty / `provider_error` 是外部 blocker，不是 `observed`/`stable` 工程未完成，也不得冻结下一可接接口。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。empty ≠ success，不得伪造非空。
+缺少高一层证据不会阻断普通接口的批量合同/config、测试、候选发布或 TA 受控消费开发；`stable` 缺失只限制连续稳定声明，不阻断正常发布、按合同对外供数或预算内采集。degraded 数据按既有查询合同和真实质量标识提供，TD 供数不等待 TA/Copilot 消费验收；权限、完整性与资源约束各自保留。见 [接入、供数与质量的边界](docs/OPERATIONS.md#接入供数与质量的边界)。合同正确时的 empty / `provider_error` 是外部 blocker，不是接入工程未完成；`observed`/`stable` 标签仍由实际证据决定，也不得冻结下一可接接口。所有状态仍只通过通用 registry -> collector -> SQLite receipt -> `catalog/query` 链路验证，不为单个 dataset 新增 collector、route、service、timer、表或发布流程。empty ≠ success，不得伪造非空。
 
 ## 普通数据集零代码接入
 
