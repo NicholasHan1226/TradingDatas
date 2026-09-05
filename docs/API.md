@@ -762,4 +762,4 @@ Gateway transport has a 30-second deadline, independent of the existing catalog
 15-second performance target. No cache, data transformation or permission grant
 is introduced. This transport does not prove source completeness or stability.
 
-账户目录桥接 `/api/account/catalog` 的单次上游等待上限为 20 秒，浏览器总等待为 30 秒；其它账户读取沿用原有上限。此限制用于容纳已观测约 11 秒的目录读取，不修改数据面发布的 15 秒性能目标，不增加采集预算。响应最大 2 MiB；超时/超量显示不可用并允许重试，不返回过期快照。
+账户目录桥接 `/api/account/catalog` 的单次上游等待上限为 30 秒，浏览器总等待为 45 秒；其它账户读取沿用原有上限。此限制与现有公共数据网关对齐，覆盖目录计算与公网转发耗时；不把等待上限等同于响应性能保证，不修改数据面发布的 15 秒性能目标，不增加采集预算。响应最大 2 MiB；超时/超量显示不可用并允许重试，不返回过期快照。
