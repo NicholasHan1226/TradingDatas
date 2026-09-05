@@ -30,3 +30,14 @@
 [API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md) 保存长期合同；历史报告见 [reports](docs/reports/README.md)。纯文档快路径保留 required checks，不替代代码测试或生产证据。
 
 下一步是完成规范域名与正式消费者外部读回，并在日常负载中继续观察目录耗时；不因此停止其它接口接入与开发。
+
+## Account integration — 2026-09-05 implementation
+
+Existing-key connection is being enabled in the public Account, with distinct
+invalid/unavailable access states and safe key-management error messages.
+The existing account-only schema was applied to identity D1 on September 5: two
+tables/two triggers verified, foreign-key check clean, zero users/sessions before
+and after. Connection activation awaits the exact candidate release. Library and
+Admin stay disabled; payment remains paused. Real email/consumer connection has
+not been verified in this round. This account release does not change the A股 or
+Crypto immutable runtime described above.

@@ -200,3 +200,36 @@ test("logout clears the scoped cookie; cookie removal is not server-side revocat
   // The documented stateless bridge cannot revoke a copied cookie individually.
   assert.equal((await worker.fetch(request("me", { headers: { cookie } }), env)).status, 200);
 });
+
+test("access-key bridge maps only known key business errors without leaking backend details", async (t) => {
+  let reply=()=>Response.json(projection);
+  t.mock.method(globalThis,"fetch",async()=>reply());
+  const cookie=await login();
+  for(const [message,code] of [
+    ['key label must be a string','invalid_key_label'],
+    ['key label must contain 1 to 64 characters','invalid_key_label'],
+    ['customer API key limit reached','key_limit_reached'],
+    ['current credential cannot be disabled','current_key_protected'],
+    ['API key not found','key_not_found'],
+    ['invalid key id','invalid_key_id'],
+    ['API key management requires a token-hash credential','key_management_unavailable'],
+    ['current credential has no delegable data scope','key_scope_required'],
+  ]) {
+    reply=()=>Response.json({error:message,secret:'never expose'},{status:400});
+    const result=await worker.fetch(request('keys',{method:'POST',headers:{cookie,origin},body:JSON.stringify({label:'x'})}),env);
+    assert.equal(result.status,400); assert.deepEqual(await result.json(),{error:code});
+    assert.equal(result.headers.get('set-cookie'),null);
+    assert.equal(result.headers.get('cache-control'),'no-store');
+  }
+  for(const candidate of [
+    ()=>Response.json({error:'private database path or credential'},{status:400}),
+    ()=>Response.json({error:['API key not found']},{status:400}),
+    ()=>new Response('API key not found',{status:400}),
+    ()=>new Response('{',{status:400,headers:{'content-type':'application/json'}}),
+    ()=>Response.json({error:'API key not found',secret:'x'.repeat(5000)},{status:400}),
+  ]) {
+    reply=candidate;
+    const result=await worker.fetch(request('keys/key_0123456789abcdef',{method:'PATCH',headers:{cookie,origin},body:'{"enabled":false}'}),env);
+    assert.equal(result.status,503); assert.deepEqual(await result.json(),{error:'connection_unavailable'});
+  }
+});

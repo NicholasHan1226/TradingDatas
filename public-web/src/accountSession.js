@@ -22,9 +22,9 @@ export async function accountJson(endpoint, init = {}, fetchImpl = fetch, timeou
       ...requestInit, headers, credentials: "same-origin", signal: controller.signal,
     });
     if (!response.ok) {
-      if ([403, 409].includes(response.status)) {
+      if ([400, 403, 409].includes(response.status)) {
         const failure = await response.json().catch(() => null);
-        if (["recent_sign_in_required", "identity_changed", "library_full", "connection_exists", "invalid_access_key"].includes(failure?.error)) throw new Error(failure.error);
+        if (["recent_sign_in_required", "identity_changed", "library_full", "connection_exists", "invalid_access_key", "invalid_key_label", "key_limit_reached", "current_key_protected", "key_not_found", "invalid_key_id", "key_management_unavailable", "key_scope_required"].includes(failure?.error)) throw new Error(failure.error);
       }
       throw new Error(endpoint === "email/verify" && response.status === 400 ? "invalid_code" : response.status === 401 ? "signed_out" : response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "account_unavailable");
     }
@@ -34,7 +34,7 @@ export async function accountJson(endpoint, init = {}, fetchImpl = fetch, timeou
     return payload;
   } catch (error) {
     if (controller.signal.aborted) throw controller.signal.reason;
-    if (["signed_out", "access_denied", "rate_limited", "account_unavailable", "invalid_code", "recent_sign_in_required", "identity_changed", "library_full", "connection_exists", "invalid_access_key"].includes(error.message)) throw error;
+    if (["signed_out", "access_denied", "rate_limited", "account_unavailable", "invalid_code", "recent_sign_in_required", "identity_changed", "library_full", "connection_exists", "invalid_access_key", "invalid_key_label", "key_limit_reached", "current_key_protected", "key_not_found", "invalid_key_id", "key_management_unavailable", "key_scope_required"].includes(error.message)) throw error;
     throw new Error("account_unavailable");
   } finally {
     clearTimeout(timeout);

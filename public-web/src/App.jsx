@@ -1,3 +1,4 @@
+import { keyManagementMessage } from "./accountAccess.js";
 import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
@@ -1225,7 +1226,7 @@ export function App() {
     { label: "你的资料库", items: [{ key: "bookmarks", label: "已收藏", description: "集中查看保存的数据产品、研究内容、方法和文档。" }] },
     { label: "账户", items: [{ key: "overview", label: "账户概览", description: "查看订阅、用量、密钥和另类数据状态的统一摘要。" }] },
     { label: "数据访问", items: [
-      { key: "subscription", label: "订阅与加购", description: "管理基础套餐、另类数据试用、有效期和续费选择。" },
+      { key: "subscription", label: "订阅与数据访问", description: "查看当前套餐、有效期与数据范围，连接已有数据账户。" },
       { key: "usage", label: "用量与限制", description: "查看每分钟请求上限、请求历史和分类授权。" },
       { key: "keys", label: "API 密钥", description: "创建、停用和轮换用于 catalog/query 的访问密钥。" },
     ] },
@@ -1242,7 +1243,7 @@ export function App() {
     { label: "Your library", items: [{ key: "bookmarks", label: "Bookmarks", description: "Review saved datasets, research, methods, and documentation in one place." }] },
     { label: "Account", items: [{ key: "overview", label: "Overview", description: "A single summary of subscription, usage, keys, and alternative-data access." }] },
     { label: "Data access", items: [
-      { key: "subscription", label: "Subscription & add-ons", description: "Manage base packages, alternative-data trials, expiry, and renewal choices." },
+      { key: "subscription", label: "Subscription & data access", description: "View your plan, expiry and data scope, and connect an existing data account." },
       { key: "usage", label: "Usage & limits", description: "Review per-minute request limits, request history, and category access." },
       { key: "keys", label: "API keys", description: "Create, disable, and rotate credentials for catalog and query." },
     ] },
@@ -1688,11 +1689,11 @@ export function App() {
                 </div>}
                 {accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
                 {accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
-                {isEmailAccount && !accountChecking && ["overview","security"].includes(accountSection) && <AccountConnection key={accountData.user_id} account={accountData} locale={locale} onChange={changeDataConnection} disabled={accountSignOutPending} />}
+                {isEmailAccount && !accountChecking && ["overview","subscription","security"].includes(accountSection) && <AccountConnection key={accountData.user_id} account={accountData} locale={locale} onChange={changeDataConnection} disabled={accountSignOutPending} />}
                 {accountPrivateSection && accountChecking ? (
                   <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
                 ) : accountPrivateSection && accountViewState === "unavailable" ? null : accountPrivateSection && isEmailAccount && (accountData.data_access_state !== "connected" || ["security","billing"].includes(accountSection)) ? (
-                  <EmailAccountPanel key={`${accountData.user_id}:${accountSection}`} account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} onDelete={deleteEmailProfile} />
+                  <EmailAccountPanel key={`${accountData.user_id}:${accountSection}`} account={accountData} section={accountSection} locale={locale} onSignOut={disconnectAccount} signingOut={accountSignOutPending} navigate={navigate} onDelete={deleteEmailProfile} onRetry={() => setAccountConnectionRevision((value) => value + 1)} />
                 ) : accountSection === "overview" ? (
                   accountData ? (
                     <div className="account-live-overview">
@@ -1712,7 +1713,7 @@ export function App() {
                   accountData ? (
                     <div className="account-plan-panel">
                       <section className="account-plan-hero">
-                        <div><span className="mono-kicker">CURRENT BASE-DATA PLAN</span><h3>{accountPlanLabel}</h3><p>{locale === "zh" ? "当前账户的实际套餐与数据授权由认证后的 Portal API 返回。" : "The authenticated Portal API supplies this account's effective plan and data grants."}</p></div>
+                        <div><span className="mono-kicker">CURRENT BASE-DATA PLAN</span><h3>{accountPlanLabel}</h3><p>{locale === "zh" ? "当前数据账户的有效权限。套餐名称不代表付款记录。" : "Effective access for this data account. A plan label is not a payment record."}</p></div>
                         <div><span>{accountData.enabled ? (locale === "zh" ? "账户可用" : "ACTIVE") : (locale === "zh" ? "账户暂停" : "PAUSED")}</span><strong>{accountData.minute_request_limit ? `${accountData.minute_request_limit.toLocaleString()} / ${locale === "zh" ? "分钟" : "minute"}` : accountData.hourly_request_limit ? `${accountData.hourly_request_limit.toLocaleString()} / ${locale === "zh" ? "小时" : "hour"}` : (locale === "zh" ? "不限频率" : "Unlimited")}</strong><small>{locale === "zh" ? "每日请求总量" : "Daily request volume"} · {accountData.daily_limit == null ? (locale === "zh" ? "不限" : "Unlimited") : accountData.daily_limit.toLocaleString()}</small></div>
                       </section>
                       <section className="account-access-list">
@@ -1751,7 +1752,7 @@ export function App() {
                         <div className="account-key-create-controls"><label htmlFor="account-key-label">{locale === "zh" ? "密钥名称" : "Key name"}</label><div><input id="account-key-label" value={accountKeyLabel} maxLength={64} onChange={(event) => { setAccountKeyLabel(event.target.value); setAccountKeyError(""); }} placeholder={locale === "zh" ? "例如：MacBook 上的 Codex" : "e.g. Codex on MacBook"} /><button className="primary-button" type="submit" disabled={!accountKeyLabel.trim() || accountKeyLoading}>{locale === "zh" ? "创建密钥" : "Create key"}</button></div></div>
                       </form>
                       {accountNewKey && <div className="account-new-key" role="status"><div><span>{locale === "zh" ? "只显示一次" : "SHOWN ONCE"}</span><strong>{accountNewKey}</strong><small>{locale === "zh" ? "现在复制并保存在密码管理器中，离开此页面后无法再次查看。" : "Copy it now and store it in a password manager. It cannot be shown again."}</small></div><button type="button" onClick={() => navigator.clipboard.writeText(accountNewKey)}><Copy />{locale === "zh" ? "复制" : "Copy"}</button></div>}
-                      {accountKeyError && <div className="account-key-error" role="alert">{locale === "zh" ? "密钥操作暂时无法完成，请稍后重试。" : "The key action could not be completed. Try again later."}</div>}
+                      {accountKeyError && <div className="account-key-error" role="alert">{keyManagementMessage(accountKeyError, locale)}</div>}
                       <div className="account-key-list">
                         {accountKeys.map((key) => <article key={key.key_id} className={!key.enabled ? "is-disabled" : ""}><div><span>{key.is_current ? (locale === "zh" ? "当前连接" : "CURRENT CONNECTION") : key.enabled ? (locale === "zh" ? "可用" : "ACTIVE") : (locale === "zh" ? "已停用" : "DISABLED")}</span><strong>{key.label}</strong><small>{key.fingerprint}{key.created_at ? ` · ${key.created_at.slice(0, 10)}` : ""}</small></div>{key.is_current ? <em>{locale === "zh" ? "不可在当前会话停用" : "Protected in this session"}</em> : key.enabled ? <button type="button" disabled={accountKeyLoading} onClick={() => disableAccountKey(key)}>{locale === "zh" ? "停用" : "Disable"}</button> : <em>{locale === "zh" ? "已停用" : "Disabled"}</em>}</article>)}
                         {!accountKeys.length && !accountKeyError && <div className="account-empty-state"><ShieldCheck size={28} /><strong>{accountKeysLoading ? (locale === "zh" ? "正在读取密钥" : "Loading keys") : (locale === "zh" ? "暂无 API 密钥" : "No API keys yet")}</strong></div>}

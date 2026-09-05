@@ -1,3 +1,4 @@
+import { portalKeyError, isPortalKeyPath } from './portal-errors.js';
 // Account control plane only. All authority is re-read from the existing backend.
 const enc = new TextEncoder();
 const resourceKey = /^(dataset|research|method|doc):[a-z0-9][a-z0-9-]{0,159}$/;
@@ -104,7 +105,14 @@ async function upstream(ctx,path,key,init={}) {
   if(init.body!==undefined) headers.set('content-type','application/json');
   const response=await ctx.fetchImpl(new URL(path,base).toString(),{...init,headers,redirect:'manual',signal:AbortSignal.timeout(8000)});
   if(response.status>=300 && response.status<400) {await response.body?.cancel(); throw new Error('redirect_rejected');}
-  if(!response.ok) {await response.body?.cancel(); return {status:response.status};}
+  if(!response.ok) {
+    if(response.status===400 && isPortalKeyPath(path)) {
+      let error=null;
+      try {error=portalKeyError(await readJson(response,4096));} catch {await response.body?.cancel().catch(()=>{});}
+      return {status:400,error};
+    }
+    await response.body?.cancel(); return {status:response.status};
+  }
   return {status:response.status,payload:await readJson(response,512*1024)};
 }
 function validPortal(portal) {
@@ -191,6 +199,7 @@ async function handleDataAccess(ctx,path) {
   // A revoked data credential is not an invalid email session.
   if([401,403].includes(result.status)) return json({error:'subscription_required'},403);
   if(result.status===429) return json({error:'rate_limited'},429);
+  if(result.status===400 && result.error) return json({error:result.error},400);
   if(!result.payload) return json({error:'connection_unavailable'},503);
   return json(result.payload,result.status);
 }

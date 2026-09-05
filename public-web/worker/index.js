@@ -1,3 +1,4 @@
+import { portalKeyError, isPortalKeyPath } from './portal-errors.js';
 import { handleEmailIdentity } from "./email-identity.js";
 import { runIdentityMaintenance } from "./identity-retention.js";
 
@@ -191,6 +192,15 @@ async function handleAccountApi(request, env) {
     catch { return jsonResponse({ error: "invalid_request" }, 400); }
   }
   const response = await upstreamRequest(env, upstreamPath, session.token, { method: request.method, headers, body });
+  if (response.status === 400 && isPortalKeyPath(upstreamPath)) {
+    let error = null;
+    try {
+      if (response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+        error = portalKeyError(JSON.parse(await boundedText(response, 4096)));
+      } else await response.body?.cancel();
+    } catch { await response.body?.cancel().catch(() => {}); }
+    return jsonResponse({ error: error || "connection_unavailable" }, error ? 400 : 503);
+  }
   if (response.status === 401) response.headers.set("set-cookie", sessionCookie("", 0));
   return response;
 }

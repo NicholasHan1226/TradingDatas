@@ -1,8 +1,9 @@
+import { dataAccessMessage } from "./accountAccess.js";
 import { ShieldCheck, ArrowRight } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 
 // A panel inside the existing Account shell, not another customer dashboard.
-export function EmailAccountPanel({ account, section, locale, onSignOut, signingOut, navigate, onDelete }) {
+export function EmailAccountPanel({ account, section, locale, onSignOut, signingOut, navigate, onDelete, onRetry }) {
   const zh = locale === "zh";
   const [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -23,6 +24,7 @@ export function EmailAccountPanel({ account, section, locale, onSignOut, signing
     catch (error) { setDeleteError(error.message === "recent_sign_in_required" ? "reauth" : "unconfirmed"); }
     finally { deletionInFlight.current = false; setDeleting(false); }
   }
+  const accessMessage = ["overview", "subscription", "usage", "keys"].includes(section) ? dataAccessMessage(account, locale) : null;
   const copy = {
     overview: [zh ? "邮箱已验证" : "Email verified", zh ? "账户已建立。数据权限需要另行连接或开通，以服务端确认为准。" : "Your account is ready. Data access requires a separate connection or grant, confirmed by the service."],
     subscription: [zh ? "尚无已确认的数据连接" : "No verified data connection", zh ? "可先了解三档基础数据套餐，或在概览连接已有密钥。支付仍未开放，浏览预览不会下单或扣费。" : "Explore the three base-data plans, or connect an existing key in Overview. Payment is not open; previews create no orders or charges."],
@@ -33,10 +35,10 @@ export function EmailAccountPanel({ account, section, locale, onSignOut, signing
   }[section];
   return <div className="account-live-overview email-account-panel">
     <div className="account-live-status"><span className="is-active" /><strong>{zh ? "已登录 · 邮箱验证" : "Signed in · verified email"}</strong><button type="button" onClick={onSignOut} disabled={signingOut || deleting}>{signingOut ? (zh ? "正在退出…" : "Signing out…") : (zh ? "退出登录" : "Sign out")}</button></div>
-    <div className="email-account-intro"><ShieldCheck size={28} /><h3>{copy[0]}</h3><p>{copy[1]}</p></div>
+    <div className="email-account-intro"><ShieldCheck size={28} /><h3>{accessMessage?.title || copy[0]}</h3><p>{accessMessage?.detail || copy[1]}</p>{accessMessage && <button type="button" className="account-inline-action" onClick={onRetry} disabled={signingOut}>{zh ? "重新加载数据访问" : "Retry data access"}</button>}</div>
     {["overview", "security"].includes(section) && <dl className="account-facts account-live-facts">
       <div><dt>{zh ? "已验证邮箱" : "Verified email"}</dt><dd>{account.email}</dd></div>
-      <div><dt>{zh ? "数据访问" : "Data access"}</dt><dd>{account.data_access_state==="connected"?(zh?"已连接 · 以数据服务授权为准":"Connected · backend-authorized"):(zh ? "未连接数据授权" : "No data access connected")}</dd></div>
+      <div><dt>{zh ? "数据访问" : "Data access"}</dt><dd>{account.data_access_state==="connected"?(zh?"已连接 · 以数据服务授权为准":"Connected · backend-authorized"):account.data_access_state === "invalid" ? (zh ? "原连接已失效" : "Connection no longer valid") : account.data_access_state === "unavailable" ? (zh ? "暂时无法确认" : "Temporarily unverified") : (zh ? "未连接数据授权" : "No data access connected")}</dd></div>
       <div><dt>{zh ? "网页会话到期" : "Web session expires"}</dt><dd>{new Date(account.session_expires_at).toLocaleString(zh ? "zh-CN" : "en-US")}</dd></div>
       <div><dt>{zh ? "短信登录" : "Phone sign-in"}</dt><dd>{zh ? "尚未开放" : "Not available yet"}</dd></div>
     </dl>}
