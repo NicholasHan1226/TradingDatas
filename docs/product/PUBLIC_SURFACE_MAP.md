@@ -1,14 +1,16 @@
 # TradingDatas public surface map
 
-Status: product contract v2, 2026-08-26, with 2026-09-01 login and non-paying
-preview routes. This document defines the public information architecture. It
+Status: product contract updated 2026-09-05 for public help/setup and private
+Account routing; non-paying preview routes remain available. This document defines the public information architecture. It
 does not claim that checkout, payment, or the public domain commerce plane are
 live.
 
 ## 1. Navigation logic
 
 The public website is a product library, not a collection of marketing pages.
-Every primary section represents a durable object:
+Top-level navigation is Data / Research / Pricing / Help & setup. Features and
+Recipes remain addressable content, not additional top-level items. The
+upper-right menu provides language/theme without login. Object map:
 
 | Section | Object | Question answered | Primary next action |
 | --- | --- | --- | --- |
@@ -20,7 +22,9 @@ Every primary section represents a durable object:
 | Docs | product or technical guide | How does the platform, data contract, API, account, or policy work? | open a guide |
 | Account | tenant-owned access state | What can I access and how do I connect it? | manage access or an integration |
 
-Agent/MCP is a delivery route under Account and Docs. It is not the primary
+Agent/MCP is a public delivery tutorial/template at `/connect`, linked from
+Help & setup and Docs. Reading or copying it needs no website session; data API
+requests still require the caller's Bearer credential. It is not the primary
 reason to buy the product. The first promise is trustworthy, point-in-time-aware,
 reproducible financial data.
 
@@ -199,30 +203,34 @@ canonical/PIT/feature endpoints must not be documented as live.
 
 ### Login `/login`
 
-Dedicated access-key entry to the existing Account workspace. Phone remains
-unavailable. Email is a separately gated identity candidate and must not be
-presented as live signup. `?next=` accepts only `/account` or a canonical
-`/pricing/preview?plan=&period=` selection; every other value falls back to
-`/account`. Successful sign-in does not create an order or change grants.
+Dedicated identity entry to the existing private Account workspace. Available
+methods come from the identity service; phone remains unavailable. `?next=`
+accepts `/account`, its known overview/subscription/usage/keys/billing/security
+sections, or a canonical `/pricing/preview?plan=&period=` selection. Reject
+external URLs, API routes, unknown sections, duplicate parameters and fragments;
+invalid returns fall back to `/account`. Login restores the requested section
+without creating an order or changing grants.
 
-### Account `/account`
+### Public setup and saved material
 
-Groups:
+`/docs` and `/docs/:slug` are public help; `/connect` presents Agent/MCP
+tutorials/templates without login. `/bookmarks` contains only browser-local
+saved references; opening it does not read a private account library.
 
-- Overview;
-- Data access: subscription/add-ons, usage/limits, API keys;
-- Integrations: Agent/MCP and other clients;
-- Billing: orders, payment records and invoices;
-- Settings: language/appearance, security and sessions.
+### Account `/account` and `/account/:section`
 
-Language and appearance controls stay here. All account facts must come from
-authenticated tenant-scoped APIs; prototype state is not entitlement evidence.
+Only overview, subscription, usage, keys, billing and security are private
+sections. Account may link out to public help without duplicating those pages.
+Unknown sessions show checking first. Confirmed guests redirect to login with
+their safe section preserved; unavailable identity shows retry, not a redirect.
+Account facts come from authenticated tenant-scoped APIs. Billing/payment remain
+unavailable while commerce is paused; website login never grants API access.
 
 ### Utilities
 
 `/status`, `/changelog`, `/corrections`, and license/support material belong in
-the footer and Docs utility navigation. They should not compete with the six
-primary product objects in the global header.
+the footer and Docs utility navigation. They should not compete with the four
+primary destinations in the global header.
 
 ## 4. Product-object relations
 

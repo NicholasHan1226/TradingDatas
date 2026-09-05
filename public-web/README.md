@@ -16,18 +16,22 @@ npm run dev
 ```
 
 The prototype includes the confirmed public-home visual direction and the compact
-`Data / Research / Pricing` floating navigation. Global search spans data,
+`Data / Research / Pricing / Help & setup` floating navigation. Global search spans data,
 external research, methods and documentation; compatibility routes for Features,
-Recipes and Docs remain directly addressable but are not equal-weight navigation.
+Recipes remain directly addressable. Help & setup exposes public `/docs`,
+`/docs/:slug` and `/connect` tutorials/templates; `/bookmarks` is the public
+browser-local library. Language/theme are available without login in the
+upper-right menu. Account is private, with overview/subscription/usage/keys/
+billing/security and shortcuts to public help.
 It includes a task-oriented Data catalog with a contract/config interface index,
 dated historical observations, a reviewed candidate-source landscape and phased
 integration roadmap, plus an alternative-data ordering proposal. Research is an
 external-paper/industry-research/case library with internal detail records;
 methods are progressively disclosed through Recipes. Pricing contains three
 base-data request-rate tiers with confirmed monthly/annual display (checkout is
-not available). Account is a grouped workspace
-containing `zh-CN`/`en` and system/light/dark settings, and a client-only Agent
-setup prompt flow. `src/productManifest.js` is explicitly a design contract;
+not available). Account is a private personal workspace; `zh-CN`/`en` and
+system/light/dark settings live in the upper-right menu, while the client-only
+Agent setup prompt flow is public at `/connect`. `src/productManifest.js` is explicitly a design contract;
 Feature/PIT/commerce states are not runtime claims. Unbound dataset pages show
 unverified evidence, not invented percentages, successful collection timestamps
 or historical coverage. Samples and the separate receipt illustration are
@@ -122,7 +126,8 @@ Do not “fix” a review finding by collapsing them.
 | `unavailable` | 403 / 429 / timeout / 5xx / malformed projection | the user signed out |
 | `authenticated` | valid `portal` or verified email identity | payment unlocked or grants changed |
 
-Login `?next=` accepts exactly one of `/account` or a canonical
+Login `?next=` accepts `/account`, its known private overview/subscription/usage/
+keys/billing/security sections, or a canonical
 `/pricing/preview` with only `plan` (`basic` / `standard` / `flagship`) and
 `period` (`monthly` / `annual`). Duplicate `next`, hashes, extra query keys
 (`paid`, `order_id`, `tenant`), `/api/*`, and absolute URLs all fall back to
@@ -241,7 +246,7 @@ editorial review is required; never auto-accept a fuzzy title or another author'
 same-title digest. It does not download or republish full papers.
 
 Language defaults to the primary system/browser language (`zh-*` -> Chinese,
-otherwise English). Account preferences offer System / 中文 / English; explicit
+otherwise English). The upper-right menu offers System / 中文 / English without login; explicit
 choices persist in this browser. System mode responds to `languagechange` and
 does not overwrite an explicit preference. Search indexes both editorial
 languages and original titles regardless of the selected display language.
@@ -394,7 +399,10 @@ Requests have timeouts; session changes invalidate late reads/key-write UI resul
 While identity is being checked, private Account panels show a neutral verification
 state instead of a sign-in prompt or cached credentials. Identity outages show a
 retry action, not a false signed-out conclusion; public bookmarks, docs and
-preferences remain accessible from the same workspace.
+preferences remain accessible at public routes or the upper-right menu.
+Private `/account` and `/account/:section` redirect only confirmed guests to
+`/login?next=` with the safe section preserved; unknown sessions first check,
+and identity outages remain retry states. Login returns to that section.
 
 Anonymous public pages do not probe `/api/account/me` during their initial
 render. The browser resolves an existing same-site session only after a visitor

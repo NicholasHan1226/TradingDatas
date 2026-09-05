@@ -1,3 +1,4 @@
+import { privateAccountSections } from "./accountNavigation.js";
 import { BASE_PLANS, getPlanPrice } from "./pricing.js";
 
 // Display-only selection, not an offer quote, order, or authorization record.
@@ -20,7 +21,7 @@ export function safeLoginDestination(search) {
   const params = new URLSearchParams(search);
   if (params.getAll("next").length !== 1) return "/account";
   const next = params.get("next");
-  if (next === "/account") return next;
+  if (next === "/account" || privateAccountSections.some(section => next === `/account/${section}`)) return next;
   if (!next?.startsWith("/pricing/preview?") || next.includes("#")) return "/account";
   const selection = readPreviewSelection(next.slice("/pricing/preview?".length));
   return selection ? buildPreviewPath(selection.plan.id, selection.period) : "/account";

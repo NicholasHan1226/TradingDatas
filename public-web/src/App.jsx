@@ -1,3 +1,4 @@
+import { accountPath, accountSectionForRoute, isAccountRoute, privateAccountSections } from "./accountNavigation.js";
 import { keyManagementMessage } from "./accountAccess.js";
 import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import {
@@ -56,7 +57,7 @@ import { AccountConnection } from "./AccountConnection";
 import { createBookmarkLibrary } from "./bookmarkLibrary";
 
 const AgentDialog = lazy(() => import("./AgentDialog.jsx"));
-const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account"];
+const productRoutes = ["home", "data", "datasets", "features", "recipes", "research", "pricing", "docs", "status", "changelog", "login", "account", "bookmarks", "connect"];
 const LEGACY_ACCOUNT_TOKEN_KEY = "td-account-token";
 const TAB_ACCOUNT_TOKEN_KEY = "td-account-tab-token";
 
@@ -92,7 +93,7 @@ function getResearchRelatedObjects(paper, locale) {
 
 const messages = {
   en: {
-    nav: ["Data", "Research", "Pricing"],
+    nav: ["Data", "Research", "Pricing", "Help & setup"],
     eyebrow: "RAW MATERIALS FOR FINANCIAL RESEARCH",
     title: "Research-ready\nfinancial data.",
     subtitle: "One API for high-quality, traceable, composable financial data.",
@@ -155,7 +156,7 @@ const messages = {
     menu: "Open navigation",
   },
   zh: {
-    nav: ["数据", "研究", "套餐"],
+    nav: ["数据", "研究", "套餐", "帮助与接入"],
     eyebrow: "金融研究的高质量原料",
     title: "面向研究的\n金融数据。",
     subtitle: "一个接口，获得高质量、可追溯、可组合的金融数据。",
@@ -646,9 +647,9 @@ export function App() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [route, setRoute] = useState(getRouteFromPath);
   const [routeSearch, setRouteSearch] = useState(() => window.location.search);
-  const [accountSection, setAccountSection] = useState("overview");
-  const [accountDocSlug, setAccountDocSlug] = useState("start-1");
-  const [bookmarkLibrary] = useState(() => createBookmarkLibrary({request:accountJson,storage:{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}}));
+  const accountSection = accountSectionForRoute(route);
+  const [accountIdentityChecked, setAccountIdentityChecked] = useState(false);
+  const [bookmarkLibrary] = useState(() => { const localLibrary = createBookmarkLibrary({request:accountJson,storage:{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}}); localLibrary.setContext(null,"signed_out"); return localLibrary; });
   const library = useSyncExternalStore(bookmarkLibrary.subscribe,bookmarkLibrary.snapshot);
   const [globalQuery, setGlobalQuery] = useState("");
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -679,7 +680,7 @@ export function App() {
   const [docsCategory, setDocsCategory] = useState("all");
   const [pricingPlanIndex, setPricingPlanIndex] = useState(() => Math.max(0, getBasePlanCards("en").findIndex((plan) => plan.id === readPreviewSelection(window.location.search)?.plan.id)));
   const [pricingBillingPeriod, setPricingBillingPeriod] = useState(() => readPreviewSelection(window.location.search)?.period || "monthly");
-  const [accountSessionRequested, setAccountSessionRequested] = useState(() => ["account", "login"].includes(route));
+  const [accountSessionRequested, setAccountSessionRequested] = useState(() => (isAccountRoute(route) || route === "login"));
   const [accountConnectionRevision, setAccountConnectionRevision] = useState(0);
   const [accountTokenInput, setAccountTokenInput] = useState("");
   const [accountData, setAccountData] = useState(null);
@@ -690,7 +691,7 @@ export function App() {
   const [accountNewKey, setAccountNewKey] = useState("");
   const [accountKeyLoading, setAccountKeyLoading] = useState(false);
   const [accountKeyError, setAccountKeyError] = useState("");
-  const [accountLoading, setAccountLoading] = useState(() => ["account", "login"].includes(route));
+  const [accountLoading, setAccountLoading] = useState(() => (isAccountRoute(route) || route === "login"));
   const [accountUsageError, setAccountUsageError] = useState(false);
   const [accountLoginPending, setAccountLoginPending] = useState(false);
   const [accountError, setAccountError] = useState("");
@@ -705,10 +706,9 @@ export function App() {
   const accountReadAbort = useRef(null);
   const accountViewState = getAccountViewState({ loading: accountLoading, account: accountData, error: accountError });
   const accountChecking = accountViewState === "checking";
-  const libraryContextMatches = !accountChecking && accountViewState !== "unavailable" && (library.mode === "cloud" ? library.userId === accountData?.user_id : !(accountData?.identity_kind === "email" && accountData.capabilities?.library));
+  const libraryContextMatches = library.mode === "local";
   const bookmarks = libraryContextMatches ? library.keys : [];
   const bookmarkState = libraryContextMatches && library.status === "ready" ? "ready" : libraryContextMatches ? "checking" : "unavailable";
-  useEffect(() => { void bookmarkLibrary.setContext(accountData,accountViewState); }, [bookmarkLibrary,accountViewState,accountData?.user_id,accountData?.capabilities?.library]);
   const accountPrivateSection = ["overview", "subscription", "usage", "keys", "security", "billing"].includes(accountSection);
   const accountEntryLabel = accountChecking ? (locale === "zh" ? "正在验证账户…" : "Checking account…") : accountViewState === "unavailable" ? (locale === "zh" ? "重试账户连接" : "Retry account connection") : accountData ? (locale === "zh" ? "账户已连接" : "Account connected") : (locale === "zh" ? "登录账户" : "Sign in");
   const copy = messages[locale];
@@ -726,7 +726,6 @@ export function App() {
   }
 
   function clearAccountView() {
-    bookmarkLibrary.setContext(null,"checking");
     accountEpoch.current += 1;
     accountReadAbort.current?.abort();
     setAccountData(null);
@@ -766,7 +765,7 @@ export function App() {
   useEffect(() => { if (accountData) setAccountDeletionReceipt(null); }, [accountData]);
 
   useEffect(() => {
-    if (["account", "login"].includes(route)) setAccountSessionRequested(true);
+    if ((isAccountRoute(route) || route === "login")) setAccountSessionRequested(true);
   }, [route]);
 
   useEffect(() => {
@@ -789,6 +788,7 @@ export function App() {
     readAccountIdentity({ signal: controller.signal }).then(async (account) => {
       if (!current()) return;
       setAccountData(account);
+      setAccountIdentityChecked(true);
       setAccountLoading(false);
       if (account.identity_kind === "email" && account.data_access_state !== "connected") { setAccountUsage(null); return; }
       // Usage availability is not an identity check. Never log out on a 5xx here.
@@ -807,6 +807,7 @@ export function App() {
       if (!current()) return;
       clearAccountView();
       setAccountError(error.message === "signed_out" ? "" : error.message);
+      setAccountIdentityChecked(true);
     }).finally(() => {
       if (current()) setAccountLoading(false);
     });
@@ -864,6 +865,11 @@ export function App() {
     setRoute(getRouteFromPath());
     setRouteSearch(window.location.search);
   }, [accountViewState, route, routeSearch]);
+
+  useEffect(() => {
+    if (!isAccountRoute(route) || !accountIdentityChecked || accountViewState !== "signed_out" || accountDeletionReceipt) return;
+    goTo(`/login?next=${encodeURIComponent(accountPath(accountSection))}`, true);
+  }, [route, accountIdentityChecked, accountViewState, accountSection, accountDeletionReceipt]);
 
   async function connectAccount(event) {
     event.preventDefault();
@@ -1115,15 +1121,15 @@ export function App() {
 
   const primaryRoute = route.split("/")[0];
   const routeSlug = route.split("/").slice(1).join("/");
-  const sections = ["data", "research", "pricing"];
+  const sections = ["data", "research", "pricing", "docs"];
   const navPaths = sections.map((section) => `/${section}`);
-  function goTo(path) {
+  function goTo(path, replace = false) {
     if (route === "research") {
       researchScrollRef.current = window.scrollY;
       readingPositions.current.save(readingEntry.current, window.scrollY);
     }
     readingEntry.current = crypto.randomUUID();
-    window.history.pushState({ tdReadingEntry: readingEntry.current }, "", path);
+    window.history[replace ? "replaceState" : "pushState"]({ tdReadingEntry: readingEntry.current }, "", path);
     const destination = new URL(path, window.location.origin);
     const pathname = destination.pathname;
     if (pathname.replace(/\/$/, "") === "/research") {
@@ -1144,8 +1150,7 @@ export function App() {
     goTo(path);
   }
   function openAccountSection(key) {
-    setAccountSection(key);
-    goTo("/account");
+    goTo(accountPath(key));
   }
   function toggleBookmark(key) {
     if (libraryContextMatches) void bookmarkLibrary.toggle(key);
@@ -1289,7 +1294,6 @@ export function App() {
   });
   const selectedDoc = allDocs.find((entry) => entry.slug === routeSlug);
   const activeAccountItem = accountGroups.flatMap((group) => group.items).find((item) => item.key === accountSection) || accountGroups[0].items[0];
-  const activeAccountDoc = allDocs.find((entry) => entry.slug === accountDocSlug) || allDocs[0];
   const accountPlanLabels = locale === "zh" ? { basic: "基础版", standard: "专业版", flagship: "旗舰版", free: "免费版", starter: "入门版", research: "研究版", pro: "专业版", enterprise: "企业版", internal: "内部账户" } : { basic: "Basic", standard: "Professional", flagship: "Flagship", free: "Free", starter: "Starter", research: "Research", pro: "Pro", enterprise: "Enterprise", internal: "Internal" };
   const accountCategoryLabels = locale === "zh" ? { a_share: "A 股基础数据", crypto: "加密资产", news: "新闻与事件" } : { a_share: "A-share base data", crypto: "Crypto", news: "News & events" };
   const isEmailAccount = accountData?.identity_kind === "email";
@@ -1302,7 +1306,7 @@ export function App() {
     ...productManifest.objects.datasets.map((item) => ({ key: `dataset:${item.id}`, id: item.id, group: "data", type: locale === "zh" ? "数据" : "Data", label: item.title[locale], description: item.description[locale], aliases: [item.title.en, item.title.zh, item.description.en, item.description.zh, item.category.en, item.category.zh, item.family, item.market, item.cadence, item.tags], path: `/datasets/${item.id}` })),
     ...papers.map((paper) => ({ key: `research:${paper.id}`, id: paper.id, group: "research", type: locale === "zh" ? "研究" : "Research", label: researchTitle(paper, locale), description: `${paper.authors} · ${researchYear(paper, locale)}`, aliases: [paper.title, paper.sourceTitle, paper.titleZh, paper.venue, paper.kind, paper.topic, paper.data, paper.dataZh, paper.summary.en, paper.summary.zh, ...(paper.sources || []).map((source) => source.label)], path: `/research/${paper.id}` })),
     ...productManifest.objects.recipes.map((item) => ({ key: `method:${item.id}`, id: item.id, group: "methods", type: locale === "zh" ? "数据准备教程" : "Data preparation tutorial", label: item.title[locale], description: preparationTutorials[item.id]?.summary[locale] || item.detail, aliases: [item.title.en, item.title.zh], path: `/recipes/${item.id}` })),
-    ...allDocs.map((entry) => ({ key: `doc:${entry.slug}`, id: entry.slug, group: "docs", type: locale === "zh" ? "文档" : "Docs", label: entry.title, description: entry.description, aliases: [entry.category, entry.categoryLabel], path: "/account", accountSection: "docs", docSlug: entry.slug })),
+    ...allDocs.map((entry) => ({ key: `doc:${entry.slug}`, id: entry.slug, group: "docs", type: locale === "zh" ? "文档" : "Docs", label: entry.title, description: entry.description, aliases: [entry.category, entry.categoryLabel], path: `/docs/${entry.slug}` })),
   ].map((item) => ({ ...item, searchDocument: createSearchDocument([item.id, item.type, item.label, item.description, item.aliases]) }));
   const savedItems = globalIndex.filter((item) => bookmarks.includes(item.key));
   const normalizedGlobalQuery = normalizeSearchValue(globalQuery);
@@ -1319,21 +1323,8 @@ export function App() {
     }));
   const globalResults = globalSearchGroups.flatMap((group) => group.items);
   const globalResultCount = globalSearchGroups.reduce((total, group) => total + group.totalCount, 0);
-  const accountMenuGroups = locale === "zh" ? [
-    { label: "你的资料库", items: [{ key: "bookmarks", label: `已收藏 · ${bookmarks.length}` }] },
-    { label: "账户", items: [{ key: "overview", label: "账户概览" }, { key: "subscription", label: "订阅与套餐" }, { key: "preferences", label: "语言与外观" }] },
-    { label: "连接与学习", items: [{ key: "agents", label: "Agent 与 MCP" }, { key: "docs", label: "文档" }] },
-  ] : [
-    { label: "Your library", items: [{ key: "bookmarks", label: `Bookmarks · ${bookmarks.length}` }] },
-    { label: "Account", items: [{ key: "overview", label: "Overview" }, { key: "subscription", label: "Access & plan" }, { key: "preferences", label: "Language & appearance" }] },
-    { label: "Connect & learn", items: [{ key: "agents", label: "Agent connections" }, { key: "docs", label: "Documentation" }] },
-  ];
   function openSearchItem(event, item) {
     event.preventDefault();
-    if (item.accountSection) {
-      setAccountSection(item.accountSection);
-      if (item.docSlug) setAccountDocSlug(item.docSlug);
-    }
     const query = globalQuery.trim();
     if (query) setRecentSearches((current) => [query, ...current.filter((value) => value.toLowerCase() !== query.toLowerCase())].slice(0, 5));
     setGlobalQuery("");
@@ -1444,17 +1435,17 @@ export function App() {
       <header className={`global-header ${primaryRoute === "home" ? "" : "is-page-header"}`}>
         <Brand onNavigate={navigate} />
         <nav className="desktop-nav" aria-label="Primary navigation">
-          {copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])} aria-current={primaryRoute === sections[index] ? "page" : undefined}>{label}</a>)}
+          {copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])} aria-current={(primaryRoute === sections[index] || (primaryRoute === "connect" && sections[index] === "docs")) ? "page" : undefined}>{label}</a>)}
         </nav>
         {renderGlobalSearch("desktop-global-search")}
         <div className="header-actions">
           <button className="icon-button bookmark-header-button" type="button" aria-label={locale === "zh" ? `已收藏 ${bookmarks.length} 项` : `${bookmarks.length} bookmarks`} onClick={() => openAccountSection("bookmarks")}><BookmarkSimple size={23} weight={bookmarks.length ? "fill" : "regular"} />{bookmarks.length > 0 && <span>{bookmarks.length}</span>}</button>
-          <div className="popover-wrap account-wrap">
-            <button className="icon-button account-button" type="button" disabled={accountChecking} aria-busy={accountChecking} aria-label={accountChecking ? accountEntryLabel : accountData ? copy.account : accountViewState === "unavailable" ? copy.account : (locale === "zh" ? "账户与设置" : "Account and settings")} aria-expanded={!accountChecking ? accountMenuOpen : false} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
-            {accountMenuOpen && !accountChecking && <div className="account-menu-popover">
+          <div className="popover-wrap account-wrap" onKeyDown={event => { if (event.key === "Escape") { setAccountMenuOpen(false); event.currentTarget.querySelector(".account-button")?.focus(); } }} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setAccountMenuOpen(false); }}>
+            <button className="icon-button account-button" type="button" aria-label={locale === "zh" ? "账户与设置" : "Account and settings"} aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((value) => !value)}><UserCircle size={30} weight="thin" /></button>
+            {accountMenuOpen && <div className="account-menu-popover">
               <div className="account-menu-identity"><span>{accountData ? String(accountData.tenant_id || "TD").slice(0, 2).toUpperCase() : "TD"}</span><div><strong>{accountData ? (accountData.email || accountData.tenant_id) : "TradingDatas"}</strong><small>{accountData ? (locale === "zh" ? `${accountPlanLabel} · 已登录` : `${accountPlanLabel} · signed in`) : (locale === "zh" ? "账户尚未连接" : "Account not connected")}</small></div></div>
-              {!accountData && <section><button type="button" onClick={() => { setAccountMenuOpen(false); goTo("/login"); }}>{locale === "zh" ? "登录账户" : "Sign in"}<ArrowRight /></button></section>}
-              {accountMenuGroups.map((group) => <section key={group.label}><span>{group.label}</span>{group.items.map((item) => <button key={item.key} type="button" onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}</section>)}
+              <section><button type="button" onClick={() => openAccountSection("overview")}>{locale === "zh" ? "我的账户" : "My account"}<ArrowRight /></button><button type="button" onClick={() => goTo("/docs")}>{locale === "zh" ? "帮助与接入" : "Help & setup"}<ArrowRight /></button></section>
+              <section className="public-preferences"><span>{copy.language}</span><div className="segmented">{[["system",copy.system],["zh","中文"],["en","English"]].map(([value,label]) => <button key={value} type="button" aria-pressed={localeChoice === value} onClick={() => chooseLocale(value)}>{label}</button>)}</div><span>{copy.appearance}</span><div className="segmented">{[["system",copy.system],["light",locale === "zh" ? "明亮" : "Light"],["dark",locale === "zh" ? "暗色" : "Dark"]].map(([value,label]) => <button key={value} type="button" aria-pressed={themeChoice === value} onClick={() => chooseTheme(value)}>{label}</button>)}</div></section>
             </div>}
           </div>
           <button className="icon-button mobile-menu-button" type="button" aria-label={copy.menu} onClick={() => setMobileOpen((value) => !value)}>{mobileOpen ? <X size={24} /> : <List size={24} />}</button>
@@ -1462,7 +1453,7 @@ export function App() {
         {mobileOpen && <nav className="mobile-nav" aria-label="Mobile navigation">{renderGlobalSearch("mobile-global-search")}{copy.nav.map((label, index) => <a key={label} href={navPaths[index]} onClick={(event) => navigate(event, navPaths[index])}>{label}<ArrowRight /></a>)}</nav>}
       </header>
 
-      {library.error && (primaryRoute !== "account" || accountSection !== "bookmarks") && <aside className="library-feedback" role="alert">{locale === "zh"?"未能确认收藏结果。请到收藏页刷新；不会自动重新上传。":"Saved state could not be confirmed. Refresh your library; uploads are not retried automatically."}<button type="button" onClick={()=>openAccountSection("bookmarks")}>{locale === "zh"?"查看收藏状态":"Review library status"}</button></aside>}
+      {library.error && (primaryRoute !== "bookmarks") && <aside className="library-feedback" role="alert">{locale === "zh"?"未能确认收藏结果。请到收藏页刷新；不会自动重新上传。":"Saved state could not be confirmed. Refresh your library; uploads are not retried automatically."}<button type="button" onClick={()=>openAccountSection("bookmarks")}>{locale === "zh"?"查看收藏状态":"Review library status"}</button></aside>}
       <main>
         {primaryRoute === "home" && <section className="hero" aria-labelledby="hero-title">
           <picture className="hero-art" aria-hidden="true">
@@ -1631,7 +1622,7 @@ export function App() {
         </section>}
 
         {primaryRoute === "docs" && !routeSlug && <section className="docs-hub" id="docs">
-          <SectionNav locale={locale} active="/docs" onNavigate={navigate} items={locale === "zh" ? [{ path: "/docs", label: "文档首页" }, { path: "/docs/data-1", label: "数据模型" }, { path: "/docs/api-1", label: "Catalog" }, { path: "/docs/commerce-1", label: "套餐" }] : [{ path: "/docs", label: "Docs home" }, { path: "/docs/data-1", label: "Data model" }, { path: "/docs/api-1", label: "Catalog" }, { path: "/docs/commerce-1", label: "Plans" }]} />
+          <SectionNav locale={locale} active="/docs" onNavigate={navigate} items={locale === "zh" ? [{ path: "/docs", label: "文档首页" }, { path: "/docs/data-1", label: "数据模型" }, { path: "/connect", label: "Agent 与 MCP" }, { path: "/docs/commerce-1", label: "套餐" }] : [{ path: "/docs", label: "Docs home" }, { path: "/docs/data-1", label: "Data model" }, { path: "/connect", label: "Agents & MCP" }, { path: "/docs/commerce-1", label: "Plans" }]} />
           <div className="docs-hub-hero">
             <span className="mono-kicker">PLATFORM GUIDE / DATA / API / ACCOUNT</span>
             <h1>{locale === "zh" ? "理解并使用 TradingDatas 的所有说明。" : "Everything needed to understand and use TradingDatas."}</h1>
@@ -1656,39 +1647,41 @@ export function App() {
           <LoginPage locale={locale} theme={theme} returnPath={safeLoginDestination(routeSearch)} token={accountTokenInput} onTokenChange={(value) => { setAccountTokenInput(value); setAccountError(""); }} onSubmit={connectAccount} onEmailVerify={connectEmailAccount} loading={accountLoading} submitting={accountLoginPending} error={accountError} navigate={navigate} />
         )}
 
-        {primaryRoute === "account" && (
+        {primaryRoute === "account" && !accountData && <section className="account-page account-access-gate" aria-live="polite"><h1>{accountViewState === "unavailable" ? (locale === "zh" ? "暂时无法验证账户" : "Account check unavailable") : accountDeletionReceipt ? (locale === "zh" ? "账户注销已受理" : "Account deletion accepted") : (locale === "zh" ? "正在验证账户" : "Checking your account")}</h1>{accountDeletionReceipt ? <p>{locale === "zh" ? "账户已停用，会话已撤销。资料清理截止日期：" : "Account disabled and sessions revoked. Profile purge due: "}{new Date(accountDeletionReceipt.delete_by).toLocaleDateString()}</p> : <p>{accountViewState === "unavailable" ? (locale === "zh" ? "请重试。公开资料仍可正常浏览，无需重新登录。" : "Please retry. Public materials remain available; no need to sign in again.") : (locale === "zh" ? "验证完成后继续；未登录时将前往登录页。" : "We will continue after checking, or take you to sign in.")}</p>}{accountViewState === "unavailable" && <button type="button" className="primary-button" onClick={() => setAccountConnectionRevision(value => value + 1)}>{locale === "zh" ? "重试" : "Retry"}</button>}<a className="text-link" href="/docs" onClick={event => navigate(event,"/docs")}>{locale === "zh" ? "浏览公开帮助" : "Browse public help"}</a></section>}
+        {((primaryRoute === "account" && accountData) || ["bookmarks", "connect"].includes(primaryRoute)) && (
           <section className="account-page">
             <div className="account-page-heading">
-              <span className="mono-kicker">ACCOUNT / LIBRARY / DATA ACCESS</span>
-              <h1>{locale === "zh" ? "你的 TradingDatas 工作区。" : "Your TradingDatas workspace."}</h1>
-              <p>{locale === "zh" ? "在一个安静的工作区管理已收藏内容、数据访问、文档、Agent 接入、账单和个人设置。" : "A quiet workspace for saved materials, data access, documentation, Agent connections, billing, and preferences."}</p>
-              <div className="account-entry-actions">
-                <button className="primary-button" type="button" disabled={accountChecking} aria-busy={accountChecking} onClick={() => accountViewState === "unavailable" ? setAccountConnectionRevision((value) => value + 1) : accountData ? setAccountSection("overview") : goTo("/login")}>{accountEntryLabel}<ArrowRight /></button>
+              <span className="mono-kicker">{primaryRoute === "account" ? "ACCOUNT / DATA ACCESS" : "PUBLIC / LEARN / SAVE"}</span>
+              <h1>{primaryRoute === "account" ? (locale === "zh" ? "你的 TradingDatas 工作区。" : "Your TradingDatas workspace.") : activeAccountItem.label}</h1>
+              <p>{primaryRoute === "account" ? (locale === "zh" ? "管理你的数据访问、订阅、用量、密钥与安全设置。" : "Manage your data access, subscription, usage, keys, and security.") : activeAccountItem.description}</p>
+              {primaryRoute === "account" && <div className="account-entry-actions">
+                <button className="primary-button" type="button" disabled={accountChecking} aria-busy={accountChecking} onClick={() => accountViewState === "unavailable" ? setAccountConnectionRevision((value) => value + 1) : accountData ? openAccountSection("overview") : goTo("/login")}>{accountEntryLabel}<ArrowRight /></button>
                 <small>{locale === "zh" ? "登录后仅显示当前账户的订阅、授权和用量。" : "After sign-in, only the current account's plan, access, and usage are shown."}</small>
-              </div>
+              </div>}
             </div>
-            <div className="account-workspace">
-              <aside className="account-sidebar" aria-label={locale === "zh" ? "账户分类" : "Account sections"}>
-                {accountGroups.map((group) => (
+            <div className={`account-workspace ${primaryRoute !== "account" ? "public-workspace" : ""}`}>
+              {primaryRoute === "account" && <aside className="account-sidebar" aria-label={locale === "zh" ? "账户分类" : "Account sections"}>
+                {accountGroups.map(group => ({...group, items: group.items.filter(item => privateAccountSections.includes(item.key))})).filter(group => group.items.length).map((group) => (
                   <div className="account-nav-group" key={group.label}>
                     <span>{group.label}</span>
-                    {group.items.map((item) => <button key={item.key} type="button" className={accountSection === item.key ? "is-active" : ""} onClick={() => setAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}
+                    {group.items.map((item) => <button key={item.key} type="button" className={accountSection === item.key ? "is-active" : ""} onClick={() => openAccountSection(item.key)}>{item.label}<ArrowRight /></button>)}
                   </div>
                 ))}
-              </aside>
+<div className="account-nav-group"><a href="/docs" onClick={event => navigate(event,"/docs")}>{locale === "zh" ? "帮助与接入" : "Help & setup"}</a><a href="/connect" onClick={event => navigate(event,"/connect")}>Agent / MCP</a></div>
+              </aside>}
               <article className="account-detail">
-                <div className="account-detail-head">
-                  <span className="account-surface-label">{locale === "zh" ? "账户主页" : "ACCOUNT HOME"}</span>
+                {primaryRoute === "account" && <div className="account-detail-head">
+                  <span className="account-surface-label">{primaryRoute === "account" ? (locale === "zh" ? "账户主页" : "ACCOUNT HOME") : (locale === "zh" ? "无需登录" : "NO SIGN-IN REQUIRED")}</span>
                   <h2>{activeAccountItem.label}</h2>
                   <p>{activeAccountItem.description}</p>
-                </div>
+                </div>}
                 {accountDeletionReceipt && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "注销请求已受理，账户已停用，邮箱会话已撤销。账户库资料将在以下日期前清理：" : "Deletion accepted. The account is disabled and email sessions are revoked. Profile data in the account store will be removed by: "}{new Date(accountDeletionReceipt.delete_by).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US")}</p></div>}
                 {(accountSignOutError || accountSignOutPending) && <div className="account-signout-feedback" role={accountSignOutError ? "alert" : "status"} aria-atomic="true">
                   <p>{accountSignOutPending ? (locale === "zh" ? "正在安全退出，请稍候…" : "Signing out securely. Please wait…") : (locale === "zh" ? "未能确认退出，会话可能仍然有效。请重试，确认退出前不要离开共享设备。" : "Sign-out could not be confirmed. Your session may still be active. Retry before leaving a shared device.")}</p>
                   {accountSignOutError && <button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{locale === "zh" ? "重试退出" : "Retry sign-out"}<ArrowRight size={16} /></button>}
                 </div>}
-                {accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
-                {accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
+                {primaryRoute === "account" && accountUsageError && accountData && <div className="account-signout-feedback" role="status"><p>{locale === "zh" ? "用量暂时无法加载，你仍然处于登录状态。" : "Usage is temporarily unavailable. You are still signed in."}</p><button type="button" onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
+                {primaryRoute === "account" && accountViewState === "unavailable" && <div className="account-signout-feedback" role="alert"><p>{locale === "zh" ? "暂时无法验证账户连接，未显示账户数据。你可以重新加载。" : "We could not verify the account connection. Account data is hidden until you retry."}</p><button type="button" disabled={accountLoading} onClick={() => setAccountConnectionRevision((value) => value + 1)}>{locale === "zh" ? "重新加载" : "Retry loading"}</button></div>}
                 {isEmailAccount && !accountChecking && ["overview","subscription","security"].includes(accountSection) && <AccountConnection key={accountData.user_id} account={accountData} locale={locale} onChange={changeDataConnection} disabled={accountSignOutPending} />}
                 {accountPrivateSection && accountChecking ? (
                   <div className="account-empty-state" role="status" aria-live="polite"><ShieldCheck size={28} /><strong>{locale === "zh" ? "正在验证账户连接" : "Checking your account connection"}</strong><p>{locale === "zh" ? "请稍候，验证完成后显示当前账户。无需重复登录。" : "Please wait while we verify this session. No need to sign in again."}</p></div>
@@ -1763,35 +1756,10 @@ export function App() {
                   )
                 ) : accountSection === "bookmarks" ? (
                   <div className="account-bookmarks">
-                    <div className="account-local-note"><BookmarkSimple />{!libraryContextMatches?(locale === "zh"?"正在确认账户，暂不显示收藏。":"Verifying the account; saved items are hidden."):library.mode==="cloud"?(locale === "zh"?`账户收藏 · ${accountData.email}`:`Account library · ${accountData.email}`):(locale === "zh"?"本机收藏 · 仅保存在此浏览器。":"Local library · saved only in this browser.")}</div>
-                    {libraryContextMatches && library.mode==="cloud" && <div className="account-library-controls"><p>{locale === "zh"?"登录后可跨设备读取账户收藏。本机收藏不会自动上传。":"Account bookmarks are available across devices after sign-in. Local bookmarks are never uploaded automatically."}</p><button type="button" className="account-inline-action" disabled={library.status==="loading"} onClick={()=>bookmarkLibrary.refresh()}>{locale === "zh"?"刷新账户收藏":"Refresh account library"}</button>{bookmarkLibrary.importCount()>0 && <button type="button" className="account-inline-action" disabled={library.status!=="ready"} onClick={()=>bookmarkLibrary.importLocal()}>{locale === "zh"?`将 ${Math.min(100,bookmarkLibrary.importCount())} 项本机收藏导入此账户`:`Import ${Math.min(100,bookmarkLibrary.importCount())} local bookmarks into this account`}</button>}</div>}
+                    <div className="account-local-note"><BookmarkSimple />{locale === "zh" ? "本机收藏 · 仅保存在此浏览器，不会自动上传。" : "Local library · saved only in this browser, never uploaded automatically."}</div>
                     {library.status==="loading" && <p role="status">{locale === "zh"?"正在确认收藏…":"Checking saved items…"}</p>}
-                    {library.error && <p className="account-key-error" role="alert">{library.error==="library_full"?(locale === "zh"?"账户收藏已达 500 项，请先移除部分内容。":"The 500-item library limit has been reached. Remove some items first."):(locale === "zh"?"未能确认收藏结果，请刷新账户收藏。不会自动重试上传。":"Saved state could not be confirmed. Refresh the library; uploads are not retried automatically.")}</p>}
+                    {library.error && <p className="account-key-error" role="alert">{library.error==="library_full"?(locale === "zh"?"本机收藏已达 500 项，请先移除部分内容。":"The 500-item library limit has been reached. Remove some items first."):(locale === "zh"?"未能保存本机收藏，请检查浏览器存储后重试。":"Could not save locally. Check browser storage and retry.")}</p>}
                     {savedItems.length ? savedItems.map((item) => <div className="account-bookmark-row" key={item.key}><a href={item.path} onClick={(event) => openSearchItem(event, item)}><span>{item.type}</span><strong>{item.label}</strong><small>{item.description}</small></a><button type="button" disabled={library.status!=="ready"} onClick={() => toggleBookmark(item.key)} aria-label={locale === "zh" ? "取消收藏" : "Remove bookmark"}><BookmarkSimple weight="fill" /></button></div>) : libraryContextMatches && library.status==="ready" && <div className="account-empty-state"><BookmarkSimple size={28} /><strong>{locale === "zh" ? "还没有收藏内容" : "Nothing saved yet"}</strong><p>{locale === "zh" ? "可从全站搜索或研究库收藏数据产品、论文、方法和文档。" : "Save datasets, papers, methods, and docs from site search or the Research library."}</p></div>}
-                  </div>
-                ) : accountSection === "docs" ? (
-                  <div className="account-docs-browser">
-                    <aside>{docsCategories.map((category) => <section key={category.key}><span>{category.label}</span>{category.items.map(([title], index) => { const slug = `${category.key}-${index + 1}`; return <button key={slug} type="button" className={activeAccountDoc.slug === slug ? "is-active" : ""} onClick={() => setAccountDocSlug(slug)}>{title}</button>; })}</section>)}</aside>
-                    <article><span className="mono-kicker">{activeAccountDoc.categoryLabel.toUpperCase()}</span><h3>{activeAccountDoc.title}</h3><p>{activeAccountDoc.description}</p><dl><div><dt>{locale === "zh" ? "说明范围" : "Guide scope"}</dt><dd>{locale === "zh" ? "当前能力、目标能力、操作步骤、限制和相关入口。" : "Current capability, target capability, steps, limits, and related entries."}</dd></div><div><dt>{locale === "zh" ? "权威来源" : "Authority"}</dt><dd>{activeAccountDoc.category === "api" ? "docs/API.md + authenticated runtime" : activeAccountDoc.category === "data" ? "registry + facts/receipts + docs/PRODUCT.md" : "docs/PRODUCT.md + backend contract"}</dd></div></dl><a className="text-link" href={`/docs/${activeAccountDoc.slug}`} onClick={(event) => navigate(event, `/docs/${activeAccountDoc.slug}`)}>{locale === "zh" ? "打开完整说明" : "Open full guide"}<ArrowRight /></a></article>
-                  </div>
-                ) : accountSection === "preferences" ? (
-                  <div className="account-setting-panels">
-                    <section>
-                      <span className="popover-title">{copy.language}</span>
-                      <div className="segmented">
-                        <button type="button" className={localeChoice === "system" ? "is-active" : ""} aria-pressed={localeChoice === "system"} onClick={() => chooseLocale("system")}>{copy.system}</button>
-                        <button type="button" className={localeChoice === "zh" ? "is-active" : ""} aria-pressed={localeChoice === "zh"} onClick={() => chooseLocale("zh")}>中文</button>
-                        <button type="button" className={localeChoice === "en" ? "is-active" : ""} aria-pressed={localeChoice === "en"} onClick={() => chooseLocale("en")}>English</button>
-                      </div>
-                    </section>
-                    <section>
-                      <span className="popover-title">{copy.appearance}</span>
-                      <div className="account-theme-list">
-                        <button type="button" className={themeChoice === "system" ? "is-active" : ""} onClick={() => chooseTheme("system")}><GlobeSimple />{copy.system}</button>
-                        <button type="button" className={themeChoice === "light" ? "is-active" : ""} onClick={() => chooseTheme("light")}><Sun />{copy.light}</button>
-                        <button type="button" className={themeChoice === "dark" ? "is-active" : ""} onClick={() => chooseTheme("dark")}><Moon />{copy.dark}</button>
-                      </div>
-                    </section>
                   </div>
                 ) : accountSection === "agents" ? (
                   <div className="account-agent-panel">
@@ -1809,7 +1777,7 @@ export function App() {
                   accountData ? (
                     <div className="account-security-panel">
                       <section><ShieldCheck size={24} weight="duotone" /><div><span>{locale === "zh" ? "当前浏览器连接" : "CURRENT BROWSER CONNECTION"}</span><h3>{locale === "zh" ? "安全网页会话" : "Secure web session"}</h3><p>{locale === "zh" ? "访问密钥已封装在不可被页面脚本读取的同站会话中。" : "The access key is sealed in a same-site session that page scripts cannot read."}</p></div><button type="button" onClick={disconnectAccount} disabled={accountSignOutPending}>{accountSignOutPending ? (locale === "zh" ? "正在退出…" : "Signing out…") : (locale === "zh" ? "退出此浏览器" : "Sign out here")}</button></section>
-                      <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session"}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => setAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
+                      <dl className="account-security-facts"><div><dt>{locale === "zh" ? "租户" : "Tenant"}</dt><dd>{accountData.tenant_id}</dd></div><div><dt>{locale === "zh" ? "认证方式" : "Authentication"}</dt><dd>{locale === "zh" ? "HttpOnly 同站会话" : "HttpOnly same-site session"}</dd></div><div><dt>{locale === "zh" ? "密钥管理" : "Key management"}</dt><dd><button type="button" onClick={() => openAccountSection("keys")}>{locale === "zh" ? "查看与轮换 API 密钥" : "View and rotate API keys"}<ArrowRight /></button></dd></div></dl>
                       <div className="account-boundary-note"><ShieldCheck /><div><strong>{locale === "zh" ? "凭证绑定与跨设备会话列表尚未开放" : "Credential linking and cross-device session lists are not available"}</strong><p>{locale === "zh" ? "访问密钥与邮箱账户不会自动绑定；短信服务暂未接入。可用登录方式以登录页的服务状态为准。" : "Access keys are not automatically linked to email accounts. SMS is not connected. Available sign-in methods are shown on the login page."}</p></div></div>
                     </div>
                   ) : (

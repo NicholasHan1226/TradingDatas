@@ -80,8 +80,11 @@ The public experience has seven durable information areas:
 - **Docs**: the platform-wide help hub for product areas, data guidance,
   API/Agents, learning methods, packages, account, schema, pagination, quota,
   and errors;
-- **Account**: authenticated subscription, expiry, usage, API keys, Agent/MCP
-  connections, billing, security, language preference, and Console handoff.
+- **Account**: private overview, subscription, expiry, usage, API keys, billing
+  and security, with shortcuts to public help. Public `/docs`, `/connect` and
+  browser-local `/bookmarks` do not require login. The top navigation is
+  Data / Research / Pricing / Help & setup; language and appearance live in
+  the upper-right menu and work before login.
 
 `Recipes` replaces the vague `Cookbook` label. A Recipe answers both questions
 in order: **what can I prepare?** and **how do I prepare it correctly?** Short
@@ -136,7 +139,7 @@ implemented. Both credentials must be verified before they can be linked to
 the same account; never merge accounts from matching unverified input.
 
 Owner-confirmed account role (2026-08-30): the owner's designated email identity
-is intended to access both the existing public Account and the administrator
+is intended to access both the existing private Account and the administrator
 console. Keep one identity with separately authorized workspaces, not two user
 accounts or another customer dashboard. Verification and an explicit server-owned
 administrator role are required; an email string or UI switch cannot grant it.
@@ -181,9 +184,9 @@ readback. It is never hidden inside a base-package comparison table.
 
 ## Agent connection contract
 
-The public product is Agent-first. Agent/MCP connection lives under the signed-in
-account's `Agent Connections` area, not as a competing top-level navigation
-item. The connection surface provides tailored copy-ready
+The public product is Agent-first. Agent/MCP tutorials and templates live at public `/connect`, reached through
+Help & setup alongside `/docs`. Reading and copying setup material do not require
+website login; actual data requests always require an independent API Bearer key. The connection surface provides tailored copy-ready
 setup prompts for Claude, Codex, OpenClaw, Hermes, and a generic HTTP-capable
 agent. Each prompt references a secret credential slot instead of embedding an
 API key and requires the same catalog -> query -> metadata validation sequence.
@@ -197,7 +200,7 @@ contract and frontend behavior are defined in `docs/AGENT_INTEGRATIONS.md`.
 The public site and signed-in account support Simplified Chinese (`zh-CN`) and
 English (`en`). On first visit, the site follows the browser/system language:
 Chinese locales select `zh-CN`; all other locales fall back to English. A user
-can switch language inside Account > Language & appearance. An explicit choice is remembered
+can switch language and appearance in the upper-right menu without signing in. An explicit choice is remembered
 locally and, when signed in, may also be saved as an account preference.
 
 Language choice changes authored copy, labels, dates, number formatting, and
@@ -306,10 +309,12 @@ but the key currently authenticating Account is protected from self-lockout.
 There are two deliberately separate surfaces, not two competing customer
 workspaces:
 
-- the existing public **Account** at `tradingdatas.com/account` is the only
+- the private **Account** at `tradingdatas.com/account` is the only
   customer account UI. It reads only that token's plan, enabled data categories,
-  request-frequency limit, expiry, request history, same-tenant API keys,
-  documentation, and Agent integration guidance through the customer Portal API;
+  request-frequency limit, expiry, request history and same-tenant API keys
+  through the customer Portal API. Its sections are overview, subscription,
+  usage, keys, billing and security; help links open the public documentation
+  and setup pages;
 - the React application under `static/app/` is administrator-only. It manages
   customer access, runtime exceptions, platform usage, and authenticated
   catalog/query verification;
@@ -317,6 +322,12 @@ workspaces:
   Account instead of entering a second customer workspace;
 - only a token with `admin` scope or `internal` tier enters the administrator
   application, and it does not impersonate or switch into a customer UI.
+
+Private `/account` and `/account/:section` check unknown sessions before showing
+content. Only a confirmed guest redirects to `/login?next=` with an allowlisted
+private section; successful login restores that section. Identity outages show
+retry instead of redirecting. Payment remains paused; website authentication
+never supplies credentials to the public data API.
 
 Administrator sections keep durable hash routes so reload, copied links, and
 browser history preserve the current task without requiring a Pages SPA

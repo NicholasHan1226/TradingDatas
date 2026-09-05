@@ -24,9 +24,9 @@ test("keeps unimplemented identity and commerce capabilities explicit", () => {
 });
 
 test("defers anonymous session resolution until an Account intent", () => {
-  assert.match(appSource, /const \[accountSessionRequested, setAccountSessionRequested\] = useState\(\(\) => \["account", "login"\]\.includes\(route\)\)/);
+  assert.match(appSource, /const \[accountSessionRequested, setAccountSessionRequested\] = useState\(\(\) => \(isAccountRoute\(route\) \|\| route === "login"\)\)/);
   assert.match(appSource, /if \(!accountSessionRequested\) \{[\s\S]*clearAccountView\(\)[\s\S]*return undefined/);
-  assert.match(appSource, /if \(\["account", "login"\]\.includes\(route\)\) setAccountSessionRequested\(true\)/);
+  assert.match(appSource, /if \(\(isAccountRoute\(route\) \|\| route === "login"\)\) setAccountSessionRequested\(true\)/);
   assert.match(appSource, /\}, \[accountConnectionRevision, accountSessionRequested\]\);/);
 });
 

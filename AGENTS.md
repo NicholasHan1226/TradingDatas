@@ -16,15 +16,15 @@ TradingDatas 不承担 opening gate、候选、预测、策略、alpha、资金�
 
 ## 公共产品与教学内容边界
 
-TradingDatas 对外销售的是可信、可追溯、可复现的金融数据原料。公共网站的信息架构固定分为 `Data`、`Features`、`Recipes`、`Research`、`Pricing`、`Docs` 与账户入口；`Research` 按 TradingDatas 自有分类体系整理外部论文，`Recipes` 回答“如何正确准备和组合数据”。它们是发现、购买、学习和管理同一个数据产品的界面，不是新的研究或交易 authority。Agent/MCP 是 Account/Docs 下的交付方式，不是首要购买理由。
+TradingDatas 对外销售的是可信、可追溯、可复现的金融数据原料。公共网站顶栏固定为 `Data`、`Research`、`Pricing`、`Help & setup`；Features、Recipes 保留公共详情入口，Account 是独立私有工作区；`Research` 按 TradingDatas 自有分类体系整理外部论文，`Recipes` 回答“如何正确准备和组合数据”。它们是发现、购买、学习和管理同一个数据产品的界面，不是新的研究或交易 authority。Agent/MCP 是公开 `/connect` 与 Docs 下的交付方式，不是首要购买理由。
 
 - `Data` 只展示 registry 与 catalog/query 可证明的数据身份、字段、覆盖、更新、lineage、样本和限制。静态文案不能把 paused/unobserved 写成已有可查询数据，也不能把 degraded 写成 fresh/完整；已有可验证的 degraded 数据可按 API 合同如实供数，也不能从 provider 文档或一次 HTTP 200 推断历史完整性。
 - `Research` 只整理、分类和展示外部行业论文或研究，保留作者、年份、期刊/来源和外部链接，并可映射所需原始数据材料；不得改写成 TradingDatas 自有结论、推荐、绩效或数据产品 benchmark。论文元数据与摘要须标明外部来源，静态示例不得冒充已上线数据库。
 - `Features` 只允许透明、版本化的衍生数据，必须公开公式、输入、时间/as-of 对齐、缺失/修订策略、测试与限制；它不是因子排名、信号、策略或建议。当前 Feature Plane 未实现，相关页面只能标记为 `product definition` 或 `planned`。
 - `Recipes` 只教授查询、连接、时间/as-of 对齐、复权、缺失处理、去重和验证；示例必须列 dataset IDs、窗口、方法、输出 schema、限制及 synthetic/observed 身份。
 - Agent 接入提示词只允许由 `docs/AGENT_INTEGRATIONS.md` 的单一 canonical template 派生；不得在提示词、URL、fixture、日志或静态 bundle 中嵌入真实 key。Claude、Codex、OpenClaw、Hermes 与其它 Agent 共用固定 catalog/query 和同一 metadata/receipt 验证语义。
-- 公共站支持 `zh-CN`/`en`，首次跟随系统语言，显式选择可持久化；dataset ID、字段名、API route、schema、receipt ID、reason code 和 provider-native payload 永不翻译。MCP/Agent、语言与外观设置只放在独立 Account 工作区，全局导航右侧只保留账户头像，不重复放 Connect/Console/语言/主题文本操作。
-- Data、Features、Recipes、Research、Pricing、Docs 与 Account 是可复制、可回退、可直接访问的独立公共页面，并继续进入 dataset/feature/recipe/research/docs 详情页；它们不是首页锚点或承载完整任务的大下拉菜单。Account 按账户概览、数据访问、集成、账单、设置分组，前端显示不替代 portal/commerce/auth 后端事实。
+- 公共站支持 `zh-CN`/`en`，首次跟随系统语言，显式选择可持久化；dataset ID、字段名、API route、schema、receipt ID、reason code 和 provider-native payload 永不翻译。Agent/MCP 教程和模板在公开 `/connect`；语言与外观位于右上菜单，免登录即可切换。菜单保持轻量，不重复堆放文字操作。
+- Data、Features、Recipes、Research、Pricing、`/docs`、`/docs/:slug`、`/connect` 和 `/bookmarks` 是可直接访问的公共页面；`/bookmarks` 只展示本机收藏。`/account` 与 `/account/:section` 是私有页面，只保留 overview、subscription、usage、keys、billing、security 及公开帮助快捷链接。会话未知时先验证，确认 guest 后才跳转 `/login?next=` 的安全站内目标，登录后回原 section；服务不可用显示重试，不误判为 guest。前端显示不替代 portal/commerce/auth 后端事实。
 - 允许描述的“效果”仅限覆盖增加、匹配率、时间对齐、重复减少、输出形态、延迟与查询成本。禁止收益、Alpha、胜率、预测准确率、因子排名、推荐、信号或策略绩效。
 - 套餐、另类数据试用、加购、续费和价格只有在 commerce/account 后端合同实现并可读回后才可声明 live。前端标签、Feature/Recipe 或营销内容不授予数据权限。
 - 第三方和另类数据必须先完成上游使用/再分发权、provider 合同、transport entitlement、真实 receipt/API readback 和账户 entitlement 映射，继续复用固定 catalog/query API；不得因商业页面新增 provider 专用公共 route。

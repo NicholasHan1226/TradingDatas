@@ -1838,3 +1838,14 @@ footer > span { justify-self: end; color: var(--faint); font: 10px "IBM Plex Mon
 .email-deletion-actions button:not(.primary-button) { background: none; border: 0; color: var(--ink); padding: 10px 16px; font: inherit; cursor: pointer; }
 .email-deletion-actions button:disabled { cursor: not-allowed; }
 .email-deletion-actions .primary-button:disabled { background: var(--line); color: var(--muted); box-shadow: none; transform: none; }
+
+/* Public destinations reuse the editorial surface without a private sidebar. */
+.account-workspace.public-workspace { grid-template-columns: minmax(0, 1fr); gap: 0; max-width: 1000px; }
+.public-preferences .segmented { display: flex; gap: 3px; padding: 0 5px 9px; }
+.account-menu-popover .public-preferences .segmented button { display: block; flex: 1; padding: 7px 5px; text-align: center; font-size: 11px; }
+.public-preferences button[aria-pressed="true"] { color: var(--ink); background: var(--line-soft); }
+.account-access-gate { max-width: 850px; min-height: 60vh; }
+.account-access-gate .text-link { margin: 20px 0; display: flex; }
+.account-nav-group > a { display: block; padding: 10px 0; color: var(--muted); }
+
+.public-workspace .account-detail { padding: 0; border: 0; background: transparent; }
