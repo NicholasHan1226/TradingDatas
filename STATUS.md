@@ -1,43 +1,26 @@
 # TradingDatas 当前状态
 
-观察时间：2026-09-05 17:13 Asia/Shanghai。本页是可替换的运行快照；源码、运行版本、数据状态和外部入口分别核验。
+观察时间：2026-09-05 17:56 Asia/Shanghai。本页是可替换的运行快照；源码、运行版本、数据状态和外部入口分别核验。
 
-## 源码与运行
+## 账户与对外接口
 
-- 本轮目录优化合入 #485，运行代码基线 `a093d407d23fe6cf7f82c1fb2a27359c82b7d803`；候选与精确主线 CI 均通过。纯文档 CI 优化 #484 已合入。
-- A股与 Crypto 不可变 current 均为上述代码版本，各 1056 个文件清单通过；实际 API 进程目录与版本一致。定时任务恢复至发布前状态。回退代码版本 `3ad50fc4ca325dea25b49914d5d6189e860cf033` 保留，不回滚数据。
-- 源码及本地、服务器 checkout 用 `git rev-parse HEAD origin/main` 当场读取。仅文档提交允许领先于运行版本，不为刷新文档 SHA 重启服务。
+- 账户整合 #487 已合入 `122208dd37ce97fdd45ae6230ddffd8e48a3cbba` 并由 Cloudflare 发布。Account 的「订阅与数据访问」连接已有密钥，读取后端有效套餐、有效期、数据分类、用量和密钥管理；邮箱身份不因数据权限不可读而退出。未读取到权限不表示取消订阅或零用量。
+- 身份 D1 应用既有账户 schema：两表、两触发器与外键检查通过；用户/会话前后均为零。connection/email/retention 已启用，library/admin 保持禁用；原秘密配置名称保留。回退可关闭 connection 并恢复前版 Worker，保留追加 schema 与账户禁用撤销触发器，不回滚金融数据或已发密钥。
+- 同域数据入口 #488 合入 `d2e8d30b02621c0b5f16c0cddc8c0cf136b9c89a` 并发布：`https://tradingdatas.com/v1/catalog` 与 `/v1/query`。默认 Agent 地址同步，独立 api 子域名不再是此入口的前置条件。当前仅转发既有 A股数据面，未聚合隔离 Crypto 数据面。
+- 网关只转发调用者 Bearer；不使用邮箱 Cookie、已连接的账户密钥或内部凭据代替调用者。JSON/receipt/错误语义与 no-store 保留，查询体固定原字节与 Content-Length，最多 64 KiB，传输截止 30 秒；这不修改既有目录性能目标。
+- 17:56 官网实测：guest catalog/query 为 JSON 401、未知路径 JSON 404、OPTIONS 204、无效测试密钥 401，均 no-store。实际浏览器资源 `index-BAaUY0e4.js` 与发布版本匹配；这证明路由和认证拒绝，不是普通客户成功查询。
+- 最终候选本地 287 项 public-web 测试与构建通过；真实 workerd 验证原查询字节、Content-Length 与 Cookie 隔离；文件配置和环境覆盖通过。实际浏览器覆盖 synthetic 邮箱/已有密钥连接、中英明暗账户及 390px 页面。账户 #487 候选与精确主线 CI 均通过；网关 #488 候选四组 CI 与 Cloudflare 发布均通过，精确主线 CI 记录为 [33959241069](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33959241069)，状态以该运行读回为准。
+- 真实用户的验证码送达、本人连接密钥和普通客户 catalog/query 成功读回仍待验证；未代发真实邮件、创建真实客户凭据或执行付款。在线支付继续暂停；这里交付的是已有权限管理，不是新购、续费或正式订阅账本。
 
-## 同轮接口验证
+## 不可变数据运行与质量
 
-- A股目录 192 项、Crypto 目录 240 项，认证 HTTP 200；数据集身份摘要与发布前一致。
-- 16:44 发布前基线：A股目录 15.390 秒、Crypto 5.970 秒。发布后：A股首次 15.591 秒、后续 4.332 秒；Crypto 首次 7.793 秒，均 HTTP 200；财务查询 0.160 秒。首次目录读取仍偏慢，15 秒性能目标尚未在冷启动满足。这是有限次数的真实 HTTP 测量，不是持续 SLA 或全量数据稳定性保证。
-- `fina_mainbz` 查询 HTTP 200、1 行，lineage 完整；partial/degraded 与 quality.valid=false 继续如实返回，没有通过清除质量条件制造成功。
-- coverage 仍精确统计同一 SQLite 快照，已有索引仅用于加快端点读取；收据 memo 绑定原始内容和 provider binding，当前时钟、完整性和授权校验保持不变。没有新表、索引、迁移、响应缓存或超时放宽。
+- #485 运行基线 `a093d407d23fe6cf7f82c1fb2a27359c82b7d803`。16:44 发布轮 A股/Crypto current、1056 文件清单及实际进程已核验，11 个定时器恢复。此轮账户/Worker 不切换这两个运行面。回退代码 `3ad50fc4ca325dea25b49914d5d6189e860cf033` 保留，不回滚数据。
+- 前轮目录 A股 192 项、Crypto 240 项身份摘要一致；A股首次 15.591 秒、后续 4.332 秒，Crypto 7.793 秒。此轮 17:35 既有账户上游 A股目录认证 200/17.998 秒/192 项，数据库路径与目录身份一致；财务查询继续 partial/degraded 且 lineage 完整。
+- 冷读仍未满足 15 秒性能目标，有限读回不是持续 SLA。当前服务输出既有质量事实，不通过清除质量条件制造成功；新闻 provider_error、周末时效、未观测和暂停独立展示。
+- 源 empty/partial/stale/provider_error 不要求全量 stable 才接入、开发、发布或按合同供数；授权、合同和存储身份校验继续保留。接入口径唯一正文见 [OPERATIONS](docs/OPERATIONS.md)。
 
-## 接入、服务与外部边界
+## 当前入口与下一步
 
-源的 empty、partial、stale、provider_error 按数据集/窗口展示，不要求全量 stable 才接入、开发、发布或供数；授权、合同与存储身份校验继续保留。接入口径与排期唯一正文见 [OPERATIONS](docs/OPERATIONS.md)。
+[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md) 保存长期合同；本页记录发布状态，历史由 Git 与 [reports](docs/reports/README.md) 追溯。源码 HEAD 与 immutable runtime 分别读取，不为仅文档提交重启服务。
 
-- 新闻仍 provider_error；周末时效、未观测和暂停状态独立展示，不当成全平台故障。没有额外付费源探测。
-- `tradingdatas.com` 网站可达；`api.tradingdatas.com` 尚无解析，规范域名配置未完成。
-- 现有 `td-admin-api.tradingagent.cc/v1/catalog` 从本机读到标准 JSON 401，说明已有外部 API 入口；广州探测仍有边缘 403。无凭据拒绝不是客户成功接入证明。
-- 当前已检查凭证记录仅有内部身份，未完成普通客户凭证的外部 catalog/query 验收。Cloudflare 控制台登录与域名/访问配置仍待完成，不能把内部 bootstrap 试读冒充客户接入。
-- #395 的 settlement identity/迁移合同草稿不在本轮优化范围。
-
-## 入口与后续验证
-
-[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md) 保存长期合同；历史报告见 [reports](docs/reports/README.md)。纯文档快路径保留 required checks，不替代代码测试或生产证据。
-
-下一步是完成规范域名与正式消费者外部读回，并在日常负载中继续观察目录耗时；不因此停止其它接口接入与开发。
-
-## Account integration — 2026-09-05 implementation
-
-Existing-key connection is being enabled in the public Account, with distinct
-invalid/unavailable access states and safe key-management error messages.
-The existing account-only schema was applied to identity D1 on September 5: two
-tables/two triggers verified, foreign-key check clean, zero users/sessions before
-and after. Connection activation awaits the exact candidate release. Library and
-Admin stay disabled; payment remains paused. Real email/consumer connection has
-not been verified in this round. This account release does not change the A股 or
-Crypto immutable runtime described above.
+下一步优先完成真实客户连接及查询验收、缩短目录冷读；支付恢复需明确商户/结算与订阅合同。`api.tradingdatas.com` DNS 尚未配置，控制台登录仍待完成，但既有官网同域入口独立交付。#395 settlement identity/迁移草稿不在本轮范围。
