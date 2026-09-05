@@ -8,7 +8,7 @@
 - [PR #498](https://github.com/NicholasHan1226/TradingDatas/pull/498) 合入 `a3106d68b19d528c31be775b808665833ed8c4e3`；候选 [33967381204](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33967381204)、精确主线 [33967864444](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33967864444) 四组检查全部通过。
 - 公开 Data/产品介绍无需登录；真实状态通过账户 `/api/account/catalog` 使用当前用户已有 key 读取，展示全部授权境内/新闻接口的 state、coverage、receipt/reasons 和读取时间。21 个产品导航绑定正式原始 dataset；38 个产品定义不等于 38 个已完成加工产品，也不等于可返回非空数据的接口数。
 - `pledge_stat` 小页 503 已修复：一次排除同一已验证失败 execution 的全部成功前缀，避免逐项耗尽排除循环；不放宽失败批次、lineage 或查询预算。
-- [PR #499](https://github.com/NicholasHan1226/TradingDatas/pull/499) 合入 `e251ae7be29981646fb8bb2223da9e64fa255aa4`，仅调整公共账户目录传输等待并更新构建/API 文档。候选 [33968276279](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968276279) 通过；发布后精确主线 [33968738191](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968738191) 待最终确认。
+- [PR #499](https://github.com/NicholasHan1226/TradingDatas/pull/499) 合入 `e251ae7be29981646fb8bb2223da9e64fa255aa4`，仅调整公共账户目录传输等待并更新构建/API 文档。候选 [33968276279](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968276279) 通过；发布后精确主线 [33968738191](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968738191) 四组检查全部通过。
 - Cloudflare [33968739190](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33968739190) 两项发布成功；正式 `/data` 资源 `index-CoboUdjE.js` 一致。账户目录上游等待与已有公共网关统一为 30 秒，浏览器为 45 秒，仍 no-store、身份隔离、失败可重试；不增加采集预算或修改数据面性能目标。
 - 21:24 正式公网使用既有内部验收权限：会话 200，目录 200 / 12.410 秒 / 192 项，192 项均有 runtime 与 coverage，Crypto 0；质押统计查询 200 / 3.516 秒 / 1 行、partial、lineage complete；退出确认 200。此为既有权限链路，不是普通客户商业购买证明。
 
