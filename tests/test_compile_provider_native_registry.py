@@ -1682,6 +1682,7 @@ def test_etf_mins_active_evidence_is_formal_and_ft_mins_stays_paused() -> None:
         "max_batches_per_run": 1,
     }
     assert etf["fanout"]["batch_size"] == 1
+    assert etf["fanout"]["source_equals"] == {"list_status": "L"}
     assert etf["max_rows_per_attempt"] == 10000
     assert datasets["ft_mins"]["provider_bindings"][0]["activation_state"] == "paused"
     assert datasets["ft_mins"]["provider_bindings"][0]["resumable_fanout"] == {

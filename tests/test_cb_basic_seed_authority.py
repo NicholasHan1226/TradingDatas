@@ -191,6 +191,9 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         assert active_evidence[api] == f"server-evidence/20260906-preflight6-{api}"
     assert bindings["etf_mins"]["provider_bindings"][0]["activation_state"] == "active"
     assert bindings["etf_mins"]["cadence_class"] == "on_demand"
+    assert bindings["etf_mins"]["provider_bindings"][0]["fanout"]["source_equals"] == {
+        "list_status": "L"
+    }
     assert active_evidence["etf_mins"] == "server-evidence/20260906-etf-ft-mins-etf_mins"
     assert bindings["ft_mins"]["provider_bindings"][0]["activation_state"] == "paused"
     assert "ft_mins" not in active_evidence
