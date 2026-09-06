@@ -5353,6 +5353,9 @@ datasets:
       source_dataset_id: cn.dataset.cb_basic
       source_field: ts_code
       batch_size: 1
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy: null
@@ -5453,6 +5456,9 @@ datasets:
       source_dataset_id: cn.dataset.cb_basic
       source_field: ts_code
       batch_size: 1
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy: null
@@ -31858,6 +31864,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 1
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy:
@@ -32290,6 +32299,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy: null
@@ -35323,6 +35335,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy: null
@@ -35463,6 +35478,9 @@ datasets:
       source_dataset_id: cn.equity.security_master
       source_field: ts_code
       batch_size: 10
+    resumable_fanout:
+      cursor_contract_version: 2
+      max_batches_per_run: 1
     pagination:
       strategy: none
     request_window_policy: null

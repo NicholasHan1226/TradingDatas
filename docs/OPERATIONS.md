@@ -42,6 +42,7 @@ rt_min 单 API override 60 的本地门禁内，不证明 provider entitlement�
 输入 hash；不删除既有 facts/receipts，也不新增服务或 timer。
 
 `resumable_fanout.progress_mode` 默认 `complete_window`，保持既有合同与配置哈希。
+已 active 的 `on_demand` `entity_fanout` 若缺该块，ingest 会一次装入全部 seed 并冲过 10000 硬预算；cap 用既有 `cursor_contract_version: 2` / `max_batches_per_run: 1`，不发明新 cadence、不抬高 10000。采集须等带该 cap 的新 live `current`，本切片不 cut、不 collect。
 `rt_min_daily` 的 major 3 显式选择 `session_day_rotation`：完整本地日窗口只用于验证和
 游标，不发送给上游；采集开始与结束必须仍在请求日，逐行校验非空 `[ts_code,time]`
 和真实 provider 时间，拒绝旧日、混日、未来或跨午夜响应。水位取真实最大 provider 时间。
