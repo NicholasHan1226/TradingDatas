@@ -24,13 +24,13 @@ This boundary does not stop existing isolated collection or delete stored data.
 | collector unit | `tradingdatas-crypto-binance-collect.service` |
 | timer | `tradingdatas-crypto-binance-collect.timer` at `*-*-* *:0/5:00`; isolated 5-minute close-aligned collection. Enablement is a separate release decision |
 | backup collector unit | `tradingdatas-crypto-binance-collect-retry.service`, same `latest_closed_window` with `--backup-wake` |
-| backup timer | `tradingdatas-crypto-binance-collect-retry.timer` at `*-*-* *:1/5:00` (close+60s). It fills datasets without a validated success receipt for the same closed-bar window; a held `collect.lock` exits `skipped_lock_held` so a still-running primary is not queued again |
+| backup timer | `tradingdatas-crypto-binance-collect-retry.timer` at `*-*-* *:1/5:00` (close+60s) and `*-*-* *:3/5:00` (close+180s). Both use the same `latest_closed_window`. They fill datasets without a validated success receipt for that closed-bar window; a held `collect.lock` exits `skipped_lock_held` so a still-running primary is not queued again |
 | book-ticker unit | `tradingdatas-crypto-binance-book-ticker.service` |
 | book-ticker timer | `tradingdatas-crypto-binance-book-ticker.timer` at `*-*-* *:3/5:10`; this is the in-repo production deconflict slot, not `*:0/5:40`. Enablement is a separate release decision |
 | rule unit | `tradingdatas-crypto-binance-rules.service` |
 | rule timer | `tradingdatas-crypto-binance-rules.timer`, daily public-rule refresh |
 | USDM candidate unit | `tradingdatas-crypto-binance-usdm-collect.service` |
-| USDM candidate timer | `tradingdatas-crypto-binance-usdm-collect.timer` at `*-*-* *:2/5:00`, one calendar second family after the bar backup; it may run as an isolated, budget-bounded observation timer, but does not by itself make any dataset `observed` or `stable` |
+| USDM candidate timer | `tradingdatas-crypto-binance-usdm-collect.timer` at `*-*-* *:2/5:00`, one calendar second family after the first bar backup; it may run as an isolated, budget-bounded observation timer, but does not by itself make any dataset `observed` or `stable` |
 | OI dump candidate unit | `tradingdatas-crypto-binance-oi-dump-collect.service` |
 | OI dump candidate timer | `tradingdatas-crypto-binance-oi-dump-collect.timer`, every two hours at minute 37 (`*-*-* 00/2:37:00`) staggered off the five-minute timers; it may run only for isolated receipt accumulation and remains subject to the same dataset-local quality gates |
 | premium-index dump candidate unit | `tradingdatas-crypto-binance-premium-dump-collect.service` |

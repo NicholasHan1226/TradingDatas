@@ -52,18 +52,20 @@ def test_backup_wake_reuses_the_same_latest_closed_window() -> None:
     close = datetime(2026, 9, 5, 9, 5, tzinfo=timezone.utc)
     primary_now = close + timedelta(seconds=10)
     backup_now = close + timedelta(seconds=70)
+    second_backup_now = close + timedelta(seconds=180)
     expected = {
         "start_open_time": "2026-09-05T08:55:00Z",
         "end_open_time": "2026-09-05T09:00:00Z",
     }
     assert latest_closed_window(primary_now) == expected
     assert latest_closed_window(backup_now) == expected
+    assert latest_closed_window(second_backup_now) == expected
     assert latest_closed_window(backup_now) == latest_closed_window(primary_now)
     planned = run(
         db_path=Path("/private/tmp/unused.sqlite"),
         lock_path=Path("/private/tmp/unused.lock"),
         execute=False,
-        now=backup_now,
+        now=second_backup_now,
         backup_wake=True,
     )
     assert planned["windows"] == [expected]
@@ -352,6 +354,7 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
     assert "--backup-wake" not in collector
     assert "tradingdatas-crypto-binance-collect-retry.service" in retry_timer
     assert "OnCalendar=*-*-* *:1/5:00" in retry_timer
+    assert "OnCalendar=*-*-* *:3/5:00" in retry_timer
     assert "--execute --backup-wake" in retry_service
     assert "/opt/investment-data/tradingdatas-crypto/collect.lock" in retry_service
     assert "tradingdatas-crypto-binance-rules.service" in rules_timer
@@ -382,13 +385,16 @@ def test_crypto_units_are_physically_isolated_from_ashare_runtime() -> None:
 
 
 def _five_minute_oncalendar_slots(timer_text: str) -> set[tuple[int, int]]:
-    match = re.search(
+    matches = re.findall(
         r"^OnCalendar=\*-\*-\* \*:(\d+)/5:(\d{2})$", timer_text, flags=re.M
     )
-    assert match is not None, timer_text
-    start_minute = int(match.group(1))
-    second = int(match.group(2))
-    return {(minute, second) for minute in range(start_minute, 60, 5)}
+    assert matches, timer_text
+    slots: set[tuple[int, int]] = set()
+    for start_minute, second in matches:
+        slots.update(
+            (minute, int(second)) for minute in range(int(start_minute), 60, 5)
+        )
+    return slots
 
 
 def test_bar_usdm_and_book_ticker_calendars_do_not_share_a_second() -> None:
@@ -411,7 +417,9 @@ def test_bar_usdm_and_book_ticker_calendars_do_not_share_a_second() -> None:
         ).read_text()
     )
     assert primary == {(minute, 0) for minute in range(0, 60, 5)}
-    assert backup == {(minute, 0) for minute in range(1, 60, 5)}
+    assert backup == {(minute, 0) for minute in range(1, 60, 5)} | {
+        (minute, 0) for minute in range(3, 60, 5)
+    }
     assert usdm == {(minute, 0) for minute in range(2, 60, 5)}
     assert book_ticker == {(minute, 10) for minute in range(3, 60, 5)}
     occupied: dict[tuple[int, int], str] = {}
