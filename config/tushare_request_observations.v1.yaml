@@ -16,7 +16,7 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 091f901c4b2576eab5b3535fa521e79962f9ed034868a9495ce53256a30dced7
+    sha256: 00f7e9b67c11d9127f4366c229480015eed8bdc83a0dcfbe5c330426f8fb2e3e
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -1300,12 +1300,15 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  # Empty snapshot is the old unbounded list (场内+场外 公募). Official
-  # market is E场内 / O场外 with 默认E; those documented literals are the
-  # request anchor. status D/I/L is optional with no official default, so
-  # it stays unmapped rather than guessed. ts_code has no non-circular
-  # seed. Formal activation is active_evidence only; this slice does
-  # not change the request mapping.
+  # Official market is E场内 / O场外 with 默认E. Template stays E. The
+  # 5644f631 {} window ran both variants in one attempt: E success 2884,
+  # O failed resource_budget on its own 10000 (0 rows). The runner
+  # isolates each variant's row budget, but they share one attempt, so
+  # O overflow fails the cohort and query excludes the E page. Drop O
+  # from same-attempt request_variants so a later E collect can get
+  # nonempty SUCCESS. Official E/O table stays; do not invent status
+  # D/I/L, a second dataset, or raise 10000. Activation is already
+  # active_evidence.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: ready
@@ -1317,7 +1320,6 @@ entries:
       value: E
   request_variants:
   - market: E
-  - market: O
   row_limit_observation: null
 - api_name: fund_company
   scope_labels:

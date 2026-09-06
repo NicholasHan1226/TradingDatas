@@ -12450,7 +12450,6 @@ datasets:
       market: E
     request_variants:
     - market: E
-    - market: O
     fanout:
       strategy: none
     pagination:

@@ -1642,6 +1642,9 @@ def test_preflight6_bse_fund_sge_active_evidence_is_formal_and_fail_closed() -> 
     assert datasets["fund_basic"]["provider_bindings"][0]["request_template"] == {
         "market": "E"
     }
+    assert datasets["fund_basic"]["provider_bindings"][0]["request_variants"] == [
+        {"market": "E"}
+    ]
     assert datasets["bse_mapping"]["provider_bindings"][0]["request_template"] == {}
     assert datasets["sge_basic"]["provider_bindings"][0]["request_template"] == {}
     assert datasets["fund_company"]["provider_bindings"][0]["activation_state"] == "paused"

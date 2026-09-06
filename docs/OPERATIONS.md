@@ -411,7 +411,7 @@ news.flash、rt_etf_min*）保持暂停。`bse_mapping` / `fund_basic` / `sge_ba
 success 248 / 2884 / 13）写入 `active_evidence`，正式 `activation_state=active`，
 cadence 仍是 `on_demand`，窗口/variants/预算未改；本切片不采集、不切 GZ
 `current`。`bse_mapping` 与 `sge_basic` 仍是官方 empty snapshot（不得猜代码）；
-`fund_basic` 仍是 documented `market=E` 模板与 E/O variants。`index_weekly` 改为已注册
+`fund_basic` 仍是 documented `market=E` 模板；官方 E/O 表保留，但 same-attempt `request_variants` 只留 E（`5644f631` 上 O 自溢 10000，未抬高硬预算）。`index_weekly` 改为已注册
 `index_basic.ts_code` fanout，仍保留 observed-limit ingest block。`bc_otcqt`
 没有已注册债券主数据 seed，`index_basic` 的官方 `市场说明(market)` 表已进入冻结文档快照
 （MSCI/CSI/SSE/SZSE/CICC/SW/OTH，默认 SSE），请求按官方 market
