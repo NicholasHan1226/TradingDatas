@@ -1,12 +1,16 @@
 [Unit]
-Description=Wake isolated TradingDatas Crypto closed-5m collection 60s after slot close
+Description=Wake isolated TradingDatas Crypto closed-5m collection 60s and 180s after slot close
 
 [Timer]
-# Same latest_closed_window as the :00/:05 primary. Fires only when the
-# primary oneshot never started, so a missed close-aligned wake still writes
-# the just-closed bar at close+60s. Persistent catch-up stays on this :01/:06
-# second and does not share OnCalendar with USDM or book-ticker.
+# Same latest_closed_window as the :00/:05 primary. The close+60s wake writes
+# the just-closed bar when the primary oneshot never started. The close+180s
+# wake is a second fail-fast chance after a typical primary hold; a held
+# collect.lock still exits skipped_lock_held, and completed receipts are
+# reused without another provider call. Persistent catch-up stays on these
+# :01/:06 and :03/:08 seconds and does not share OnCalendar with USDM or
+# book-ticker.
 OnCalendar=*-*-* *:1/5:00
+OnCalendar=*-*-* *:3/5:00
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=true
