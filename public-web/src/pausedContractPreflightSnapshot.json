@@ -22,24 +22,12 @@
           "datasetId": "cn.dataset.ci_index_member"
         },
         {
-          "apiName": "dc_concept_cons",
-          "datasetId": "cn.dataset.dc_concept_cons"
-        },
-        {
-          "apiName": "dc_member",
-          "datasetId": "cn.dataset.dc_member"
-        },
-        {
           "apiName": "etf_sz_cons",
           "datasetId": "cn.dataset.etf_sz_cons"
         },
         {
           "apiName": "ft_mins",
           "datasetId": "cn.dataset.ft_mins"
-        },
-        {
-          "apiName": "fund_daily",
-          "datasetId": "cn.dataset.fund_daily"
         },
         {
           "apiName": "fund_nav",

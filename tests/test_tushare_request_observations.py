@@ -183,7 +183,7 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
         "probe_blocked": 53,
         "ingest_contract_ready": 131,
         "ingest_contract_blocked": 59,
-        "row_limit_ingest_contract_blocked": 17,
+        "row_limit_ingest_contract_blocked": 14,
     }
     assert observations["counts"] == {
         "interfaces": len(entries),
@@ -236,24 +236,14 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
     assert fund_daily["ingest_contract_state"] == "blocked"
     assert fund_daily["ingest_contract_block_reasons"] == [
         "dependency_seed_receipt_unresolved",
-        "response_completeness_unresolved_at_observed_limit",
     ]
-    assert fund_daily["row_limit_observation"] == {
-        "observed_count": 2000,
-        "detection": "observed_count_equals_round_provider_style_boundary",
-        "reject_at_limit": True,
-    }
+    assert fund_daily["row_limit_observation"] is None
     dc_concept_cons = _entry(observations, "dc_concept_cons")
     assert dc_concept_cons["ingest_contract_state"] == "blocked"
     assert dc_concept_cons["ingest_contract_block_reasons"] == [
         "dependency_seed_receipt_unresolved",
-        "response_completeness_unresolved_at_observed_limit",
     ]
-    assert dc_concept_cons["row_limit_observation"] == {
-        "observed_count": 3000,
-        "detection": "observed_count_equals_round_provider_style_boundary",
-        "reject_at_limit": True,
-    }
+    assert dc_concept_cons["row_limit_observation"] is None
     opt_daily = _entry(observations, "opt_daily")
     assert opt_daily["ingest_contract_state"] == "blocked"
     assert opt_daily["parameters"]["exchange"] == {
@@ -778,12 +768,17 @@ def test_fund_daily_and_dc_concept_cons_use_existing_seed_fanout_without_clearin
     assert fund_daily["probe_block_reasons"] == [
         "dependency_seed_receipt_unresolved"
     ]
+    assert fund_daily["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert fund_daily["row_limit_observation"] is None
     assert fund_daily["parameters"]["ts_code"] == {
         "source": "dataset_field",
         "dataset_id": "cn.dataset.etf_basic",
         "field": "ts_code",
         "requires_fresh_success_receipt": True,
         "batch_size": 1,
+        "source_equals": {"list_status": "L"},
     }
     assert fund_daily["parameters"]["trade_date"] == {
         "source": "run_clock",
@@ -815,6 +810,9 @@ def test_fund_daily_and_dc_concept_cons_use_existing_seed_fanout_without_clearin
     bundle = _compile()
     fund_contract = _contract(bundle, "fund_daily")
     assert fund_contract["ingest_contract_state"] == "blocked"
+    assert fund_contract["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
     assert fund_contract["request_template"] == {"trade_date": "${window.trade_date}"}
     assert fund_contract["fanout"] == {
         "strategy": "dataset_field",
@@ -822,10 +820,14 @@ def test_fund_daily_and_dc_concept_cons_use_existing_seed_fanout_without_clearin
         "source_dataset_id": "cn.dataset.etf_basic",
         "source_field": "ts_code",
         "batch_size": 1,
+        "source_equals": {"list_status": "L"},
     }
     assert fund_contract["resumable_fanout"] == fund_daily["resumable_fanout"]
     dc_contract = _contract(bundle, "dc_concept_cons")
     assert dc_contract["ingest_contract_state"] == "blocked"
+    assert dc_contract["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
     assert dc_contract["fanout"] == {
         "strategy": "dataset_field",
         "parameter": "theme_code",
@@ -868,20 +870,16 @@ def test_fund_daily_and_dc_concept_cons_use_existing_seed_fanout_without_clearin
         "trade_date": "20260721",
         "ts_code": "510300.SH",
     }
-    assert fund_probe["ingest_contract_state"] == "blocked"
-    assert "response_completeness_unresolved_at_observed_limit" in fund_probe[
-        "ingest_contract_block_reasons"
-    ]
+    assert fund_probe["ingest_contract_state"] == "ready"
+    assert fund_probe["ingest_contract_block_reasons"] == []
     theme_probe = _entry(plan, "dc_concept_cons")
     assert theme_probe["probe_state"] == "executable"
     assert theme_probe["params"] == {
         "theme_code": "000001.DC",
         "trade_date": "20260721",
     }
-    assert theme_probe["ingest_contract_state"] == "blocked"
-    assert "response_completeness_unresolved_at_observed_limit" in theme_probe[
-        "ingest_contract_block_reasons"
-    ]
+    assert theme_probe["ingest_contract_state"] == "ready"
+    assert theme_probe["ingest_contract_block_reasons"] == []
 
 
 def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_completeness() -> (
@@ -930,14 +928,9 @@ def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_com
     ]
     assert dc_member["ingest_contract_state"] == "blocked"
     assert dc_member["ingest_contract_block_reasons"] == [
-        "dependency_seed_receipt_unresolved",
-        "response_completeness_unresolved_at_observed_limit",
+        "dependency_seed_receipt_unresolved"
     ]
-    assert dc_member["row_limit_observation"] == {
-        "observed_count": 5000,
-        "detection": "observed_count_equals_round_provider_style_boundary",
-        "reject_at_limit": True,
-    }
+    assert dc_member["row_limit_observation"] is None
     assert dc_member["parameters"]["ts_code"] == {
         "source": "dataset_field",
         "dataset_id": "cn.dataset.dc_index",
@@ -984,6 +977,9 @@ def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_com
     assert etf_contract["resumable_fanout"] == etf_sz_cons["resumable_fanout"]
     dc_contract = _contract(bundle, "dc_member")
     assert dc_contract["ingest_contract_state"] == "blocked"
+    assert dc_contract["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
     assert dc_contract["fanout"] == {
         "strategy": "dataset_field",
         "parameter": "ts_code",
@@ -1039,10 +1035,8 @@ def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_com
         "trade_date": "20260721",
         "ts_code": "BK0473.DC",
     }
-    assert dc_probe["ingest_contract_state"] == "blocked"
-    assert "response_completeness_unresolved_at_observed_limit" in dc_probe[
-        "ingest_contract_block_reasons"
-    ]
+    assert dc_probe["ingest_contract_state"] == "ready"
+    assert dc_probe["ingest_contract_block_reasons"] == []
     kpl_probe = _entry(plan, "kpl_concept_cons")
     assert kpl_probe["probe_state"] == "executable"
     assert kpl_probe["params"] == {"trade_date": "20260721"}
@@ -1495,7 +1489,7 @@ def test_row_limit_under_hard_budget_allows_finite_coverage_without_activation_b
     None
 ):
     observations = _yaml(REQUEST_OBSERVATIONS)
-    for api_name, expected_count in (("fund_daily", 2000), ("dc_concept_cons", 3000)):
+    for api_name, expected_count in (("fund_adj", 2000), ("etf_sz_cons", 3000)):
         entry = _entry(observations, api_name)
         row_limit = entry["row_limit_observation"]
         assert isinstance(row_limit, dict)
@@ -1504,31 +1498,33 @@ def test_row_limit_under_hard_budget_allows_finite_coverage_without_activation_b
         _set_row_limit_ready(observations, api_name, reject_at_limit=False)
 
     bundle = _compile(request_observations=observations)
-    for api_name in ("fund_daily", "dc_concept_cons"):
-        contract = _contract(bundle, api_name)
-        assert contract["ingest_contract_state"] == "blocked"
-        assert contract["ingest_contract_block_reasons"] == [
-            "dependency_seed_receipt_unresolved"
-        ]
-        assert contract["budgets"]["max_rows_per_attempt"] == 10000
-        assert contract["request_template"] == {"trade_date": "${window.trade_date}"}
+    fund_adj = _contract(bundle, "fund_adj")
+    assert fund_adj["ingest_contract_state"] == "ready"
+    assert fund_adj["ingest_contract_block_reasons"] == []
+    assert fund_adj["budgets"]["max_rows_per_attempt"] == 10000
+    assert fund_adj["request_template"] == {"trade_date": "${window.trade_date}"}
+    etf_sz_cons = _contract(bundle, "etf_sz_cons")
+    assert etf_sz_cons["ingest_contract_state"] == "blocked"
+    assert etf_sz_cons["ingest_contract_block_reasons"] == [
+        "dependency_seed_receipt_unresolved"
+    ]
+    assert etf_sz_cons["budgets"]["max_rows_per_attempt"] == 10000
+    assert etf_sz_cons["request_template"] == {"trade_date": "${window.trade_date}"}
 
 
 def test_row_limit_under_hard_budget_keeps_explicit_reject_at_limit_without_forcing_block() -> (
     None
 ):
     observations = _yaml(REQUEST_OBSERVATIONS)
-    row_limit = _entry(observations, "fund_daily")["row_limit_observation"]
+    row_limit = _entry(observations, "fund_adj")["row_limit_observation"]
     assert isinstance(row_limit, dict)
     assert row_limit["reject_at_limit"] is True
-    _set_row_limit_ready(observations, "fund_daily", reject_at_limit=True)
+    _set_row_limit_ready(observations, "fund_adj", reject_at_limit=True)
 
     bundle = _compile(request_observations=observations)
-    contract = _contract(bundle, "fund_daily")
-    assert contract["ingest_contract_state"] == "blocked"
-    assert contract["ingest_contract_block_reasons"] == [
-        "dependency_seed_receipt_unresolved"
-    ]
+    contract = _contract(bundle, "fund_adj")
+    assert contract["ingest_contract_state"] == "ready"
+    assert contract["ingest_contract_block_reasons"] == []
     assert contract["budgets"]["max_rows_per_attempt"] == 10000
 
 
@@ -1542,9 +1538,9 @@ def test_row_limit_over_hard_budget_still_requires_activation_block() -> None:
     entry["ingest_contract_block_reasons"] = []
     counts = observations["counts"]
     assert isinstance(counts, dict)
-    counts["ingest_contract_ready"] = 130
-    counts["ingest_contract_blocked"] = 60
-    counts["row_limit_ingest_contract_blocked"] = 15
+    counts["ingest_contract_ready"] = 132
+    counts["ingest_contract_blocked"] = 58
+    counts["row_limit_ingest_contract_blocked"] = 13
 
     with pytest.raises(
         RuntimeContractCompilationError,
@@ -1568,7 +1564,7 @@ def test_row_limit_over_hard_budget_cannot_clear_reject_at_limit() -> None:
 
 def test_row_limit_reject_at_limit_must_be_boolean() -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
-    row_limit = _entry(observations, "fund_daily")["row_limit_observation"]
+    row_limit = _entry(observations, "fund_adj")["row_limit_observation"]
     assert isinstance(row_limit, dict)
     row_limit["reject_at_limit"] = "true"
 
@@ -1684,12 +1680,12 @@ def test_active_on_demand_fanouts_use_existing_resumable_batch_cap() -> None:
         assert binding["fanout"]["batch_size"] == 1
     for paused in (
         "fund_nav",
-        "fund_daily",
         "fund_company",
         "stk_nineturn",
         "stock_hsgt",
     ):
         assert runtime_bindings[paused]["activation_state"] == "paused"
+    assert runtime_bindings["fund_daily"]["activation_state"] == "active"
 
     # rt_min_daily carries an explicit five-code batch: one session holds
     # ~241 one-minute bars per code, so ten codes overflow any feasible

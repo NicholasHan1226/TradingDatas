@@ -662,7 +662,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "fund_daily",
       "cadence": "postclose_daily",
       "category": "funds-indices",
@@ -692,7 +692,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "fund_manager",
       "cadence": "on_demand",
       "category": "funds-indices",
@@ -1222,7 +1222,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "bak_daily",
       "cadence": "on_demand",
       "category": "market-reference",
@@ -1362,7 +1362,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "dc_concept_cons",
       "cadence": "postclose_daily",
       "category": "market-reference",
@@ -1382,7 +1382,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "dc_member",
       "cadence": "on_demand",
       "category": "market-reference",
