@@ -96,10 +96,11 @@ def test_synthetic_https_activation_evidence_freezes_safe_schema_and_bindings() 
     # The generic synthetic fixture only evidences the ingest-ready cohort;
     # active entries whose interfaces are not ingest-ready in the checked-in
     # observations (blocked params, unresolved enums, session-minute fanout)
-    # never appear in its candidate projection.  The gap is 28 once
-    # etf_sz_cons / fut_holding / fut_wsr join the seed-dependent
-    # active set with dc_concept_cons / dc_member / fund_daily.
-    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 28
+    # never appear in its candidate projection.  The gap is 31 once
+    # ci_index_member / index_member_all / fund_adj join the seed-dependent
+    # active set with etf_sz_cons / fut_holding / fut_wsr and the prior
+    # dc_concept_cons / dc_member / fund_daily cohort.
+    _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS = 31
     assert activation_projection["candidate_count"] == len(active_evidence) - (
         _SYNTHETIC_FIXTURE_UNEVIDENCED_ACTIVE_APIS
     )
