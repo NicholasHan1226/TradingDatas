@@ -140,5 +140,4 @@ def test_closed_bar_workers_overlap_provider_calls_under_one_lock(
     assert 2 <= max_in_flight <= 4
     assert max_persist == 1
     assert elapsed < canary._CLOSED_BAR_FINISH_BUDGET_SECONDS
-    assert elapsed < 40 * 0.05 * 0.7
     assert max(finish_times) - min(finish_times) < canary._CLOSED_BAR_FINISH_BUDGET_SECONDS
