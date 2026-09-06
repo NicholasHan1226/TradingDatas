@@ -1,11 +1,13 @@
 # TradingDatas 当前状态
 
-发布检查更新至 2026-09-06 18:33 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
+发布检查更新至 2026-09-06 18:50 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
 
 ## 当前结论与对外范围
 
 - Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；内部采集保持隔离。Research 外部文献不构成 Crypto 供数承诺。
-- [PR #534](https://github.com/NicholasHan1226/TradingDatas/pull/534) 合入 `12fd40977dd329c71f033393fbe0de50d35e8005`（激活 `etf_sz_cons` / `fut_holding` / `fut_wsr`）。精确主线 [34025864949](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34025864949) 通过。Cloudflare [34025865767](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34025865767) 已在该 SHA 发布 public-web 快照。两侧 live `current` 已是该 SHA。本 STATUS **不再 cut**。
+- 两侧 live `current` 已是 STATUS-only [PR #535](https://github.com/NicholasHan1226/TradingDatas/pull/535) `7e43735066880fce1343024a9f062d86f777b5e4`（数据面同 [PR #534](https://github.com/NicholasHan1226/TradingDatas/pull/534) `12fd4097`）。本切片 **不再 cut**，也不采集。
+- 2026-09-06 仓外 HTTPS 有界探测（`evidence/20260906-member-fund-adj-probe/`，无 facts 写入）：`ci_index_member` nonempty **2**（`security_master` seed `000001.SZ` + 官方 `is_new=Y`，无 trade_date、无发明 l1/l2/l3）、`index_member_all` nonempty **2**（同一 seed）、`fund_adj` nonempty **1**（`etf_basic` `list_status=L` seed `158003.SZ` + `trade_date=20260904`）。均 <10000，且不是新的整千边界。旧无界 5000/2000/2000 不再当作本切片 ingest 快照，已清空 `row_limit_observation`。已写入 `active_evidence`；两个 member API 加入既有 `security_master` authority；`fund_adj` 加入既有 `etf_basic` authority 且只加官方 `source_equals.list_status=L`。Tushare **153 active / 37 paused**。未 restage `etf_mins`，未发明 `510300.SH` / `AD`，未 pin-and-unpause `fund_nav`。empty ≠ success。
+- [PR #534](https://github.com/NicholasHan1226/TradingDatas/pull/534) 合入 `12fd40977dd329c71f033393fbe0de50d35e8005`（激活 `etf_sz_cons` / `fut_holding` / `fut_wsr`）。精确主线 [34025864949](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34025864949) 通过。Cloudflare [34025865767](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34025865767) 已在该 SHA 发布 public-web 快照。该指针已被 STATUS-only `7e437350` 取代。本 STATUS **不再 cut**。
 - 2026-09-06 18:33 在同一 `tradingdatas-provider-native-collect.service` 上只采 `cn.dataset.etf_sz_cons`、`cn.dataset.fut_holding`、`cn.dataset.fut_wsr`（均为 `trade_date=20260904`）。no-write plan 选出的一批一个 seed：`158003.SZ`（`list_status=L`）/ `A` / `A`。未把探测 seed `AD` 写入 `request_window`。未采 `etf_mins` / `ft_mins` / `fund_adj`。未在旧 `current` 上采集。未抬高 10000。empty ≠ success。
 - 2026-09-06 仓外 HTTPS 有界探测（`evidence/20260906-etf-fut-fanout-probe/`，无 facts 写入）对 `20260904` 单日窗 + 各一个已落库官方 seed：`etf_sz_cons` nonempty **50**（`etf_basic` `list_status=L` seed `158003.SZ`）、`fut_holding` nonempty **2**（`fut_basic.symbol=AD`）、`fut_wsr` nonempty **14**（`fut_basic.fut_code=AD`）。均 <10000，且不是新的整千边界。旧无界 `trade_date`-only 3000/2000/1000 不再当作本切片 ingest 快照，已清空 `row_limit_observation`。已写入 `active_evidence`；`etf_sz_cons` 加入既有 `etf_basic` authority 且只加官方 `source_equals.list_status=L`；`fut_holding` / `fut_wsr` 分别 pinned 到既有 `fut_basic` receipt 的 `symbol` / `fut_code` field authorities（`ft_mins` / `rt_fut_min` 仍用 `ts_code`）。Tushare **150 active / 40 paused**。未 restage `etf_mins`，未发明 `510300.SH`。empty ≠ success。
 - 探测时两侧 live `current` 仍是 [PR #532](https://github.com/NicholasHan1226/TradingDatas/pull/532) `c3dbb64d745884f05dac733f0e4b1e9026b5edf7`（[PR #533](https://github.com/NicholasHan1226/TradingDatas/pull/533) STATUS-only `d6f4180c` 在上）。该指针已被 `12fd4097` 取代。
@@ -148,7 +150,7 @@
 
 ## 接入证据与下一批
 
-计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。主线 40 个 Tushare 暂停中。编译 registry（含新闻补充合同）为 150 active / 42 paused。
+计划唯一入口：[运维：可执行排期](docs/OPERATIONS.md#可执行排期不得因源质量滑期)。主线 37 个 Tushare 暂停中。编译 registry（含新闻补充合同）为 154 active / 38 paused。
 
 - 21:56 在既有 immutable a3106d68 上执行 3 次冻结的串行 HTTPS 探测：`fut_daily` valid_empty；`opt_basic` success / 6000 行（仅 ts_code 字段）；`stk_nineturn` valid_empty。这些是上游权限/请求观察，不是全字段落库 receipt、生产供数或连续稳定证明。
 - `fut_daily`、`opt_basic` 已是 active / `on_demand`。2026-09-06 04:02 在 `e8a96ccc` 上完成首次有界正式采集与认证 catalog/query 回读，见上文 receipt。单次非空 success 是 observed 证据，不是 `stable`，也不是历史完整性或 PIT。
@@ -156,7 +158,8 @@
 - `etf_index`、`fund_div` 已是 active / `on_demand`。2026-09-06 12:25 在 live `898ba781`（STATUS-only，数据面同 `8fe3498f`）上完成有界正式采集：`fund_div` 非空 success 43 为 observed；`etf_index` 该窗口 vendor empty，记外部 blocker 后 MOVE ON。未激活其它项。
 - `stk_mins`、`top10_floatholders` 已是 active / `on_demand`。2026-09-06 13:11 在 live `8ac37d25` 上按 `max_batches_per_run=1` 完成有界正式采集：`stk_mins` 非空 success 241、`top10_floatholders` 非空 success 6000，均为 observed。未采同缺口的 `top10_holders` / `stk_rewards` / `cb_rate` / `cb_rating`。`fund_nav` 仍因 nav_date-only 6000 完整性未决保持暂停；`fund_company` 15371 与 `stk_nineturn` / `stock_hsgt` valid_empty 保持暂停。
 - `etf_mins` 已是 active / `on_demand`。2026-09-06 14:28 在 live `808a3604` 上按 `max_batches_per_run=1` 完成有界正式采集：fanout 第一批 `158000.SZ` 为 vendor `provider_error`（非 ETF），coverage 0。探测用 `510300.SH` 未写入窗口。官方 `list_status` 把该 P 码与 listed L 码分开，合同只加 `source_equals.list_status=L`。`ft_mins` 仍 `permission_denied` paused。不得 restage 同一 lexical 第一批冒充 success，也不得发明 `510300.SH`。MOVE ON。
-- `bak_daily`、`fund_manager` 已是 active / `on_demand`。2026-09-06 16:18 在 live `5945e378` 上完成有界正式采集：`bak_daily` 非空 success 5566、`fund_manager` 非空 success 3，均为 observed。`fund_adj` 仍因 2000 整千边界 / `reject_at_limit` 保持暂停。未 restage `etf_mins`，未发明 `510300.SH`。未抬高 10000。
+- `bak_daily`、`fund_manager` 已是 active / `on_demand`。2026-09-06 16:18 在 live `5945e378` 上完成有界正式采集：`bak_daily` 非空 success 5566、`fund_manager` 非空 success 3，均为 observed。当时 `fund_adj` 仍因无界 2000 整千边界 / `reject_at_limit` 保持暂停；后续 contracted `etf_basic` fanout + `20260904` 探测 nonempty 1 后已激活，见上文。未 restage `etf_mins`，未发明 `510300.SH`。未抬高 10000。
+- `ci_index_member`、`index_member_all`、`fund_adj` 已写入 `active_evidence`，正式 `activation_state=active`。探测 SUCCESS ≠ 正式采集 receipt。本切片不采集、不切 GZ `current`。`fund_nav` / `fund_company` / `ft_mins` / `stk_nineturn` / `stock_hsgt` / `index_basic` 依赖项保持暂停。未 restage `etf_mins`，未发明 `AD`。
 - 2026-09-06 12:32 认证 catalog：上述已 active、无 fanout、单 variant 的 `on_demand` 剩余名单里 **0** 项仍 unobserved。41 项已有 nonempty success 页；13 项已是 empty receipt，不 restage。当时全目录仅余 `stk_mins` / `top10_floatholders` 为 coverage=0 unobserved（fanout）。2026-09-06 13:11 在 `8ac37d25` 上按 `max_batches_per_run=1` 采了这两项；`top10_holders` / `stk_rewards` / `cb_rate` / `cb_rating` 未采。paused 项仍不激活。
 - 服务器证据位于 `evidence/20260905-ready3/`；冻结计划 SHA-256 为 `e80370da25b922ebe99ea3edbbf7620f733ae31c5ee62b9dee70290cb6d0ac45`。evidence refs 为 `server-evidence/20260905-ready3-fut_daily` 与 `server-evidence/20260905-ready3-opt_basic`；旧探测仍绑定原 immutable，不随新配置回写。
 - `stk_nineturn` 保持 paused：datetime 窗口与发布时段合同待补齐，probe/ingest ready 不等于 activation-ready。源 empty 不阻挡其它接口。

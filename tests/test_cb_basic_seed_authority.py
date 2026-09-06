@@ -32,6 +32,7 @@ WAVE7_TRADEDAY_APIS = {"cyq_chips", "cyq_perf"}
 SECURITY_MASTER_DEPENDENTS = {
     "balancesheet",
     "cashflow",
+    "ci_index_member",
     "cyq_chips",
     "cyq_perf",
     "express",
@@ -40,6 +41,7 @@ SECURITY_MASTER_DEPENDENTS = {
     "fina_mainbz",
     "forecast",
     "income",
+    "index_member_all",
     "pledge_detail",
     "pledge_stat",
     "rt_k",
@@ -56,6 +58,7 @@ SECURITY_MASTER_DATA_THROUGH = "2026-08-16T11:25:08.096484Z"
 ETF_BASIC_DEPENDENTS = {
     "etf_mins",
     "etf_sz_cons",
+    "fund_adj",
     "fund_daily",
     "rt_etf_k",
     "rt_etf_min",
@@ -214,7 +217,7 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         assert binding["ingest_contract_state"] == "ready"
         assert binding["ingest_contract_block_reasons"] == []
         assert binding["activation_state"] == (
-            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"forecast", "pledge_detail", "pledge_stat", "rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
+            "active" if api in WAVE7_FINANCIAL_APIS | WAVE7_TRADEDAY_APIS | {"ci_index_member", "forecast", "index_member_all", "pledge_detail", "pledge_stat", "rt_min_daily", "stk_mins", "stk_rewards", "top10_floatholders", "top10_holders"} else "paused"
         )
 
     active_evidence = observations["active_evidence"]
@@ -266,8 +269,13 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
     assert bindings["etf_sz_cons"]["provider_bindings"][0]["fanout"]["source_equals"] == {
         "list_status": "L"
     }
-    assert bindings["fund_adj"]["provider_bindings"][0]["activation_state"] == "paused"
-    assert "fund_adj" not in active_evidence
+    for api in ("ci_index_member", "fund_adj", "index_member_all"):
+        assert bindings[api]["provider_bindings"][0]["activation_state"] == "active"
+        assert bindings[api]["provider_bindings"][0]["ingest_contract_state"] == "ready"
+        assert active_evidence[api] == f"server-evidence/20260906-member-fund-adj-{api}"
+    assert bindings["fund_adj"]["provider_bindings"][0]["fanout"]["source_equals"] == {
+        "list_status": "L"
+    }
     assert bindings["fund_company"]["provider_bindings"][0]["activation_state"] == "paused"
     assert bindings["stock_hsgt"]["provider_bindings"][0]["activation_state"] == "paused"
     assert bindings["pledge_detail"]["provider_bindings"][0]["activation_state"] == "active"
@@ -305,8 +313,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 150
-    assert len(bindings) - active_count == 40
+    assert active_count == 153
+    assert len(bindings) - active_count == 37
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:

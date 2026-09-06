@@ -122,7 +122,7 @@ def test_frozen_dump_binds_wip_observations_without_preflight_json_regen() -> No
         scheduled_partition="20260718",
     )
     assert plan["counts"]["planned"] == 190
-    assert plan["counts"]["executable"] == 137
+    assert plan["counts"]["executable"] == 136
     assert plan["counts"]["ingest_contract_ready"] == 131
 
 
