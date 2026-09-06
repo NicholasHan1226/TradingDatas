@@ -183,7 +183,7 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
         "probe_blocked": 53,
         "ingest_contract_ready": 131,
         "ingest_contract_blocked": 59,
-        "row_limit_ingest_contract_blocked": 14,
+        "row_limit_ingest_contract_blocked": 11,
     }
     assert observations["counts"] == {
         "interfaces": len(entries),
@@ -894,27 +894,22 @@ def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_com
     ]
     assert etf_sz_cons["ingest_contract_state"] == "blocked"
     assert etf_sz_cons["ingest_contract_block_reasons"] == [
-        "dependency_seed_receipt_unresolved",
-        "response_completeness_unresolved_at_observed_limit",
+        "dependency_seed_receipt_unresolved"
     ]
-    assert etf_sz_cons["row_limit_observation"] == {
-        "observed_count": 3000,
-        "detection": "observed_count_equals_round_provider_style_boundary",
-        "reject_at_limit": True,
-    }
+    assert etf_sz_cons["row_limit_observation"] is None
     assert etf_sz_cons["parameters"]["ts_code"] == {
         "source": "dataset_field",
         "dataset_id": "cn.dataset.etf_basic",
         "field": "ts_code",
         "requires_fresh_success_receipt": True,
         "batch_size": 1,
+        "source_equals": {"list_status": "L"},
     }
     assert etf_sz_cons["parameters"]["trade_date"] == {
         "source": "run_clock",
         "transform": "yyyymmdd",
         "offset_seconds": 0,
     }
-    assert "source_equals" not in etf_sz_cons["parameters"]["ts_code"]
     assert etf_sz_cons["resumable_fanout"] == {
         "cursor_contract_version": 2,
         "max_batches_per_run": 1,
@@ -973,6 +968,7 @@ def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_com
         "source_dataset_id": "cn.dataset.etf_basic",
         "source_field": "ts_code",
         "batch_size": 1,
+        "source_equals": {"list_status": "L"},
     }
     assert etf_contract["resumable_fanout"] == etf_sz_cons["resumable_fanout"]
     dc_contract = _contract(bundle, "dc_member")
@@ -1025,10 +1021,8 @@ def test_etf_sz_cons_and_dc_member_use_existing_seed_fanout_without_clearing_com
         "trade_date": "20260721",
         "ts_code": "159915.SZ",
     }
-    assert etf_probe["ingest_contract_state"] == "blocked"
-    assert "response_completeness_unresolved_at_observed_limit" in etf_probe[
-        "ingest_contract_block_reasons"
-    ]
+    assert etf_probe["ingest_contract_state"] == "ready"
+    assert etf_probe["ingest_contract_block_reasons"] == []
     dc_probe = _entry(plan, "dc_member")
     assert dc_probe["probe_state"] == "executable"
     assert dc_probe["params"] == {
@@ -1058,14 +1052,9 @@ def test_fut_holding_and_fut_wsr_use_existing_seed_fanout_without_clearing_compl
     ]
     assert fut_holding["ingest_contract_state"] == "blocked"
     assert fut_holding["ingest_contract_block_reasons"] == [
-        "dependency_seed_receipt_unresolved",
-        "response_completeness_unresolved_at_observed_limit",
+        "dependency_seed_receipt_unresolved"
     ]
-    assert fut_holding["row_limit_observation"] == {
-        "observed_count": 2000,
-        "detection": "observed_count_equals_round_provider_style_boundary",
-        "reject_at_limit": True,
-    }
+    assert fut_holding["row_limit_observation"] is None
     assert fut_holding["parameters"]["symbol"] == {
         "source": "dataset_field",
         "dataset_id": "cn.dataset.fut_basic",
@@ -1092,14 +1081,9 @@ def test_fut_holding_and_fut_wsr_use_existing_seed_fanout_without_clearing_compl
     ]
     assert fut_wsr["ingest_contract_state"] == "blocked"
     assert fut_wsr["ingest_contract_block_reasons"] == [
-        "dependency_seed_receipt_unresolved",
-        "response_completeness_unresolved_at_observed_limit",
+        "dependency_seed_receipt_unresolved"
     ]
-    assert fut_wsr["row_limit_observation"] == {
-        "observed_count": 1000,
-        "detection": "observed_count_equals_round_provider_style_boundary",
-        "reject_at_limit": True,
-    }
+    assert fut_wsr["row_limit_observation"] is None
     assert fut_wsr["parameters"]["symbol"] == {
         "source": "dataset_field",
         "dataset_id": "cn.dataset.fut_basic",
@@ -1172,20 +1156,16 @@ def test_fut_holding_and_fut_wsr_use_existing_seed_fanout_without_clearing_compl
         "symbol": "cu2509",
         "trade_date": "20260721",
     }
-    assert holding_probe["ingest_contract_state"] == "blocked"
-    assert "response_completeness_unresolved_at_observed_limit" in holding_probe[
-        "ingest_contract_block_reasons"
-    ]
+    assert holding_probe["ingest_contract_state"] == "ready"
+    assert holding_probe["ingest_contract_block_reasons"] == []
     wsr_probe = _entry(plan, "fut_wsr")
     assert wsr_probe["probe_state"] == "executable"
     assert wsr_probe["params"] == {
         "symbol": "CU",
         "trade_date": "20260721",
     }
-    assert wsr_probe["ingest_contract_state"] == "blocked"
-    assert "response_completeness_unresolved_at_observed_limit" in wsr_probe[
-        "ingest_contract_block_reasons"
-    ]
+    assert wsr_probe["ingest_contract_state"] == "ready"
+    assert wsr_probe["ingest_contract_block_reasons"] == []
 
 
 def test_probe_only_limit_offset_replaced_by_reusable_date_windows() -> None:
@@ -1489,7 +1469,7 @@ def test_row_limit_under_hard_budget_allows_finite_coverage_without_activation_b
     None
 ):
     observations = _yaml(REQUEST_OBSERVATIONS)
-    for api_name, expected_count in (("fund_adj", 2000), ("etf_sz_cons", 3000)):
+    for api_name, expected_count in (("fund_adj", 2000), ("kpl_concept_cons", 3000)):
         entry = _entry(observations, api_name)
         row_limit = entry["row_limit_observation"]
         assert isinstance(row_limit, dict)
@@ -1540,7 +1520,7 @@ def test_row_limit_over_hard_budget_still_requires_activation_block() -> None:
     assert isinstance(counts, dict)
     counts["ingest_contract_ready"] = 132
     counts["ingest_contract_blocked"] = 58
-    counts["row_limit_ingest_contract_blocked"] = 13
+    counts["row_limit_ingest_contract_blocked"] = 10
 
     with pytest.raises(
         RuntimeContractCompilationError,

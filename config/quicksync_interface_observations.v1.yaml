@@ -443,6 +443,7 @@ active_evidence:
   etf_index: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   etf_mins: server-evidence/20260906-etf-ft-mins-etf_mins
   etf_share_size: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  etf_sz_cons: server-evidence/20260906-etf-fut-fanout-etf_sz_cons
   forecast: server-evidence/20260904T-forecast-ts-code-only
   ft_limit: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_daily: server-evidence/20260905-ready3-fut_daily
@@ -453,10 +454,12 @@ active_evidence:
   fund_portfolio: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fund_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_basic: server-evidence/20260726T123931Z-quicksync-renewal-matrix
+  fut_holding: server-evidence/20260906-etf-fut-fanout-fut_holding
   fut_index_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_mapping: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_settle: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_weekly_monthly: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  fut_wsr: server-evidence/20260906-etf-fut-fanout-fut_wsr
   gz_index: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   hk_hold: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   hm_detail: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -587,10 +590,25 @@ dependency_seed_authorities:
     data_through: '2026-08-14T22:19:37.314050Z'
     dependent_api_names:
       - etf_mins
+      - etf_sz_cons
       - fund_daily
       - rt_etf_k
       - rt_etf_min
       - rt_etf_min_daily
+  - dataset_id: cn.dataset.fut_basic
+    field: fut_code
+    schema_version: 1.0.0
+    receipt_id: receipt:842c296e839094f2f12c5f2b91a96197f6a8e3bf793cb060f1ed2eceeb548d0b
+    data_through: '2026-08-04T00:05:41.392734Z'
+    dependent_api_names:
+      - fut_wsr
+  - dataset_id: cn.dataset.fut_basic
+    field: symbol
+    schema_version: 1.0.0
+    receipt_id: receipt:842c296e839094f2f12c5f2b91a96197f6a8e3bf793cb060f1ed2eceeb548d0b
+    data_through: '2026-08-04T00:05:41.392734Z'
+    dependent_api_names:
+      - fut_holding
   - dataset_id: cn.dataset.fut_basic
     field: ts_code
     schema_version: 1.0.0
