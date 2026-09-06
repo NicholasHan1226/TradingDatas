@@ -8,6 +8,7 @@ import math
 import re
 import sqlite3
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -2198,8 +2199,15 @@ def collect_provider_native_dataset(
     started_at: str,
     request_variant: Mapping[str, RequestScalar] | None = None,
     retry: RetrySettings = RetrySettings(),
+    persist_lock: Any = None,
 ) -> IngestResult:
-    """Resolve one Tushare dataset from registry and persist its typed outcome."""
+    """Resolve one Tushare dataset from registry and persist its typed outcome.
+
+    ``persist_lock`` is an optional in-process exclusive gate around terminal
+    receipt writes. Provider HTTP stays outside it so a caller may overlap a
+    bounded number of fetches. ``fcntl`` flock is process-scoped and does not
+    serialize threads; this lock is the thread writer gate.
+    """
 
     if not isinstance(db_path, Path):
         raise TypeError("db_path must be pathlib.Path")
@@ -2245,6 +2253,9 @@ def collect_provider_native_dataset(
     validate_provider_dataset_store(db_path)
     if not callable(getattr(collector, "collect_outcome", None)):
         raise TypeError("collector must provide collect_outcome")
+    if persist_lock is not None and not callable(getattr(persist_lock, "__enter__", None)):
+        raise TypeError("persist_lock must be a context manager")
+    persist_cm = persist_lock if persist_lock is not None else nullcontext()
     try:
         scan_budget = _provider_scan_budget(dataset, binding)
     except ValueError:
@@ -2252,12 +2263,13 @@ def collect_provider_native_dataset(
         # error, not a transient provider failure: record an honest
         # terminal receipt so the schedule journal shows why no provider
         # call was attempted instead of escaping as a bare exception.
-        return write_terminal_receipt(
-            db_path,
-            context=terminal_context,
-            status="failed",
-            errors=("config_error",),
-        )
+        with persist_cm:
+            return write_terminal_receipt(
+                db_path,
+                context=terminal_context,
+                status="failed",
+                errors=("config_error",),
+            )
     try:
         fanout_batches = _load_completed_fanout_batches(
             db_path,
@@ -2268,12 +2280,13 @@ def collect_provider_native_dataset(
             now=datetime.fromisoformat(started_at.replace("Z", "+00:00")),
         )
     except (TypeError, ValueError):
-        return write_terminal_receipt(
-            db_path,
-            context=terminal_context,
-            status="failed",
-            errors=("config_error",),
-        )
+        with persist_cm:
+            return write_terminal_receipt(
+                db_path,
+                context=terminal_context,
+                status="failed",
+                errors=("config_error",),
+            )
     requested_fields = (
         ",".join(binding.requested_fields) if binding.requested_fields else None
     )
@@ -2300,18 +2313,19 @@ def collect_provider_native_dataset(
             first_call_index=next_call_index,
         )
         next_call_index += len(execution.calls)
-        results.append(
-            _persist_provider_execution(
-                db_path,
-                dataset=dataset,
-                binding=binding,
-                execution=execution,
-                normalized_window=normalized_window,
-                resolved_params=params,
-                attempt_id=attempt_id,
-                started_at=started_at,
-                terminal_context=terminal_context,
-                enforce_empty_policy=not defer_empty_policy,
+        with persist_cm:
+            results.append(
+                _persist_provider_execution(
+                    db_path,
+                    dataset=dataset,
+                    binding=binding,
+                    execution=execution,
+                    normalized_window=normalized_window,
+                    resolved_params=params,
+                    attempt_id=attempt_id,
+                    started_at=started_at,
+                    terminal_context=terminal_context,
+                    enforce_empty_policy=not defer_empty_policy,
+                )
             )
-        )
     return _aggregate_variant_results(dataset, results)

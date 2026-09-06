@@ -29,6 +29,13 @@ add a symbol that is absent from the compiled registry. The same registry and
 universe also cover the USDⓈ-M perpetual funding-rate and open-interest
 candidate cohort documented in `CRYPTO_BINANCE_USDM_CANARY.md`.
 
+Closed-5m collection uses one `collect.lock` and the same
+`latest_closed_window` for every symbol. Provider fetches may overlap for at
+most four bar datasets; persist remains single-threaded so receipt identity
+and exclusive SQLite writes do not interleave. Rules, book-ticker and the
+frozen 180-day backfill stay serial. This does not change PIT, `as_of`, or
+the consumer +270s cutoff.
+
 The bar datasets accept only their named symbol, `5m`, and a caller-supplied
 UTC RFC3339 open-time range. One physical request is bounded to three days and
 at most 1,000 rows; the frozen 180-day backfill is sixty separately receipted

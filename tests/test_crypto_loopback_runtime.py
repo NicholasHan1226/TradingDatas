@@ -166,6 +166,7 @@ def test_crypto_runner_plan_never_calls_provider_or_writes() -> None:
         now=datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
     )
     assert result["state"] == "planned"
+    assert result["dataset_workers"] == 4
     assert result["will_call_provider"] is False
     assert result["will_write_database"] is False
 
@@ -180,6 +181,7 @@ def test_crypto_rules_plan_never_calls_provider_or_writes() -> None:
     )
     assert result["state"] == "planned"
     assert result["collection_kind"] == "rules"
+    assert result["dataset_workers"] == 1
     assert len(result["datasets"]) == 40
     assert result["windows"] == [{}]
     assert result["will_call_provider"] is False
@@ -196,6 +198,7 @@ def test_crypto_book_ticker_plan_never_calls_provider_or_writes() -> None:
     )
     assert result["state"] == "planned"
     assert result["collection_kind"] == "book_ticker"
+    assert result["dataset_workers"] == 1
     assert len(result["datasets"]) == 40
     assert result["windows"] == [{}]
     assert result["will_call_provider"] is False

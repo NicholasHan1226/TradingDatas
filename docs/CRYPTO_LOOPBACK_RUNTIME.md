@@ -36,6 +36,8 @@ This boundary does not stop existing isolated collection or delete stored data.
 | premium-index dump candidate unit | `tradingdatas-crypto-binance-premium-dump-collect.service` |
 | premium-index dump candidate timer | `tradingdatas-crypto-binance-premium-dump-collect.timer`, every two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`) staggered off the five-minute timers and the OI dump timer; it may run only for isolated receipt accumulation and remains subject to the same dataset-local quality gates |
 | lock | `/opt/investment-data/tradingdatas-crypto/collect.lock`; closed-5m primary wait is 300s in this tree, backup-wake wait is 0s. That is the in-repo contract only, not a production-effectiveness claim |
+| closed-5m dataset workers | At most 4 in-flight provider calls for the same `latest_closed_window`. Persist is single-threaded in-process. One `collect.lock` still fences other Crypto writers. Not a production-effectiveness claim |
+| closed-5m finish budget | In-repo upper bound is 270s after `window_end`. This does not relax TradingAgent +55s/+270s and is not a production 40/40 proof |
 
 The API uses the ordinary authenticated `GET /v1/catalog` and `POST /v1/query`
 surface with the pinned `TRADINGDATAS_CANARY_MODE=binance_spot_v1` registry.
@@ -57,7 +59,13 @@ The current isolated production runtime collects the frozen forty-symbol cohort
 through the existing provider-native receipt path, using already-closed 5m
 bars per run. Its `observed_at` is the actual collection time. BTCUSDT and
 ETHUSDT remain the smaller rollback baseline; they are not a claim that the
-running cohort is limited to two symbols.
+running cohort is limited to two symbols. Closed-5m collection may overlap at
+most four provider fetches under the one `collect.lock`; persist stays serial
+inside the process because `fcntl` flock is process-scoped and is not a thread
+writer gate. The requested window, receipt identity, PIT and `as_of` contracts
+are unchanged. Result order follows the frozen registry, not finish order.
+This in-repo worker bound is not a claim that production `current` already
+finishes 40/40 before `window_end+270s`.
 
 For a terminal `provider_error` on one bar dataset, the collector records that
 failed receipt and makes exactly one immediate retry for that same requested

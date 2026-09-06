@@ -9,12 +9,14 @@ provider, symbol, field, or registry path input.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import fcntl
 import json
 import sqlite3
 from pathlib import Path
 import sys
+import threading
 import time
 import uuid
 
@@ -43,6 +45,10 @@ from storage.receipt_projection import (  # noqa: E402
 
 FIVE_MINUTES = timedelta(minutes=5)
 _MAX_DATASET_ATTEMPTS = 2
+# Closed-5m bars only: overlap provider HTTP, keep one collect.lock, and
+# serialize persist in-process. flock cannot be the thread writer gate.
+_DATASET_WORKER_COUNT = 4
+_CLOSED_BAR_FINISH_BUDGET_SECONDS = 270.0
 
 
 def _bar_datasets(registry) -> tuple[str, ...]:
@@ -178,6 +184,17 @@ def _bounded_lock(path: Path, wait_seconds: float = _LOCK_WAIT_SECONDS):
             time.sleep(_LOCK_RETRY_INTERVAL)
 
 
+def _bar_dataset_workers(
+    *,
+    collect_rules: bool,
+    collect_book_ticker: bool,
+    backfill_days: int | None,
+) -> int:
+    if collect_rules or collect_book_ticker or backfill_days is not None:
+        return 1
+    return _DATASET_WORKER_COUNT
+
+
 def _collect_with_one_provider_retry(
     *,
     db_path: Path,
@@ -186,6 +203,7 @@ def _collect_with_one_provider_retry(
     dataset_id: str,
     request_window: dict[str, str],
     now: datetime,
+    persist_lock: threading.Lock | None = None,
 ):
     """Persist a failed provider attempt, then retry it once if it is transient.
 
@@ -205,6 +223,7 @@ def _collect_with_one_provider_retry(
             request_window=request_window,
             attempt_id=str(uuid.uuid4()),
             started_at=_utc(now if index == 0 else datetime.now(timezone.utc)),
+            persist_lock=persist_lock,
         )
         attempts.append(result)
         if not (
@@ -259,6 +278,61 @@ def _completed_window_receipts(db_path, registry, datasets, window, now):
     return completed
 
 
+def _dataset_result(dataset_id: str, window: dict[str, str], attempts) -> dict[str, object]:
+    return {
+        "dataset_id": dataset_id,
+        "receipt_ids": [
+            receipt_id
+            for attempt in attempts
+            for receipt_id in attempt.receipt_ids
+        ],
+        "retry_count": len(attempts) - 1,
+        "state": attempts[-1].status,
+        "window": window,
+        "collection_action": "collected",
+    }
+
+
+def _collect_pending_datasets(
+    pending: tuple[str, ...],
+    *,
+    db_path: Path,
+    registry,
+    collector: BinanceSpotPublicCollector,
+    window: dict[str, str],
+    now: datetime,
+    persist_lock: threading.Lock,
+    dataset_workers: int,
+) -> dict[str, dict[str, object]]:
+    """Collect missing datasets; result order is applied by the caller."""
+
+    def collect_one(dataset_id: str) -> dict[str, object]:
+        attempts = _collect_with_one_provider_retry(
+            db_path=db_path,
+            registry=registry,
+            collector=collector,
+            dataset_id=dataset_id,
+            request_window=window,
+            now=now,
+            persist_lock=persist_lock,
+        )
+        return _dataset_result(dataset_id, window, attempts)
+
+    if not pending:
+        return {}
+    worker_count = min(dataset_workers, len(pending))
+    if worker_count <= 1:
+        return {dataset_id: collect_one(dataset_id) for dataset_id in pending}
+    collected: dict[str, dict[str, object]] = {}
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = {
+            dataset_id: pool.submit(collect_one, dataset_id) for dataset_id in pending
+        }
+        for dataset_id in pending:
+            collected[dataset_id] = futures[dataset_id].result()
+    return collected
+
+
 def run(
     *,
     db_path: Path,
@@ -298,6 +372,11 @@ def run(
             else (latest_closed_window(now),)
         )
     )
+    dataset_workers = _bar_dataset_workers(
+        collect_rules=collect_rules,
+        collect_book_ticker=collect_book_ticker,
+        backfill_days=backfill_days,
+    )
     if not execute:
         return {
             "backfill_days": backfill_days,
@@ -308,6 +387,7 @@ def run(
                 if collect_book_ticker
                 else "bars"
             ),
+            "dataset_workers": dataset_workers,
             "datasets": list(datasets),
             "mode": "plan",
             "state": "planned",
@@ -329,6 +409,7 @@ def run(
             return {
                 "backfill_days": backfill_days,
                 "collection_kind": "bars",
+                "dataset_workers": dataset_workers,
                 "lock_wait_seconds": round(time.monotonic() - lock_wait_started, 3),
                 "mode": "execute",
                 "state": "skipped_lock_held",
@@ -339,6 +420,7 @@ def run(
             }
         raise
     lock_held_seconds = time.monotonic() - lock_wait_started
+    persist_lock = threading.Lock()
     try:
         collector = BinanceSpotPublicCollector()
         results = []
@@ -346,6 +428,19 @@ def run(
             completed = (
                 _completed_window_receipts(db_path, registry, datasets, window, now)
                 if backup_wake else {}
+            )
+            pending = tuple(
+                dataset_id for dataset_id in datasets if dataset_id not in completed
+            )
+            collected = _collect_pending_datasets(
+                pending,
+                db_path=db_path,
+                registry=registry,
+                collector=collector,
+                window=window,
+                now=now,
+                persist_lock=persist_lock,
+                dataset_workers=dataset_workers,
             )
             for dataset_id in datasets:
                 if dataset_id in completed:
@@ -358,28 +453,7 @@ def run(
                         "collection_action": "reused_completed_receipt",
                     })
                     continue
-                attempts = _collect_with_one_provider_retry(
-                    db_path=db_path,
-                    registry=registry,
-                    collector=collector,
-                    dataset_id=dataset_id,
-                    request_window=window,
-                    now=now,
-                )
-                results.append(
-                    {
-                        "dataset_id": dataset_id,
-                        "receipt_ids": [
-                            receipt_id
-                            for attempt in attempts
-                            for receipt_id in attempt.receipt_ids
-                        ],
-                        "retry_count": len(attempts) - 1,
-                        "state": attempts[-1].status,
-                        "window": window,
-                        "collection_action": "collected",
-                    }
-                )
+                results.append(collected[dataset_id])
         if any(item["state"] != "success" for item in results):
             raise RuntimeError("one or more Crypto dataset collections failed")
         return {
@@ -391,6 +465,7 @@ def run(
                 if collect_book_ticker
                 else "bars"
             ),
+            "dataset_workers": dataset_workers,
             "datasets": results,
             "skipped_completed_dataset_count": sum(
                 item["collection_action"] == "reused_completed_receipt"

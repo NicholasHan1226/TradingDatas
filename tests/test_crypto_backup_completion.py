@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 import sqlite3
 
@@ -45,7 +46,7 @@ def test_completed_primary_backup_makes_no_provider_or_receipt_write(tmp_path, m
     before = _counts(path)
     backup = canary.run(db_path=path, lock_path=tmp_path / 'collect.lock', execute=True,
                         now=now + timedelta(seconds=70), backup_wake=True)
-    assert calls == ['BTCUSDT', 'ETHUSDT']
+    assert Counter(calls) == Counter(['BTCUSDT', 'ETHUSDT'])
     assert _counts(path) == before
     assert backup['skipped_completed_dataset_count'] == 2
     assert all(row['collection_action'] == 'reused_completed_receipt' for row in backup['datasets'])
@@ -59,7 +60,7 @@ def test_partial_primary_backup_collects_only_missing_dataset(tmp_path, monkeypa
     monkeypatch.setattr(canary, '_bar_datasets', lambda registry: datasets)
     backup = canary.run(db_path=path, lock_path=tmp_path / 'collect.lock', execute=True,
                         now=now + timedelta(seconds=70), backup_wake=True)
-    assert calls == ['BTCUSDT', 'ETHUSDT']
+    assert Counter(calls) == Counter(['BTCUSDT', 'ETHUSDT'])
     assert backup['skipped_completed_dataset_count'] == 1
     assert _counts(path) == (4, 2)
 
@@ -71,7 +72,7 @@ def test_invalid_completion_receipt_does_not_suppress_collection(tmp_path, monke
         conn.execute('UPDATE market_ingest_runs SET rows_written = 999 WHERE source = ?', (datasets[0],))
     backup = canary.run(db_path=path, lock_path=tmp_path / 'collect.lock', execute=True,
                         now=now + timedelta(seconds=70), backup_wake=True)
-    assert calls == ['BTCUSDT', 'ETHUSDT', 'BTCUSDT']
+    assert Counter(calls) == Counter(['BTCUSDT', 'ETHUSDT', 'BTCUSDT'])
     assert backup['skipped_completed_dataset_count'] == 1
 
 
@@ -83,5 +84,5 @@ def test_another_window_does_not_suppress_collection(tmp_path, monkeypatch):
     monkeypatch.setattr(canary, 'latest_closed_window', lambda clock: older)
     backup = canary.run(db_path=path, lock_path=tmp_path / 'collect.lock', execute=True,
                         now=now + timedelta(seconds=70), backup_wake=True)
-    assert calls == ['BTCUSDT', 'ETHUSDT', 'BTCUSDT', 'ETHUSDT']
+    assert Counter(calls) == Counter(['BTCUSDT', 'ETHUSDT', 'BTCUSDT', 'ETHUSDT'])
     assert backup['skipped_completed_dataset_count'] == 0

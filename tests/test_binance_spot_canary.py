@@ -364,6 +364,38 @@ def test_closed_bar_lock_wait_stays_at_300_seconds() -> None:
     assert "_LOCK_WAIT_SECONDS = 120.0" not in source
 
 
+def test_closed_bar_workers_and_finish_budget_stay_bounded() -> None:
+    assert spot_canary._DATASET_WORKER_COUNT == 4
+    assert spot_canary._CLOSED_BAR_FINISH_BUDGET_SECONDS == 270.0
+    assert (
+        spot_canary._bar_dataset_workers(
+            collect_rules=False,
+            collect_book_ticker=False,
+            backfill_days=None,
+        )
+        == 4
+    )
+    assert (
+        spot_canary._bar_dataset_workers(
+            collect_rules=True,
+            collect_book_ticker=False,
+            backfill_days=None,
+        )
+        == 1
+    )
+    assert (
+        spot_canary._bar_dataset_workers(
+            collect_rules=False,
+            collect_book_ticker=False,
+            backfill_days=180,
+        )
+        == 1
+    )
+    source = Path(spot_canary.__file__).read_text(encoding="utf-8")
+    assert "_DATASET_WORKER_COUNT = 4" in source
+    assert "_CLOSED_BAR_FINISH_BUDGET_SECONDS = 270.0" in source
+
+
 def test_bounded_lock_times_out_while_the_lock_stays_held(tmp_path) -> None:
     lock_path = tmp_path / "store.lock"
     holder = lock_path.open("a+", encoding="utf-8")
