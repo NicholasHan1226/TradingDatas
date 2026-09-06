@@ -1826,6 +1826,30 @@ def test_active_on_demand_fanouts_use_existing_resumable_batch_cap() -> None:
     assert _contract(generic_bundle, "cb_price_chg")["fanout"]["batch_size"] == 7
 
 
+def test_etf_mins_source_equals_official_list_status_l_excludes_pending_seed() -> None:
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    declaration = _entry(observations, "etf_mins")["parameters"]["ts_code"]
+    assert declaration["source_equals"] == {"list_status": "L"}
+    assert declaration["batch_size"] == 1
+    assert "510300.SH" not in yaml.safe_dump(declaration)
+    contract = _contract(_compile(), "etf_mins")
+    assert contract["fanout"]["source_equals"] == {"list_status": "L"}
+    assert contract["resumable_fanout"] == {
+        "cursor_contract_version": 2,
+        "max_batches_per_run": 1,
+    }
+    assert contract["cadence_class"] == "on_demand"
+
+    def _kept(payload: dict[str, str]) -> bool:
+        return all(
+            payload.get(key) == value for key, value in declaration["source_equals"].items()
+        )
+
+    # Official documented discriminator only: pending P is excluded; listed L is kept.
+    assert _kept({"ts_code": "158000.SZ", "list_status": "P", "exchange": "SZ"}) is False
+    assert _kept({"ts_code": "159001.SZ", "list_status": "L", "exchange": "SZ"}) is True
+
+
 @pytest.mark.parametrize("batch_size", [0, -1, True])
 def test_dataset_field_batch_size_must_be_a_positive_integer(batch_size: object) -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)

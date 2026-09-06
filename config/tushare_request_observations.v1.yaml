@@ -16,7 +16,7 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 3b7014b778f6d3fb4ac5aa43f4919be392ac2031768b3a7cb4a7c394038dff1f
+    sha256: 2852d59a53b6a2d23090490c452d3cf0ba8053ca26a1cb0aee152027aba31c91
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -1014,6 +1014,12 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+      # Official etf_basic list_status is L/D/P. Production first lexical seed
+      # 158000.SZ is P; official etf_mins example 159001.SZ and listed ETFs are L.
+      # exchange SH/SZ does not separate them; etf_type official literals are
+      # 境内/QDII and cannot be used. Do not invent ts_code prefixes.
+      source_equals:
+        list_status: L
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1

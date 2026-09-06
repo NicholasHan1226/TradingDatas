@@ -10452,6 +10452,8 @@ contracts:
     source_dataset_id: cn.dataset.etf_basic
     source_field: ts_code
     batch_size: 1
+    source_equals:
+      list_status: L
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
