@@ -181,9 +181,9 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
         "interfaces": 190,
         "probe_executable": 137,
         "probe_blocked": 53,
-        "ingest_contract_ready": 129,
-        "ingest_contract_blocked": 61,
-        "row_limit_ingest_contract_blocked": 16,
+        "ingest_contract_ready": 131,
+        "ingest_contract_blocked": 59,
+        "row_limit_ingest_contract_blocked": 17,
     }
     assert observations["counts"] == {
         "interfaces": len(entries),
@@ -1223,19 +1223,29 @@ def test_probe_only_limit_offset_replaced_by_reusable_date_windows() -> None:
         ),
     }
 
+    ready = {"bak_daily", "fund_manager"}
     for api_name, (window_key, window) in expected.items():
         entry = _entry(observations, api_name)
         assert entry["request_shape"] == "snapshot_or_date_range"
         assert entry["probe_state"] == "executable"
-        assert entry["ingest_contract_state"] == "blocked"
-        assert entry["ingest_contract_block_reasons"] == [
-            "response_completeness_unresolved_at_observed_limit"
-        ]
         assert entry["parameters"] == {window_key: window}
         assert "limit" not in entry["parameters"]
         assert "offset" not in entry["parameters"]
         assert entry.get("pagination_max_pages", 1) == 1
-        assert entry["row_limit_observation"] is None
+        if api_name in ready:
+            assert entry["ingest_contract_state"] == "ready"
+            assert entry["ingest_contract_block_reasons"] == []
+            assert entry["row_limit_observation"] is None
+        else:
+            assert entry["ingest_contract_state"] == "blocked"
+            assert entry["ingest_contract_block_reasons"] == [
+                "response_completeness_unresolved_at_observed_limit"
+            ]
+            assert entry["row_limit_observation"] == {
+                "observed_count": 2000,
+                "detection": "observed_count_equals_round_provider_style_boundary",
+                "reject_at_limit": True,
+            }
 
     bundle = _compile()
     compiled = {
@@ -1245,7 +1255,9 @@ def test_probe_only_limit_offset_replaced_by_reusable_date_windows() -> None:
     }
     for api_name, (window_key, placeholder) in compiled.items():
         contract = _contract(bundle, api_name)
-        assert contract["ingest_contract_state"] == "blocked"
+        assert contract["ingest_contract_state"] == (
+            "ready" if api_name in ready else "blocked"
+        )
         assert contract["request_template"] == {window_key: placeholder}
         assert contract["pagination"] == {"strategy": "none"}
         assert contract["request_window_policy"] is not None
@@ -1909,8 +1921,8 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
         "planned": 190,
         "executable": 137,
         "blocked": 53,
-        "ingest_contract_ready": 129,
-        "ingest_contract_blocked": 61,
+        "ingest_contract_ready": 131,
+        "ingest_contract_blocked": 59,
     }
 
     daily = _entry(plan, "daily")
@@ -1940,11 +1952,13 @@ def test_probe_plan_keeps_190_audit_entries_but_never_materializes_blocked_param
 
     bak_daily = _entry(plan, "bak_daily")
     assert bak_daily["probe_state"] == "executable"
-    assert bak_daily["ingest_contract_state"] == "blocked"
+    assert bak_daily["ingest_contract_state"] == "ready"
     assert bak_daily["params"] == {"trade_date": "20260721"}
     fund_adj = _entry(plan, "fund_adj")
+    assert fund_adj["ingest_contract_state"] == "blocked"
     assert fund_adj["params"] == {"trade_date": "20260721"}
     fund_manager = _entry(plan, "fund_manager")
+    assert fund_manager["ingest_contract_state"] == "ready"
     assert fund_manager["params"] == {"ann_date": "20260721"}
 
     rt_min = _entry(plan, "rt_min")
@@ -1977,8 +1991,8 @@ def test_checked_probe_authorities_compile_without_test_rebinding() -> None:
         "planned": 190,
         "executable": 137,
         "blocked": 53,
-        "ingest_contract_ready": 129,
-        "ingest_contract_blocked": 61,
+        "ingest_contract_ready": 131,
+        "ingest_contract_blocked": 59,
     }
 
 
@@ -1998,8 +2012,8 @@ def test_probe_plan_unlocks_dataset_fanout_only_from_a_fresh_success_receipt() -
         "planned": 190,
         "executable": 157,
         "blocked": 33,
-        "ingest_contract_ready": 147,
-        "ingest_contract_blocked": 43,
+        "ingest_contract_ready": 149,
+        "ingest_contract_blocked": 41,
     }
     express = _entry(plan, "express")
     assert express["probe_state"] == "executable"

@@ -4318,7 +4318,6 @@ def test_breadth_observed_20260815_fund_portfolio_dry_run_plans_exactly_one(
 
 _PAUSED_DATASET_IDS = frozenset(
     {
-        "cn.dataset.bak_daily",
         "cn.dataset.bc_otcqt",
         "cn.dataset.cb_price_chg",
         "cn.dataset.ci_index_member",
@@ -4330,7 +4329,6 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.fund_adj",
         "cn.dataset.fund_company",
         "cn.dataset.fund_daily",
-        "cn.dataset.fund_manager",
         "cn.dataset.fund_nav",
         "cn.dataset.fut_holding",
         "cn.dataset.fut_trade_cal",

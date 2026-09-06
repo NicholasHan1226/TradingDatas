@@ -411,6 +411,7 @@ active_evidence:
   adj_factor: server-evidence/20260722TQkgWsk-1def337-provider-native
   anns_d: server-evidence/20260726T123931Z-quicksync-renewal-matrix
   bak_basic: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  bak_daily: server-evidence/20260906-bak-fund-window-bak_daily
   bc_bestotcqt: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   block_trade: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   bond_blk: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -445,6 +446,7 @@ active_evidence:
   fut_daily: server-evidence/20260905-ready3-fut_daily
   fund_basic: server-evidence/20260906-preflight6-fund_basic
   fund_div: server-evidence/20260722TQkgWsk-1def337-provider-native
+  fund_manager: server-evidence/20260906-bak-fund-window-fund_manager
   fund_portfolio: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fund_share: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_basic: server-evidence/20260726T123931Z-quicksync-renewal-matrix

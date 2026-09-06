@@ -123,7 +123,7 @@ def test_frozen_dump_binds_wip_observations_without_preflight_json_regen() -> No
     )
     assert plan["counts"]["planned"] == 190
     assert plan["counts"]["executable"] == 137
-    assert plan["counts"]["ingest_contract_ready"] == 129
+    assert plan["counts"]["ingest_contract_ready"] == 131
 
 
 def test_probe_executable_single_partition_local_datetime_is_window_ready(
