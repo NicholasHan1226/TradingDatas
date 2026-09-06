@@ -30,10 +30,6 @@
           "datasetId": "cn.dataset.dc_member"
         },
         {
-          "apiName": "etf_mins",
-          "datasetId": "cn.dataset.etf_mins"
-        },
-        {
           "apiName": "etf_sz_cons",
           "datasetId": "cn.dataset.etf_sz_cons"
         },

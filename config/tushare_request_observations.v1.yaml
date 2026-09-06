@@ -10,13 +10,13 @@ provenance:
     sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 23acd551c15b50b72ee60bc9dbd22d78d9d7816c14065844de35955473931349
+    sha256: e20b033afb79b89dfdb75c79b8fefbbce50d7a1c90e56f68e404dbdeea2c845f
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: fd65e4837525f280971855d19a75244e90eed51399de2d669f9c99ca8766f38a
+    sha256: 3b7014b778f6d3fb4ac5aa43f4919be392ac2031768b3a7cb4a7c394038dff1f
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -1013,6 +1013,10 @@ entries:
       dataset_id: cn.dataset.etf_basic
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: etf_sh_cons
   scope_labels:
@@ -1278,6 +1282,10 @@ entries:
       dataset_id: cn.dataset.fut_basic
       field: ts_code
       requires_fresh_success_receipt: true
+      batch_size: 1
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: fund_adj
   scope_labels:

@@ -407,7 +407,7 @@ empty 仍是 empty，不是 success；历史 trusted-empty 分区保持 empty。
 `margin_secs` 官方是每日盘前更新当日标的，合同仍是 `postclose_daily`，
 在开市日 16:30 之后采集已发布的盘前名单。其余
 `registry_activation_paused` 行（含 fund_*、fut_*、opt_*、index_daily、
-news.flash、rt_etf_min*）保持暂停。`bse_mapping` / `fund_basic` / `sge_basic`
+news.flash、rt_etf_min*）保持暂停。`etf_mins` / `ft_mins` 已补既有 `max_batches_per_run=1`；2026-09-06 仓外 HTTPS 探测（`evidence/20260906-etf-ft-mins-probe/`，无 facts 写入）里 `etf_mins` 对已落库 `510300.SH` 在 `2026-09-04` 全日窗 nonempty success 241 后写入 `active_evidence`，`ft_mins` 对已落库 `A2609.DCE` 为 `permission_denied` 保持暂停，本切片不采集、不切 GZ `current`。`bse_mapping` / `fund_basic` / `sge_basic`
 已按 2026-09-06 仓外 HTTPS 探测 sidecar（`evidence/20260906-preflight6-paused-probe/`，
 success 248 / 2884 / 13）写入 `active_evidence`，正式 `activation_state=active`，
 cadence 仍是 `on_demand`，窗口/variants/预算未改；本切片不采集、不切 GZ

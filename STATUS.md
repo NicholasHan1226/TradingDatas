@@ -1,10 +1,11 @@
 # TradingDatas 当前状态
 
-发布检查更新至 2026-09-06 13:35 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
+发布检查更新至 2026-09-06 13:45 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
 
 ## 当前结论与对外范围
 
 - Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；内部采集保持隔离。Research 外部文献不构成 Crypto 供数承诺。
+- `etf_mins` / `ft_mins` 补上既有 `resumable_fanout` `max_batches_per_run=1`。仓外 HTTPS 探测（无 facts 写入）：`etf_mins` 用已落库 `510300.SH`、窗口 `2026-09-04 00:00:00`–`2026-09-04 23:59:59` 得到 nonempty success **241**（未达 10000 硬预算），已写入 `active_evidence`；`ft_mins` 用已落库 `A2609.DCE` 同一窗口为 `permission_denied`，保持暂停。Tushare **142 active / 48 paused**。公共 paused/connected 快照已随激活重编。本切片不 cut、不采集。empty ≠ success。
 - [PR #521](https://github.com/NicholasHan1226/TradingDatas/pull/521) 合入 `8ac37d2594da54475d823503942542860f7415ed`。精确主线 [34012779751](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34012779751) 通过。本次无 `static/**` / `public-web/**`，未调度 Cloudflare。A 股与 Crypto 的 live `current` 现均为该 SHA。本 STATUS **不再 cut**。
 - 已 active 的 `on_demand` `entity_fanout` 若无 `resumable_fanout`，会一次装入全部 seed 并冲过 10000 硬预算；#521 给 `stk_mins` / `top10_floatholders` / `top10_holders` / `stk_rewards` / `cb_rate` / `cb_rating` 补上既有 `max_batches_per_run=1`。2026-09-06 13:07 切到带该 cap 的 `8ac37d25` 后，只采了 catalog coverage=0 的两项：`stk_mins` 与 `top10_floatholders`。未采已有 coverage 的 `top10_holders` / `stk_rewards` / `cb_rate` / `cb_rating`，未激活 paused 项，未抬高 10000。empty ≠ success。
 - 2026-09-06 12:32 一次认证 catalog 扫完剩余 54 个已 active、无 fanout、单 variant 的 `on_demand` 候选：**41** 项已有 nonempty success 页，**0** 项仍 unobserved，**13** 项已有 empty receipt。未采集、未 restage empty、未激活。empty ≠ success。
