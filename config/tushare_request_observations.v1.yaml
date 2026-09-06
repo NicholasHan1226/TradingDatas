@@ -10,13 +10,13 @@ provenance:
     sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 9d842101b4ec52332e2c6c4cdefb6153590f92a845636ac5cfe12d168879615c
+    sha256: b45526dd0073e9219a396c9cd4f60e5ab0a2cb950703fed5745a0c013c93a180
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 398516a219eb31384a95f003316e94f35784721cbb09b106fe37ed395adbb340
+    sha256: ba6e76ff65de96f7739b39f358cab9f776d8cc07d8d3a9a373fc4b43bef9671b
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -72,7 +72,7 @@ counts:
   probe_blocked: 53
   ingest_contract_ready: 131
   ingest_contract_blocked: 59
-  row_limit_ingest_contract_blocked: 17
+  row_limit_ingest_contract_blocked: 14
 entries:
 - api_name: adj_factor
   scope_labels:
@@ -813,17 +813,16 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: entity_fanout
-  # trade_date-only returned 3000 rows (under the 10000 hard budget) and
-  # cannot be a later activation snapshot. Official theme_code fans out
-  # from the existing executable dc_concept seed. Ingest stays blocked
-  # on the observed-limit reason; do not invent completeness.
+  # Unbounded trade_date-only was 3000 and is not this ingest snapshot.
+  # Contracted one-seed + 20260904 theme_code/trade_date probe returned
+  # nonempty 60, under 10000, not a thousand-boundary. Formal activation
+  # is active_evidence plus the dc_concept seed authority.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
     theme_code:
@@ -839,10 +838,7 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
-  row_limit_observation:
-    observed_count: 3000
-    detection: observed_count_equals_round_provider_style_boundary
-    reject_at_limit: true
+  row_limit_observation: null
 - api_name: dc_daily
   scope_labels:
   - all
@@ -886,17 +882,16 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: entity_fanout
-  # trade_date-only returned 5000 rows (under the 10000 hard budget) and
-  # cannot be a later activation snapshot. Official ts_code is the board
-  # index and fans out from the existing executable dc_index seed. Ingest
-  # stays blocked on the observed-limit reason; do not invent completeness.
+  # Unbounded trade_date-only was 5000 and is not this ingest snapshot.
+  # Contracted one-seed + 20260904 ts_code/trade_date probe returned
+  # nonempty 14, under 10000, not a thousand-boundary. Formal activation
+  # is active_evidence plus the dc_index seed authority.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
     trade_date:
@@ -912,10 +907,7 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
-  row_limit_observation:
-    observed_count: 5000
-    detection: observed_count_equals_round_provider_style_boundary
-    reject_at_limit: true
+  row_limit_observation: null
 - api_name: disclosure_date
   scope_labels:
   - all
@@ -1372,19 +1364,18 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: entity_fanout
-  # Official fund_daily is ETF daily bars. trade_date-only returned 2000
-  # rows (under the 10000 hard budget) and cannot be a later activation
-  # snapshot. ts_code fans out from the existing executable etf_basic
-  # seed. fund_basic stays unused: its probe/ingest are blocked on
-  # request_anchor_unresolved; do not invent that seed. Ingest stays
-  # blocked on the observed-limit reason; do not invent completeness.
+  # Official fund_daily is ETF daily bars. Unbounded trade_date-only was
+  # 2000 and is not this ingest snapshot. Contracted one listed
+  # etf_basic seed + 20260904 trade_date probe returned nonempty 1,
+  # under 10000, not a thousand-boundary. Official list_status=L only;
+  # do not invent ts_code prefixes or restage etf_mins. Formal
+  # activation is active_evidence plus the etf_basic seed authority.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
     trade_date:
@@ -1397,13 +1388,13 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 1
+      # Same official etf_basic discriminator as etf_mins: P is 待上市.
+      source_equals:
+        list_status: L
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
-  row_limit_observation:
-    observed_count: 2000
-    detection: observed_count_equals_round_provider_style_boundary
-    reject_at_limit: true
+  row_limit_observation: null
 - api_name: fund_div
   scope_labels:
   - all

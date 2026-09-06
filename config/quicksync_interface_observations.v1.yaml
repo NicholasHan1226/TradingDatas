@@ -433,8 +433,10 @@ active_evidence:
   daily_basic: server-evidence/20260825T-daily-basic-trade-date-only
   daily_info: server-evidence/20260722TQkgWsk-1def337-provider-native
   dc_concept: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  dc_concept_cons: server-evidence/20260906-fanout-window-dc_concept_cons
   dc_daily: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   dc_index: server-evidence/20260727T082100Z-quicksync-executable-reprobe
+  dc_member: server-evidence/20260906-fanout-window-dc_member
   disclosure_date: server-evidence/20260722TQkgWsk-1def337-provider-native
   dividend: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   etf_basic: server-evidence/20260726T123931Z-quicksync-renewal-matrix
@@ -445,6 +447,7 @@ active_evidence:
   ft_limit: server-evidence/20260727T082100Z-quicksync-executable-reprobe
   fut_daily: server-evidence/20260905-ready3-fut_daily
   fund_basic: server-evidence/20260906-preflight6-fund_basic
+  fund_daily: server-evidence/20260906-fanout-window-fund_daily
   fund_div: server-evidence/20260722TQkgWsk-1def337-provider-native
   fund_manager: server-evidence/20260906-bak-fund-window-fund_manager
   fund_portfolio: server-evidence/20260727T082100Z-quicksync-executable-reprobe
@@ -563,6 +566,20 @@ dependency_seed_authorities:
       - cb_rating
       - cb_share
       - top10_cb_holders
+  - dataset_id: cn.dataset.dc_concept
+    field: theme_code
+    schema_version: 2.0.0
+    receipt_id: receipt:8b28fc044e39838846e17d79a32b9f6d8f017e20e212b46a7967ae34f1f46b5a
+    data_through: '2026-07-28T10:49:31.954509Z'
+    dependent_api_names:
+      - dc_concept_cons
+  - dataset_id: cn.dataset.dc_index
+    field: ts_code
+    schema_version: 1.0.0
+    receipt_id: receipt:be0c6043113e46dcf8552411425edc164df5702f50dedc34113d94bb256ab7d1
+    data_through: '2026-07-28T15:05:56.466662Z'
+    dependent_api_names:
+      - dc_member
   - dataset_id: cn.dataset.etf_basic
     field: ts_code
     schema_version: 1.0.0
@@ -570,6 +587,7 @@ dependency_seed_authorities:
     data_through: '2026-08-14T22:19:37.314050Z'
     dependent_api_names:
       - etf_mins
+      - fund_daily
       - rt_etf_k
       - rt_etf_min
       - rt_etf_min_daily

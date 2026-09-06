@@ -4321,14 +4321,11 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.bc_otcqt",
         "cn.dataset.cb_price_chg",
         "cn.dataset.ci_index_member",
-        "cn.dataset.dc_concept_cons",
-        "cn.dataset.dc_member",
         "cn.dataset.etf_sh_cons",
         "cn.dataset.etf_sz_cons",
         "cn.dataset.ft_mins",
         "cn.dataset.fund_adj",
         "cn.dataset.fund_company",
-        "cn.dataset.fund_daily",
         "cn.dataset.fund_nav",
         "cn.dataset.fut_holding",
         "cn.dataset.fut_trade_cal",
@@ -4643,7 +4640,7 @@ def test_forecast_is_active_and_plans_undated_ts_code_fanout(
     skipped = {item.dataset_id: item.state for item in automatic.skipped}
     assert skipped.get(_FORECAST_DATASET_ID) != "paused"
     assert skipped.get("cn.news.flash") == "paused"
-    assert skipped.get("cn.dataset.fund_daily") == "paused"
+    assert skipped.get("cn.dataset.fund_adj") == "paused"
 
 
 def test_next_wave_20260905_is_active_and_plans_bounded_event_windows(
@@ -4845,7 +4842,7 @@ def test_margin_family_stays_active_and_t1_plans_prior_open_morning(
     for dataset_id in _MARGIN_DATASET_IDS:
         assert skipped.get(dataset_id) != "paused"
     assert skipped.get("cn.news.flash") == "paused"
-    assert skipped.get("cn.dataset.fund_daily") == "paused"
+    assert skipped.get("cn.dataset.fund_adj") == "paused"
     assert skipped.get("cn.dataset.index_daily") == "paused"
 
 
