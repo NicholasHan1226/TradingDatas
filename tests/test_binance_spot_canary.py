@@ -358,8 +358,10 @@ def test_bounded_lock_waits_for_the_holder_to_release(tmp_path) -> None:
 def test_closed_bar_lock_wait_stays_at_300_seconds() -> None:
     assert spot_canary._LOCK_WAIT_SECONDS == 300.0
     assert spot_canary._BACKUP_LOCK_WAIT_SECONDS == 0.0
+    assert spot_canary._BOOK_TICKER_LOCK_WAIT_SECONDS == 0.0
     source = Path(spot_canary.__file__).read_text(encoding="utf-8")
     assert "_LOCK_WAIT_SECONDS = 300.0" in source
+    assert "_BOOK_TICKER_LOCK_WAIT_SECONDS = 0.0" in source
     assert "_LOCK_WAIT_SECONDS = 120" not in source
     assert "_LOCK_WAIT_SECONDS = 120.0" not in source
 

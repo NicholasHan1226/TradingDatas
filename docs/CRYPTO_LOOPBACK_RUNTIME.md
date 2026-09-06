@@ -26,7 +26,7 @@ This boundary does not stop existing isolated collection or delete stored data.
 | backup collector unit | `tradingdatas-crypto-binance-collect-retry.service`, same `latest_closed_window` with `--backup-wake` |
 | backup timer | `tradingdatas-crypto-binance-collect-retry.timer` at `*-*-* *:1/5:00` (close+60s) and `*-*-* *:3/5:00` (close+180s). Both use the same `latest_closed_window`. They fill datasets without a validated success receipt for that closed-bar window; a held `collect.lock` exits `skipped_lock_held` so a still-running primary is not queued again |
 | book-ticker unit | `tradingdatas-crypto-binance-book-ticker.service` |
-| book-ticker timer | `tradingdatas-crypto-binance-book-ticker.timer` at `*-*-* *:3/5:10`; this is the in-repo production deconflict slot, not `*:0/5:40`. Enablement is a separate release decision |
+| book-ticker timer | `tradingdatas-crypto-binance-book-ticker.timer` at `*-*-* *:3/5:10`; this is the in-repo production deconflict slot, not `*:0/5:40`. A held `collect.lock` exits `skipped_lock_held` so this current_snapshot oneshot does not wait and then overlap the next `:00` bar. Enablement is a separate release decision |
 | rule unit | `tradingdatas-crypto-binance-rules.service` |
 | rule timer | `tradingdatas-crypto-binance-rules.timer`, daily public-rule refresh |
 | USDM candidate unit | `tradingdatas-crypto-binance-usdm-collect.service` |
@@ -35,7 +35,7 @@ This boundary does not stop existing isolated collection or delete stored data.
 | OI dump candidate timer | `tradingdatas-crypto-binance-oi-dump-collect.timer`, every two hours at minute 37 (`*-*-* 00/2:37:00`) staggered off the five-minute timers; it may run only for isolated receipt accumulation and remains subject to the same dataset-local quality gates |
 | premium-index dump candidate unit | `tradingdatas-crypto-binance-premium-dump-collect.service` |
 | premium-index dump candidate timer | `tradingdatas-crypto-binance-premium-dump-collect.timer`, every two hours at minute 53 on odd hours (`*-*-* 01/2:53:00`) staggered off the five-minute timers and the OI dump timer; it may run only for isolated receipt accumulation and remains subject to the same dataset-local quality gates |
-| lock | `/opt/investment-data/tradingdatas-crypto/collect.lock`; closed-5m primary wait is 300s in this tree, backup-wake wait is 0s. That is the in-repo contract only, not a production-effectiveness claim |
+| lock | `/opt/investment-data/tradingdatas-crypto/collect.lock`; closed-5m primary wait is 300s in this tree, backup-wake and book-ticker wait are 0s. That is the in-repo contract only, not a production-effectiveness claim |
 | closed-5m dataset workers | At most 4 in-flight provider calls for the same `latest_closed_window`. Persist is single-threaded in-process. One `collect.lock` still fences other Crypto writers. Not a production-effectiveness claim |
 | closed-5m finish budget | In-repo upper bound is 270s after `window_end`. This does not relax TradingAgent +55s/+270s and is not a production 40/40 proof |
 
@@ -95,9 +95,11 @@ dataset per symbol for the USDⓈ-M perpetual candidate cohort documented in
 `CRYPTO_BINANCE_USDM_CANARY.md`. The source tree provides a dedicated
 `tradingdatas-crypto-binance-book-ticker.timer` at `*-*-* *:3/5:10` for five-minute collection;
 installation, enablement and runtime effectiveness remain separate release
-gates and do not change the enabled bar or rules timers. Every book-ticker
-collection keeps only the latest receipt-bound snapshot per symbol; it is not
-a replayable history. The USDⓈ-M candidate shares this data root, SQLite,
+gates and do not change the enabled bar or rules timers. Book-ticker uses the
+same `collect.lock` as bars, but wait 0 / `skipped_lock_held`: a held lock
+skips the snapshot without a provider call so a late start cannot block the
+next closed `:00` bar. Every book-ticker collection keeps only the latest
+receipt-bound snapshot per symbol; it is not a replayable history. The USDⓈ-M candidate shares this data root, SQLite,
 release and loopback API, and its collector takes the same `collect.lock` so
 writers stay serial. Its timer may run for bounded, isolated observation
 accumulation; timer enablement never promotes a dataset, relaxes its
