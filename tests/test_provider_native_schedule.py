@@ -4324,7 +4324,6 @@ _PAUSED_DATASET_IDS = frozenset(
         "cn.dataset.ci_index_member",
         "cn.dataset.dc_concept_cons",
         "cn.dataset.dc_member",
-        "cn.dataset.etf_mins",
         "cn.dataset.etf_sh_cons",
         "cn.dataset.etf_sz_cons",
         "cn.dataset.ft_mins",

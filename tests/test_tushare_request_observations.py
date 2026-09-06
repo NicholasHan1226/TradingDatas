@@ -1592,6 +1592,7 @@ def test_active_on_demand_fanouts_use_existing_resumable_batch_cap() -> None:
     expected_progress = {"cursor_contract_version": 2, "max_batches_per_run": 1}
     capped = (
         "stk_mins",
+        "etf_mins",
         "top10_floatholders",
         "top10_holders",
         "stk_rewards",
@@ -1611,6 +1612,7 @@ def test_active_on_demand_fanouts_use_existing_resumable_batch_cap() -> None:
     }
     expected_seed = {
         "stk_mins": "cn.equity.security_master",
+        "etf_mins": "cn.dataset.etf_basic",
         "top10_floatholders": "cn.equity.security_master",
         "top10_holders": "cn.equity.security_master",
         "stk_rewards": "cn.equity.security_master",
@@ -1619,6 +1621,7 @@ def test_active_on_demand_fanouts_use_existing_resumable_batch_cap() -> None:
     }
     expected_batch = {
         "stk_mins": 1,
+        "etf_mins": 1,
         "top10_floatholders": 10,
         "top10_holders": 10,
         "stk_rewards": 10,
@@ -1639,16 +1642,35 @@ def test_active_on_demand_fanouts_use_existing_resumable_batch_cap() -> None:
         assert binding["activation_state"] == "active"
         assert binding["resumable_fanout"] == expected_progress
         assert binding["fanout"]["batch_size"] == expected_batch[api_name]
-        if api_name == "stk_mins":
+        if api_name in {"stk_mins", "etf_mins"}:
             assert contract["request_window_policy"]["formats"] == {
                 "end_date": "local_datetime_seconds",
                 "start_date": "local_datetime_seconds",
             }
         else:
             assert contract["request_window_policy"] is None
+    paused_capped = {
+        "ft_mins": "cn.dataset.fut_basic",
+    }
+    for api_name, seed in paused_capped.items():
+        entry = _entry(observations, api_name)
+        contract = _contract(bundle, api_name)
+        binding = runtime_bindings[api_name]
+        assert entry["request_shape"] == "entity_fanout"
+        assert entry["parameters"]["ts_code"]["batch_size"] == 1
+        assert entry["resumable_fanout"] == expected_progress
+        assert contract["cadence_class"] == "on_demand"
+        assert contract["resumable_fanout"] == expected_progress
+        assert contract["fanout"]["source_dataset_id"] == seed
+        assert contract["fanout"]["batch_size"] == 1
+        assert contract["request_window_policy"]["formats"] == {
+            "end_date": "local_datetime_seconds",
+            "start_date": "local_datetime_seconds",
+        }
+        assert binding["activation_state"] == "paused"
+        assert binding["resumable_fanout"] == expected_progress
+        assert binding["fanout"]["batch_size"] == 1
     for paused in (
-        "etf_mins",
-        "ft_mins",
         "fund_nav",
         "fund_daily",
         "fund_company",
