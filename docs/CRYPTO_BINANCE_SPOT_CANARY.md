@@ -73,7 +73,8 @@ collection receipt's actual observation interval. It is not historical L1,
 order-book depth, a replayable market-time series, or execution evidence.
 It has no backfill. The source tree provides a dedicated
 `tradingdatas-crypto-binance-book-ticker.timer` at `*-*-* *:3/5:10` for five-minute collection;
-installation and enablement remain a separate immutable-release decision.
+a held `collect.lock` exits `skipped_lock_held` without waiting or calling
+the provider. Installation and enablement remain a separate immutable-release decision.
 Runtime effectiveness requires fresh unit, receipt and authenticated `18083`
 readback recorded in `STATUS.md`. Each collection keeps only the latest
 receipt-bound snapshot per symbol.

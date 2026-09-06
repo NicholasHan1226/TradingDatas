@@ -152,9 +152,23 @@ def _private_lock(path: Path):
 # genuinely stuck holder while covering batch holders several minutes long.
 # Do not restore 120s: that timeout skipped the close-aligned oneshot and left
 # the first success for the next Persistent slot (close+300s).
+# Book-ticker is current_snapshot only: wait 0 / skipped_lock_held so a late
+# start cannot hold collect.lock across the next :00 bar. Missing one snapshot
+# does not change closed-5m PIT.
 _LOCK_WAIT_SECONDS = 300.0
 _BACKUP_LOCK_WAIT_SECONDS = 0.0
+_BOOK_TICKER_LOCK_WAIT_SECONDS = 0.0
 _LOCK_RETRY_INTERVAL = 0.5
+
+
+def _default_lock_wait_seconds(
+    *, backup_wake: bool, collect_book_ticker: bool
+) -> float:
+    if backup_wake:
+        return _BACKUP_LOCK_WAIT_SECONDS
+    if collect_book_ticker:
+        return _BOOK_TICKER_LOCK_WAIT_SECONDS
+    return _LOCK_WAIT_SECONDS
 
 
 def _bounded_lock(path: Path, wait_seconds: float = _LOCK_WAIT_SECONDS):
@@ -353,8 +367,9 @@ def run(
     if (collect_rules or collect_book_ticker) and backfill_days is not None:
         raise ValueError("current snapshots do not support historical backfill")
     if lock_wait_seconds is None:
-        lock_wait_seconds = (
-            _BACKUP_LOCK_WAIT_SECONDS if backup_wake else _LOCK_WAIT_SECONDS
+        lock_wait_seconds = _default_lock_wait_seconds(
+            backup_wake=backup_wake,
+            collect_book_ticker=collect_book_ticker,
         )
     datasets = (
         _rule_datasets(registry)
@@ -405,10 +420,12 @@ def run(
     try:
         lock = _bounded_lock(lock_path, wait_seconds=lock_wait_seconds)
     except RuntimeError:
-        if backup_wake:
+        if backup_wake or collect_book_ticker:
             return {
                 "backfill_days": backfill_days,
-                "collection_kind": "bars",
+                "collection_kind": (
+                    "book_ticker" if collect_book_ticker else "bars"
+                ),
                 "dataset_workers": dataset_workers,
                 "lock_wait_seconds": round(time.monotonic() - lock_wait_started, 3),
                 "mode": "execute",

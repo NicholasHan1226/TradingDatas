@@ -141,6 +141,42 @@ def test_backup_wake_skips_when_primary_holds_the_lock(
     assert calls == []
 
 
+def test_book_ticker_skips_when_lock_is_held(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    lock_path = tmp_path / "collect.lock"
+    holder = lock_path.open("a+", encoding="utf-8")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+    calls: list[str] = []
+
+    def collect(*args, **kwargs):
+        del args
+        calls.append(kwargs["dataset_id"])
+        return _ingest_result(status="success", receipt_id="receipt:unused")
+
+    monkeypatch.setattr(canary, "collect_provider_native_dataset", collect)
+    try:
+        result = run(
+            db_path=tmp_path / "unused.sqlite",
+            lock_path=lock_path,
+            execute=True,
+            now=datetime(2026, 9, 5, 9, 8, 10, tzinfo=timezone.utc),
+            collect_book_ticker=True,
+        )
+    finally:
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+        holder.close()
+
+    assert result["state"] == "skipped_lock_held"
+    assert result["collection_kind"] == "book_ticker"
+    assert result["will_call_provider"] is False
+    assert result["will_write_database"] is False
+    assert result["windows"] == [{}]
+    assert result["lock_wait_seconds"] < 1.0
+    assert calls == []
+
+
 def test_crypto_180_day_backfill_windows_are_contiguous_and_bounded() -> None:
     windows = backfill_windows(
         datetime(2026, 7, 28, 9, 47, tzinfo=timezone.utc),
@@ -442,6 +478,7 @@ def test_closed_bar_lock_wait_is_300s_and_backup_wake_does_not_wait(
 ) -> None:
     assert canary._LOCK_WAIT_SECONDS == 300.0
     assert canary._BACKUP_LOCK_WAIT_SECONDS == 0.0
+    assert canary._BOOK_TICKER_LOCK_WAIT_SECONDS == 0.0
     waits: list[float] = []
 
     def fake_lock(path: Path, wait_seconds: float = canary._LOCK_WAIT_SECONDS):
@@ -459,6 +496,14 @@ def test_closed_bar_lock_wait_is_300s_and_backup_wake_does_not_wait(
             execute=True,
             now=now,
         )
+    with pytest.raises(RuntimeError, match="after 300s"):
+        run(
+            db_path=tmp_path / "unused.sqlite",
+            lock_path=tmp_path / "collect.lock",
+            execute=True,
+            now=now,
+            collect_rules=True,
+        )
     skipped = run(
         db_path=tmp_path / "unused.sqlite",
         lock_path=tmp_path / "collect.lock",
@@ -466,8 +511,19 @@ def test_closed_bar_lock_wait_is_300s_and_backup_wake_does_not_wait(
         now=now,
         backup_wake=True,
     )
+    book_ticker = run(
+        db_path=tmp_path / "unused.sqlite",
+        lock_path=tmp_path / "collect.lock",
+        execute=True,
+        now=now,
+        collect_book_ticker=True,
+    )
     assert skipped["state"] == "skipped_lock_held"
-    assert waits == [300.0, 0.0]
+    assert skipped["collection_kind"] == "bars"
+    assert book_ticker["state"] == "skipped_lock_held"
+    assert book_ticker["collection_kind"] == "book_ticker"
+    assert book_ticker["will_call_provider"] is False
+    assert waits == [300.0, 300.0, 0.0, 0.0]
 
 
 def test_crypto_api_has_no_mutable_runtime_environment_override() -> None:

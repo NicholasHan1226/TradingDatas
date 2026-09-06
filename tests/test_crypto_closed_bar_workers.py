@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import fcntl
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 
 import tools.run_binance_spot_canary as canary
 from dataset_registry import BINANCE_CANARY_REGISTRY_PATH, load_dataset_registry
@@ -141,3 +144,88 @@ def test_closed_bar_workers_overlap_provider_calls_under_one_lock(
     assert max_persist == 1
     assert elapsed < canary._CLOSED_BAR_FINISH_BUDGET_SECONDS
     assert max(finish_times) - min(finish_times) < canary._CLOSED_BAR_FINISH_BUDGET_SECONDS
+
+
+def test_book_ticker_lock_wait_is_fail_fast_like_backup() -> None:
+    assert canary._LOCK_WAIT_SECONDS == 300.0
+    assert canary._BACKUP_LOCK_WAIT_SECONDS == 0.0
+    assert canary._BOOK_TICKER_LOCK_WAIT_SECONDS == 0.0
+    assert (
+        canary._default_lock_wait_seconds(
+            backup_wake=False, collect_book_ticker=False
+        )
+        == 300.0
+    )
+    assert (
+        canary._default_lock_wait_seconds(
+            backup_wake=True, collect_book_ticker=False
+        )
+        == 0.0
+    )
+    assert (
+        canary._default_lock_wait_seconds(
+            backup_wake=False, collect_book_ticker=True
+        )
+        == 0.0
+    )
+
+
+def test_book_ticker_skips_held_lock_without_provider(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    lock_path = tmp_path / "collect.lock"
+    holder = lock_path.open("a+", encoding="utf-8")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+    calls: list[str] = []
+
+    def collect(*args, **kwargs):
+        del args
+        calls.append(kwargs["dataset_id"])
+        return _ingest_result(status="success", receipt_id="receipt:unused")
+
+    monkeypatch.setattr(canary, "collect_provider_native_dataset", collect)
+    try:
+        started = time.monotonic()
+        result = run(
+            db_path=tmp_path / "unused.sqlite",
+            lock_path=lock_path,
+            execute=True,
+            now=datetime(2026, 9, 5, 9, 8, 10, tzinfo=timezone.utc),
+            collect_book_ticker=True,
+        )
+        elapsed = time.monotonic() - started
+    finally:
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+        holder.close()
+
+    assert result["state"] == "skipped_lock_held"
+    assert result["collection_kind"] == "book_ticker"
+    assert result["will_call_provider"] is False
+    assert result["will_write_database"] is False
+    assert result["lock_wait_seconds"] < 1.0
+    assert elapsed < 1.0
+    assert calls == []
+
+
+def test_closed_bar_primary_still_fails_closed_when_lock_is_held(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("TRADINGDATAS_CANARY_MODE", "binance_spot_v1")
+    waits: list[float] = []
+
+    def fake_lock(path: Path, wait_seconds: float = canary._LOCK_WAIT_SECONDS):
+        del path
+        waits.append(wait_seconds)
+        raise RuntimeError(f"collection lock is still held after {wait_seconds:.0f}s")
+
+    monkeypatch.setattr(canary, "_bounded_lock", fake_lock)
+    now = datetime(2026, 9, 5, 9, 5, 10, tzinfo=timezone.utc)
+    with pytest.raises(RuntimeError, match="after 300s"):
+        run(
+            db_path=tmp_path / "unused.sqlite",
+            lock_path=tmp_path / "collect.lock",
+            execute=True,
+            now=now,
+        )
+    assert waits == [300.0]
