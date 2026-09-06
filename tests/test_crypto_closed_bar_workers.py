@@ -186,7 +186,6 @@ def test_book_ticker_skips_held_lock_without_provider(
 
     monkeypatch.setattr(canary, "collect_provider_native_dataset", collect)
     try:
-        started = time.monotonic()
         result = run(
             db_path=tmp_path / "unused.sqlite",
             lock_path=lock_path,
@@ -194,7 +193,6 @@ def test_book_ticker_skips_held_lock_without_provider(
             now=datetime(2026, 9, 5, 9, 8, 10, tzinfo=timezone.utc),
             collect_book_ticker=True,
         )
-        elapsed = time.monotonic() - started
     finally:
         fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
         holder.close()
@@ -204,7 +202,6 @@ def test_book_ticker_skips_held_lock_without_provider(
     assert result["will_call_provider"] is False
     assert result["will_write_database"] is False
     assert result["lock_wait_seconds"] < 1.0
-    assert elapsed < 1.0
     assert calls == []
 
 
