@@ -1,10 +1,12 @@
 # TradingDatas 当前状态
 
-发布检查更新至 2026-09-06 12:30 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
+发布检查更新至 2026-09-06 12:35 Asia/Shanghai。源码、公开网站、数据运行面和真实商业开通分别验收；历史快照由 Git 保存。
 
 ## 当前结论与对外范围
 
 - Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；内部采集保持隔离。Research 外部文献不构成 Crypto 供数承诺。
+- 2026-09-06 12:32 一次认证 catalog 扫完剩余 54 个已 active、无 fanout、单 variant 的 `on_demand` 候选：**41** 项已有 nonempty success 页，**0** 项仍 unobserved，**13** 项已有 empty receipt。未采集、未 restage empty、未激活。empty ≠ success。
+- [PR #519](https://github.com/NicholasHan1226/TradingDatas/pull/519) 合入 STATUS-only `9493eb839ebceb2cf59a24762f9ca6194cf6bf64`。精确主线已绿。读回时两侧 live `current` 仍是 STATUS-only `898ba781`（相对合同 SHA `8fe3498f` 只改 `STATUS.md`）。本 STATUS **不再 cut**。18082/18083 保持 active。
 - 2026-09-06 12:25 在已 active、无 fanout 的 `on_demand` 队列里只采了仍无 proving page 的两项：`cn.dataset.etf_index`（`pub_date=20260904`）honest empty；`cn.dataset.fund_div`（`ann_date=20260904`）success **43** 行。empty ≠ success。未激活、未 mass-unpause、未抬高 10000。
 - 同批候选里已有 nonempty queryable page、本轮跳过：`sge_daily` 123、`shibor` 1、`fund_share` 1590、`namechange` 1、`new_share` 3、`cn_cpi` 1。未采 `fut_basic` / `fund_factor_pro` / `etf_basic`，也未 restage `fund_basic`。
 - [PR #518](https://github.com/NicholasHan1226/TradingDatas/pull/518) 合入 STATUS-only `898ba78138ba40ed12005e1136cd61e0aa74e342`。读回时两侧 live `current` 已是该 SHA（相对 `8fe3498f` 只改 `STATUS.md`）。本 STATUS **不再 cut**。
@@ -45,6 +47,9 @@
   - `cn.dataset.etf_index`：window `pub_date=20260904`。journal `state=empty`，returned/committed **0**，`receipt:47fc208f4052d08a097a2c37b7cb43acc1c355a91550d0f51c128380544d54dd`。catalog coverage `row_count=0`。query 200 / 0.139s / **0 行**且无 next_cursor；`runtime_state=empty`，`state=partial`，quality `degraded`，reasons `provider_returned_no_rows` / `response_completeness_unverified` / `freshness_watermark_unverified`。这是该窗口的 vendor empty，不是失败，也不是 success。MOVE ON。
   - `cn.dataset.fund_div`：window `ann_date=20260904`。journal `state=success`，returned/validated/committed/inserted **43**，`receipt:f4f39988918359e972e8a2d16fb195bdf2fbf4a06db94c15e40802bf7356811c`。catalog coverage `row_count=43`、`20260904`–`20260904`。query 200 / 0.120s / 本页 5 行且有 next_cursor；`runtime_state=success`，`state=ready`，quality `valid`，freshness `fresh`。单次非空 success 是 observed，不是 `stable` 或历史完整性。
 - 服务器证据（gitignored）：`/opt/investment-data/tradingdatas/evidence/20260906-ondemand-etf-index-fund-div/`。未提交 DB、token、receipt blob 或密钥。
+- 2026-09-06 12:32 Asia/Shanghai 一次认证 18082 catalog（API 未调 provider；匿名 401 / `unauthenticated`）：200 / 5.382s / 192。对剩余 54 个已 active、无 fanout、单 variant 的 `on_demand` 候选分类：41 项 catalog `runtime.state=success` 且 coverage > 0，跳过；13 项已是 empty receipt（`bond_blk` / `bond_blk_detail` / `cb_call` / `cn_gdp` / `gz_index` / `hk_hold` / `kpl_list` / `limit_step` / `shibor_lpr` / `slb_len` / `st` / `stk_high_shock` / `wz_index`），不 restage；该集合 **0** unobserved，故未写 selector、未启动 collect。全目录另有 2 个 unobserved（`stk_mins`、`top10_floatholders`），不在本切片名单且属 fanout，跳过。未激活 `fund_nav` / `fund_company` / `stk_nineturn` / `stock_hsgt`。
+- 同次读回：live `current` 仍为 `898ba781`；18082/18083 与两项 API 保持 active。发现 `tradingdatas-provider-native-collect.timer` 已 disabled（12:31:46 被停），且 12:25:23 起的 cadence oneshot 于 12:32:22 因 `global.news.flash` Firecrawl HTTP 500 以 exit 1 结束。本切片未杀 oneshot、未写 selector；随后 `enable --now` 恢复 timer。无 leftover selector。
+- 服务器证据（gitignored）：`/opt/investment-data/tradingdatas/evidence/20260906-ondemand-scan-remaining/`。未提交 DB、token、receipt blob 或密钥。
 - 2026-09-06 04:37–04:38 Asia/Shanghai 的有界 on-demand 三件套已落首次 receipt（catalog `observed_at` 为 `2026-09-05T20:37:36Z` / `20:38:00Z` / `20:38:00Z`）。
 - 2026-09-06 11:16:44–11:17:09 Asia/Shanghai 在同一 `tradingdatas-provider-native-collect.service` 上复核同一三件套（window `{}`，sorted IDs）。unit 空闲后才写入 selector（`tradingdatas`、`0600`、nlink=1、env 逐字节仅 batch 路径）。journal：`state=impaired`，exit 2。`bse_mapping` success 248 committed/unchanged；`sge_basic` success 13 committed/unchanged；`fund_basic` validation `resource_budget` 2884 committed、receipt_count 2。这是对 04:37 首次批次的复核，不是新的首次 success，也不得写成 empty。selector 已消费。timer 已恢复 enabled/active。未采集 `fund_company` / `stk_nineturn` / `stock_hsgt`。
 - 11:17 认证 18082 回读（API 未调 provider；匿名 18082/18083 均为 401）。empty ≠ success；未抬高 `max_rows_per_attempt=10000`：
@@ -78,6 +83,7 @@
 - `fut_daily`、`opt_basic` 已是 active / `on_demand`。2026-09-06 04:02 在 `e8a96ccc` 上完成首次有界正式采集与认证 catalog/query 回读，见上文 receipt。单次非空 success 是 observed 证据，不是 `stable`，也不是历史完整性或 PIT。
 - `bse_mapping`、`fund_basic`、`sge_basic` 已是 active / `on_demand`。2026-09-06 04:37 在 `5644f631` 上完成首次有界正式采集：`bse_mapping` / `sge_basic` 非空 success 为 observed；当时 `fund_basic` 为诚实 `resource_budget` failed。2026-09-06 12:12 在 `8fe3498f` 上按 E-only 再采：collect/catalog 为 nonempty success 2884，认证 query 仍 0 行。单次非空 success 是 observed 证据，不是 `stable`，也不是 query 有行或历史完整性。不得抬高 10000。官方 O 不在同一 attempt cohort。
 - `etf_index`、`fund_div` 已是 active / `on_demand`。2026-09-06 12:25 在 live `898ba781`（STATUS-only，数据面同 `8fe3498f`）上完成有界正式采集：`fund_div` 非空 success 43 为 observed；`etf_index` 该窗口 vendor empty，记外部 blocker 后 MOVE ON。未激活其它项。`fund_nav` 仍因 nav_date-only 6000 完整性未决保持暂停；`fund_company` 15371 与 `stk_nineturn` / `stock_hsgt` valid_empty 保持暂停。
+- 2026-09-06 12:32 认证 catalog：上述已 active、无 fanout、单 variant 的 `on_demand` 剩余名单里 **0** 项仍 unobserved。41 项已有 nonempty success 页；13 项已是 empty receipt，不 restage。全目录仅余 `stk_mins` / `top10_floatholders` 为 unobserved（fanout，不在本切片）。下一可接接口不在这份 simple on_demand 名单里；paused 项仍不激活。
 - 服务器证据位于 `evidence/20260905-ready3/`；冻结计划 SHA-256 为 `e80370da25b922ebe99ea3edbbf7620f733ae31c5ee62b9dee70290cb6d0ac45`。evidence refs 为 `server-evidence/20260905-ready3-fut_daily` 与 `server-evidence/20260905-ready3-opt_basic`；旧探测仍绑定原 immutable，不随新配置回写。
 - `stk_nineturn` 保持 paused：datetime 窗口与发布时段合同待补齐，probe/ingest ready 不等于 activation-ready。源 empty 不阻挡其它接口。
 - [PR #505](https://github.com/NicholasHan1226/TradingDatas/pull/505) 已合入 merge SHA `7ef6bd19eae0c0e3874b5e85cd4158a412d8c465`。精确主线 [33982793546](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33982793546) 通过；Cloudflare Pages [33982793531](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33982793531) 已在该 SHA 发布。**未做 GZ cut**。
