@@ -1948,6 +1948,45 @@ def test_margin_family_keeps_live_ids_and_t1_uses_prior_open_morning() -> None:
     assert len(paused) == 49
 
 
+def test_active_on_demand_fanouts_keep_resumable_batch_cap_and_activation() -> None:
+    expected_progress = {"cursor_contract_version": 2, "max_batches_per_run": 1}
+    capped = (
+        "stk_mins",
+        "top10_floatholders",
+        "top10_holders",
+        "stk_rewards",
+        "cb_rate",
+        "cb_rating",
+    )
+    registry = compile_provider_native_registry(
+        _bundle(), observations_document=_observations()
+    )
+    bindings = {
+        dataset["provider_bindings"][0]["api_name"]: dataset["provider_bindings"][0]
+        for dataset in registry["datasets"]
+    }
+    live = load_dataset_registry(TARGET_PATH)
+    for api_name in capped:
+        binding = bindings[api_name]
+        assert binding["activation_state"] == "active"
+        assert binding["resumable_fanout"] == expected_progress
+        live_binding = live.provider_binding(f"cn.dataset.{api_name}", "tushare")
+        assert live_binding.activation_state == "active"
+        assert live_binding.resumable_fanout is not None
+        assert live_binding.resumable_fanout.cursor_contract_version == 2
+        assert live_binding.resumable_fanout.max_batches_per_run == 1
+    for paused in (
+        "etf_mins",
+        "ft_mins",
+        "fund_nav",
+        "fund_daily",
+        "fund_company",
+        "stk_nineturn",
+        "stock_hsgt",
+    ):
+        assert bindings[paused]["activation_state"] == "paused"
+
+
 def test_wave7_nowindow_and_seed_unlock_rt_min_daily_activation() -> None:
     observations = _observations()
     active_evidence = observations["active_evidence"]

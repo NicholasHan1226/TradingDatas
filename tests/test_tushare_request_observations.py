@@ -1587,6 +1587,76 @@ def test_dataset_field_batch_size_defaults_to_one_and_compiles_explicit_values()
         assert _contract(bundle, api_name)["fanout"]["batch_size"] == 10
         assert runtime_bindings[api_name]["fanout"]["batch_size"] == 10
 
+
+def test_active_on_demand_fanouts_use_existing_resumable_batch_cap() -> None:
+    expected_progress = {"cursor_contract_version": 2, "max_batches_per_run": 1}
+    capped = (
+        "stk_mins",
+        "top10_floatholders",
+        "top10_holders",
+        "stk_rewards",
+        "cb_rate",
+        "cb_rating",
+    )
+    observations = _yaml(REQUEST_OBSERVATIONS)
+    bundle = _compile()
+    registry = compile_provider_native_registry(
+        bundle,
+        observations_document=_yaml(TRANSPORT_OBSERVATIONS),
+    )
+    runtime_bindings = {
+        binding["api_name"]: binding
+        for dataset in registry["datasets"]
+        for binding in dataset["provider_bindings"]
+    }
+    expected_seed = {
+        "stk_mins": "cn.equity.security_master",
+        "top10_floatholders": "cn.equity.security_master",
+        "top10_holders": "cn.equity.security_master",
+        "stk_rewards": "cn.equity.security_master",
+        "cb_rate": "cn.dataset.cb_basic",
+        "cb_rating": "cn.dataset.cb_basic",
+    }
+    expected_batch = {
+        "stk_mins": 1,
+        "top10_floatholders": 10,
+        "top10_holders": 10,
+        "stk_rewards": 10,
+        "cb_rate": 1,
+        "cb_rating": 1,
+    }
+
+    for api_name in capped:
+        entry = _entry(observations, api_name)
+        contract = _contract(bundle, api_name)
+        binding = runtime_bindings[api_name]
+        assert entry["request_shape"] == "entity_fanout"
+        assert entry["resumable_fanout"] == expected_progress
+        assert contract["cadence_class"] == "on_demand"
+        assert contract["resumable_fanout"] == expected_progress
+        assert contract["fanout"]["source_dataset_id"] == expected_seed[api_name]
+        assert contract["fanout"]["batch_size"] == expected_batch[api_name]
+        assert binding["activation_state"] == "active"
+        assert binding["resumable_fanout"] == expected_progress
+        assert binding["fanout"]["batch_size"] == expected_batch[api_name]
+        if api_name == "stk_mins":
+            assert contract["request_window_policy"]["formats"] == {
+                "end_date": "local_datetime_seconds",
+                "start_date": "local_datetime_seconds",
+            }
+        else:
+            assert contract["request_window_policy"] is None
+    for paused in (
+        "etf_mins",
+        "ft_mins",
+        "fund_nav",
+        "fund_daily",
+        "fund_company",
+        "stk_nineturn",
+        "stock_hsgt",
+    ):
+        assert runtime_bindings[paused]["activation_state"] == "paused"
+
     # rt_min_daily carries an explicit five-code batch: one session holds
     # ~241 one-minute bars per code, so ten codes overflow any feasible
     # max_rows_per_attempt late in the session (scan-envelope fix).

@@ -16,7 +16,7 @@ provenance:
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 00f7e9b67c11d9127f4366c229480015eed8bdc83a0dcfbe5c330426f8fb2e3e
+    sha256: fd65e4837525f280971855d19a75244e90eed51399de2d669f9c99ca8766f38a
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -452,6 +452,9 @@ entries:
       dataset_id: cn.dataset.cb_basic
       field: ts_code
       requires_fresh_success_receipt: true
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: cb_rating
   scope_labels:
@@ -472,6 +475,9 @@ entries:
       dataset_id: cn.dataset.cb_basic
       field: ts_code
       requires_fresh_success_receipt: true
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: cb_share
   scope_labels:
@@ -9404,6 +9410,9 @@ entries:
       dataset_id: cn.equity.security_master
       field: ts_code
       requires_fresh_success_receipt: true
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: stk_nineturn
   scope_labels:
@@ -9459,6 +9468,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 10
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: stk_shock
   scope_labels:
@@ -9853,6 +9865,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 10
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: top10_holders
   scope_labels:
@@ -9874,6 +9889,9 @@ entries:
       field: ts_code
       requires_fresh_success_receipt: true
       batch_size: 10
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   row_limit_observation: null
 - api_name: top_inst
   scope_labels:

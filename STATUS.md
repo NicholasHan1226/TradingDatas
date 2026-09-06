@@ -5,6 +5,7 @@
 ## 当前结论与对外范围
 
 - Crypto 仅内部使用，不计入公共产品、来源候选、套餐、供数数量或接入排期；内部采集保持隔离。Research 外部文献不构成 Crypto 供数承诺。
+- 已 active 的 `on_demand` `entity_fanout` 若无 `resumable_fanout`，会一次装入全部 seed 并冲过 10000 硬预算；本切片只给 `stk_mins` / `top10_floatholders` / `top10_holders` / `stk_rewards` / `cb_rate` / `cb_rating` 补上既有 `max_batches_per_run=1` 合同，未激活、未采集、未 recut。采集须等带该 cap 的新 live `current`。
 - 2026-09-06 12:32 一次认证 catalog 扫完剩余 54 个已 active、无 fanout、单 variant 的 `on_demand` 候选：**41** 项已有 nonempty success 页，**0** 项仍 unobserved，**13** 项已有 empty receipt。未采集、未 restage empty、未激活。empty ≠ success。
 - [PR #519](https://github.com/NicholasHan1226/TradingDatas/pull/519) 合入 STATUS-only `9493eb839ebceb2cf59a24762f9ca6194cf6bf64`。精确主线已绿。读回时两侧 live `current` 仍是 STATUS-only `898ba781`（相对合同 SHA `8fe3498f` 只改 `STATUS.md`）。本 STATUS **不再 cut**。18082/18083 保持 active。
 - 2026-09-06 12:25 在已 active、无 fanout 的 `on_demand` 队列里只采了仍无 proving page 的两项：`cn.dataset.etf_index`（`pub_date=20260904`）honest empty；`cn.dataset.fund_div`（`ann_date=20260904`）success **43** 行。empty ≠ success。未激活、未 mass-unpause、未抬高 10000。
@@ -83,7 +84,7 @@
 - `fut_daily`、`opt_basic` 已是 active / `on_demand`。2026-09-06 04:02 在 `e8a96ccc` 上完成首次有界正式采集与认证 catalog/query 回读，见上文 receipt。单次非空 success 是 observed 证据，不是 `stable`，也不是历史完整性或 PIT。
 - `bse_mapping`、`fund_basic`、`sge_basic` 已是 active / `on_demand`。2026-09-06 04:37 在 `5644f631` 上完成首次有界正式采集：`bse_mapping` / `sge_basic` 非空 success 为 observed；当时 `fund_basic` 为诚实 `resource_budget` failed。2026-09-06 12:12 在 `8fe3498f` 上按 E-only 再采：collect/catalog 为 nonempty success 2884，认证 query 仍 0 行。单次非空 success 是 observed 证据，不是 `stable`，也不是 query 有行或历史完整性。不得抬高 10000。官方 O 不在同一 attempt cohort。
 - `etf_index`、`fund_div` 已是 active / `on_demand`。2026-09-06 12:25 在 live `898ba781`（STATUS-only，数据面同 `8fe3498f`）上完成有界正式采集：`fund_div` 非空 success 43 为 observed；`etf_index` 该窗口 vendor empty，记外部 blocker 后 MOVE ON。未激活其它项。`fund_nav` 仍因 nav_date-only 6000 完整性未决保持暂停；`fund_company` 15371 与 `stk_nineturn` / `stock_hsgt` valid_empty 保持暂停。
-- 2026-09-06 12:32 认证 catalog：上述已 active、无 fanout、单 variant 的 `on_demand` 剩余名单里 **0** 项仍 unobserved。41 项已有 nonempty success 页；13 项已是 empty receipt，不 restage。全目录仅余 `stk_mins` / `top10_floatholders` 为 unobserved（fanout，不在本切片）。下一可接接口不在这份 simple on_demand 名单里；paused 项仍不激活。
+- 2026-09-06 12:32 认证 catalog：上述已 active、无 fanout、单 variant 的 `on_demand` 剩余名单里 **0** 项仍 unobserved。41 项已有 nonempty success 页；13 项已是 empty receipt，不 restage。全目录仅余 `stk_mins` / `top10_floatholders` 为 unobserved（fanout，不在本切片）。该两项与同缺口的 `top10_holders` / `stk_rewards` / `cb_rate` / `cb_rating` 现已有 `resumable_fanout.max_batches_per_run=1`；未采集，须等新 `current`。paused 项仍不激活。
 - 服务器证据位于 `evidence/20260905-ready3/`；冻结计划 SHA-256 为 `e80370da25b922ebe99ea3edbbf7620f733ae31c5ee62b9dee70290cb6d0ac45`。evidence refs 为 `server-evidence/20260905-ready3-fut_daily` 与 `server-evidence/20260905-ready3-opt_basic`；旧探测仍绑定原 immutable，不随新配置回写。
 - `stk_nineturn` 保持 paused：datetime 窗口与发布时段合同待补齐，probe/ingest ready 不等于 activation-ready。源 empty 不阻挡其它接口。
 - [PR #505](https://github.com/NicholasHan1226/TradingDatas/pull/505) 已合入 merge SHA `7ef6bd19eae0c0e3874b5e85cd4158a412d8c465`。精确主线 [33982793546](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33982793546) 通过；Cloudflare Pages [33982793531](https://github.com/NicholasHan1226/TradingDatas/actions/runs/33982793531) 已在该 SHA 发布。**未做 GZ cut**。
