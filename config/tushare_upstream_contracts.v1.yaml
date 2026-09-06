@@ -6740,7 +6740,6 @@ contracts:
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.cn_cpi
   aliases:
   - tushare.cn_cpi
@@ -13460,13 +13459,22 @@ contracts:
   empty_data_policy: allowed
   required_scope: market_data
   quota_class: beta_standard
-  request_shape: snapshot_or_date_range
+  request_shape: entity_fanout
   request_template:
     trade_date: ${window.trade_date}
   request_variants:
   - {}
   fanout:
-    strategy: none
+    strategy: dataset_field
+    parameter: ts_code
+    source_dataset_id: cn.dataset.etf_basic
+    source_field: ts_code
+    batch_size: 1
+    source_equals:
+      list_status: L
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
   pagination:
     strategy: none
   request_window_policy:
@@ -13485,11 +13493,12 @@ contracts:
     max_payload_bytes_per_row: 65536
     max_rows_per_attempt: 10000
   reviewed_type_overrides: []
-  probe_state: executable
-  probe_block_reasons: []
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
-  - response_completeness_unresolved_at_observed_limit
+  - dependency_seed_receipt_unresolved
 - dataset_id: cn.dataset.fund_basic
   aliases:
   - tushare.fund_basic
@@ -20751,7 +20760,6 @@ contracts:
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.index_monthly
   aliases:
   - tushare.index_monthly

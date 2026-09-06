@@ -18,10 +18,6 @@
       "id": "requires_seed_receipt",
       "interfaces": [
         {
-          "apiName": "ci_index_member",
-          "datasetId": "cn.dataset.ci_index_member"
-        },
-        {
           "apiName": "ft_mins",
           "datasetId": "cn.dataset.ft_mins"
         },
@@ -32,10 +28,6 @@
         {
           "apiName": "index_daily",
           "datasetId": "cn.dataset.index_daily"
-        },
-        {
-          "apiName": "index_member_all",
-          "datasetId": "cn.dataset.index_member_all"
         },
         {
           "apiName": "index_weekly",

@@ -10,13 +10,13 @@ provenance:
     sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: 88c8508fabe2164eba7f9476bbc1fc8f10b4c0f68796974d9bb9b5e2045decb9
+    sha256: a8b812d96a0f550a2ffc2ed763ee7417fdb0cb21c9d89da5afc356cb4dd3e6fe
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 5c0d543ccb95074a8a900a0399e2ce3e439c53745966c4eddf89d20f54f638dd
+    sha256: 3e4e3dff24ae2e1015c4c4734ea4a40ea5f08c478705702f4a2c81b45f80f13a
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -68,11 +68,11 @@ reason_codes:
   - response_completeness_unresolved_at_observed_limit
 counts:
   interfaces: 190
-  probe_executable: 137
-  probe_blocked: 53
+  probe_executable: 136
+  probe_blocked: 54
   ingest_contract_ready: 131
   ingest_contract_blocked: 59
-  row_limit_ingest_contract_blocked: 11
+  row_limit_ingest_contract_blocked: 8
 entries:
 - api_name: adj_factor
   scope_labels:
@@ -546,18 +546,17 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: entity_fanout
-  # Empty snapshot already returned 5000 rows and is not an all-list
-  # contract. Official is_new defaults to Y; official ts_code is 股票代码
-  # and fans out from the existing executable security_master seed. Do
-  # not invent l1/l2/l3 codes or alias unregistered index_member. Ingest
-  # stays blocked on the observed-limit reason; do not invent completeness.
+  # Unbounded empty snapshot was 5000 and is not this ingest snapshot.
+  # Contracted one security_master seed + official is_new=Y probe
+  # returned nonempty 2, under 10000, not a thousand-boundary. Do not
+  # invent l1/l2/l3 codes or alias unregistered index_member. Formal
+  # activation is active_evidence plus the security_master seed authority.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
     is_new:
@@ -572,10 +571,7 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
-  row_limit_observation:
-    observed_count: 5000
-    detection: observed_count_equals_round_provider_style_boundary
-    reject_at_limit: true
+  row_limit_observation: null
 - api_name: cn_cpi
   scope_labels:
   - all
@@ -1287,25 +1283,38 @@ entries:
   - all
   - gaps
   transport_observation_class: validated_contract_match
-  request_shape: snapshot_or_date_range
-  # 20260904 trade_date window probe returned 2000 rows, a round
-  # provider-style boundary under 10000 that cannot prove completeness.
-  # Keep ingest blocked. Do not raise 10000. Do not activate.
-  probe_state: executable
-  probe_block_reasons: []
+  request_shape: entity_fanout
+  # Official fund_adj inputs include optional ts_code. Unbounded
+  # trade_date-only was 2000 and is not this ingest snapshot. Contracted
+  # one listed etf_basic seed + 20260904 trade_date probe returned
+  # nonempty 1, under 10000, not a thousand-boundary. Official
+  # list_status=L only; do not invent fund_basic or restage etf_mins.
+  # Formal activation is active_evidence plus the etf_basic seed authority.
+  probe_state: blocked
+  probe_block_reasons:
+  - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
-  - response_completeness_unresolved_at_observed_limit
+  - dependency_seed_receipt_unresolved
   unresolved_parameter_keys: []
   parameters:
     trade_date:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
-  row_limit_observation:
-    observed_count: 2000
-    detection: observed_count_equals_round_provider_style_boundary
-    reject_at_limit: true
+    ts_code:
+      source: dataset_field
+      dataset_id: cn.dataset.etf_basic
+      field: ts_code
+      requires_fresh_success_receipt: true
+      batch_size: 1
+      # Same official etf_basic discriminator as etf_mins / fund_daily.
+      source_equals:
+        list_status: L
+  resumable_fanout:
+    cursor_contract_version: 2
+    max_batches_per_run: 1
+  row_limit_observation: null
 - api_name: fund_basic
   scope_labels:
   - all
@@ -2001,18 +2010,17 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: entity_fanout
-  # Empty snapshot already returned 2000 rows and is not an all-list
-  # contract. Official is_new defaults to Y; official ts_code is 股票代码
-  # and fans out from the existing executable security_master seed. Do
-  # not invent l1/l2/l3 codes or alias unregistered index_member. Ingest
-  # stays blocked on the observed-limit reason; do not invent completeness.
+  # Unbounded empty snapshot was 2000 and is not this ingest snapshot.
+  # Contracted one security_master seed + official is_new=Y probe
+  # returned nonempty 2, under 10000, not a thousand-boundary. Do not
+  # invent l1/l2/l3 codes or alias unregistered index_member. Formal
+  # activation is active_evidence plus the security_master seed authority.
   probe_state: blocked
   probe_block_reasons:
   - dependency_seed_receipt_unresolved
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
   unresolved_parameter_keys: []
   parameters:
     is_new:
@@ -2027,10 +2035,7 @@ entries:
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
-  row_limit_observation:
-    observed_count: 2000
-    detection: observed_count_equals_round_provider_style_boundary
-    reject_at_limit: true
+  row_limit_observation: null
 - api_name: index_monthly
   scope_labels:
   - all
