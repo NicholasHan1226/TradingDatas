@@ -197,6 +197,12 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
     assert active_evidence["etf_mins"] == "server-evidence/20260906-etf-ft-mins-etf_mins"
     assert bindings["ft_mins"]["provider_bindings"][0]["activation_state"] == "paused"
     assert "ft_mins" not in active_evidence
+    for api in ("bak_daily", "fund_manager"):
+        assert bindings[api]["provider_bindings"][0]["activation_state"] == "active"
+        assert bindings[api]["cadence_class"] == "on_demand"
+        assert active_evidence[api] == f"server-evidence/20260906-bak-fund-window-{api}"
+    assert bindings["fund_adj"]["provider_bindings"][0]["activation_state"] == "paused"
+    assert "fund_adj" not in active_evidence
     assert bindings["fund_company"]["provider_bindings"][0]["activation_state"] == "paused"
     assert bindings["stock_hsgt"]["provider_bindings"][0]["activation_state"] == "paused"
     assert bindings["pledge_detail"]["provider_bindings"][0]["activation_state"] == "active"
@@ -230,8 +236,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 142
-    assert len(bindings) - active_count == 48
+    assert active_count == 144
+    assert len(bindings) - active_count == 46
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:

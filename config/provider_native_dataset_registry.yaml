@@ -536,12 +536,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_bak_daily
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:
@@ -13952,12 +13951,11 @@ datasets:
     adapter_version: tushare-provider-native.v1
     read_discriminator_value: tushare_fund_manager
     entitlement_state: active
-    activation_state: paused
+    activation_state: active
     probe_state: executable
     probe_block_reasons: []
-    ingest_contract_state: blocked
-    ingest_contract_block_reasons:
-    - response_completeness_unresolved_at_observed_limit
+    ingest_contract_state: ready
+    ingest_contract_block_reasons: []
     target_tables:
     - provider_dataset_rows
     input_fields:

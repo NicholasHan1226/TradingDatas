@@ -10,13 +10,13 @@ provenance:
     sha256: 7f7e9f1bac30af9f5731ded7a75c0155c29ce913629f91d4c4d200492b4d0ce9
   quicksync_interface_observations:
     path: config/quicksync_interface_observations.v1.yaml
-    sha256: e20b033afb79b89dfdb75c79b8fefbbce50d7a1c90e56f68e404dbdeea2c845f
+    sha256: 9d842101b4ec52332e2c6c4cdefb6153590f92a845636ac5cfe12d168879615c
   reviewed_contract_bundle:
     path: config/tushare_reviewed_contracts.v1.yaml
     sha256: 81345e1827f46b2d757ec51bff9ade97a8599e288a0bdebef5725fe1bff0745c
   registered_contract_bundle:
     path: config/tushare_upstream_contracts.v1.yaml
-    sha256: 2852d59a53b6a2d23090490c452d3cf0ba8053ca26a1cb0aee152027aba31c91
+    sha256: 398516a219eb31384a95f003316e94f35784721cbb09b106fe37ed395adbb340
   migration_request_profiles:
     path: config/tushare_request_profiles.v1.yaml
     sha256: 1a116189a6351db64be2febfa0dba5abd32c96714eae15f03256c2ecedc74714
@@ -70,9 +70,9 @@ counts:
   interfaces: 190
   probe_executable: 137
   probe_blocked: 53
-  ingest_contract_ready: 129
-  ingest_contract_blocked: 61
-  row_limit_ingest_contract_blocked: 16
+  ingest_contract_ready: 131
+  ingest_contract_blocked: 59
+  row_limit_ingest_contract_blocked: 17
 entries:
 - api_name: adj_factor
   scope_labels:
@@ -131,15 +131,12 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  # limit=1/offset=0 was a probe-only page and cannot prove completeness.
-  # Official trade_date is the reusable snapshot window (same shape as
-  # bak_basic / adj_factor). Ingest stays blocked until a live window
-  # probe observes a finite page; do not invent completeness.
+  # 20260904 trade_date window probe: nonempty 5566, under 10000.
+  # Ingest ready. Formal activation is active_evidence only.
   probe_state: executable
   probe_block_reasons: []
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - response_completeness_unresolved_at_observed_limit
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
   unresolved_parameter_keys: []
   parameters:
     trade_date:
@@ -1299,9 +1296,9 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  # limit=1/offset=0 was a probe-only page and cannot prove completeness.
-  # Official trade_date is the reusable snapshot window. Ingest stays
-  # blocked until a live window probe; do not invent completeness.
+  # 20260904 trade_date window probe returned 2000 rows, a round
+  # provider-style boundary under 10000 that cannot prove completeness.
+  # Keep ingest blocked. Do not raise 10000. Do not activate.
   probe_state: executable
   probe_block_reasons: []
   ingest_contract_state: blocked
@@ -1313,7 +1310,10 @@ entries:
       source: run_clock
       transform: yyyymmdd
       offset_seconds: 0
-  row_limit_observation: null
+  row_limit_observation:
+    observed_count: 2000
+    detection: observed_count_equals_round_provider_style_boundary
+    reject_at_limit: true
 - api_name: fund_basic
   scope_labels:
   - all
@@ -1444,15 +1444,13 @@ entries:
   - gaps
   transport_observation_class: validated_contract_match
   request_shape: snapshot_or_date_range
-  # limit=1/offset=0 was a probe-only page and cannot prove completeness.
-  # Official ann_date is the reusable snapshot window (same shape as
-  # fund_portfolio). Ingest stays blocked until a live window probe;
-  # do not invent completeness or a guessed page size.
+  # 20260904 ann_date window probe: nonempty 3, under 10000. Ingest
+  # ready. Formal activation is active_evidence only. Empty ≠ success
+  # does not apply; this page was nonempty.
   probe_state: executable
   probe_block_reasons: []
-  ingest_contract_state: blocked
-  ingest_contract_block_reasons:
-  - response_completeness_unresolved_at_observed_limit
+  ingest_contract_state: ready
+  ingest_contract_block_reasons: []
   unresolved_parameter_keys: []
   parameters:
     ann_date:
