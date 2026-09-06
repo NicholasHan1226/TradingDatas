@@ -22,7 +22,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "fut_holding",
       "cadence": "on_demand",
       "category": "derivatives",
@@ -82,7 +82,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "fut_wsr",
       "cadence": "on_demand",
       "category": "derivatives",
@@ -622,7 +622,7 @@
       "provider": "tushare"
     },
     {
-      "activation": "paused",
+      "activation": "active",
       "apiName": "etf_sz_cons",
       "cadence": "daily_reference",
       "category": "funds-indices",

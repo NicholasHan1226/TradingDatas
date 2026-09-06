@@ -10925,6 +10925,8 @@ contracts:
     source_dataset_id: cn.dataset.etf_basic
     source_field: ts_code
     batch_size: 1
+    source_equals:
+      list_status: L
   resumable_fanout:
     cursor_contract_version: 2
     max_batches_per_run: 1
@@ -10952,7 +10954,6 @@ contracts:
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.express
   aliases:
   - tushare.express
@@ -16268,7 +16269,6 @@ contracts:
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.fut_index_daily
   aliases:
   - tushare.fut_index_daily
@@ -17510,7 +17510,6 @@ contracts:
   ingest_contract_state: blocked
   ingest_contract_block_reasons:
   - dependency_seed_receipt_unresolved
-  - response_completeness_unresolved_at_observed_limit
 - dataset_id: cn.dataset.gz_index
   aliases:
   - tushare.gz_index

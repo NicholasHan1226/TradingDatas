@@ -55,6 +55,7 @@ SECURITY_MASTER_RECEIPT = (
 SECURITY_MASTER_DATA_THROUGH = "2026-08-16T11:25:08.096484Z"
 ETF_BASIC_DEPENDENTS = {
     "etf_mins",
+    "etf_sz_cons",
     "fund_daily",
     "rt_etf_k",
     "rt_etf_min",
@@ -75,6 +76,8 @@ ETF_BASIC_RECEIPT = (
 )
 ETF_BASIC_DATA_THROUGH = "2026-08-14T22:19:37.314050Z"
 FUT_BASIC_DEPENDENTS = {"ft_mins", "rt_fut_min"}
+FUT_BASIC_SYMBOL_DEPENDENTS = {"fut_holding"}
+FUT_BASIC_FUT_CODE_DEPENDENTS = {"fut_wsr"}
 FUT_BASIC_RECEIPT = (
     "receipt:842c296e839094f2f12c5f2b91a96197f6a8e3bf793cb060f1ed2eceeb548d0b"
 )
@@ -152,6 +155,22 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
             "receipt_id": ETF_BASIC_RECEIPT,
             "data_through": ETF_BASIC_DATA_THROUGH,
             "dependent_api_names": sorted(ETF_BASIC_DEPENDENTS),
+        },
+        {
+            "dataset_id": "cn.dataset.fut_basic",
+            "field": "fut_code",
+            "schema_version": "1.0.0",
+            "receipt_id": FUT_BASIC_RECEIPT,
+            "data_through": FUT_BASIC_DATA_THROUGH,
+            "dependent_api_names": sorted(FUT_BASIC_FUT_CODE_DEPENDENTS),
+        },
+        {
+            "dataset_id": "cn.dataset.fut_basic",
+            "field": "symbol",
+            "schema_version": "1.0.0",
+            "receipt_id": FUT_BASIC_RECEIPT,
+            "data_through": FUT_BASIC_DATA_THROUGH,
+            "dependent_api_names": sorted(FUT_BASIC_SYMBOL_DEPENDENTS),
         },
         {
             "dataset_id": "cn.dataset.fut_basic",
@@ -240,8 +259,13 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
     assert bindings["fund_daily"]["provider_bindings"][0]["fanout"]["source_equals"] == {
         "list_status": "L"
     }
-    assert bindings["etf_sz_cons"]["provider_bindings"][0]["activation_state"] == "paused"
-    assert "etf_sz_cons" not in active_evidence
+    for api in ("etf_sz_cons", "fut_holding", "fut_wsr"):
+        assert bindings[api]["provider_bindings"][0]["activation_state"] == "active"
+        assert bindings[api]["provider_bindings"][0]["ingest_contract_state"] == "ready"
+        assert active_evidence[api] == f"server-evidence/20260906-etf-fut-fanout-{api}"
+    assert bindings["etf_sz_cons"]["provider_bindings"][0]["fanout"]["source_equals"] == {
+        "list_status": "L"
+    }
     assert bindings["fund_adj"]["provider_bindings"][0]["activation_state"] == "paused"
     assert "fund_adj" not in active_evidence
     assert bindings["fund_company"]["provider_bindings"][0]["activation_state"] == "paused"
@@ -267,6 +291,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
             | SECURITY_MASTER_DEPENDENTS
             | ETF_BASIC_DEPENDENTS
             | FUT_BASIC_DEPENDENTS
+            | FUT_BASIC_SYMBOL_DEPENDENTS
+            | FUT_BASIC_FUT_CODE_DEPENDENTS
             | DC_CONCEPT_DEPENDENTS
             | DC_INDEX_DEPENDENTS
         ):
@@ -279,8 +305,8 @@ def test_formal_seed_receipts_resolve_only_exact_dependents() -> None:
         dataset["provider_bindings"][0]["activation_state"] == "active"
         for dataset in bindings.values()
     )
-    assert active_count == 147
-    assert len(bindings) - active_count == 43
+    assert active_count == 150
+    assert len(bindings) - active_count == 40
 
 
 def test_security_master_seed_authority_is_exact_and_fail_closed() -> None:
