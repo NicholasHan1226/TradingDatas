@@ -286,6 +286,17 @@ def test_request_observations_are_exactly_190_and_keep_probe_separate_from_activ
 def test_fund_basic_uses_documented_market_literals_as_request_anchor() -> None:
     observations = _yaml(REQUEST_OBSERVATIONS)
     fund_basic = _entry(observations, "fund_basic")
+    official = next(
+        item
+        for item in _yaml(DOCUMENTS)["contracts"]
+        if item["api_name"] == "fund_basic"
+    )
+    market = next(
+        field for field in official["input_fields"] if field["name"] == "market"
+    )
+    assert "E场内" in market["description"]
+    assert "O场外" in market["description"]
+    assert "默认E" in market["description"]
     assert fund_basic["request_shape"] == "snapshot_or_date_range"
     assert fund_basic["probe_state"] == "executable"
     assert fund_basic["probe_block_reasons"] == []
@@ -297,7 +308,6 @@ def test_fund_basic_uses_documented_market_literals_as_request_anchor() -> None:
     }
     assert fund_basic["request_variants"] == [
         {"market": "E"},
-        {"market": "O"},
     ]
     assert "status" not in fund_basic["parameters"]
     assert "ts_code" not in fund_basic["parameters"]
@@ -310,7 +320,6 @@ def test_fund_basic_uses_documented_market_literals_as_request_anchor() -> None:
     assert contract["request_template"] == {"market": "E"}
     assert contract["request_variants"] == [
         {"market": "E"},
-        {"market": "O"},
     ]
     assert contract["fanout"] == {"strategy": "none"}
 
