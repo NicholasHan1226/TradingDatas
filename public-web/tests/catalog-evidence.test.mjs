@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { catalogOwner, catalogQuery, catalogView, domesticRows, selectCatalogRows } from '../src/catalogEvidence.js';
+import { catalogOwner, catalogQuery, catalogView, domesticRows, retryCatalog, selectCatalogRows } from '../src/catalogEvidence.js';
 const rows=[{dataset_id:'cn.equity.daily',schema_major:2,runtime:{state:'success'}},{dataset_id:'cn.dataset.income',schema_major:1,runtime:{state:'empty'}},{dataset_id:'global.news.flash',schema_major:1,runtime:{state:'failed'}},{dataset_id:'cn.dataset.adj_factor',schema_major:2,runtime:{state:'stale'}}];
 test('all domestic rows remain discoverable independently of product mappings and status',()=>{
   assert.deepEqual(selectCatalogRows(rows),rows);
@@ -8,6 +8,27 @@ test('all domestic rows remain discoverable independently of product mappings an
   assert.equal(selectCatalogRows(rows,{query:'global.news'})[0].runtime.state,'failed');
   assert.deepEqual(selectCatalogRows(rows,{productId:'cn-equity-daily'}).map(row=>row.dataset_id),['cn.equity.daily','cn.dataset.adj_factor']);
   assert.deepEqual(selectCatalogRows(rows,{productId:'unmapped-product'}),[]);
+});
+test('unavailable access hides old evidence and retries identity before a fresh catalog',()=>{
+  const connected={identity_kind:'email',user_id:'alice',data_access_state:'connected'};
+  const snapshot={account:connected,status:'ready',rows};
+  const unavailable={...connected,data_access_state:'unavailable'};
+  const base={active:true,checking:false,account:unavailable,snapshot};
+  assert.equal(catalogView(base),'error');
+  const calls=[];
+  const callbacks={onRetryAccount:()=>calls.push('identity'),onRetryCatalog:()=>calls.push('catalog')};
+  retryCatalog({...base,...callbacks});
+  assert.deepEqual(calls,['identity']);
+  assert.equal(catalogView({...base,checking:true}),'loading');
+  const recovered={...connected};
+  assert.equal(catalogView({...base,account:recovered}),'loading');
+  const fresh={account:recovered,status:'ready',rows:[]};
+  assert.equal(catalogView({...base,account:recovered,snapshot:fresh}),'ready');
+  retryCatalog({account:recovered,snapshot:fresh,...callbacks});
+  assert.deepEqual(calls,['identity','catalog']);
+  retryCatalog({account:recovered,snapshot:{account:recovered,status:'error',recheck:true},...callbacks});
+  assert.deepEqual(calls,['identity','catalog','identity']);
+  for(const data_access_state of ['none','invalid']) assert.equal(catalogView({...base,account:{...connected,data_access_state}}),'unconnected');
 });
 test('defensive projection excludes Crypto and rejects partial catalogs',()=>{
   assert.deepEqual(domesticRows({data:[...rows,{dataset_id:'crypto.spot.example'},{dataset_id:'cn.fake',market:'CRYPTO_PERP'}],next_cursor:null}),rows);

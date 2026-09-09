@@ -64,19 +64,21 @@ test("keeps paused-contract preflight separate from observation and access", asy
   assert.equal(snapshot.authority, "compiled_contract_preflight_only");
   const ready = snapshot.groups.find((group) => group.id === "ready_for_bounded_https_probe");
   const seedRequired = snapshot.groups.find((group) => group.id === "requires_seed_receipt");
-  assert.equal(ready.interfaces.length, 6);
+  // 02f5a8b8 removed the over-budget fund_company probe; bf5e2f12
+  // activated bse_mapping/fund_basic/sge_basic out of the paused queue.
+  assert.equal(ready.interfaces.length, 2);
   assert.deepEqual(ready.interfaces.map((item) => item.apiName), [
-    "bse_mapping",
-    "fund_basic",
-    "fund_company",
-    "sge_basic",
     "stk_nineturn",
     "stock_hsgt",
   ]);
   const windowRequired = snapshot.groups.find((group) => group.id === "requires_activation_window_contract");
   assert.deepEqual(windowRequired.interfaces, []);
   assert.equal(snapshot.groups.some((group) => group.interfaces.some((item) => ["fut_daily", "opt_basic"].includes(item.apiName))), false);
-  assert.equal(seedRequired.interfaces.length, 14);
+  // c8704646, 7497d4a6, f665e87d and 93558180 activated the other
+  // seeded contracts. Their absence here does not assert runtime success.
+  assert.deepEqual(seedRequired.interfaces.map((item) => item.apiName), [
+    "ft_mins", "fund_nav", "index_daily", "index_weekly", "index_weight",
+  ]);
   assert.equal(snapshot.warning.includes("no provider call"), true);
 });
 

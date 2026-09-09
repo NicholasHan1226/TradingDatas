@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { accountJson } from './accountSession.js';
-import { catalogOwner, catalogQuery, catalogView, domesticRows, productBindings, runtimeStates, selectCatalogRows } from './catalogEvidence.js';
+import { catalogOwner, catalogQuery, catalogView, domesticRows, productBindings, retryCatalog, runtimeStates, selectCatalogRows } from './catalogEvidence.js';
 import './catalogEvidence.css';
 
 const CatalogContext = createContext({ status: 'guest', rows: [], retry: () => {} });
@@ -17,7 +17,7 @@ export function CatalogProvider({ account, checking, error, active, onRetryAccou
     return () => controller.abort();
   }, [account, checking, active, attempt]);
   const status = catalogView({ account, checking, error, active, snapshot });
-  return <CatalogContext.Provider value={{ status, rows: status === 'ready' ? snapshot.rows : [], readAt: status === 'ready' ? snapshot.readAt : null, retry: () => !account || snapshot?.recheck ? onRetryAccount?.() : setAttempt(value => value + 1) }}>{children}</CatalogContext.Provider>;
+  return <CatalogContext.Provider value={{ status, rows: status === 'ready' ? snapshot.rows : [], readAt: status === 'ready' ? snapshot.readAt : null, retry: () => retryCatalog({ account, snapshot, onRetryAccount, onRetryCatalog: () => setAttempt(value => value + 1) }) }}>{children}</CatalogContext.Provider>;
 }
 
 const labels = {
