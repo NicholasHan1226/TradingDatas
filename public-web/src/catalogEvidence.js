@@ -41,10 +41,15 @@ export function catalogQuery(row) {
   return { dataset_id: row.dataset_id, schema_major: row.schema_major, fields: [], filters: {}, as_of: null, cursor: null, limit: 1, include_receipt_proofs: false };
 }
 export function catalogOwner(account) { return account?.user_id || account?.tenant_id || ''; }
+export function retryCatalog({ account, snapshot, onRetryAccount, onRetryCatalog }) {
+  if (!account || snapshot?.recheck || (account.identity_kind === 'email' && account.data_access_state === 'unavailable')) return onRetryAccount?.();
+  return onRetryCatalog();
+}
 export function catalogView({ account, checking, error, active, snapshot }) {
   if (!active) return 'inactive';
   if (checking) return 'loading';
   if (!account) return error && !['signed_out', 'invalid_token'].includes(error) ? 'error' : 'guest';
+  if (account.identity_kind === 'email' && account.data_access_state === 'unavailable') return 'error';
   if (account.identity_kind === 'email' && account.data_access_state !== 'connected') return 'unconnected';
   if (!catalogOwner(account)) return 'unconnected';
   // Comparing the account reference also hides an older session for the same tenant.

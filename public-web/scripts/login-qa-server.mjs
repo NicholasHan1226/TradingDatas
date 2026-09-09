@@ -11,16 +11,17 @@ let signedIn = false;
 let scenario = "normal";
 let logoutAttempts = 0;
 let loginAttempts = 0;
+let identityReads = 0;
 const portal = { tenant_id: "SYNTHETIC-QA-ONLY", tier: "basic", scopes: ["read"], enabled: true,
   expires_at: "2027-01-01T00:00:00Z", minute_request_limit: 200, data_categories: ["a_share"], usage: { today_count: 12 } };
-const cases = ["normal", "invalid", "unavailable", "malformed", "usage-failure", "logout-retry", "slow-login", "slow-identity", "identity-outage", "expired", "late-key"];
+const cases = ["normal", "invalid", "unavailable", "malformed", "usage-failure", "logout-retry", "slow-login", "slow-identity", "identity-outage", "expired", "late-key", "catalog-access-retry"];
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
   const json = (status, value) => { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(value)); };
   if (url.pathname === "/__qa") {
     const selected = url.searchParams.get("case");
-    if (cases.includes(selected)) { scenario = selected; signedIn = false; logoutAttempts = 0; loginAttempts = 0; }
+    if (cases.includes(selected)) { scenario = selected; signedIn = selected === "catalog-access-retry"; logoutAttempts = 0; loginAttempts = 0; identityReads = 0; }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     return res.end(`<h1>Synthetic login QA — never enter a real key</h1><p>Scenario: ${scenario}. Use any synthetic test string.</p><p>POST login count: ${loginAttempts}</p>${cases.map((item) => `<p><a href="/__qa?case=${item}">${item}</a></p>`).join("")}<a href="/login">Open login</a>`);
   }
@@ -46,6 +47,14 @@ http.createServer(async (req, res) => {
       return json(200, { portal });
     }
     if (!signedIn || scenario === "expired") return json(401, { error: "synthetic_unauthenticated" });
+    if (scenario === "catalog-access-retry" && url.pathname === "/api/account/me") {
+      const state = ++identityReads === 1 ? "unavailable" : "connected";
+      return json(200, { identity: { kind: "email", email_verified: true, user_id: "SYNTHETIC-QA-ONLY", email: "fixture@example.com", tenant_id: null, subscription_state: "not_subscribed", data_categories: [], session_expires_at: "2099-01-01T00:00:00Z" }, data_access: { state, present: true, ...(state === "connected" ? { portal } : {}) } });
+    }
+    if (scenario === "catalog-access-retry" && url.pathname === "/api/account/catalog") {
+      if (identityReads < 2) return json(503, { error: "synthetic_connection_unavailable" });
+      return json(200, { data: [{ dataset_id: "cn.equity.daily", schema_major: 2, market: "A_SHARE", runtime: { state: "empty", degraded: true, receipt_id: "SYNTHETIC-EMPTY-RECEIPT", reasons: ["synthetic_empty_response"] }, coverage: { row_count: 0 }, queryability: { queryable: true, reasons: [] } }], next_cursor: null });
+    }
     if (url.pathname === "/api/account/me") return json(200, { portal });
     if (url.pathname === "/api/account/usage") return scenario === "usage-failure" ? json(503, {}) : json(200, { portal_usage: { today_count: 12, history: [] } });
     if (url.pathname === "/api/account/keys") {

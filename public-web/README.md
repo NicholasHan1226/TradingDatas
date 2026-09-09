@@ -549,3 +549,17 @@ bindings or claim that simulator results prove a real payment-provider sandbox.
 ### Authenticated collection evidence
 
 Data remains a public product browser. Signed-in users with an existing data key can read their authorized domestic/news catalog through `/api/account/catalog`. The bridge preserves catalog metadata and removes internal Crypto. Data lists every authorized interface; mapped product pages list related raw interfaces without claiming a finished PIT product. Copyable query bodies use the exact catalog dataset ID and integer schema major. Loading, error/retry, no-connection and empty-filter states do not fall back to saved runtime evidence. No data credential or catalog snapshot is persisted in browser storage.
+
+An email account whose data access is `unavailable` sees the catalog error/retry
+state, not a claim that its connection is absent. Retry revalidates the account
+before requesting a fresh catalog; earlier evidence remains hidden throughout.
+Confirmed `none` and `invalid` connections keep the existing no-connection view.
+Validate this transition with `node --test tests/catalog-evidence.test.mjs` and
+the local account fixture/browser flow before release. After building, run the
+existing `scripts/login-qa-server.mjs`, select `/__qa?case=catalog-access-retry`,
+then open `/datasets/cn-equity-daily`. This memory-only synthetic email identity
+first reports unavailable data access. Click the catalog Retry button: the next
+account check reports connected and supplies an explicitly synthetic empty
+catalog observation. Verify the error disappears and the empty/degraded/zero
+coverage labels appear, in both languages and desktop/mobile widths. No real
+login, credential, provider request or account write occurs in this fixture.
