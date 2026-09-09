@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+from contextlib import contextmanager
+from dataclasses import dataclass
 import fcntl
 import hashlib
 import json
@@ -506,6 +508,102 @@ def _validated_releases_root(
     return releases_root
 
 
+@dataclass(frozen=True)
+class ReleaseRootLock:
+    """Process-local lease; only release_root_lock may register a live lease."""
+
+    root: Path
+    descriptor: int
+    identity: tuple[int, int]
+
+
+_ACTIVE_RELEASE_LOCKS: dict[int, tuple[ReleaseRootLock, int]] = {}
+
+
+@contextmanager
+def release_root_lock(
+    root: Path, *, expected_uid: int, expected_gid: int,
+):
+    """Hold the existing directory flock for a complete operator session."""
+    root = _validated_releases_root(
+        root, expected_uid=expected_uid, expected_gid=expected_gid,
+    )
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    lease = None
+    keeper = None
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        metadata = os.fstat(descriptor)
+        observed = os.stat(root, follow_symlinks=False)
+        if (metadata.st_dev, metadata.st_ino) != (observed.st_dev, observed.st_ino):
+            raise ReleaseManifestError("release root changed while locking")
+        lease = ReleaseRootLock(root, descriptor, (metadata.st_dev, metadata.st_ino))
+        keeper = os.dup(descriptor)
+        _ACTIVE_RELEASE_LOCKS[descriptor] = (lease, keeper)
+        yield lease
+    finally:
+        if lease is not None:
+            _ACTIVE_RELEASE_LOCKS.pop(descriptor, None)
+        # Do not close a reused descriptor if a caller violated the lease lifetime.
+        try:
+            metadata = os.fstat(descriptor)
+        except OSError:
+            metadata = None
+        if lease is None and metadata is not None:
+            os.close(descriptor)
+        elif metadata is not None and (metadata.st_dev, metadata.st_ino) == lease.identity:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                pass  # same inode, but a reused independent file description
+            else:
+                os.close(descriptor)
+        if keeper is not None:
+            os.close(keeper)
+
+
+def _borrow_release_lock(
+    lease: ReleaseRootLock, root: Path, *, expected_uid: int | None,
+    expected_gid: int | None,
+) -> int:
+    if (
+        type(lease) is not ReleaseRootLock
+        or _ACTIVE_RELEASE_LOCKS.get(lease.descriptor, (None, None))[0] is not lease
+        or lease.root != root
+    ):
+        raise ReleaseManifestError("release lock lease is not active for this root")
+    try:
+        opened = os.fstat(lease.descriptor)
+        observed = os.stat(root, follow_symlinks=False)
+    except OSError as exc:
+        raise ReleaseManifestError("release lock descriptor is unavailable") from exc
+    if (
+        not stat.S_ISDIR(opened.st_mode)
+        or opened.st_mode & 0o022
+        or (opened.st_dev, opened.st_ino) != lease.identity
+        or (observed.st_dev, observed.st_ino) != lease.identity
+    ):
+        raise ReleaseManifestError("release lock identity changed")
+    _assert_owner(opened, expected_uid=expected_uid, expected_gid=expected_gid, name="release lock")
+    # The private duplicate retains ownership even if the public FD was closed.
+    # A reopened FD for the same inode is a different flock owner and must fail.
+    probe = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            raise ReleaseManifestError("release session lock was released")
+    finally:
+        os.close(probe)
+    try:
+        fcntl.flock(lease.descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        raise ReleaseManifestError("release lock description was replaced") from exc
+    return lease.descriptor
+
+
 def _read_raw_current_target_at(directory_descriptor: int) -> str:
     try:
         return os.readlink("current", dir_fd=directory_descriptor)
@@ -526,6 +624,7 @@ def verify_current(
     *,
     expected_uid: int | None = None,
     expected_gid: int | None = None,
+    session_lock: ReleaseRootLock | None = None,
 ) -> dict[str, object]:
     manifest = validate_manifest(manifest)
     releases_root = _validated_releases_root(
@@ -536,9 +635,14 @@ def verify_current(
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(releases_root, flags)
+    descriptor = (
+        os.open(releases_root, flags) if session_lock is None
+        else _borrow_release_lock(session_lock, releases_root,
+                                  expected_uid=expected_uid, expected_gid=expected_gid)
+    )
     try:
-        fcntl.flock(descriptor, fcntl.LOCK_SH)
+        if session_lock is None:
+            fcntl.flock(descriptor, fcntl.LOCK_SH)
         target = _read_current_target_at(descriptor)
         if target != manifest["commit"]:
             raise ReleaseManifestError(
@@ -554,10 +658,11 @@ def verify_current(
             raise ReleaseManifestError("current target changed during verification")
         return result
     finally:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
+        if session_lock is None:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
 
 
 def _replace_current_pointer_at(directory_descriptor: int, target: str) -> bool:
@@ -706,6 +811,7 @@ def switch_current(
     *,
     expected_uid: int | None = None,
     expected_gid: int | None = None,
+    session_lock: ReleaseRootLock | None = None,
 ) -> dict[str, object]:
     target_manifest = validate_manifest(target_manifest)
     rollback_manifest = validate_manifest(rollback_manifest)
@@ -722,14 +828,20 @@ def switch_current(
             target_manifest,
             expected_uid=expected_uid,
             expected_gid=expected_gid,
+            session_lock=session_lock,
         )
 
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(releases_root, flags)
+    descriptor = (
+        os.open(releases_root, flags) if session_lock is None
+        else _borrow_release_lock(session_lock, releases_root,
+                                  expected_uid=expected_uid, expected_gid=expected_gid)
+    )
     try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        if session_lock is None:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
         observed = _read_current_target_at(descriptor)
         if observed != rollback:
             raise ReleaseManifestError(
@@ -774,10 +886,11 @@ def switch_current(
             "switched": True,
         }
     finally:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
+        if session_lock is None:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
 
 
 def write_manifest(path: Path, manifest: dict[str, object]) -> None:

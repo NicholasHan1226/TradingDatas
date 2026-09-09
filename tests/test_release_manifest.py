@@ -789,3 +789,81 @@ def test_verify_requires_exact_0555_release_directory_modes(tmp_path: Path) -> N
     nested.chmod(0o500)
     with pytest.raises(ReleaseManifestError, match="0555"):
         verify_release(release, manifest)
+
+
+def test_session_lease_keeps_old_switch_blocked_and_borrow_does_not_unlock(tmp_path):
+    import sys
+    repo = _repo(tmp_path)
+    first = build_manifest(repo)
+    root = _release(tmp_path, repo, first).parent
+    (root / "current").symlink_to(first["commit"])
+    second = _next_manifest(repo)
+    _release(tmp_path, repo, second)
+    child = None
+    with release_manifest.release_root_lock(root, expected_uid=os.getuid(), expected_gid=os.getgid()) as lease:
+        assert verify_current(root, first, session_lock=lease)["verified"]
+        result = switch_current(root, second, first, session_lock=lease)
+        assert result["switched"]
+        # A separate process using the original API cannot acquire the root.
+        code = "import sys,json; from pathlib import Path; from tools.release_manifest import switch_current;print('attempt',flush=True); switch_current(Path(sys.argv[1]),json.loads(sys.argv[2]),json.loads(sys.argv[3]));print('done',flush=True)"
+        child = subprocess.Popen([sys.executable, '-B', '-c', code, str(root), json.dumps(first), json.dumps(second)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            assert child.stdout.readline().strip() == 'attempt'
+            with pytest.raises(subprocess.TimeoutExpired):
+                child.communicate(timeout=0.3)
+            assert verify_current(root, second, session_lock=lease)["verified"]
+        finally:
+            child.terminate()
+            child.communicate(timeout=5)
+    with pytest.raises(ReleaseManifestError, match="not active"):
+        verify_current(root, second, session_lock=lease)
+    assert verify_current(root, second)["verified"]
+
+
+def test_session_lease_rejects_forged_wrong_root_closed_and_same_inode_reused_fd(tmp_path):
+    from dataclasses import replace
+    root = tmp_path / 'releases'
+    root.mkdir()
+    with release_manifest.release_root_lock(root, expected_uid=os.getuid(), expected_gid=os.getgid()) as lease:
+        for bad in (replace(lease), replace(lease, root=tmp_path)):
+            with pytest.raises(ReleaseManifestError):
+                release_manifest._borrow_release_lock(bad, root, expected_uid=os.getuid(), expected_gid=os.getgid())
+        os.close(lease.descriptor)
+        with pytest.raises(ReleaseManifestError):
+            release_manifest._borrow_release_lock(lease, root, expected_uid=os.getuid(), expected_gid=os.getgid())
+        replacement = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        assert replacement == lease.descriptor
+        with pytest.raises(ReleaseManifestError, match='description'):
+            release_manifest._borrow_release_lock(lease, root, expected_uid=os.getuid(), expected_gid=os.getgid())
+    # The context must not close the caller's unrelated reused descriptor.
+    os.fstat(replacement)
+    os.close(replacement)
+    with release_manifest.release_root_lock(root, expected_uid=os.getuid(), expected_gid=os.getgid()):
+        pass
+
+
+def test_session_lease_exception_releases_all_and_rejects_changed_inode(tmp_path):
+    root = tmp_path / 'releases'
+    root.mkdir()
+    with pytest.raises(RuntimeError):
+        with release_manifest.release_root_lock(root, expected_uid=os.getuid(), expected_gid=os.getgid()) as lease:
+            root.rename(tmp_path / 'moved')
+            root.mkdir()
+            with pytest.raises(ReleaseManifestError, match='identity'):
+                release_manifest._borrow_release_lock(lease, root, expected_uid=os.getuid(), expected_gid=os.getgid())
+            raise RuntimeError('test')
+    with release_manifest.release_root_lock(tmp_path / 'moved', expected_uid=os.getuid(), expected_gid=os.getgid()):
+        pass
+
+
+def test_session_lock_rejects_wrong_owner_and_external_unlock(tmp_path):
+    import fcntl
+    root = tmp_path / 'releases'
+    root.mkdir()
+    with pytest.raises(ReleaseManifestError, match='owner'):
+        with release_manifest.release_root_lock(root, expected_uid=os.getuid()+1, expected_gid=os.getgid()):
+            pass
+    with release_manifest.release_root_lock(root, expected_uid=os.getuid(), expected_gid=os.getgid()) as lease:
+        fcntl.flock(lease.descriptor, fcntl.LOCK_UN)
+        with pytest.raises(ReleaseManifestError, match='released'):
+            release_manifest._borrow_release_lock(lease, root, expected_uid=os.getuid(), expected_gid=os.getgid())
