@@ -12,6 +12,7 @@ import importlib.util
 import json
 import re
 import socket
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -1020,6 +1021,68 @@ def test_v1_group_15_success_request_ids_are_unique_forwarded_and_logs_are_safe(
     rendered_logs = "\n".join(record.getMessage() for record in caplog.records)
     assert secret_cursor not in rendered_logs
     assert "cursor=" not in rendered_logs
+
+
+@pytest.mark.parametrize(
+    "error_type", [QueryServiceUnavailable, RuntimeProjectionError, CursorConfigurationError]
+)
+def test_503_warning_keeps_suppressed_cause_without_private_text(
+    v1_server: _Harness, caplog: pytest.LogCaptureFixture, error_type: type[Exception],
+) -> None:
+    private = "credential-private\ncursor-private payload-private"
+    try:
+        error = sqlite3.OperationalError(private)
+        error.sqlite_errorcode = sqlite3.SQLITE_INTERRUPT
+        raise error
+    except sqlite3.Error:
+        try:
+            raise error_type(private) from None
+        except error_type as wrapped:
+            v1_server.query.error = wrapped
+    caplog.set_level("WARNING", logger="tradingdatas.api")
+    body = _json_body(GOOD_QUERY)
+    status, payload, _headers, raw = v1_server.request(
+        "POST", "/v1/query", body=body, headers=_post_headers(body),
+    )
+    assert status == 503 and payload is not None
+    _error_shape(payload, "service_unavailable")
+    records = [r for r in caplog.records if r.name == "tradingdatas.api"]
+    assert len(records) == 1 and records[0].levelname == "WARNING"
+    text = records[0].getMessage()
+    assert payload["request_id"] in text
+    assert "sqlite_interrupt@" in text
+    assert records[0].exc_info is None
+    for secret in private.split():
+        assert secret not in text and secret.encode() not in raw
+    assert "diagnostic" not in payload and b"sqlite_interrupt" not in raw
+
+
+def test_503_service_build_warning_has_code_location_not_exception_message(
+    v1_server: _Harness, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def failed_build():
+        raise OSError("/private/account/key-file must stay private")
+
+    monkeypatch.setattr(api_server, "_build_v1_services", failed_build)
+    caplog.set_level("WARNING", logger="tradingdatas.api")
+    status, payload, _, raw = v1_server.request("GET", "/v1/catalog")
+    assert status == 503 and payload is not None
+    text = "\n".join(r.getMessage() for r in caplog.records)
+    assert re.search(r"query_unavailable@api_server:\d+", text)
+    assert re.search(r"os@api_server:\d+", text)
+    assert "/private/account" not in text and b"/private/account" not in raw
+    assert str(api_server.ROOT) not in text
+
+
+def test_503_diagnostic_bounds_cycles_and_unknown_exception_names() -> None:
+    private_type = type("credential_private_name", (Exception,), {})
+    errors = [private_type("private-message") for _ in range(8)]
+    for index, error in enumerate(errors):
+        error.__context__ = errors[(index + 1) % len(errors)]
+    diagnostic = api_server._unavailable_diagnostic(errors[0])
+    assert diagnostic.count("other@unknown") == 4
+    assert "private" not in diagnostic
 
 
 @pytest.mark.parametrize(
