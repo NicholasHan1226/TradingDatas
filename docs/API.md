@@ -285,8 +285,13 @@ success rows。
 的 payload 时继续写入独立 success receipt 与 `unchanged` counts，但事实行保留首次
 `collected_at` / `receipt_id` / `revision`。这样较早 as-of 的行与 receipt 绑定不会被
 后续重叠窗口覆盖。`current_snapshot` 数据集仍把相同 payload 的重观测绑定到最新 receipt；
-append-only payload 一旦变化仍按既有合同 fail closed。该规则不迁移或反写既有历史事实，
-也不把后采 backfill 伪装成历史可得。
+append-only payload 一旦变化仍按既有合同 fail closed。
+
+仅当旧行所属 execution 已经完整验证为显式 terminal failed、该前缀本来就不能被查询时，
+真实重采到相同 payload 可以在新 receipt 事务内重绑该行的 `collected_at` / `receipt_id`；
+payload、identity、revision 和 `unchanged` 计数保持不变。新事务失败时一并回滚。
+缺失、不完整、损坏或跨 provider 的旧证据不能授权重绑；健康首观测仍保留原始 provenance。
+重绑后的行只在新的实际 collection time 起可得，不把后采 backfill 伪装成历史可得。
 
 `session_minute` 的精确已结束槽位可能被纠错 overlap 在多个完整成功 execution 中重复
 观测。查询会联合同一 active config/provider 且 `data_through` 精确等于该槽位的已验证
