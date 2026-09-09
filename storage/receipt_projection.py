@@ -751,6 +751,27 @@ def _validate_request_identity(
     return identity
 
 
+_IDENTITY_VALIDATION_CACHE_LIMIT = 256
+
+
+def _validated_request_identity_cached(
+    payload: Mapping[str, object],
+    cache: dict[str, ProviderRequestIdentity] | None,
+) -> ProviderRequestIdentity:
+    # Payloads have already passed full canonical JSON and envelope checks.
+    # JSON text preserves primitive distinctions (not Python 1 == True), and
+    # contains the complete identity including cursor fields and all values.
+    if cache is None:
+        return _validate_request_identity(payload)
+    key = _canonical_json(payload.get("request_identity"))
+    if key in cache:
+        return cache[key]
+    identity = _validate_request_identity(payload)
+    if len(cache) < _IDENTITY_VALIDATION_CACHE_LIMIT:
+        cache[key] = identity
+    return identity
+
+
 def _related_to_dataset(
     payload: Mapping[str, object],
     envelope_source: object,
@@ -1525,10 +1546,11 @@ def _validate_receipt_row_memoized(
     expected_binding: ProviderBinding | None,
     cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"] | None,
     binding_fingerprints: Mapping[int, str] | None = None,
+    identity_cache: dict[str, ProviderRequestIdentity] | None = None,
 ) -> "_Receipt | _InvalidReceipt | None":
     if cache is None:
         return _validate_receipt_row(
-            scanned, dataset, known_dataset_ids, now, expected_binding
+            scanned, dataset, known_dataset_ids, now, expected_binding, identity_cache
         )
     source = scanned.raw[9]
     if type(source) is not str or source != dataset.dataset_id:
@@ -1539,7 +1561,7 @@ def _validate_receipt_row_memoized(
         # Unknown-source rows take the ``now``-dependent tombstone path and
         # are never cached.
         return _validate_receipt_row(
-            scanned, dataset, known_dataset_ids, now, expected_binding
+            scanned, dataset, known_dataset_ids, now, expected_binding, identity_cache
         )
     cache_binding = expected_binding
     if cache_binding is None and scanned.payload is not None:
@@ -1570,7 +1592,7 @@ def _validate_receipt_row_memoized(
         if key in cache:
             return cache[key]
     validated = _validate_receipt_row(
-        scanned, dataset, known_dataset_ids, now, expected_binding
+        scanned, dataset, known_dataset_ids, now, expected_binding, identity_cache
     )
     with _RECEIPT_VALIDATION_CACHE_LOCK:
         if len(cache) >= _RECEIPT_VALIDATION_CACHE_LIMIT:
@@ -1585,6 +1607,7 @@ def _validate_receipt_row(
     known_dataset_ids: frozenset[str],
     now: datetime,
     expected_binding: ProviderBinding | None = None,
+    identity_cache: dict[str, ProviderRequestIdentity] | None = None,
 ) -> _Receipt | _InvalidReceipt | None:
     if not scanned.receipt_like:
         return None
@@ -1713,7 +1736,7 @@ def _validate_receipt_row(
         return _InvalidReceipt("invalid_data_through", receipt_id, observed_at)
 
     try:
-        request_identity = _validate_request_identity(payload)
+        request_identity = _validated_request_identity_cached(payload, identity_cache)
     except ValueError as exc:
         return _InvalidReceipt(str(exc), receipt_id, observed_at)
 
@@ -2660,6 +2683,7 @@ def _project_dataset_runtime(
         _binding_validation_fingerprints(dataset, expected_binding)
         if validation_cache is not None else None
     )
+    identity_cache: dict[str, ProviderRequestIdentity] = {}
     for scanned_row in rows:
         validated = _validate_receipt_row_memoized(
             scanned_row,
@@ -2669,6 +2693,7 @@ def _project_dataset_runtime(
             expected_binding,
             validation_cache,
             binding_fingerprints,
+            identity_cache,
         )
         if isinstance(validated, _Receipt):
             receipts.append(validated)
