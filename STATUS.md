@@ -1,7 +1,22 @@
 # TradingDatas 当前状态
 
-检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为 registry、SQLite facts/receipts 及读取时钟。详细证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
+检查日期：2026-09-10，Asia/Shanghai。当前事实入口；实际数据权威仍为 registry、SQLite facts/receipts 及读取时钟。详细证据见[本轮验收](docs/reports/2026-09-10-minute-identity-and-gap-followthrough.md)。
 
+
+
+## 9月10日00:33更新：分钟优化已部署，缺口补采已读回
+
+PR #554已合入 `150d8c9fc16209ea0163b8cd2e9d07064e90ef1a`；head95be435a的CI34374127156与精确main CI34375282630均通过。单次projection内有界复用成功identity验证，343项相关回归及最终7项复核通过，独立review无P0/P1；同快照ABBA证明该步骤约省0.93秒，不声称全HTTP等比例提速。详情见[本轮验收](docs/reports/2026-09-10-minute-identity-and-gap-followthrough.md)。
+
+双面各1109文件manifest、Git tree8059f29bd4dd3c566a25e7672b79d1705e0fad40和registry重编译一致。00:25同目标新进程门禁cold A6.434/C11.777秒，并发A6.095/6.134、C12.654/8.563秒，完整192/240目录及真实重叠验证通过；临时API已停止。唯一safe_release于00:28切换双current，00:28:54 complete且恢复errors=[]。00:29独立current/物理cwd均150d8c9f，PID683618/683927；九timer enabled/active、selector不存在、临时API inactive。rollback1edd16fa与旧release保留，未杀collector。
+
+00:29–00:31对9月9日14:35/15:00两个固定分钟窗口各两页普通/proof，共8次200，身份/分页/同cohort/proof时钟及内容一致；每窗验证2行且仍有下一页。首次17.039秒，其余8.816–10.183秒，不能声明全部query低于15秒或503永久修复。本次历史窗口API quality为valid；未新增该历史窗口数据，也不能把跨日metadata结果当成优化改变数据新鲜度。
+
+00:16有界补采固定9月8日窗口：dc_concept_cons60行、fut_wsr4行成功，etf_sz_cons/fund_daily各empty0行，etf_mins failed0行，共64新增行、5新回执、0rejected。五项seed/config/window及新receipt归属验证；两项success各1行普通/proof共4次200，质量仍degraded。batch的collector退出4如实表示impaired；控制会话完成并恢复timer不等于全批成功。fut_holding下一seed为2000年已到期合约，本轮未继续请求、不跳换seed。
+
+两项失败已分清：global.news.flash既有自然轮receipt对应Firecrawl HTTP500；etf_mins新窗口的158003.SZ被QuickSync以20002拒绝，虽source有L记录，不能推断分钟接口接受该码，未临时换码或改权限。00:32独立完整catalog A192项21.869秒（102success/47empty/38paused/3stale/2failed），C240项6.492秒且240success；失败仍为etf_mins/global.news.flash。A目录延迟仍波动，不以通过一次发布门禁声明持续达标；Crypto也是单次快照。staged时major_news的失败状态随后被新empty回执替代，不算恢复非空供数。
+
+客户浏览器仍未登录，客户授权目录、复制请求和客户key端到端未验收；未创建账号/key或开通支付。后续纯文档交接只同步源码，不重复切runtime。下文23时等记录均为9月9日历史快照，不替代本节最终读回。
 
 ## 23:57 更新：部署后跟进与分钟身份校验候选
 
