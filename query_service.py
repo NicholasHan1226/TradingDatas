@@ -986,7 +986,25 @@ def _row_receipt_proof_metadata(
             ):
                 raise QueryServiceUnavailable("query service is unavailable")
         elif not proof.request_window:
-            raise QueryServiceUnavailable("query service is unavailable")
+            matching_bindings = tuple(
+                binding for binding in active_bindings
+                if binding.provider == proof.provider
+            )
+            if len(matching_bindings) != 1:
+                raise QueryServiceUnavailable("query service is unavailable")
+            binding = matching_bindings[0]
+            if binding.request_window_policy is not None:
+                try:
+                    normalize_request_window(
+                        binding.request_window_policy, proof.request_window
+                    )
+                except (TypeError, ValueError):
+                    raise QueryServiceUnavailable("query service is unavailable") from None
+            if any(
+                isinstance(value, str) and "${window." in value
+                for value in binding.request_template.values()
+            ):
+                raise QueryServiceUnavailable("query service is unavailable")
         elif dataset.partition_field is not None:
             partition_value = payload.get(dataset.partition_field)
             window_value = proof.request_window.get(dataset.partition_field)
