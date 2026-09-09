@@ -2,6 +2,17 @@
 
 检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为 registry、SQLite facts/receipts 及读取时钟。详细证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
 
+
+## 23:57 更新：部署后跟进与分钟身份校验候选
+
+当前候选仅在单次dataset projection内最多复用256个完整request_identity的成功验证结果；完整canonical JSON键保留primitive类型、cursor与全部字段，坏identity不缓存，receipt/config/cohort/时间/proof和读取预算保持。未改变API、schema、索引、worker、超时、registry或权限。
+
+当前生产仍为1edd16fa。只读同快照ABBA对rt_min的14600条receipt投影：旧5.180/5.089秒、新4.203/4.212秒，identity验证14600次降至37次，完整projection相等、DB零修改、前后manifest通过。该局部步骤约省0.93秒，不是全HTTP延迟提升18%的证明。既有sibling合批实验仍不包含。
+
+23:51完整认证catalog A192项17.202秒（111success/37empty/38paused/4stale/2failed），C240项6.523秒且240success；scope/runtime校验通过，仅时点证据，A延迟仍波动。23:54已验证global.news.flash最新失败receipt对应Firecrawl HTTP500，为上游provider_response；etf_mins只有9/6历史失败，尚无本轮新窗口证明。自然调度23:41/23:50两轮终态计数共35success/10empty/1failed（非唯一数据集数或行数），23:31:05的旧版本排空轮不计新部署。有限API日志窗口未见503，不声明永久修复。
+
+候选相关完整回归343项通过（460.21秒），最终7项新增复核通过；独立审查与独立7项测试通过，无P0/P1，基础Ruff、diff和文档链接/实际渲染检查通过。正在完成缺口驱动补采与候选发布。客户仍未登录，客户授权目录与客户key端到端未验收。所有生产发布、补采和最终readback以之后的新鲜记录为准。
+
 ## 23:35 更新：双面受控部署与分钟读回完成
 
 PR #552 已合入 `1edd16fa5860715b0e4cb0eabf16d406d307fb2c`；精确head `7343c10b73ebb176c70464661107686911313437` CI34367011391及main CI34368235152均全部成功。该版本包含此前PR550的单快照分钟查询memo修正和本轮离线目录审计工具；未包含没有可靠收益的sibling合批实验。双面各1108文件manifest、Git tree `7281632bcb16f164c4f1fe63f807116a41594516`及registry重编译一致。
