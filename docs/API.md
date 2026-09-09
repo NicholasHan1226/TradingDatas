@@ -773,3 +773,16 @@ Gateway transport has a 30-second deadline, independent of the existing catalog
 is introduced. This transport does not prove source completeness or stability.
 
 账户目录桥接 `/api/account/catalog` 的单次上游等待上限为 30 秒，浏览器总等待为 45 秒；其它账户读取沿用原有上限。此限制与现有公共数据网关对齐，覆盖目录计算与公网转发耗时；不把等待上限等同于响应性能保证，不修改数据面发布的 15 秒性能目标，不增加采集预算。响应最大 2 MiB；超时/超量显示不可用并允许重试，不返回过期快照。
+
+对于既有 `session_minute` 的有限分钟历史合同，若 active binding 声明
+`windowed_unique_primary_key`、`date_field=time`、含 `time` 的非空主键与一天内
+`local_datetime_seconds` 请求窗口，逐行 receipt proof 使用该窗口语义：
+`window_start <= row.time <= receipt.data_through <= window_end`，且水位不得晚于
+receipt 完成时钟或读取时钟。这里的水位是已验证批次最大事件时间，不要求每行时间都
+等于水位；它不声称均匀快照或全市场/整日完整性。`rt_min_daily` major 3 使用此形状，
+不修改已有 registry、schema 或历史事实。均匀分钟快照的既有相等约束保持不变。
+
+该有限窗口形状的精确 `time=eq` 查询只选择同 active provider/config、窗口覆盖该时间
+且已验证 success 水位不早于该时间的完整可信 cohort，再由真实事实的 `time` 和自身
+receipt 过滤。没有符合条件的收据仍 fail closed；开启逐行 proof 时，一页跨
+execution/window/config/data_through 仍拒绝，不借当前或最新 receipt 替历史行背书。

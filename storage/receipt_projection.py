@@ -1499,6 +1499,24 @@ _RECEIPT_VALIDATION_CACHE_LIMIT = 250_000
 _RECEIPT_VALIDATION_CACHE_LOCK = threading.Lock()
 
 
+def _binding_validation_fingerprints(
+    dataset: DatasetDefinition,
+    expected_binding: ProviderBinding | None,
+) -> dict[int, str]:
+    """Fingerprint immutable bindings once for one local validation pass.
+
+    This mapping never outlives its projection call. Object IDs are lookup
+    accelerators only; the receipt cache key receives the complete content
+    digest, so equal new bindings share a key and changed content does not.
+    """
+
+    bindings = {id(binding): binding for binding in (*dataset.provider_bindings, expected_binding)}
+    return {
+        identity: hashlib.sha256(repr(binding).encode("utf-8")).hexdigest()
+        for identity, binding in bindings.items()
+    }
+
+
 def _validate_receipt_row_memoized(
     scanned: _ScannedIngestRunRow,
     dataset: DatasetDefinition,
@@ -1506,6 +1524,7 @@ def _validate_receipt_row_memoized(
     now: datetime,
     expected_binding: ProviderBinding | None,
     cache: dict[tuple[str, str], "_Receipt | _InvalidReceipt | None"] | None,
+    binding_fingerprints: Mapping[int, str] | None = None,
 ) -> "_Receipt | _InvalidReceipt | None":
     if cache is None:
         return _validate_receipt_row(
@@ -1533,9 +1552,19 @@ def _validate_receipt_row_memoized(
             # Invalid/unresolvable identities keep the original unfiltered key.
             # Validation, including its early envelope errors, is unchanged.
             pass
+    binding_fingerprint = (
+        None if binding_fingerprints is None
+        else binding_fingerprints.get(id(cache_binding))
+    )
+    if binding_fingerprint is None:
+        binding_fingerprint = hashlib.sha256(
+            repr(cache_binding).encode("utf-8")
+        ).hexdigest()
     key = (
         dataset.dataset_id,
-        hashlib.sha256(repr((scanned.raw, cache_binding)).encode("utf-8")).hexdigest(),
+        hashlib.sha256(
+            repr((scanned.raw, binding_fingerprint)).encode("utf-8")
+        ).hexdigest(),
     )
     with _RECEIPT_VALIDATION_CACHE_LOCK:
         if key in cache:
@@ -2627,6 +2656,10 @@ def _project_dataset_runtime(
 
     receipts: list[_Receipt] = []
     invalid: list[_InvalidReceipt] = []
+    binding_fingerprints = (
+        _binding_validation_fingerprints(dataset, expected_binding)
+        if validation_cache is not None else None
+    )
     for scanned_row in rows:
         validated = _validate_receipt_row_memoized(
             scanned_row,
@@ -2635,6 +2668,7 @@ def _project_dataset_runtime(
             now,
             expected_binding,
             validation_cache,
+            binding_fingerprints,
         )
         if isinstance(validated, _Receipt):
             receipts.append(validated)
@@ -2899,6 +2933,10 @@ def _trusted_receipts_for_evidence(
 ) -> tuple[list[_Receipt], list[_InvalidReceipt]]:
     receipts: list[_Receipt] = []
     invalid: list[_InvalidReceipt] = []
+    binding_fingerprints = (
+        _binding_validation_fingerprints(dataset, expected_binding)
+        if validation_cache is not None else None
+    )
     for scanned_row in rows:
         validated = _validate_receipt_row_memoized(
             scanned_row,
@@ -2907,6 +2945,7 @@ def _trusted_receipts_for_evidence(
             now,
             expected_binding,
             validation_cache,
+            binding_fingerprints,
         )
         if isinstance(validated, _Receipt):
             receipts.append(validated)
