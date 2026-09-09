@@ -1296,6 +1296,14 @@ Firecrawl 的 `search_news`（`POST /v2/search`）当前无 registry binding，�
 
 ## 目录请求的可选进程隔离
 
+WAL 的合法部分 checkpoint 可以在仍有未回填帧时更新主库，因此主库 mtime 晚于
+WAL 不能单独证明侧车陈旧。读快照仍须验证文件身份、完整侧车集合、页大小、
+SHM 双头、WAL/SHM salt、提交帧长度、回填界限、schema 与双连接 epoch。
+若目录和 planner 同时失败，先通过只读快照诊断定位异常；保留主库与 WAL/SHM
+的一致备份后，才可在服务暂停、独占 authority lock 下执行受控 checkpoint。
+不得删除侧车或修改时间戳来绕过检查。自然复现、威胁边界与回归测试见
+[2026-09-09 WAL 部分 checkpoint 记录](reports/2026-09-09-wal-partial-checkpoint.md)。
+
 进程间任务 JSON 上限为 1 MiB；返回体继续服从 registry 的既有响应字节预算。
 
 `TRADINGDATAS_CATALOG_WORKERS` 缺省或精确值 `0` 保留原进程内执行；精确值 `1`、`2`

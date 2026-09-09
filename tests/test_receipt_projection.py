@@ -129,6 +129,63 @@ def test_verified_snapshot_accepts_checkpointed_empty_wal_sidecars(
         writer.close()
 
 
+def test_sidecar_binding_accepts_natural_partial_checkpoint(tmp_path: Path) -> None:
+    """A pinned reader permits a legitimate main-file write before WAL drains."""
+    db_path = tmp_path / "partial.sqlite"
+    writer = sqlite3.connect(db_path)
+    reader = None
+    try:
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        # Distinct table pages let checkpoint backfill A while B remains in WAL.
+        writer.executescript("CREATE TABLE a(x); CREATE TABLE b(x);")
+        assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone() == (0, 0, 0)
+        writer.execute("INSERT INTO a VALUES (1)")
+        writer.commit()
+        reader = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        reader.execute("BEGIN")
+        assert reader.execute("SELECT x FROM a").fetchall() == [(1,)]
+        writer.execute("INSERT INTO b VALUES (2)")
+        writer.commit()
+        # No timestamp edits: a real checkpoint produces the ordering naturally.
+        time.sleep(0.02)
+        assert writer.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone() == (0, 2, 1)
+        wal_path = db_path.with_name(f"{db_path.name}-wal")
+        assert db_path.stat().st_mtime_ns > wal_path.stat().st_mtime_ns
+        assert writer.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        assert reader.execute("SELECT x FROM b").fetchall() == []
+        with contextlib.closing(
+            sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        ) as current:
+            assert current.execute("SELECT x FROM b").fetchall() == [(2,)]
+        wal_identity, shm_identity = projection_module._validated_sidecar_binding(
+            db_path,
+            main_metadata=db_path.stat(),
+            main_header=db_path.read_bytes()[:100],
+        )
+        assert wal_identity is not None
+        assert shm_identity is not None
+        # The relaxed timestamp inference must not admit a mismatched WAL epoch.
+        with wal_path.open("r+b") as stream:
+            stream.seek(16)
+            salt = stream.read(1)
+            stream.seek(16)
+            stream.write(bytes([salt[0] ^ 1]))
+        with pytest.raises(RuntimeProjectionError, match="sidecars are inconsistent"):
+            projection_module._validated_sidecar_binding(
+                db_path,
+                main_metadata=db_path.stat(),
+                main_header=db_path.read_bytes()[:100],
+            )
+        with wal_path.open("r+b") as stream:
+            stream.seek(16)
+            stream.write(salt)
+    finally:
+        if reader is not None:
+            reader.close()
+        writer.close()
+
+
 def test_verified_snapshot_rejects_zero_wal_with_nonempty_shm_epoch(
     tmp_path: Path,
 ) -> None:
@@ -907,7 +964,7 @@ def test_evidence_projection_replays_from_shared_validation_cache(
 
     conn = _memory_db()
     dataset = _dataset()
-    first_receipt = _insert_receipt(
+    _insert_receipt(
         monkeypatch,
         conn,
         status="success",
