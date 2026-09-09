@@ -2,6 +2,16 @@
 
 检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为 registry、SQLite facts/receipts 及读取时钟。详细证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
 
+## 22:50 更新：继续采集与完整目录审计
+
+目录与审计组合回归89项通过，最终审计工具32项复核及完整Ruff通过；独立review未发现P0/P1。README、状态及报告已检查真实渲染。当前候选仅包含离线审计工具、测试与文档，未改变API运行路径。
+
+22:43 双面 current/API 物理 cwd 仍为 f2f5cb2a，源码 e7e8b277；九 timer enabled/active，selector 不存在。目录 sibling 查询合批实验已完成：真实同快照ABBA分别3.551/3.335/3.698/3.622秒，完整raw结果和预算相同，但无可靠收益，因此撤回候选并归档补丁。未将实验作为性能修复发布；15秒门槛、worker、读取预算和receipt权威保持。
+
+22:48 五项20260908窗口各续取一个真实下一seed，index分别105/119/105/1/1：dc_concept_cons新增60行、etf_sz_cons 51行、fund_daily 1行、fut_wsr 14行；fut_holding为empty/0行。五项各一个receipt、0 rejected，共126新增行。配置、universe、进度及receipt-owned facts均验证；四项success各抽样1行，普通/proof共8次200、内容一致并回链本次receipt。quality均degraded，fut_wsr还保留上游缺字段，不声称全量完整。唯一collector的Invocation为f1e6289700814f98bc25950e9db1cf4a，timer已恢复，selector已消费；10000和38paused保持。
+
+完整离线目录审计工具增加精确scope、非空目录、runtime字段、无cursor与安全原因码校验，再输出失败身份。22:49当前runtime认证快照A192项/18.457秒：108success、40empty、38paused、4stale、2failed，失败身份为cn.dataset.etf_mins、global.news.flash；C240项/6.201秒，240success。两面完整scope及catalog版本已验证，前后manifest/current/cwd保持。此时点未见Crypto失败不表示连续恢复，A耗时也未通过15秒门槛；本读取不是staged并发发布证据。客户仍缺已有登录。
+
 ## PR #550：冷查询修正已合入，发布门禁未通过
 
 17:47–17:49，对 rt_min 的14:35和15:00固定窗口分别验收两页普通/proof，共8次HTTP200，逐行身份、窗口和receipt回链通过，仍有下一页且quality degraded。未复现503；部署后有限日志窗口没有新503诊断，不代表旧故障永久消失。首次23.087秒，后续9.817–15.497秒。
@@ -14,7 +24,7 @@
 
 19:13–19:18两次独立新进程staged验证均在Crypto同面并发失败：第一次11.234/15.352秒，第二次16.434/11.493秒。两次A股及cold请求均200、目录192/240完整；未生成合格catalog-evidence，未启动safe_release会话。临时API在finally中停止；不改变15秒门槛、worker、权限或生产服务。已保留失败记录，当前不能声明PR550已部署。后续唯一一次Crypto只读catalog方法profile为12.710秒、240项，实际回执校验21,010次/5.537秒，execution兄弟查询200次/3.447秒；未发现本分钟补丁改变catalog路径，单次方法测量不能替代失败的并发门禁。
 
-19:23:34最终运行读回：双面current/物理cwd/各1106文件manifest仍为f2f5cb2a；匿名401，认证catalog A192项/14.663秒、C240项/6.336秒，无下一页。A为106success/42empty/38paused/4stale/2failed；C为238success/2failed。19:24:53一次复查failed筛选为0；最近20条failed回执未能唯一匹配原两项身份，原因未定位，不能概括全部持续健康或已稳定恢复。九timer enabled/active、selector不存在、临时API已停止，源码7b3e401a干净。单次运行读回不替代上述失败并发门禁。
+19:23:34最终运行读回：双面current/物理cwd/各1106文件manifest仍为f2f5cb2a；匿名401，认证catalog A192项/14.663秒、C240项/6.336秒，无下一页。A为106success/42empty/38paused/4stale/2failed；C为238success/2failed。19:24:53复查脚本输出空failed筛选，但未校验240项完整范围及runtime字段，不能证明实际零失败；最近20条failed回执未能唯一匹配原两项身份，原因未定位，不能概括全部持续健康或已稳定恢复。九timer enabled/active、selector不存在、临时API已停止，源码7b3e401a干净。单次运行读回不替代上述失败并发门禁。
 
 ## PR #548：503 安全诊断发布
 

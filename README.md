@@ -176,6 +176,20 @@ git diff --check
 
 ## Onboarding 状态报告
 
+对已取得的完整认证 catalog 响应，可先运行离线审计：
+
+```bash
+python3 -B tools/audit_catalog_snapshot.py \
+  --snapshot /path/to/catalog.json \
+  --expected-dataset-ids /path/to/authorized-dataset-ids.json
+```
+
+预期文件是从已核对 registry 与当前授权确定的非空 dataset ID 数组，不能从待审响应
+反向生成。工具不访问网络、凭据或 SQLite；只有精确目录范围、无下一页、完整 runtime
+合同均通过才输出状态、失败身份和安全原因码。空目录、缺字段或截断响应直接拒绝，
+不输出部分健康摘要。`failed_dataset_ids=[]` 仅表示该完整快照未见失败，不证明恢复
+或连续稳定；receipt/API 绑定验收仍按下述报告完成。
+
 `tools/report_dataset_onboarding_status.py` 生成稳定排序、无敏感信息的机器可读状态报告，用于区分
 “已在 catalog 中”与“已经由正式 receipt/API 证明可消费”。它只读取已验证的 SQLite 快照和
 registry，绝不调用 provider 或写入数据库；可选的正式 catalog/query 响应快照也只作为受检输入，

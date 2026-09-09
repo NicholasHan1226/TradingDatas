@@ -2,6 +2,20 @@
 
 事实入口：STATUS.md；长期合同以API.md和OPERATIONS.md为准。本报告不把代码合并、实际切换、生产读取、客户账户或上游完整性合并成一个完成状态。时间均按Asia/Shanghai解释。
 
+## 22:50 继续采集、目录审计与性能实验
+
+22:43 双面current/cwd/PID仍为f2f5cb2a及4118293/4118908，local/GitHub/server source为e7e8b277，九timer enabled/active。Chrome仍guest，客户端到端未验收。
+
+唯一collector在自然排空后执行Invocation f1e6289700814f98bc25950e9db1cf4a，22:48:10–16完成20260908窗口的五个下一seed。dc_concept_cons index105新增60行、etf_sz_cons index119新增51行、fund_daily index105新增1行、fut_holding index1 empty/0行、fut_wsr index1新增14行。均保持原universe/config/count，每项一个receipt、0 rejected，10000预算和38paused不变；timer恢复，selector/manifest消费。新receipt分别为482224e66ad79bdc957fc8b59dc0282497053e1af49eabde3d4ecd476a2be1bf、9175327f8273a10e7ec056ee64619639cef64380baad5d1945fdf1e61e37bcac、f48f06847ceec073bbbed5296dc9b1b0cb4aa630b1c1af3089655c79387a8bec、2168ccac095e7a9effc5edb0d96c835ee9f42f3cb08f9a14ec488a5c9b08c3f2、a424457a2b2c0ecf2bb71c32b8bfec88c910b2daa4ee085e5387ee38e2d4aa16（均带receipt:前缀）。完整receipt校验通过，owned facts分别60/51/1/0/14。四项非空各一个API样本，plain/proof共8次200，数据相同并回链本次receipt；quality degraded，fut_wsr上游缺字段照实保留。不将样本当作126行逐行API验收。
+
+`tools/audit_catalog_snapshot.py`复用既有runtime校验，离线验证v1 envelope、精确非空unique scope、无cursor、完整runtime及安全reason/receipt格式，全部通过才输出计数和失败身份；错误时不输出部分摘要。预期ID须独立取自已核对registry/授权，禁止从被审响应生成。32项针对性测试通过。该工具只审计完整响应，不读SQLite或证明连续恢复。此前19:24空failed筛选缺少scope验证，已在历史段落明确纠正其证据限制。
+
+22:49双面认证目录经新工具完整审计：A192项/18.457秒，108success/40empty/38paused/4stale/2failed（cn.dataset.etf_mins、global.news.flash）；C240项/6.201秒、240success。catalog版本及精确scope一致，前后manifest/current/cwd验证通过。A耗时超过15秒；C仅该时点没有失败，不能声称恢复或stable。这不是新进程并发发布门禁。
+
+性能实验将200个source的sibling查询按8组UNION ALL合批，保留原literal谓词、完整receipt选择和去重前预算。相关254项不同测试及独立12项通过，但生产同一verified snapshot的ABBA为sequential3.551454、batch3.334896、batch3.698367、sequential3.622101秒，200组/20000行raw及预算精确一致。约1.96%均值差小于波动，无法确认收益，故恢复产品代码并移出实验测试，完整patch保存在本机证据目录。首个探针因命令行过长在子进程启动前失败，改为stdin后只执行一次ABBA；没有改动release或数据库，不以实验宣称解决catalog延迟。
+
+本节证据目录为本机`Documents/Codex/2026-09-09/TradingDatas-catalog-release/`：batch-execution、batch-readback、batch-additional-readback、catalog-baseline、sibling-abba-stdin及sibling-batch-stop。后续发布状态须以新的精确CI、staged门禁与safe_release会话另行验收。
+
 
 ## 19:18更新：PR #550已合入，部署停在catalog门禁
 
@@ -23,7 +37,7 @@
 
 18:57新receipt的config/window/index/universe/values-hash和journal counts均验证，四个empty均0自有facts。18:58主题成分按既有可筛选trade_date/theme_code/ts_code取本次receipt自有行：普通/proof200，各1行、内容一致，0.312/0.184秒，proof回链receipt:762de101635dc5ca5d4d9348e4f20fbda4f93577d4a5aa89f2cbff79bf0d0207；quality仍为degraded。该dataset采用payload_hash且primary_key=[]，初版只读验收脚本因此只记录receipt验证，后续窄查询补齐API证明，未改产品接口。四个空项只声明receipt验收，不宣称非空API结果。selector/manifest已消费，原timer恢复enabled/active；前后current/物理cwd/manifest均f2f5cb2a。
 
-上述证据保存在TradingDatas-postdeploy的batch-execution、batch-five-readback、batch-owned-row-readback、staged-catalog-measurements、staged-catalog-attempt2、minute-profile-candidate及精确CI文件。19:23:34最新运行读回：双面current/API物理cwd/各1106文件manifest仍为f2f5cb2a，PID4118293/4118908；匿名401，认证catalog A192项/14.663秒、C240项/6.336秒，无next_cursor。A106success/42empty/38paused/4stale/2failed，C238success/2failed。19:24:53唯一追加catalog读取的failed筛选为0，未保存原两项ID，不能将时点变化当作稳定恢复。原有界reader错误沿用A股registry override，Crypto canary启动拒绝；移除override并保留实际Crypto环境后，最近20条failed envelope在限定19:20–19:23:34窗口内无候选，无法唯一归因。该脚本启动问题不等于读取权威故障，原日志和修正后证据均保留，未扩大历史或追加API调用。九timer均enabled/active、selector不存在、临时API停止、源码7b3e401a干净。该单次运行检查不能替代失败的staged同面并发门禁。以下17:21和更早章节均为历史发布证据。
+上述证据保存在TradingDatas-postdeploy的batch-execution、batch-five-readback、batch-owned-row-readback、staged-catalog-measurements、staged-catalog-attempt2、minute-profile-candidate及精确CI文件。19:23:34最新运行读回：双面current/API物理cwd/各1106文件manifest仍为f2f5cb2a，PID4118293/4118908；匿名401，认证catalog A192项/14.663秒、C240项/6.336秒，无next_cursor。A106success/42empty/38paused/4stale/2failed，C238success/2failed。19:24:53唯一追加catalog读取输出空failed筛选，但脚本未校验240项完整范围及runtime字段，因此不能证明实际零失败或推断时点恢复；原两项ID也未保存。原有界reader错误沿用A股registry override，Crypto canary启动拒绝；移除override并保留实际Crypto环境后，最近20条failed envelope在限定19:20–19:23:34窗口内无候选，无法唯一归因。该脚本启动问题不等于读取权威故障，原日志和修正后证据均保留，未扩大历史或追加API调用。九timer均enabled/active、selector不存在、临时API停止、源码7b3e401a干净。该单次运行检查不能替代失败的staged同面并发门禁。以下17:21和更早章节均为历史发布证据。
 
 ## 17:21更新：PR #548 已受控部署
 
