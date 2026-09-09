@@ -2,9 +2,17 @@
 
 检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为registry、SQLite facts/receipts及读取时钟。完整证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
 
+## 15:43补充：纯文档版本被其它过程切入生产
+
+本节优先于下方15:10历史快照和其验收报告中的后续计划。PR546纯文档合并为`44247f9b6ec06485fdf12ed5920bdc147a1b2511`，精确main CI [34323876507](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34323876507)现已四组通过，本地主线及生产源码副本干净同步。本任务未发布该文档版本，但双current在15:34:09/10再次被其它过程切到44247f9b，仍早于本次main CI完成；本任务随后源码同步发生在该切换之后。
+
+15:43以已信任8612 verifier先验证新manifest，Git tree与本地主线一致；两面1106文件、current与API物理cwd匹配44247f9b。匿名401，认证catalog192项/5.857秒和240项/10.997秒；A股106success、44empty、38paused、2failed、2stale，Crypto240success。九个timer均enabled/active，selector不存在，临时API停止。先前一次严格catalog联合断言未通过但未输出逐项数值，未据此归因；本次分项观测通过不能抹去该失败或追认切换前门禁。
+
+**发布入口仍未收口，具体操作者未定位。** 15:33–15:35所查SSH service日志没有匹配新登录事件，不排除既有会话或其它执行入口。没有新进程cold/concurrent及全部collector排空的切换前证明；不重复cut、不调整门槛，也不改SSH权限或任意停止未知任务。该源码版本相对8612仅变化STATUS和验收报告；下方分钟与batch证据仍针对同一实现基线，但其运行SHA快照不再代表最新pointer。真实客户登录和外部发布任务身份仍待用户信息。
+
 ## 代码、发布与官网
 
-- PR543–545已合并，运行实现版本为`8612c625eea98262aaa0c127345e2650836c2c8f`；精确main CI [34318423833](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34318423833)四组成功。新增/相关检查：site323项、分钟组合94项、发布/manifest独立67项通过。
+- PR543–545已合并，原运行实现基线为`8612c625eea98262aaa0c127345e2650836c2c8f`；精确main CI [34318423833](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34318423833)四组成功。新增/相关检查：site323项、分钟组合94项、发布/manifest独立67项通过。
 - 新`safe_release.py`统一合作发布的目录锁、精确CI与真实catalog采样、排空、actor/task审计、失败回滚及原状态恢复，已current/保守纯文档变更跳过。项目入口、CLI和运维文档已在新agent上下文核对，不代表桌面新任务实际加载。
 - **外部发布入口尚未收口。** 双pointer在14:27:47/49由其它过程切换，早于main CI完成。本任务14:32使用新入口时只执行了verified skip；不能追认原切换的CI/排空门禁。SSH会话129385与时段相关，但没有命令审计可确定具体工具/操作者；已排除当前td-admin-autodeploy。root任意手工调用不受合作目录锁约束。
 - 切换后的独立检查：1105文件manifest、双current和API物理cwd匹配8612；新进程cold3.039/9.701秒，同面并发最慢11.100秒，均200、192/240项且无下一页，低于内部catalog15秒门槛。源码副本由本任务从干净684同步到8612并保留Git bundle。最终运行读回见下方15:10快照。
@@ -23,7 +31,7 @@
 
 15:07批次实际完成：bak_daily新增5567行、dc_member新增14行、fund_manager新增18行；均1个success receipt、0 rejected，回执窗口和当前config校验通过。dc_member仅使用既有单seed，不证明全板块覆盖。唯一collector退出0，一次性selector和manifest已消费，timer恢复enabled/active。15:09对应窗口plain/proof各一次认证query均200，行内容一致、回链本次receipt且lineage complete；每次limit1并仍有下一页。quality均如实为degraded（freshness_watermark_unverified、response_completeness_unverified），不声称完整或新鲜。
 
-15:10双current、API物理cwd和1105文件manifest仍匹配8612；匿名均401，认证catalog为192项/4.220秒和240项/8.854秒。A股状态107success、41empty、38paused、4stale、2failed；Crypto240success。九个timer均enabled/active，selector不存在、临时API停止；源码副本8612干净。此后纯文档交付按PR/CI及主线源码同步验收，不创建新runtime release。
+15:10双current、API物理cwd和1105文件manifest仍匹配8612；匿名均401，认证catalog为192项/4.220秒和240项/8.854秒。A股状态107success、41empty、38paused、4stale、2failed；Crypto240success。九个timer均enabled/active，selector不存在、临时API停止；源码副本8612干净。本任务此后纯文档交付只执行PR/CI及主线源码同步；其它过程的再次切换见顶部补充。
 
 fund_company已观察15371行超硬预算，继续暂停；合法empty、provider_error、stale与partial分别保留，不为得到success追采或伪造完整性。Crypto保持内部独立运行，不纳入公开菜单与套餐。
 
