@@ -148,6 +148,14 @@ planner 对每个 `dataset + provider + request_window` 只生成一个包含 re
 
 ### 查询页的 failed-cohort 前缀
 
+append-only 行若最初属于已验证且有显式 terminal failure 的 execution，后续真实
+采集再次返回相同 payload 时，可在同一写事务中将该行的 `receipt_id` 和
+`collected_at` 绑定到本次观察。payload、row key、revision 不变，计数仍为
+`unchanged`；新 receipt 写入失败须整体回滚。健康的首次成功 provenance 保留，
+缺失、损坏、外来或未完成的收据不能授权重绑。不得直接修改生产 SQL 或放宽
+query 的 failed-cohort 排除来恢复供数。复现与验收见
+[失败前缀真实重采记录](reports/2026-09-09-failed-prefix-reobservation.md)。
+
 旧 collector 可能在同一 execution 后续调用失败前，已经提交前缀 success 行。认证
 `POST /v1/query` 不会把这些行当成成功事实：它用该行自身回执和同 execution 的已验证
 failed 终态识别前缀，最多重选 8 次。Git 合入或 HTTP 200 都不能证明生产已切换；是否

@@ -13,7 +13,7 @@ import math
 import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -336,10 +336,9 @@ def _prepare_rows(
     assert max_row_bytes is not None
     assert max_batch_bytes is not None
     assert max_depth is not None
-    if (
-        (binding.fanout is None or binding.fanout.strategy == "none")
-        and len(rows) > max_rows
-    ):
+    if (binding.fanout is None or binding.fanout.strategy == "none") and len(
+        rows
+    ) > max_rows:
         raise ProviderNativeAdmissionError(
             "provider batch exceeds max_rows_per_attempt",
             error_code="resource_budget",
@@ -463,6 +462,66 @@ def validate_provider_dataset_store(db_path: Path) -> None:
         conn.close()
 
 
+def _failed_prefix_receipts(
+    conn: sqlite3.Connection,
+    dataset: DatasetDefinition,
+    receipt_id: str,
+    provider: str,
+) -> frozenset[str]:
+    """Use shared bounded authority validation, never a JSON failure label."""
+
+    from storage.receipt_projection import (
+        RuntimeProjectionError,
+        _scan_ingest_run_rows_by_execution_ids,
+        _scan_ingest_run_rows_by_ids,
+        _Receipt,
+        _terminal_across_executions,
+        _validate_receipt_row,
+        _validated_history_for_dataset_rows,
+    )
+
+    now = datetime.now(timezone.utc)
+    known_ids = frozenset((dataset.dataset_id,))
+    selected = _scan_ingest_run_rows_by_ids(conn, (receipt_id,))
+    if len(selected) != 1:
+        raise RuntimeProjectionError("append-only row receipt is unavailable")
+    receipt = _validate_receipt_row(selected[0], dataset, known_ids, now, None)
+    if (
+        not isinstance(receipt, _Receipt)
+        or receipt.status != "success"
+        or receipt.provider != provider
+    ):
+        raise RuntimeProjectionError("append-only row receipt is invalid")
+    cohort = _scan_ingest_run_rows_by_execution_ids(
+        conn, dataset.dataset_id, (receipt.execution_id,)
+    )
+    entries, failures = _validated_history_for_dataset_rows(
+        dataset, known_dataset_ids=known_ids, rows=cohort, now=now
+    )
+    if failures:
+        raise RuntimeProjectionError("append-only execution authority is invalid")
+    # An incomplete variant cohort is also classified failed by the reader.
+    # Without an actual failed terminal receipt it must never authorize repair.
+    by_variant: dict[str, list[_Receipt]] = {}
+    for scanned in cohort:
+        member = _validate_receipt_row(scanned, dataset, known_ids, now, None)
+        if not isinstance(member, _Receipt):
+            raise RuntimeProjectionError("append-only execution authority is invalid")
+        by_variant.setdefault(_canonical_json(dict(member.request_variant)), []).append(
+            member
+        )
+    if not any(
+        _terminal_across_executions(members).status == "failed"
+        for members in by_variant.values()
+    ):
+        return frozenset()
+    return frozenset(
+        item.receipt_id
+        for item in entries
+        if item.status == "success" and item.cohort_status == "failed"
+    )
+
+
 def _write_prepared_rows(
     conn: sqlite3.Connection,
     *,
@@ -476,6 +535,7 @@ def _write_prepared_rows(
     updated = 0
     unchanged = 0
     schema_major = dataset.schema_major
+    failed_prefix_cache: dict[str, bool] = {}
     expected_rows: dict[
         tuple[str, str, int, str],
         tuple[object, ...],
@@ -548,6 +608,41 @@ def _write_prepared_rows(
             inserted += 1
             continue
         existing_tuple = tuple(existing)
+        same_append_only_payload = (
+            dataset.point_in_time == "append_only"
+            and existing_tuple[3] == desired_content[3]
+            and existing_tuple[7] == desired_content[7]
+        )
+        # Earlier rows in this same transaction already established this
+        # identity's provenance. Its new receipt is inserted only after the
+        # batch, so a duplicate must not try to read that pending receipt.
+        # The guard is identity-local, never a blanket receipt-ID exemption.
+        if same_append_only_payload and identity not in expected_rows:
+            original_receipt = existing_tuple[12]
+            if original_receipt not in failed_prefix_cache:
+                failed_prefixes = _failed_prefix_receipts(
+                    conn, dataset, original_receipt, binding.provider
+                )
+                failed_prefix_cache.update(dict.fromkeys(failed_prefixes, True))
+                failed_prefix_cache.setdefault(original_receipt, False)
+            if failed_prefix_cache[original_receipt]:
+                cursor = conn.execute(
+                    """UPDATE provider_dataset_rows
+                       SET collected_at = ?, receipt_id = ?
+                       WHERE dataset_id = ? AND provider = ?
+                         AND schema_major = ? AND row_key = ?""",
+                    (collected_at, receipt_id, *identity),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("append-only provenance refresh failed")
+                expected_rows[identity] = (
+                    *existing_tuple[:11],
+                    collected_at,
+                    receipt_id,
+                    existing_tuple[13],
+                )
+                unchanged += 1
+                continue
         if existing_tuple[:11] == desired_content:
             if dataset.point_in_time == "append_only":
                 # An append-only identity already proves this exact immutable
