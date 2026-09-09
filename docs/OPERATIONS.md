@@ -723,6 +723,100 @@ preflight 证明 API/collector 均 inactive、timer disabled、18082 切换方�
 pointer 重读，不能与协作切换交错产生伪 readback。manifest 不记录 secret 内容或 SQLite hash；
 回滚不覆盖 SQLite，也不恢复旧 official-direct collector。
 
+### 全程互斥的受控发布入口
+
+`tools/safe_release.py` 是常规双面 cut 的单一受控入口，复用已有 immutable staging、
+字节 verifier、systemd collector/API 与认证 catalog。它按规范路径排序持有两个
+release-root **现有目录 flock**，覆盖初始 pointer/manifest/CI 检查、timer 暂停、
+collector 排空、双 pointer 切换、API 回读和原状态恢复。旧 `switch-current` / `verify-current`
+也使用这些目录锁，因此协作发布不能在中间插入。新入口在锁忙时立即停止，不排队误用旧证据。
+
+这是为重复的并行 root SSH 切换与分离式 preflight/cut 验证缺口增加的最小会话封装，
+不是新的发布后台。维护成本为固定双平面/API/token-file引用、现有timer枚举和证据格式；
+更改生产unit/registry路径时同步更新该入口和测试。不新增 daemon、永久 service、凭证、
+权限、数据库锁协议或GitHub workflow。`release_manifest.py`继续只管字节与pointer，
+其新增借锁参数只接受同进程已注册lease、目录inode/owner和同一flock文件描述身份，
+没有CLI借锁开关。借用者不释放或关闭owner的锁；关闭后重用同号FD也会拒绝。
+
+本地先用现有 `gh` 登录生成精确 GitHub main CI 证据：
+
+```bash
+python3 -B tools/create_release_ci_evidence.py --target <40位目标SHA> \
+  --output /private/tmp/<target>-ci.json
+```
+
+该工具在查询前后两次确认GitHub main等于target，只接受本仓库
+`.github/workflows/ci.yml` 的该SHA、main分支、push或workflow_dispatch事件（含既有automerge显式派发main CI）、最新run/attempt且
+`completed/success`。服务端无需gh。通过既有SSH传输为root所有、`0600`、单链接普通JSON
+文件；不可用旧的boolean gate-approved文件代替。CI证据字段为：
+`version=1, repository, workflow_path, target, main_sha, head_sha, head_branch,
+event, status, conclusion, run_id, run_url, created_at, completed_at, checked_at`。
+`completed_at`取GitHub completed run的`updated_at`，时间顺序必须合理且不在未来；
+`checked_at`最多15分钟前。它是可信操作者对GitHub观察的带时间证据，不是签名证明或root
+安全隔离；15分钟内GitHub主线仍可能继续前进，操作者应在实际启动会话前重新生成。
+
+新进程staged API沿用既有隔离验证方法，先用已信任verifier验证target字节，才执行target
+代码。每面先cold请求，再同时发两个同面catalog请求；观察服务PID/物理cwd，输出完整
+`catalog-evidence`，同样保存为root `0600`普通文件。格式为：
+
+```json
+{
+  "version": 1,
+  "target": "<40位目标SHA>",
+  "measured_at": "<UTC RFC3339>",
+  "planes": {
+    "tradingdatas": {
+      "registry_sha256": "<目标provider_native_dataset_registry.yaml的SHA256>",
+      "new_process": true,
+      "pid": 123,
+      "cwd_commit": "<40位目标SHA>",
+      "cold": {"http": 200, "seconds": 1.2, "count": 192, "next_cursor": null,
+               "started_at": "<UTC RFC3339>", "finished_at": "<UTC RFC3339>"},
+      "concurrent": ["<同格式sample对象>", "<同格式sample对象>"]
+    },
+    "tradingdatas-crypto": "<同结构，绑定crypto_binance_canary_registry.v1.yaml>"
+  }
+}
+```
+
+此为格式示意，123/192/1.2不是验收记录。真实count由目标registry的datasets数量校验，
+两面名称必须齐全。cold必须先于并发样本；并发两个实际UTC时间窗必须重叠，elapsed应与
+起止时间相符。每次200、无next_cursor且`0 < seconds < 15`，PID为新进程且cwd绑定target。
+门禁envelope及每个cold/concurrent实际采样起止时间均须在15分钟内，不能用新的
+`measured_at`重新包装旧样本；drain完成后CI与全部catalog样本再次检查时效，
+过期就恢复原状态并停止。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 /opt/tradingdatas/venv/bin/python3 -B \
+  /path/to/verified/tools/safe_release.py \
+  --target <40位目标SHA> --ci-evidence /root/release-audit/target-ci.json \
+  --catalog-evidence /root/release-audit/target-catalog.json \
+  --actor Nicholas --task-id <任务标识> --audit /root/release-audit/new-session.jsonl
+```
+
+首次部署入口自身时，先由当前已信任verifier独立验证包含该工具的target；不得直接执行
+未验证target中的入口。audit父目录须root所有且不可group/world写入，输出必须是新文件，
+每条JSONL绑定actor/task_id/target/PID/UTC并fsync；异常仅记录安全类型，不输出凭据或HTTP
+完整payload。audit写失败仍尝试rollback和状态恢复，退出非零，不宣称成功。
+
+同target已经在两面current时只验证并记录skip，不重复cut。两个current到target都仅有
+`README.md`、`STATUS.md`、`AGENTS.md`、`docs/AGENTS.md`、`docs/OPERATIONS.md`或
+`docs/reports/YYYY-MM-DD-*.md`的差异时默认skip，纯文档不切runtime；其它路径不自动豁免。
+只有此白名单路径的内容/增删变化才适用，没有force boolean开关。
+
+正常路径只支持原API active/inactive、timer enabled/disabled和active/inactive的明确状态；
+其它状态在任何unit修改前停止。排空不杀collector，45分钟未排空就恢复自己修改过的timer。
+正常readback后按原状态先恢复API再恢复timer，原inactive API只为readback临时启动后恢复
+inactive；未修改的unit不被“恢复”。失败时暂停自己恢复过的timer、再次排空、停API并逆序
+回滚本次已切pointer，再恢复原状态，rollback不覆盖SQLite。
+
+如果绕过flock的root写入把pointer改成第三个SHA，入口不覆盖该外部pointer；如果rollback
+排空/停服务失败，同样不强切。对应运行面保持已停状态并在audit记`rollback_incomplete`，
+需要操作者按现状接管，不能标为精确恢复成功。全程flock只约束遵守同锁的工具，root直接
+`ln/os.replace`、替换工具或杀进程仍可绕过；没有新增权限墙或自动化阻断机制。
+关闭方式是停止调用该入口并按本节既有受控人工流程处理；代码可回滚至前一release，
+保持目录flock互操作和现有manifest格式。不要为关闭机制删除锁目录或改生产账号权限。
+
 早期 bootstrap 可能遗留一个绝对 `current` pointer。普通 `verify-current` 与
 `switch-current` 继续只接受相对 40 位 commit，不兼容或跟随该遗留形式。只允许在
 API/collector 均 inactive、timer disabled，且 rollback release 与外置 rollback
