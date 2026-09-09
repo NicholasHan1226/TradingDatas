@@ -3,19 +3,31 @@
 事实入口：STATUS.md；长期合同以API.md和OPERATIONS.md为准。本报告不把代码合并、实际切换、生产读取、客户账户或上游完整性合并成一个完成状态。时间均按Asia/Shanghai解释。
 
 
-## 发布后只读诊断与候选范围
+## 19:18更新：PR #550已合入，部署停在catalog门禁
 
 17:47:30–17:49:13（Asia/Shanghai），生产f2f5cb2a对rt_min major2的14:35、15:00窗口各查询两页，plain/proof各自使用独立cursor，共8次200。首次23.087秒，其余9.817–15.497秒；行身份、event==through、proof时间与回链一致，仍有下一页、quality degraded。回执分别为044a10e0cc81fb736c0bef374a75ed6bf7fe72b0ca344c25e7c589e1b65063ca及0c29e4d3d9bd22b07c9f0206128c3627319a7ce6d15d4160cae66f4fec20f5ba。有限日志读取未发现新的503诊断，不能归因或宣称旧503已修复。
 
-同一版本、真实服务用户、只读新进程单次14:35/limit1 profile为22.917秒：receipt实际解析29,221次，累计16.562秒；exact-slot history约9.311秒，runtime projection约11.626秒。两条路径重复解析同一批历史，因此候选仅透传现有validation_cache并在单次verified snapshot内创建局部dict。完整历史扫描、execution/cohort、future timestamp、active config、窗口与页内proof校验均保留；请求结束丢弃，不新增跨快照缓存。冷请求减少一轮解析，原暖请求解析轮数仍为一轮；性能变化须等真实候选测量，不从单次profile承诺提速倍数。此节候选尚未合入/部署，后续历史发布记录不表示候选已生效。
+同一版本、真实服务用户、只读新进程单次14:35/limit1 profile为22.917秒：receipt实际解析29,221次，累计16.562秒；exact-slot history约9.311秒，runtime projection约11.626秒。两条路径重复解析同一批历史，因此候选仅透传现有validation_cache并在单次verified snapshot内创建局部dict。完整历史扫描、execution/cohort、future timestamp、active config、窗口与页内proof校验均保留；请求结束丢弃，不新增跨快照缓存。冷请求减少一轮解析，原暖请求解析轮数仍为一轮；下述候选测量不构成严格对照，不从单次profile承诺提速倍数。PR #550精确head3ddee186的CI34342482854四分片成功，自动合入7b3e401a76e51a30d265a70397d4f8d8d90da9f8；精确main CI34343386033四分片成功。336项本地回归、独立新增2项、基础Ruff与diff检查通过；完整Ruff27条既有问题未增加。此节实现尚未部署，后续历史发布记录不表示候选已生效。
 
 发布后首两轮自然采集分别18success/11empty/1failed与8success/8empty/0failed。新闻17:28:59仍为provider_error，下一轮not_due不是恢复。八项有界receipt历史无authority failure，分钟闭市/not_due与etf_mins按需语义保持。第三轮补读连接中断，完成状态未观察。watch旧exit1来自既有ALERT/rolling-eval age，不是本次部署后工程崩溃证据。
 
 证据目录：Documents/Codex/2026-09-09/TradingDatas-postdeploy，包含minute-fixed-probe.jsonl、minute-profile.jsonl、minute-journal-safe.json与natural-report.md。客户Chrome仍为/login?next=%2Faccount；没有已有客户会话，未新建账号、key或借用内部凭据冒充客户验收。
 
+候选双面manifest各1106文件、Git tree f18830cc27a4f047a4ba2158efbdc1bd6c36425d、registry重编译均通过；manifest SHA256 ec98e10160762d75206a580f26526a9cffee890121c016d802bafccb79e973ad。服务器源码干净同步7b3e401a并保留Git bundle。只读服务用户新进程profile18.923秒、14,621次receipt解析，累计7.311秒；history由9.102降至1.403秒，但SQLite execute自耗由1.509增至6.647秒，不能将总耗时变化全部归因代码或声称严格倍速。
+
+两次独立staged测量均未过既有门槛。第一次cold A8.384/C14.441秒，并发A6.562/6.605、C11.234/15.352秒；第二次cold A3.847/C12.973秒，并发A4.436/4.444、C16.434/11.493秒。全部HTTP200、192/240目录、无next_cursor，但两次Crypto各一项超过15秒，因此没有合格gate envelope，没有启动safe_release或切pointer。两次临时API均由finally停止。失败时看到A/C采集仍在运行、主机load约2.4，不能据此确定超时根因。保留两次失败样本，不提高timeout/worker、不把反复重试当修复。正式runtime仍f2f5cb2a。
+
+后续唯一一次Crypto catalog方法profile为12.710秒、240项、无下一页：runtime投影12.224秒，41,010次memo调用6.368秒，实际21,010次receipt校验5.537秒，200次execution兄弟回执查询3.447秒（SQL3.118秒）。使用真实18083环境、隔离canary registry与服务UID/GID、清空补充组；只调用方法一次，未经过HTTP executor或并发，因此不能替代门禁。本次分钟补丁未改变catalog调用图，冻结范围内未发现可直接实施的Crypto修正。两次前置bootstrap分别因禁止registry path override及隔离market枚举校验停止，均未进入catalog调用，原日志保留；没有provider调用或生产写入。
+
+18:55五项one-shot：唯一collector Invocation bc774288bf974dda9e2bfb7414ff93af。排空原轮后重新验证真实下一seed，dc_concept_cons index104/638返回并新增30行；etf_sz_cons118/3073、fund_daily104/3073、fut_holding0/10553、fut_wsr0/98均empty、0行，全部0 rejected。目标trade_date=20260908，index为零基，仅为本次冻结universe进度。后两项是新目标窗口首次空观察，前三项是有限续采；10000预算与38paused不变。systemd退出0而CLI state=impaired，须按上述分项事实解释。
+
+18:57新receipt的config/window/index/universe/values-hash和journal counts均验证，四个empty均0自有facts。18:58主题成分按既有可筛选trade_date/theme_code/ts_code取本次receipt自有行：普通/proof200，各1行、内容一致，0.312/0.184秒，proof回链receipt:762de101635dc5ca5d4d9348e4f20fbda4f93577d4a5aa89f2cbff79bf0d0207；quality仍为degraded。该dataset采用payload_hash且primary_key=[]，初版只读验收脚本因此只记录receipt验证，后续窄查询补齐API证明，未改产品接口。四个空项只声明receipt验收，不宣称非空API结果。selector/manifest已消费，原timer恢复enabled/active；前后current/物理cwd/manifest均f2f5cb2a。
+
+上述证据保存在TradingDatas-postdeploy的batch-execution、batch-five-readback、batch-owned-row-readback、staged-catalog-measurements、staged-catalog-attempt2、minute-profile-candidate及精确CI文件。19:23:34最新运行读回：双面current/API物理cwd/各1106文件manifest仍为f2f5cb2a，PID4118293/4118908；匿名401，认证catalog A192项/14.663秒、C240项/6.336秒，无next_cursor。A106success/42empty/38paused/4stale/2failed，C238success/2failed。19:24:53唯一追加catalog读取的failed筛选为0，未保存原两项ID，不能将时点变化当作稳定恢复。原有界reader错误沿用A股registry override，Crypto canary启动拒绝；移除override并保留实际Crypto环境后，最近20条failed envelope在限定19:20–19:23:34窗口内无候选，无法唯一归因。该脚本启动问题不等于读取权威故障，原日志和修正后证据均保留，未扩大历史或追加API调用。九timer均enabled/active、selector不存在、临时API停止、源码7b3e401a干净。该单次运行检查不能替代失败的staged同面并发门禁。以下17:21和更早章节均为历史发布证据。
+
 ## 17:21更新：PR #548 已受控部署
 
-本节是最新运行证据，优先于下文15:10及此前的历史快照；下文“发布者未定位”等描述仅保留当时调查状态，不能视为当前结论。
+本节保留17:21的运行证据，优先于下文15:10及此前的历史快照；下文“发布者未定位”等描述仅保留当时调查状态，不能视为当前结论。
 
 - 发布协调：已通过Grok Bot的Johnny消息与服务器指针时间、旧手工脚本对应，定位14:27的8612、15:34的44247及15:54的35f56重复发布。用户授权后，16:51:50发送暂停自动补发和接管#548通知；16:52:27 Johnny确认`tradingdatas-gz-deploy-after-merge`已禁用，没有其它发布任务或进行中的切换，保留采集timer及在运行采集，等待明确交接。未修改SSH权限；不追认早期切换为符合新门禁。
 - 代码：PR #548精确head `d7732a8e62e7ef03846b1d2f27b6cf67ddc08518`，PR CI [34331348663](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34331348663)四分片成功；实际merged `f2f5cb2a575f2981d836f9ee7790579614e8a80f`，精确main CI [34332481416](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34332481416)四分片成功。完整本地API测试184项、独立新增5项、Ruff/diff及最终差异复核通过。
