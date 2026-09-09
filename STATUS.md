@@ -1,29 +1,46 @@
 # TradingDatas 当前状态
 
-检查日期：2026-09-09，Asia/Shanghai。本页只记录当前可核对结果；历史快照由 Git 保存。运行恢复、代码修复、发布及新数据采集分别验收。
+检查日期：2026-09-09，Asia/Shanghai。当前入口只记录本次可核对结果；数据来源质量、代码合并、运行发布与查询供数分别验收。
 
-## 当前生产与故障
+## 代码与运行
 
-- 本地/GitHub main 为 `b9208174726f895606ac1dd9ca64caa9b405136a`。现场两个 immutable `current` 和 API 进程物理目录均已是该版本；9 月 6 日文档中的「尚未切换」不再代表现场。服务器 `/opt/investment/TradingDatasSource` 为干净的 `12fd4097`，它不是运行版本权威。
-- A 股认证 `GET /v1/catalog` 返回 503（0.360 秒）；匿名仍为 401。最近 cadence service 在约 2 秒内以 exit 2 / `schedule_run` / validation 失败。直接只读快照诊断定位为 `receipt database sidecars are stale`。
-- 当时主库 18,464,755,712 字节，WAL 18,198,072 字节；SHM 显示 `mx_frame=4417`、`n_backfill=0`。主库 mtime 比 WAL 晚约 25 毫秒。普通只读收据来源审计为 `unmapped_source_count=0`；这不替代结构/完整性检查。
-- Crypto 认证 catalog 为 200 / 6.417 秒 / 240 项，runtime state 均 success；匿名 401。此瞬时结果不是全部查询、连续稳定或完整历史证明。Crypto 不计入对外数据目录、套餐或接入数量。
-- A 股 release 声明的 1092 个文件无字节漂移，但含 7 个额外 `__pycache__` 目录、25 个 `.pyc`。已按精确路径、字节数和 SHA-256 归档移出，随后两侧 `verify-current` 均通过；没有修改声明代码或放宽 manifest。
+- 运行代码为 `f543f7eb71fb4234a62dbead42524069aa6793ce`，包含 PR #538–#541 的四项修复。精确 merged-main CI [34305906019](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34305906019) 四组通过；主线后续仅有本次交付文档收尾。
+- 双 immutable current、API 进程物理 cwd 与 1098 文件 manifest 均匹配该 SHA。11:24 独立认证 catalog 回读：A股 200/2.457秒/192项，Crypto 200/5.463秒/240项；匿名均401。
+- 最终版本的独立新进程冷启动为3.089/9.891秒，同平面并发为A股4.742/4.749秒、Crypto6.845/9.375秒，均低于15秒。最终版本已由并行发布过程先行切换，本任务完成的是切换后的独立验证；不补写成由本任务完成了切换前排空与门禁。
+- 九个既有采集timer均恢复原enabled/active状态，一次性selector/manifest均清除，临时验收API已停止。源码副本已从干净12fd4097同步到当前运行代码并验证Git备份；运行权威仍为current/manifest。源码及本地主线的最终文档同步另由交付时Git读回记录。
+- 中间2cac切换经系统审计定位到独立root SSH会话126926；具体操作者/本地任务未归因，且切换早于该main CI完成。最终结果已独立验证，这不豁免或追认原切换流程。过程与验收见[运行恢复及采集记录](docs/reports/2026-09-09-runtime-recovery-and-collection.md)。
 
-## 恢复与修复边界
+## 已修复的内部问题
 
-- 先暂停 A 股 API/采集 timer，在独占 authority lock 下保留主库与 WAL/SHM 一致副本，源文件与备份 SHA-256 逐项相符；原件证据位于服务器私有 `/var/tmp/td-audit-20260909/`。未删除事实、收据或侧车，未改变 journal mode。恢复结果待本次数据库检查、checkpoint、服务及 API 回读完成后更新。
-- 标准 SQLite 自然部分 checkpoint 可复现错误 mtime 拒绝：PASSIVE 返回 `(0,2,1)`，完整性检查 `ok`，旧读者和新读者分别看到正确快照。最小候选仅删除 mtime 推断，保留身份、完整侧车集合、页大小、SHM 双头、salt、帧/回填边界、schema 和双连接 epoch 检查。
-- 新回归同时验证自然部分 checkpoint 可读与 WAL salt 篡改仍拒绝。问题、威胁边界及测试入口见 [WAL 复现记录](docs/reports/2026-09-09-wal-partial-checkpoint.md)。候选未合入/未部署，不把本地修复当成生产完成。双认证目录冷启动/重启小于 15 秒的门槛保持。
+- 合法SQLite部分checkpoint被mtime规则误拒绝，导致A股API503与collector快速失败：仅移除错误mtime推断，保留身份、侧车集合、salt、帧/回填、schema与epoch检查。独占锁下已保全18.46GB主库与WAL/SHM一致副本，SHA-256匹配；quick_check=ok、checkpoint=(0,0,0)，恢复前后135028条receipt及最新时间不变。
+- 分钟选择先读取全部192项状态：改为所选active数据集及日历/递归fanout依赖，仍使用完整registry验证receipt。真实只读计划77.47秒；11:00自动轮次73.018秒，rt_min success、无失败。不同负载下的耗时不作严格提速倍数。
+- fund_basic成功重采但旧事实仍指向失败execution前缀：仅真实同payload重观测允许事务内重绑，payload/revision及健康首观测保持。
+- 合法空日期窗口不能附带逐行proof：仅修正该空窗口拒绝条件，required-window、foreign-provider、非空历史、分钟及单一cohort限制保持。
 
-## 接入与下一批
+## 已执行采集与查询
 
-- registry 的配置状态不是落库状态。下一批先核对已激活 `ci_index_member`、`index_member_all`、`fund_adj` 的真实 receipt/API，再决定有界采集；使用原 registry、真实源数据选出的 fanout seed 和原有 `max_batches_per_run=1`，不把探测 seed 固定进请求。
-- `fund_company` 的 15371 行超出 10000 硬预算；`fund_nav`、`ft_mins` 和其它暂停项继续服从各自合同/权限/完整性边界。不批量解暂停，不抬预算，不重复 `etf_mins` 已知失败首批来伪造成功。
-- empty、partial、provider_error 分别记录，单个上游问题不冻结其它独立接口。当前排期与采集/供数边界仍以 [OPERATIONS](docs/OPERATIONS.md) 为唯一入口。
+同release no-write plan通过后，使用唯一collector执行一个七项有界batch，未提高10000预算或批量解暂停：
 
-## 本地收尾与其它边界
+| 数据集 | 真实结果 | returned | inserted |
+|---|---|---:|---:|
+| cb_rate | success | 3 | 0 |
+| cb_rating | empty | 0 | 0 |
+| ci_index_member | success | 2 | 2 |
+| fund_adj（20260908） | success | 1 | 1 |
+| index_member_all | success | 2 | 2 |
+| stk_rewards | success | 6000 | 24 |
+| top10_holders | success | 2897 | 61 |
 
-- 三个遗留工作树 `catalog-perf`、`nineturn`、`unregistered` 的改动已被主线覆盖，旧 patch 重放会回退后续修复。已整体移动至本机归档目录，未提交改动及 ignored 文件哈希一致，无需重复 PR。
-- 本轮不变更真实交易、资金、账号、数据权限或支付。公共站、账户和真实商业开通不由上述内部供数检查推导；未发送邮件、创建客户 key 或执行付款。
-- 长期事实入口：[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md)、[账户与订阅](docs/design/customer-identity-commerce-v1.md)。
+合计6项success、1项empty，8905行returned、90行inserted。七项均有当前配置receipt，unobserved清零；六项默认认证查询非空，单行逐行proof均200；cb_rating默认/proof均如实为空。单行proof用于避免跨历史采集序列的整页限制，不放宽该限制。
+
+fund_basic另行真实E-only重采2887行：2880 unchanged、7 inserted，2880旧事实重绑新成功receipt；原2884事实的identity/payload hash/schema major/revision均保持，未重观测的4条旧失败前缀保留并排除。物理coverage2891不等于当前可供数2887。六页认证查询核对全部2887个不同row identity，逐行proof均绑定新成功receipt `123660cc0231325bfc336d5f511b707bdde9de83ab1aed84354d1f943ffadeba`，无重复/缺页；上游完整性仍未证明。
+
+## 当前限制与本地收尾
+
+- 11:24 A股catalog快照：106 success、43 empty、38 paused、3 stale、2 failed；Crypto内部240 success。单次快照不证明连续稳定、全部历史完整或全部查询性能；15秒门槛仅为catalog，rt_min精确时间槽的本次查询约26–28秒。
+- rt_min_daily schema3默认filters={}且关闭proof时可读，本次为stale；其snapshot_field=null，不满足既有分钟proof/精确槽位要求，相关调用仍503。该能力未交付，不属于本次空窗口修复回归，不能靠移除分钟校验放行。
+- fund_company返回15371行超10000硬预算，继续暂停；已有vendor empty/provider_error与其它暂停项保持诚实状态，不伪造非空或完整性。Crypto仅内部独立运行，不纳入公开菜单/套餐/供数数量。
+- 原主目录8文件改动有stash/patch/tar/哈希备份；32个已合并工作树正常移除，ignored原件与证据保留；三个原脏工作树整体归档且哈希一致，旧patch已被主线覆盖，不重复合并。本轮实现工作树也归档，分支和14个旧release暂存目录保留。
+- 本轮未改变真实交易、资金、账号/Token/权限、支付或客户开通；公共站/Cloudflare及消费者业务链不由内部API验收推导为完成。
+
+长期入口：[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md)。历史快照由Git保留，本页不作为数据权威。
