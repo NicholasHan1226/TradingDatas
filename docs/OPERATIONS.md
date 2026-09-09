@@ -2,6 +2,11 @@
 
 ## 目标生产布局
 
+指定 cadence/dataset 的运行只加载所选 active 数据集、适用日历及递归 resumable fanout
+依赖的规划状态；receipt 验证仍使用完整 registry。未指定选择时保持全目录读取。
+该读取范围优化不改变计划、跳过原因、执行顺序、窗口或预算；缺失/无效依赖仍按原合同
+拒绝或跳过。回归和验收范围见 [规划状态读取记录](reports/2026-09-09-scoped-cadence-state.md)。
+
 ```text
 /opt/investment/releases/tradingdatas/<immutable-release>
 /opt/investment/releases/tradingdatas/current

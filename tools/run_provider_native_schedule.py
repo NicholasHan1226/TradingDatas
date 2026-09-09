@@ -429,14 +429,28 @@ def run_schedule(
         )
     calendar_dataset_ids = frozenset(
         policy.calendar.dataset_id
-        for policy in schedule.cadences.values()
+        for cadence, policy in schedule.cadences.items()
         if policy.calendar is not None
+        and (
+            selected_dataset_ids is None
+            or any(
+                dataset.dataset_id in selected_dataset_ids
+                and dataset.cadence_class == cadence
+                and any(
+                    binding.entitlement_state == "active"
+                    and binding.activation_state == "active"
+                    for binding in dataset.provider_bindings
+                )
+                for dataset in registry.datasets
+            )
+        )
     )
     state = load_planner_state(
         db_path,
         registry,
         now=now,
         calendar_dataset_ids=calendar_dataset_ids,
+        selected_dataset_ids=selected_dataset_ids,
     )
     plans, planner_skips = _plan_runs(
         registry=registry,

@@ -31,8 +31,10 @@ from provider_ingest_contract import provider_ingest_config_hash
 from storage.receipt_projection import (
     RuntimeProjectionError,
     ValidatedReceiptHistoryEntry,
+    ValidatedReceiptHistories,
     open_verified_read_model_snapshot,
     validated_receipt_histories_by_dataset,
+    validated_receipt_history_for_dataset,
 )
 
 
@@ -715,16 +717,50 @@ def _active_binding(dataset: DatasetDefinition) -> ProviderBinding:
     return bindings[0]
 
 
+def _merge_planner_history(
+    history: ValidatedReceiptHistories,
+    datasets: Mapping[str, DatasetDefinition],
+    receipts: dict[tuple[str, str], list[ValidatedReceiptHistoryEntry]],
+    invalid_datasets: dict[tuple[str, str], tuple[str, ...]],
+) -> None:
+    for dataset_id, reasons in history.failures_by_dataset.items():
+        dataset = datasets.get(dataset_id)
+        if dataset is None:
+            continue
+        try:
+            binding = _active_binding(dataset)
+        except ValueError:
+            continue
+        invalid_datasets[(dataset_id, binding.provider)] = reasons
+    for entries in history.entries_by_dataset.values():
+        for receipt in entries:
+            dataset = datasets.get(receipt.dataset_id)
+            if dataset is None:
+                continue
+            try:
+                binding = _active_binding(dataset)
+            except ValueError:
+                continue
+            if (
+                receipt.provider != binding.provider
+                or receipt.config_hash != provider_ingest_config_hash(dataset, binding)
+            ):
+                continue
+            receipts[(receipt.dataset_id, receipt.provider)].append(receipt)
+
+
 def load_planner_state(
     db_path: Path,
     registry: DatasetRegistry,
     *,
     now: datetime,
     calendar_dataset_ids: frozenset[str] | None = None,
+    selected_dataset_ids: frozenset[str] | None = None,
 ) -> PlannerState:
     """Load only the fact material needed to plan one schedule run.
 
-    All datasets need their validated receipt history and partition values.
+    Selected datasets and their dependencies need validated receipt history
+    and partition values. A missing selection preserves the complete registry.
     Provider payloads are needed for exchange calendars and active resumable
     fanout source universes. Other historical facts need only partition values;
     avoiding their payload hydration keeps the common automatic run bounded.
@@ -741,6 +777,43 @@ def load_planner_state(
         for item in registry.datasets
         if item.read_model_adapter.storage_kind == "provider_native_rows"
     }
+    if selected_dataset_ids is not None:
+        if type(selected_dataset_ids) is not frozenset or any(
+            type(value) is not str or value not in datasets
+            for value in selected_dataset_ids
+        ):
+            raise ValueError("selected_dataset_ids must contain registered dataset ids")
+        needed = set(calendar_dataset_ids or ())
+        for dataset_id in selected_dataset_ids:
+            try:
+                _active_binding(datasets[dataset_id])
+            except ValueError:
+                continue
+            needed.add(dataset_id)
+        pending = list(needed)
+        while pending:
+            dataset_id = pending.pop()
+            if dataset_id not in datasets:
+                raise ValueError("planner dependency is not registered")
+            try:
+                binding = _active_binding(datasets[dataset_id])
+            except ValueError:
+                continue
+            if (
+                binding.resumable_fanout is not None
+                and binding.fanout is not None
+                and binding.fanout.strategy == "dataset_field"
+                and binding.fanout.source_dataset_id is not None
+            ):
+                source_id = binding.fanout.source_dataset_id
+                if source_id not in needed:
+                    needed.add(source_id)
+                    pending.append(source_id)
+        datasets = {
+            dataset_id: dataset
+            for dataset_id, dataset in datasets.items()
+            if dataset_id in needed
+        }
     fanout_source_dataset_ids = frozenset(
         binding.fanout.source_dataset_id
         for dataset in datasets.values()
@@ -759,33 +832,17 @@ def load_planner_state(
     try:
         invalid_datasets: dict[tuple[str, str], tuple[str, ...]] = {}
         with open_verified_read_model_snapshot(db_path) as conn:
-            histories = validated_receipt_histories_by_dataset(
-                conn, registry, now=now
-            )
-            for dataset_id, reasons in histories.failures_by_dataset.items():
-                dataset = datasets.get(dataset_id)
-                if dataset is None:
-                    continue
-                try:
-                    binding = _active_binding(dataset)
-                except ValueError:
-                    continue
-                invalid_datasets[(dataset_id, binding.provider)] = reasons
-            for entries in histories.entries_by_dataset.values():
-                for receipt in entries:
-                    dataset = datasets.get(receipt.dataset_id)
-                    if dataset is None:
-                        continue
-                    try:
-                        binding = _active_binding(dataset)
-                    except ValueError:
-                        continue
-                    if (
-                        receipt.provider != binding.provider
-                        or receipt.config_hash != provider_ingest_config_hash(dataset, binding)
-                    ):
-                        continue
-                    receipts[(receipt.dataset_id, receipt.provider)].append(receipt)
+            if selected_dataset_ids is None:
+                histories = (
+                    validated_receipt_histories_by_dataset(conn, registry, now=now),
+                )
+            else:
+                histories = (
+                    validated_receipt_history_for_dataset(conn, registry, dataset, now=now)
+                    for dataset in datasets.values()
+                )
+            for history in histories:
+                _merge_planner_history(history, datasets, receipts, invalid_datasets)
             for dataset in datasets.values():
                 try:
                     binding = _active_binding(dataset)
