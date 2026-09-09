@@ -30,6 +30,8 @@ from dataset_registry import (
     DatasetDefinition,
     DatasetField,
     DatasetRegistry,
+    ProviderBinding,
+    decode_request_window_value,
     normalize_request_window,
 )
 from query_contract import (
@@ -873,6 +875,61 @@ def _classified_page_receipt_proofs(
     return selection
 
 
+def _windowed_minute_bindings(
+    dataset: DatasetDefinition,
+) -> tuple[ProviderBinding, ...]:
+    """Recognize finite minute histories, not homogeneous bar snapshots."""
+
+    if not (
+        dataset.cadence_class == "session_minute"
+        and dataset.partition_field is None
+        and dataset.as_of_field is None
+        and dataset.range_field is None
+        and "time" in dataset.primary_key
+    ):
+        return ()
+    active = tuple(
+        binding for binding in dataset.provider_bindings
+        if binding.activation_state == "active"
+    )
+    for binding in active:
+        completeness = binding.response_completeness
+        policy = binding.request_window_policy
+        if (
+            completeness is None
+            or completeness.strategy != "windowed_unique_primary_key"
+            or completeness.date_field != "time"
+            or policy is None
+            or completeness.request_start_key != policy.range_start_key
+            or completeness.request_end_key != policy.range_end_key
+            or set(policy.formats.values()) != {"local_datetime_seconds"}
+            or policy.max_span_days != 1
+        ):
+            return ()
+    return active
+
+
+def _minute_window_bounds(
+    dataset: DatasetDefinition,
+    binding: ProviderBinding,
+    request_window: Mapping[str, str],
+) -> tuple[datetime, datetime]:
+    policy = binding.request_window_policy
+    if policy is None:
+        raise QueryServiceUnavailable("query service is unavailable")
+    try:
+        window = normalize_request_window(policy, request_window)
+        start = datetime.fromisoformat(
+            _normalize_data_through(window[policy.range_start_key], dataset)
+        )
+        end = datetime.fromisoformat(
+            _normalize_data_through(window[policy.range_end_key], dataset)
+        )
+    except (KeyError, TypeError, ValueError):
+        raise QueryServiceUnavailable("query service is unavailable") from None
+    return start, end
+
+
 def _row_receipt_proof_metadata(
     dataset: DatasetDefinition,
     rows: tuple[tuple[object, ...], ...],
@@ -895,6 +952,7 @@ def _row_receipt_proof_metadata(
         for binding in dataset.provider_bindings
         if binding.activation_state == "active"
     )
+    windowed_bindings = _windowed_minute_bindings(dataset)
     if (
         not no_window
         or not any(field.name == "time" for field in dataset.fields)
@@ -904,7 +962,7 @@ def _row_receipt_proof_metadata(
             or binding.response_completeness.snapshot_field != "time"
             for binding in active_bindings
         )
-    ) and no_window:
+    ) and no_window and not windowed_bindings:
         raise QueryServiceUnavailable("query service is unavailable")
     for row in rows:
         provider = row[1]
@@ -929,7 +987,36 @@ def _row_receipt_proof_metadata(
         ):
             raise QueryServiceUnavailable("query service is unavailable")
         payload = _parse_provider_native_payload(row[0])
-        if no_window:
+        if windowed_bindings:
+            matching = tuple(
+                binding for binding in windowed_bindings
+                if binding.provider == proof.provider
+            )
+            if len(matching) != 1:
+                raise QueryServiceUnavailable("query service is unavailable")
+            start, end = _minute_window_bounds(
+                dataset, matching[0], proof.request_window
+            )
+            try:
+                policy = matching[0].request_window_policy
+                assert policy is not None
+                decode_request_window_value(
+                    payload.get("time"), policy.formats[policy.range_start_key]
+                )
+                through = datetime.fromisoformat(
+                    _normalize_data_through(proof.data_through, dataset)
+                )
+                event_time = datetime.fromisoformat(
+                    _normalize_data_through(payload.get("time"), dataset)
+                )
+            except (TypeError, ValueError):
+                raise QueryServiceUnavailable("query service is unavailable") from None
+            if not (
+                start <= event_time <= through <= end
+                and through <= proof.finished_at <= now
+            ):
+                raise QueryServiceUnavailable("query service is unavailable")
+        elif no_window:
             try:
                 through = datetime.fromisoformat(
                     _normalize_data_through(proof.data_through, dataset)
@@ -1707,7 +1794,7 @@ def _exact_session_minute_slot(
         for binding in dataset.provider_bindings
         if binding.activation_state == "active"
     )
-    if (
+    if not _windowed_minute_bindings(dataset) and (
         not any(field.name == "time" for field in dataset.fields)
         or not active_bindings
         or any(
@@ -1751,15 +1838,33 @@ def _exact_session_minute_receipt_ids(
         for binding in dataset.provider_bindings
         if binding.activation_state == "active"
     }
+    windowed_bindings = _windowed_minute_bindings(dataset)
+    def matches_slot(entry) -> bool:
+        through = datetime.fromisoformat(
+            _normalize_data_through(entry.data_through, dataset)
+        )
+        if not windowed_bindings:
+            return through.isoformat(
+                timespec="microseconds" if through.microsecond else "seconds"
+            ) == slot_value
+        matching = tuple(
+            binding for binding in windowed_bindings
+            if binding.provider == entry.provider
+        )
+        if len(matching) != 1:
+            raise QueryServiceUnavailable("query service is unavailable")
+        start, end = _minute_window_bounds(dataset, matching[0], entry.request_window)
+        return start <= slot <= through <= end and through <= entry.finished_at <= now
+
     entries = [
         entry
         for entry in histories.entries_by_dataset.get(dataset.dataset_id, ())
         if entry.status == "success"
         and entry.cohort_status == "success"
         and entry.data_through is not None
-        and _normalize_data_through(entry.data_through, dataset) == slot_value
         and entry.finished_at <= now
         and (entry.provider, entry.config_hash) in active_config_keys
+        and matches_slot(entry)
     ]
     providers = {entry.provider for entry in entries}
     configs = {entry.config_hash for entry in entries}
@@ -1770,7 +1875,7 @@ def _exact_session_minute_receipt_ids(
         not entries
         or len(providers) != 1
         or len(configs) != 1
-        or data_throughs != {slot_value}
+        or (not windowed_bindings and data_throughs != {slot_value})
     ):
         return ()
     # Correction overlap can observe one closed bar in multiple independently
