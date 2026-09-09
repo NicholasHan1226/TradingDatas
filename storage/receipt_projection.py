@@ -4296,8 +4296,10 @@ def _validated_sidecar_binding(
         or n_backfill > mx_frame
     ):
         raise RuntimeProjectionError("receipt database sidecars are inconsistent")
-    if mx_frame > n_backfill and main_metadata.st_mtime_ns > wal_metadata.st_mtime_ns:
-        raise RuntimeProjectionError("receipt database sidecars are stale")
+    # A partial checkpoint writes older frames to the main file while a reader
+    # pins later frames in WAL. The main mtime can therefore be newer than WAL
+    # with mx_frame > n_backfill; timestamps cannot establish stale sidecars.
+    # Keep the structural/epoch binding above and the connection verification.
     return wal_identity, shm_identity
 
 
