@@ -2,17 +2,23 @@
 
 检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为 registry、SQLite facts/receipts 及读取时钟。详细证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
 
-## 发布后跟进：分钟冷查询重复校验
+## PR #550：冷查询修正已合入，发布门禁未通过
 
 17:47–17:49，对 rt_min 的14:35和15:00固定窗口分别验收两页普通/proof，共8次HTTP200，逐行身份、窗口和receipt回链通过，仍有下一页且quality degraded。未复现503；部署后有限日志窗口没有新503诊断，不代表旧故障永久消失。首次23.087秒，后续9.817–15.497秒。
 
-同运行版本的只读新进程profile为22.917秒，29,221次receipt解析累计16.562秒；projection和exact-slot history各自重复校验同一历史。当前候选只在单次verified snapshot内共享既有memo，保留两次完整扫描及全部cohort/config/时间/proof校验。冷请求预计少一轮解析；暖请求的解析轮数不减少，不承诺所有query低于15秒。相关完整回归336项、独立新增2项、基础Ruff及diff检查通过；完整Ruff的27条基线问题未增加。候选尚未合入或部署，生产仍为下述f2f5cb2a。
+同运行版本的只读新进程profile为22.917秒，29,221次receipt解析累计16.562秒；projection和exact-slot history各自重复校验同一历史。当前候选只在单次verified snapshot内共享既有memo，保留两次完整扫描及全部cohort/config/时间/proof校验。冷请求预计少一轮解析；暖请求的解析轮数不减少，不承诺所有query低于15秒。相关完整回归336项、独立新增2项、基础Ruff及diff检查通过；完整Ruff的27条基线问题未增加。PR #550已合入7b3e401a76e51a30d265a70397d4f8d8d90da9f8；精确head CI34342482854及main CI34343386033四分片成功。本地main与服务器源码均干净同步，双面各1106文件及registry重编译通过。生产仍为下述f2f5cb2a，未执行cut。
 
-发布后两轮自然采集合计26 success、19 empty、1 failed（新闻provider_error）；不把empty记成成功或not_due记成恢复。真实客户浏览器仍在已有账户登录页，等待客户身份；内部consumer不替代客户端到端。下一批五项仍按单seed、10000预算和既有service执行，实际结果另行读回。
+发布后两轮自然采集合计26 success、19 empty、1 failed（新闻provider_error）；不把empty记成成功或not_due记成恢复。真实客户浏览器仍在已有账户登录页，等待客户身份；内部consumer不替代客户端到端。18:55五项有界采集已完成：dc_concept_cons新增30行；etf_sz_cons、fund_daily、fut_holding、fut_wsr各1个empty回执、0行。全部0 rejected，目标20260908，每项仅一个seed，10000预算与38paused保持。新回执config/window/进度和counts已验证；主题成分普通/proof各200、同一行并回链本次receipt，quality degraded。四项空回执不算成功供数。selector已消费、原timer恢复enabled/active。
+
+候选真实只读profile为18.923秒，receipt解析降为14,621次；SQLite execute自耗从1.509增至6.647秒，测量环境/负载并非严格对照，不声称整体倍速或全部query低于15秒。
+
+19:13–19:18两次独立新进程staged验证均在Crypto同面并发失败：第一次11.234/15.352秒，第二次16.434/11.493秒。两次A股及cold请求均200、目录192/240完整；未生成合格catalog-evidence，未启动safe_release会话。临时API在finally中停止；不改变15秒门槛、worker、权限或生产服务。已保留失败记录，当前不能声明PR550已部署。后续唯一一次Crypto只读catalog方法profile为12.710秒、240项，实际回执校验21,010次/5.537秒，execution兄弟查询200次/3.447秒；未发现本分钟补丁改变catalog路径，单次方法测量不能替代失败的并发门禁。
+
+19:23:34最终运行读回：双面current/物理cwd/各1106文件manifest仍为f2f5cb2a；匿名401，认证catalog A192项/14.663秒、C240项/6.336秒，无下一页。A为106success/42empty/38paused/4stale/2failed；C为238success/2failed。19:24:53一次复查failed筛选为0；最近20条failed回执未能唯一匹配原两项身份，原因未定位，不能概括全部持续健康或已稳定恢复。九timer enabled/active、selector不存在、临时API已停止，源码7b3e401a干净。单次运行读回不替代上述失败并发门禁。
 
 ## PR #548：503 安全诊断发布
 
-PR #548 已合入 `f2f5cb2a575f2981d836f9ee7790579614e8a80f`，精确 PR head CI 34331348663 与 main CI 34332481416 四分片均成功；本地主线及服务器源码干净同步。完整本地 API 测试184项、独立新增5项及 Ruff/diff 检查通过。
+PR #548 已合入 `f2f5cb2a575f2981d836f9ee7790579614e8a80f`，精确 PR head CI 34331348663 与 main CI 34332481416 四分片均成功；当时本地主线及服务器源码干净同步。完整本地 API 测试184项、独立新增5项及 Ruff/diff 检查通过。
 
 现有三个 data-service 503 异常分支增加一条 WARNING：固定类别、白名单项目代码位置、有限异常链及服务端 request_id。公开响应、读取权威和预算保持，不记录密钥、请求参数、cursor、异常原文或数据 payload。该诊断能力不代表原分钟查询503根因已修复。
 
