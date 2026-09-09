@@ -30,6 +30,15 @@ API service 只监听 `127.0.0.1:18082`，只提供 `GET /v1/catalog` 与
 `POST /v1/query`，并以独立 `tradingdatas` 账号只读访问数据目录。仓库不安装
 公网入口或 provider 专用路由。
 
+V1数据服务的 `CursorConfigurationError`、`QueryServiceUnavailable` 或
+`RuntimeProjectionError` 转换为 `service_unavailable`（503）时，API 在 WARNING
+级别记录一条与服务端 `request_id` 对应的诊断；其它既有503分支不在此范围。
+内容只含固定异常类别、白名单项目模块及行号；异常链最多
+四层，每层最多检查32个栈帧。SQLite 仅按标准错误码分类 busy/locked/interrupt 等，
+不输出错误消息、绝对路径、栈源码/局部变量、请求参数、cursor、token或数据行。
+公开503状态与错误体保持不变，无需开启全量INFO请求日志。结合该次运行SHA、日志时间
+与请求编号定位后再复现；错误类别和位置本身不证明数据损坏或根因已解决。
+
 采集调度只允许一个 registry-driven runner；timer 每五分钟只唤醒一次 cadence
 planner，不拥有 dataset 或 provider API 清单。不再使用项目 crontab，也不按
 Tushare API 增加 service/timer。生产 timer 默认只采集每个 automatic dataset 的最新

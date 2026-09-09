@@ -11,6 +11,7 @@ import os
 import re
 import signal
 import socket
+import sqlite3
 import threading
 import time
 import uuid
@@ -49,6 +50,66 @@ V1_CATALOG_PARAMS = frozenset(
     {"market", "domain", "cadence", "state", "q", "cursor", "limit"}
 )
 V1_QUERY_DEFAULTS = load_runtime_dataset_registry().query_defaults
+
+
+def _unavailable_diagnostic(exc: BaseException) -> str:
+    """Bounded code locations/categories only; never stringify exceptions or frames."""
+    categories = (
+        (CursorConfigurationError, "cursor_configuration"),
+        (QueryServiceUnavailable, "query_unavailable"),
+        (RuntimeProjectionError, "runtime_projection"),
+        (sqlite3.Error, "sqlite"),
+        (TimeoutError, "timeout"),
+        (OSError, "os"),
+        (ValueError, "value"),
+        (TypeError, "type"),
+    )
+    modules = {
+        "api_server", "query_service", "query_cursor", "catalog_service",
+        "catalog_executor", "data_plane_runtime", "storage.receipt_projection",
+        "storage.provider_dataset_rows", "storage.schema_contract",
+    }
+    chain = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    for _ in range(4):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        category = next(
+            (label for kind, label in categories if isinstance(current, kind)), "other"
+        )
+        if isinstance(current, sqlite3.Error):
+            code = getattr(current, "sqlite_errorcode", None)
+            if type(code) is int:
+                category = {
+                    sqlite3.SQLITE_BUSY: "sqlite_busy",
+                    sqlite3.SQLITE_LOCKED: "sqlite_locked",
+                    sqlite3.SQLITE_INTERRUPT: "sqlite_interrupt",
+                    sqlite3.SQLITE_CORRUPT: "sqlite_corrupt",
+                    sqlite3.SQLITE_CANTOPEN: "sqlite_cantopen",
+                    sqlite3.SQLITE_SCHEMA: "sqlite_schema",
+                    sqlite3.SQLITE_NOTADB: "sqlite_notadb",
+                }.get(code & 0xFF, "sqlite")
+        origin = "unknown"
+        trace = current.__traceback__
+        for _ in range(32):
+            if trace is None:
+                break
+            module = trace.tb_frame.f_globals.get("__name__")
+            if (
+                type(module) is str and module in modules
+                and trace.tb_frame.f_code.co_filename
+                == str(ROOT / (module.replace(".", "/") + ".py"))
+            ):
+                origin = f"{module}:{trace.tb_lineno}"
+            trace = trace.tb_next
+        chain.append(f"{category}@{origin}")
+        # Suppressed context is useful internally, but its text/locals stay private.
+        current = (
+            current.__cause__ if current.__cause__ is not None else current.__context__
+        )
+    return " -> ".join(chain)
 
 
 def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -1636,7 +1697,12 @@ class Handler(BaseHTTPRequestHandler):
             CursorConfigurationError,
             QueryServiceUnavailable,
             RuntimeProjectionError,
-        ):
+        ) as exc:
+            logging.getLogger("tradingdatas.api").warning(
+                "V1 request unavailable request_id=%s category=service_unavailable diagnostic=%s",
+                request_id,
+                _unavailable_diagnostic(exc),
+            )
             self._write_v1_error(
                 request_id,
                 status=503,
