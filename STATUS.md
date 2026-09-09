@@ -2,6 +2,14 @@
 
 检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为 registry、SQLite facts/receipts 及读取时钟。详细证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
 
+## 发布后跟进：分钟冷查询重复校验
+
+17:47–17:49，对 rt_min 的14:35和15:00固定窗口分别验收两页普通/proof，共8次HTTP200，逐行身份、窗口和receipt回链通过，仍有下一页且quality degraded。未复现503；部署后有限日志窗口没有新503诊断，不代表旧故障永久消失。首次23.087秒，后续9.817–15.497秒。
+
+同运行版本的只读新进程profile为22.917秒，29,221次receipt解析累计16.562秒；projection和exact-slot history各自重复校验同一历史。当前候选只在单次verified snapshot内共享既有memo，保留两次完整扫描及全部cohort/config/时间/proof校验。冷请求预计少一轮解析；暖请求的解析轮数不减少，不承诺所有query低于15秒。相关完整回归336项、独立新增2项、基础Ruff及diff检查通过；完整Ruff的27条基线问题未增加。候选尚未合入或部署，生产仍为下述f2f5cb2a。
+
+发布后两轮自然采集合计26 success、19 empty、1 failed（新闻provider_error）；不把empty记成成功或not_due记成恢复。真实客户浏览器仍在已有账户登录页，等待客户身份；内部consumer不替代客户端到端。下一批五项仍按单seed、10000预算和既有service执行，实际结果另行读回。
+
 ## PR #548：503 安全诊断发布
 
 PR #548 已合入 `f2f5cb2a575f2981d836f9ee7790579614e8a80f`，精确 PR head CI 34331348663 与 main CI 34332481416 四分片均成功；本地主线及服务器源码干净同步。完整本地 API 测试184项、独立新增5项及 Ruff/diff 检查通过。

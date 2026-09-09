@@ -3,6 +3,16 @@
 事实入口：STATUS.md；长期合同以API.md和OPERATIONS.md为准。本报告不把代码合并、实际切换、生产读取、客户账户或上游完整性合并成一个完成状态。时间均按Asia/Shanghai解释。
 
 
+## 发布后只读诊断与候选范围
+
+17:47:30–17:49:13（Asia/Shanghai），生产f2f5cb2a对rt_min major2的14:35、15:00窗口各查询两页，plain/proof各自使用独立cursor，共8次200。首次23.087秒，其余9.817–15.497秒；行身份、event==through、proof时间与回链一致，仍有下一页、quality degraded。回执分别为044a10e0cc81fb736c0bef374a75ed6bf7fe72b0ca344c25e7c589e1b65063ca及0c29e4d3d9bd22b07c9f0206128c3627319a7ce6d15d4160cae66f4fec20f5ba。有限日志读取未发现新的503诊断，不能归因或宣称旧503已修复。
+
+同一版本、真实服务用户、只读新进程单次14:35/limit1 profile为22.917秒：receipt实际解析29,221次，累计16.562秒；exact-slot history约9.311秒，runtime projection约11.626秒。两条路径重复解析同一批历史，因此候选仅透传现有validation_cache并在单次verified snapshot内创建局部dict。完整历史扫描、execution/cohort、future timestamp、active config、窗口与页内proof校验均保留；请求结束丢弃，不新增跨快照缓存。冷请求减少一轮解析，原暖请求解析轮数仍为一轮；性能变化须等真实候选测量，不从单次profile承诺提速倍数。此节候选尚未合入/部署，后续历史发布记录不表示候选已生效。
+
+发布后首两轮自然采集分别18success/11empty/1failed与8success/8empty/0failed。新闻17:28:59仍为provider_error，下一轮not_due不是恢复。八项有界receipt历史无authority failure，分钟闭市/not_due与etf_mins按需语义保持。第三轮补读连接中断，完成状态未观察。watch旧exit1来自既有ALERT/rolling-eval age，不是本次部署后工程崩溃证据。
+
+证据目录：Documents/Codex/2026-09-09/TradingDatas-postdeploy，包含minute-fixed-probe.jsonl、minute-profile.jsonl、minute-journal-safe.json与natural-report.md。客户Chrome仍为/login?next=%2Faccount；没有已有客户会话，未新建账号、key或借用内部凭据冒充客户验收。
+
 ## 17:21更新：PR #548 已受控部署
 
 本节是最新运行证据，优先于下文15:10及此前的历史快照；下文“发布者未定位”等描述仅保留当时调查状态，不能视为当前结论。

@@ -2999,6 +2999,8 @@ def _validated_history_for_dataset_rows(
     known_dataset_ids: frozenset[str],
     rows: tuple[_ScannedIngestRunRow, ...],
     now: datetime,
+    validation_cache: dict[tuple[str, str], _Receipt | _InvalidReceipt | None]
+    | None = None,
 ) -> tuple[tuple[ValidatedReceiptHistoryEntry, ...], tuple[str, ...]]:
     receipts, rejected = _trusted_receipts_for_evidence(
         dataset,
@@ -3006,6 +3008,7 @@ def _validated_history_for_dataset_rows(
         known_dataset_ids=known_dataset_ids,
         rows=rows,
         expected_binding=None,
+        validation_cache=validation_cache,
     )
     if rejected:
         return (), tuple(sorted({item.reason for item in rejected}))
@@ -3104,6 +3107,8 @@ def validated_receipt_history_for_dataset(
     dataset: DatasetDefinition,
     *,
     now: datetime,
+    validation_cache: dict[tuple[str, str], _Receipt | _InvalidReceipt | None]
+    | None = None,
 ) -> ValidatedReceiptHistories:
     """Validate one dataset without scanning unrelated receipt histories."""
 
@@ -3130,6 +3135,7 @@ def validated_receipt_history_for_dataset(
         known_dataset_ids=known_dataset_ids,
         rows=rows,
         now=validated_now,
+        validation_cache=validation_cache,
     )
     if failures:
         return ValidatedReceiptHistories(

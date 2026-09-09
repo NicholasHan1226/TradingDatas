@@ -200,3 +200,62 @@ def test_windowed_proofs_still_reject_mixed_execution(window_harness, monkeypatc
     assert len(_query(h)["data"]) == 2
     with pytest.raises(QueryServiceUnavailable):
         _query(h, proofs=True)
+
+
+def test_exact_slot_memo_is_shared_only_inside_one_snapshot(window_harness, monkeypatch):
+    from storage import receipt_projection as projection
+
+    h = window_harness
+    from storage.receipt_projection import project_dataset_runtime_evidence
+
+    real_projection = project_dataset_runtime_evidence
+    monkeypatch.setattr(
+        "storage.receipt_projection.provider_ingest_config_hash",
+        native._synthetic_ingest_config_hash,
+    )
+    _seed(h, monkeypatch)
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", real_projection)
+    real_validate = projection._validate_receipt_row
+    calls = []
+
+    def count(*args, **kwargs):
+        calls.append(args[0].raw)
+        return real_validate(*args, **kwargs)
+
+    monkeypatch.setattr(projection, "_validate_receipt_row", count)
+    first = _query(h, time="2026-07-17 11:15:00")
+    assert len(first["data"]) == 1
+    # One full-history validation plus two independent page-proof validations.
+    assert len(calls) == 3
+    calls.clear()
+    second = _query(h, time="2026-07-17 11:15:00")
+    assert second["data"] == first["data"]
+    # One full-history validation plus two independent page-proof validations.
+    assert len(calls) == 3
+    assert h["service"]._validation_cache == {}
+    real_projection(
+        h["conn"], h["dataset"], registry=h["registry"], now=native.NOW,
+        validation_cache=h["service"]._validation_cache,
+    )
+    assert h["service"]._validation_cache
+    calls.clear()
+    assert _query(h, time="2026-07-17 11:15:00")["data"] == first["data"]
+    assert len(calls) == 3
+
+
+def test_exact_slot_new_snapshot_rejects_tampered_receipt(window_harness, monkeypatch):
+    h = window_harness
+    from storage.receipt_projection import project_dataset_runtime_evidence
+
+    real_projection = project_dataset_runtime_evidence
+    monkeypatch.setattr(
+        "storage.receipt_projection.provider_ingest_config_hash",
+        native._synthetic_ingest_config_hash,
+    )
+    _seed(h, monkeypatch)
+    monkeypatch.setattr(query_module, "project_dataset_runtime_evidence", real_projection)
+    assert len(_query(h, time="2026-07-17 11:15:00")["data"]) == 1
+    h["conn"].execute("UPDATE market_ingest_runs SET status = 'failed'")
+    h["conn"].commit()
+    with pytest.raises(QueryServiceUnavailable):
+        _query(h, time="2026-07-17 11:15:00")

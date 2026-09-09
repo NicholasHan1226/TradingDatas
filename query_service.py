@@ -1821,12 +1821,14 @@ def _exact_session_minute_receipt_ids(
     slot: datetime,
     *,
     now: datetime,
+    validation_cache: dict | None = None,
 ) -> tuple[str, ...]:
     histories = validated_receipt_history_for_dataset(
         conn,
         registry,
         dataset,
         now=now,
+        validation_cache=validation_cache,
     )
     if dataset.dataset_id in histories.failures_by_dataset:
         raise RuntimeProjectionError("receipt history authority is invalid")
@@ -2512,6 +2514,12 @@ class QueryService:
                     dataset,
                     prepared,
                 )
+                # Exact-slot projection and history share only this snapshot
+                # memo; their full scans and group authority checks remain separate.
+                validation_cache = (
+                    {} if exact_session_minute_slot is not None
+                    else self._validation_cache
+                )
                 projected_evidence = project_dataset_runtime_evidence(
                     conn,
                     dataset,
@@ -2525,7 +2533,7 @@ class QueryService:
                     ),
                     receipt_collection_window=receipt_collection_window,
                     request_partition=request_partition,
-                    validation_cache=self._validation_cache,
+                    validation_cache=validation_cache,
                 )
                 # Exact historical slots keep their own receipt authority.
                 # The current in-session window (no time=eq) serves last
@@ -2547,6 +2555,7 @@ class QueryService:
                         dataset,
                         exact_session_minute_slot,
                         now=validated_now,
+                        validation_cache=validation_cache,
                     )
                     if not exact_session_minute_receipt_ids:
                         raise QueryServiceUnavailable("query service is unavailable")
