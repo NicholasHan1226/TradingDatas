@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 import hashlib
@@ -235,7 +236,6 @@ def test_resumable_planner_suppresses_only_exactly_complete_window() -> None:
         now=datetime(2026, 7, 20, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
     )
     assert all(plan.dataset_id != dataset.dataset_id for plan in plans)
-    assert any(item.dataset_id == dataset.dataset_id and item.state == "up_to_date" for item in _[0:]) if False else True
     assert [(item.dataset_id, item.state) for item in skips] == [
         (dataset.dataset_id, "up_to_date")
     ]
@@ -289,7 +289,7 @@ def test_resumable_no_window_preserves_legacy_periodic_cadence() -> None:
     )
     dataset = replace(base, dataset_id="cn.synthetic.no_window", provider_bindings=(binding,))
     registry = DatasetRegistry((dataset,), query_defaults=_active_registry().query_defaults)
-    histories = _v2_histories(_resumable_window_registry(), window={"period": "20260720"})
+    _v2_histories(_resumable_window_registry(), window={"period": "20260720"})
     state = cadence_planner.PlannerState(MappingProxyType({}))
     plans, skips = cadence_planner.plan_runs(
         registry=registry,
@@ -5830,3 +5830,200 @@ def test_budget_exhaustion_marks_remaining_plans_skipped_not_failed(
     assert [(item.dataset_id, item.state) for item in result.skipped] == [
         ("cn.dataset.anns_d", "rate_budget_exhausted")
     ]
+
+
+@pytest.mark.parametrize("calendar_state", ["valid", "missing", "invalid"])
+def test_scoped_state_matches_full_plan_and_queries_only_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    calendar_state: str,
+) -> None:
+    registry = _active_registry()
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    db_path = tmp_path / "scoped.sqlite"
+    _database(db_path)
+    with sqlite3.connect(db_path) as conn:
+        if calendar_state != "missing":
+            _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        _seed_daily(monkeypatch, conn, registry, date(2026, 7, 20))
+        if calendar_state == "invalid":
+            conn.execute(
+                "UPDATE market_ingest_runs SET notes='{}' WHERE source=?",
+                ("cn.market.trade_calendar",),
+            )
+            conn.commit()
+    now = datetime(2026, 7, 20, 17, tzinfo=ZoneInfo("Asia/Shanghai"))
+    selected = frozenset({"cn.equity.daily"})
+    calendars = frozenset({"cn.market.trade_calendar"})
+    full = scheduler.load_planner_state(
+        db_path, registry, now=now, calendar_dataset_ids=calendars
+    )
+    implicit = scheduler.load_planner_state(
+        db_path,
+        registry,
+        now=now,
+        calendar_dataset_ids=calendars,
+        selected_dataset_ids=None,
+    )
+    assert implicit == full
+    statements = []
+    original = cadence_planner.open_verified_read_model_snapshot
+
+    @contextmanager
+    def traced(path):
+        with original(path) as conn:
+            conn.set_trace_callback(statements.append)
+            before = conn.total_changes
+            yield conn
+            assert conn.total_changes == before
+
+    monkeypatch.setattr(cadence_planner, "open_verified_read_model_snapshot", traced)
+    scoped = scheduler.load_planner_state(
+        db_path,
+        registry,
+        now=now,
+        calendar_dataset_ids=calendars,
+        selected_dataset_ids=selected,
+    )
+    assert cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=scoped,
+        now=now,
+        selected_dataset_ids=selected,
+    ) == cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=full,
+        now=now,
+        selected_dataset_ids=selected,
+    )
+    statements = ["".join(sql.split()) for sql in statements]
+    for sql in statements:
+        if "WHEREsource=" in sql or "WHEREdataset_id=" in sql:
+            assert "cn.equity.daily" in sql or "cn.market.trade_calendar" in sql
+    assert any("WHEREdataset_id=" in sql for sql in statements)
+    assert any("WHEREsource=" in sql for sql in statements)
+    if calendar_state == "invalid":
+        assert scoped.invalid_datasets == full.invalid_datasets
+        assert scoped.invalid_datasets
+
+
+@pytest.mark.parametrize("source_state", ["valid", "missing", "invalid"])
+def test_scoped_state_retains_fanout_dependency_and_plan_mode_is_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_state: str,
+) -> None:
+    registry = _active_registry()
+    db_path = tmp_path / "scoped.sqlite"
+    _database(db_path)
+    now = datetime(2026, 7, 20, 10, tzinfo=ZoneInfo("Asia/Shanghai"))
+    with sqlite3.connect(db_path) as conn:
+        _seed_calendar(monkeypatch, conn, registry, {date(2026, 7, 20): True})
+        if source_state != "missing":
+            receipt = _canonical_receipt(
+                monkeypatch,
+                conn,
+                dataset_id="cn.equity.security_master",
+                status="success",
+                started_at="2026-07-19T00:00:00Z",
+                finished_at="2026-07-19T00:01:00Z",
+                request_window={},
+            )
+            _fact(
+                conn,
+                registry,
+                "cn.equity.security_master",
+                receipt,
+                None,
+                {"ts_code": "000001.SZ"},
+            )
+            if source_state == "invalid":
+                conn.execute(
+                    "UPDATE market_ingest_runs SET notes='{}' WHERE source=?",
+                    ("cn.equity.security_master",),
+                )
+            conn.commit()
+    calendars = frozenset({"cn.market.trade_calendar"})
+    selected = frozenset(
+        d.dataset_id for d in registry.datasets if d.cadence_class == "session_minute"
+    )
+    full = scheduler.load_planner_state(
+        db_path, registry, now=now, calendar_dataset_ids=calendars
+    )
+    scoped = scheduler.load_planner_state(
+        db_path,
+        registry,
+        now=now,
+        calendar_dataset_ids=calendars,
+        selected_dataset_ids=selected,
+    )
+    schedule = scheduler.load_schedule(SCHEDULE_CONFIG)
+    assert cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=full,
+        now=now,
+        selected_dataset_ids=selected,
+    ) == cadence_planner.plan_runs(
+        registry=registry,
+        schedule=schedule,
+        state=scoped,
+        now=now,
+        selected_dataset_ids=selected,
+    )
+    if source_state == "invalid":
+        assert scoped.invalid_datasets == full.invalid_datasets
+        assert scoped.invalid_datasets
+    called = []
+    original = cadence_planner.validated_receipt_history_for_dataset
+
+    def history(conn, authority, dataset, **kwargs):
+        assert authority is registry
+        called.append(dataset.dataset_id)
+        return original(conn, authority, dataset, **kwargs)
+
+    monkeypatch.setattr(
+        cadence_planner, "validated_receipt_history_for_dataset", history
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("plan must not call provider")
+
+    monkeypatch.setattr(scheduler, "collect_provider_native_dataset", forbidden)
+    before = db_path.read_bytes()
+    result = scheduler.run_schedule(
+        registry=registry,
+        schedule=scheduler.load_schedule(SCHEDULE_CONFIG),
+        db_path=db_path,
+        now=now,
+        execute=False,
+        executor=forbidden,
+        cadence_class="session_minute",
+    )
+    assert set(called) == {
+        "cn.dataset.rt_min",
+        "cn.dataset.rt_min_daily",
+        "cn.equity.security_master",
+        "cn.market.trade_calendar",
+    }
+    assert db_path.read_bytes() == before
+    assert result.mode == "plan"
+
+
+def test_scoped_state_rejects_unknown_selection_and_dependency(tmp_path: Path) -> None:
+    registry = _active_registry()
+    now = datetime(2026, 7, 20, 10, tzinfo=ZoneInfo("Asia/Shanghai"))
+    for selected, calendars in [
+        (frozenset({"unknown"}), frozenset()),
+        (frozenset({"cn.equity.daily"}), frozenset({"unknown"})),
+    ]:
+        with pytest.raises(ValueError, match="registered"):
+            scheduler.load_planner_state(
+                tmp_path / "never-opened",
+                registry,
+                now=now,
+                selected_dataset_ids=selected,
+                calendar_dataset_ids=calendars,
+            )
