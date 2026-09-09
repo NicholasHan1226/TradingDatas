@@ -2,6 +2,26 @@
 
 事实入口：STATUS.md；长期合同以API.md和OPERATIONS.md为准。本报告不把代码合并、实际切换、生产读取、客户账户或上游完整性合并成一个完成状态。时间均按Asia/Shanghai解释。
 
+
+## 17:21更新：PR #548 已受控部署
+
+本节是最新运行证据，优先于下文15:10及此前的历史快照；下文“发布者未定位”等描述仅保留当时调查状态，不能视为当前结论。
+
+- 发布协调：已通过Grok Bot的Johnny消息与服务器指针时间、旧手工脚本对应，定位14:27的8612、15:34的44247及15:54的35f56重复发布。用户授权后，16:51:50发送暂停自动补发和接管#548通知；16:52:27 Johnny确认`tradingdatas-gz-deploy-after-merge`已禁用，没有其它发布任务或进行中的切换，保留采集timer及在运行采集，等待明确交接。未修改SSH权限；不追认早期切换为符合新门禁。
+- 代码：PR #548精确head `d7732a8e62e7ef03846b1d2f27b6cf67ddc08518`，PR CI [34331348663](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34331348663)四分片成功；实际merged `f2f5cb2a575f2981d836f9ee7790579614e8a80f`，精确main CI [34332481416](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34332481416)四分片成功。完整本地API测试184项、独立新增5项、Ruff/diff及最终差异复核通过。
+- 诊断范围：仅现有CursorConfigurationError、QueryServiceUnavailable、RuntimeProjectionError转换为503时增加安全WARNING，记录服务端request_id、固定类别、白名单项目代码行和有限异常链。公开响应和authority保持；不记录异常原文、locals、请求、cursor、密钥或payload。未在生产注入故障；本轮没有复现原503，不能宣称根因修复。
+- 发布包：双面各1106文件以已信任物理verifier引导验证，commit/tree/manifest绑定一致，registry重编译一致。manifest SHA256为`617acc752d84bce704dfd9087693cacd44b17f5349a648d5b27d29fbb3ee4b01`。源码从干净35f56同步至f2f5cb2a并保留Git bundle。
+- 切换前实测：17:09:43起新进程A股cold3.939秒、Crypto cold12.059秒；同面并发A股4.342/4.341秒、Crypto11.540/8.205秒，全部认证200、192/240目录、无next_cursor。PID/物理cwd/registry绑定和实际采样时间均记录于root0600证据文件；临时API随后停止。
+- 会话：17:15:50取得双release目录锁，17:15:57验证精确CI与staged evidence；暂停后续timer，等待在运行collector自然排空，没有杀collector。17:19:06.710/07.165分别切换A股/Crypto。actor=`Nicholas-Codex`，task_id=`01a083d1-5dfa-7743-afa2-c66a83dff756-pr548`。17:20:02认证catalog192项/2.262秒、240项/8.839秒，17:20:05恢复原units且errors为空，会话complete。回退版本35f56e07156be97851ed85821b5955d697f2feb2及manifest保留，没有覆盖SQLite。
+- 独立运行复核：17:20:49双current/API物理cwd/各1106文件均为f2f5cb2a；A股PID4118293、Crypto PID4118908；匿名均401、认证200，无next_cursor，192项/4.641秒及240项/7.559秒。A股105success、43empty、38paused、4stale、2failed；Crypto240success。九个采集timer恢复enabled/active，on-demand selector不存在，临时API停止，源码f2f5cb2a干净。这是时点观察，不是完整性或长期稳定证明。
+- 真实query复核：17:21:17–18，bak_daily/dc_member/fund_manager的20260908窗口，各一次plain与proof共6次请求均200、每次1行且仍有下一页，约0.121–0.151秒；普通/proof行内容一致、各一个proof并回链15:07已记录的各自receipt，lineage complete。quality仍为degraded，freshness_watermark与response_completeness未验证；不声称完整或新鲜，未再次执行provider采集。
+
+完整安全证据保存在本机`Documents/Codex/2026-09-09/TradingDatas-followup/`，包括publisher-pause-ack、精确CI JSON、staged-manifests、staged-catalog-measurements、`f2f5cb2a575f2981d836f9ee7790579614e8a80f-diagnostics-session.jsonl`、final-runtime及query-readback。服务器会话审计为`/var/tmp/td-audit-20260909/release/f2f5cb2a575f2981d836f9ee7790579614e8a80f-diagnostics-session.jsonl`。
+
+后续本报告和STATUS纯文档变更只做PR/CI与主线/源码同步，不重复GZ cut；运行验收版本固定为f2f5cb2a。真实客户登录/授权目录/key端到端与原503根因仍未验收，官网无本轮前端变更且未重新部署。
+
+以下各节为15:10及此前历史证据，不代表最新pointer或当前发布交接状态。
+
 ## 已合入实现与检查
 
 - PR543，head 2f1051ae，merged 7bfa1911：账户权限暂时无法确认时显示可重试错误；重试先重新验证现有账户，再读取授权目录。323项site测试、构建、中文/英文及键盘重试、桌面/390px手机实际浏览器检查通过。
