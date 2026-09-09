@@ -1,46 +1,34 @@
 # TradingDatas 当前状态
 
-检查日期：2026-09-09，Asia/Shanghai。当前入口只记录本次可核对结果；数据来源质量、代码合并、运行发布与查询供数分别验收。
+检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为registry、SQLite facts/receipts及读取时钟。完整证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
 
-## 代码与运行
+## 代码、发布与官网
 
-- 运行代码为 `f543f7eb71fb4234a62dbead42524069aa6793ce`，包含 PR #538–#541 的四项修复。精确 merged-main CI [34305906019](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34305906019) 四组通过；主线后续仅有本次交付文档收尾。
-- 双 immutable current、API 进程物理 cwd 与 1098 文件 manifest 均匹配该 SHA。11:24 独立认证 catalog 回读：A股 200/2.457秒/192项，Crypto 200/5.463秒/240项；匿名均401。
-- 最终版本的独立新进程冷启动为3.089/9.891秒，同平面并发为A股4.742/4.749秒、Crypto6.845/9.375秒，均低于15秒。最终版本已由并行发布过程先行切换，本任务完成的是切换后的独立验证；不补写成由本任务完成了切换前排空与门禁。
-- 九个既有采集timer均恢复原enabled/active状态，一次性selector/manifest均清除，临时验收API已停止。源码副本已从干净12fd4097同步到当前运行代码并验证Git备份；运行权威仍为current/manifest。源码及本地主线的最终文档同步另由交付时Git读回记录。
-- 中间2cac切换经系统审计定位到独立root SSH会话126926；具体操作者/本地任务未归因，且切换早于该main CI完成。最终结果已独立验证，这不豁免或追认原切换流程。过程与验收见[运行恢复及采集记录](docs/reports/2026-09-09-runtime-recovery-and-collection.md)。
+- PR543–545已合并，运行实现版本为`8612c625eea98262aaa0c127345e2650836c2c8f`；精确main CI [34318423833](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34318423833)四组成功。新增/相关检查：site323项、分钟组合94项、发布/manifest独立67项通过。
+- 新`safe_release.py`统一合作发布的目录锁、精确CI与真实catalog采样、排空、actor/task审计、失败回滚及原状态恢复，已current/保守纯文档变更跳过。项目入口、CLI和运维文档已在新agent上下文核对，不代表桌面新任务实际加载。
+- **外部发布入口尚未收口。** 双pointer在14:27:47/49由其它过程切换，早于main CI完成。本任务14:32使用新入口时只执行了verified skip；不能追认原切换的CI/排空门禁。SSH会话129385与时段相关，但没有命令审计可确定具体工具/操作者；已排除当前td-admin-autodeploy。root任意手工调用不受合作目录锁约束。
+- 切换后的独立检查：1105文件manifest、双current和API物理cwd匹配8612；新进程cold3.039/9.701秒，同面并发最慢11.100秒，均200、192/240项且无下一页，低于内部catalog15秒门槛。源码副本由本任务从干净684同步到8612并保留Git bundle。最终运行读回见下方15:10快照。
+- 官网PR543经Cloudflare [34317462732](https://github.com/NicholasHan1226/TradingDatas/actions/runs/34317462732)发布，五个公开路由及新JS字节匹配。账户权限暂不可确认时可正确重试；empty/degraded保留真实含义。既有内部read consumer经公网catalog/query已200（目录17.435秒，日历1行查询1.303秒），不替代真实客户账户端到端验收；客户已有登录身份仍待用户选择，未创建key或提升权限。
 
-## 已修复的内部问题
+## 分钟查询与观察边界
 
-- 合法SQLite部分checkpoint被mtime规则误拒绝，导致A股API503与collector快速失败：仅移除错误mtime推断，保留身份、侧车集合、salt、帧/回填、schema与epoch检查。独占锁下已保全18.46GB主库与WAL/SHM一致副本，SHA-256匹配；quick_check=ok、checkpoint=(0,0,0)，恢复前后135028条receipt及最新时间不变。
-- 分钟选择先读取全部192项状态：改为所选active数据集及日历/递归fanout依赖，仍使用完整registry验证receipt。真实只读计划77.47秒；11:00自动轮次73.018秒，rt_min success、无失败。不同负载下的耗时不作严格提速倍数。
-- fund_basic成功重采但旧事实仍指向失败execution前缀：仅真实同payload重观测允许事务内重绑，payload/revision及健康首观测保持。
-- 合法空日期窗口不能附带逐行proof：仅修正该空窗口拒绝条件，required-window、foreign-provider、非空历史、分钟及单一cohort限制保持。
+- rt_min_daily major3按既有有限窗口支持精确time/proof；真实2026-09-01 09:30 slot早于receipt through，plain/proof内容一致，三页共3行的自有receipt、行身份与时间约束通过，仍有下一页，不证明全历史完整。
+- rt_min major2保留同质snapshot约束；真实14:35首行plain/proof通过。盘中分页出现503；同槽一次独立新进程诊断首/二页均可读，尚不能确定原503原因。收盘后API复核：真实15:00 slot连续三页普通/proof请求均200，3行内容、身份和回执校验通过，无重复且仍有下一页；原503原因仍未定位。
+- 同口径新进程cProfile观察26.303→12.773秒，均rt_min/major2/limit5/no-proof；full receipt/binding权威仍完整校验。缓存、SQLite耗时和数据量不同，不声明严格提速倍数或全部query低于15秒。
+- 10:51–13:56有效receipt观察：rt_min19success、rt_min_daily10success、global.news.flash3failed/provider_error。午休、交替not_due与minute reservation有日志解释；11:20有SIGTERM中断。部分旧巡检失败仍未查清，不能把单次成功或journal当作全天/长期稳定证明。
 
-## 已执行采集与查询
+## 本轮有界采集与最终读回
 
-同release no-write plan通过后，使用唯一collector执行一个七项有界batch，未提高10000预算或批量解暂停：
+三项使用20260908明确窗口、同release无写计划、无同窗receipt与有效seed验证；10000预算不变，38个paused不动，由唯一collector在分钟预留结束后执行。
 
-| 数据集 | 真实结果 | returned | inserted |
-|---|---|---:|---:|
-| cb_rate | success | 3 | 0 |
-| cb_rating | empty | 0 | 0 |
-| ci_index_member | success | 2 | 2 |
-| fund_adj（20260908） | success | 1 | 1 |
-| index_member_all | success | 2 | 2 |
-| stk_rewards | success | 6000 | 24 |
-| top10_holders | success | 2897 | 61 |
+15:07批次实际完成：bak_daily新增5567行、dc_member新增14行、fund_manager新增18行；均1个success receipt、0 rejected，回执窗口和当前config校验通过。dc_member仅使用既有单seed，不证明全板块覆盖。唯一collector退出0，一次性selector和manifest已消费，timer恢复enabled/active。15:09对应窗口plain/proof各一次认证query均200，行内容一致、回链本次receipt且lineage complete；每次limit1并仍有下一页。quality均如实为degraded（freshness_watermark_unverified、response_completeness_unverified），不声称完整或新鲜。
 
-合计6项success、1项empty，8905行returned、90行inserted。七项均有当前配置receipt，unobserved清零；六项默认认证查询非空，单行逐行proof均200；cb_rating默认/proof均如实为空。单行proof用于避免跨历史采集序列的整页限制，不放宽该限制。
+15:10双current、API物理cwd和1105文件manifest仍匹配8612；匿名均401，认证catalog为192项/4.220秒和240项/8.854秒。A股状态107success、41empty、38paused、4stale、2failed；Crypto240success。九个timer均enabled/active，selector不存在、临时API停止；源码副本8612干净。此后纯文档交付按PR/CI及主线源码同步验收，不创建新runtime release。
 
-fund_basic另行真实E-only重采2887行：2880 unchanged、7 inserted，2880旧事实重绑新成功receipt；原2884事实的identity/payload hash/schema major/revision均保持，未重观测的4条旧失败前缀保留并排除。物理coverage2891不等于当前可供数2887。六页认证查询核对全部2887个不同row identity，逐行proof均绑定新成功receipt `123660cc0231325bfc336d5f511b707bdde9de83ab1aed84354d1f943ffadeba`，无重复/缺页；上游完整性仍未证明。
+fund_company已观察15371行超硬预算，继续暂停；合法empty、provider_error、stale与partial分别保留，不为得到success追采或伪造完整性。Crypto保持内部独立运行，不纳入公开菜单与套餐。
 
-## 当前限制与本地收尾
+## 本地与历史保留
 
-- 11:24 A股catalog快照：106 success、43 empty、38 paused、3 stale、2 failed；Crypto内部240 success。单次快照不证明连续稳定、全部历史完整或全部查询性能；15秒门槛仅为catalog，rt_min精确时间槽的本次查询约26–28秒。
-- rt_min_daily schema3默认filters={}且关闭proof时可读，本次为stale；其snapshot_field=null，不满足既有分钟proof/精确槽位要求，相关调用仍503。该能力未交付，不属于本次空窗口修复回归，不能靠移除分钟校验放行。
-- fund_company返回15371行超10000硬预算，继续暂停；已有vendor empty/provider_error与其它暂停项保持诚实状态，不伪造非空或完整性。Crypto仅内部独立运行，不纳入公开菜单/套餐/供数数量。
-- 原主目录8文件改动有stash/patch/tar/哈希备份；32个已合并工作树正常移除，ignored原件与证据保留；三个原脏工作树整体归档且哈希一致，旧patch已被主线覆盖，不重复合并。本轮实现工作树也归档，分支和14个旧release暂存目录保留。
-- 本轮未改变真实交易、资金、账号/Token/权限、支付或客户开通；公共站/Cloudflare及消费者业务链不由内部API验收推导为完成。
+本轮三个已合并实现工作树已通过git worktree move归档，分支与ignored文件保留；本地synthetic QA服务已停止。先前原脏目录、stash、数据库/WAL备份、旧release和证据继续保留，未重复合并历史patch。上午四项修复和七项batch/基金重观测见[上午恢复记录](docs/reports/2026-09-09-runtime-recovery-and-collection.md)，不以旧快照代替本轮读回。
 
-长期入口：[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md)。历史快照由Git保留，本页不作为数据权威。
+长期入口：[API](docs/API.md)、[架构](docs/ARCHITECTURE.md)、[运维](docs/OPERATIONS.md)。未涉及真实交易、资金、权限扩展、支付或客户开通。
