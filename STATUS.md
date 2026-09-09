@@ -2,6 +2,20 @@
 
 检查日期：2026-09-09，Asia/Shanghai。当前事实入口；实际数据权威仍为 registry、SQLite facts/receipts 及读取时钟。详细证据见[本轮验收](docs/reports/2026-09-09-release-session-and-minute-readback.md)。
 
+## 23:35 更新：双面受控部署与分钟读回完成
+
+PR #552 已合入 `1edd16fa5860715b0e4cb0eabf16d406d307fb2c`；精确head `7343c10b73ebb176c70464661107686911313437` CI34367011391及main CI34368235152均全部成功。该版本包含此前PR550的单快照分钟查询memo修正和本轮离线目录审计工具；未包含没有可靠收益的sibling合批实验。双面各1108文件manifest、Git tree `7281632bcb16f164c4f1fe63f807116a41594516`及registry重编译一致。
+
+23:22–23:23同目标新进程门禁全部通过：cold A8.874/C10.517秒，同面并发A4.529/4.559、C11.501/8.517秒。每次完整192/240目录及runtime字段、无cursor、真实并发重叠与时效校验通过；两临时API停止读回均inactive。此前19时失败样本保留，当前通过不构成catalog性能修复或持续稳定声明。
+
+23:24:00进入唯一safe_release会话，在双release目录锁内暂停后续timer并等待已有collector自然排空；23:31:08/10分别切换A股/Crypto，23:32:06认证目录192项/2.266秒、240项/8.711秒，23:32:10会话complete，原状态恢复errors=[]。没有杀collector或绕过15秒门槛，回退f2f5cb2a及旧release保留。服务器会话证据为`/var/tmp/td-audit-20260909/release/1edd16fa5860715b0e4cb0eabf16d406d307fb2c-release-session.jsonl`，actor=Nicholas-Codex，task_id末尾pr552。
+
+23:32:53独立复核双current/物理cwd均为1edd16fa，API PID580180/581057；九timer enabled/active、selector不存在、临时API inactive，源码1edd16fa干净。独立完整认证catalog A192项/4.292秒（108success/40empty/38paused/4stale/2failed）、C240项/10.606秒（240success），catalog版本及scope一致，前后各1108文件manifest验证通过。A失败为etf_mins和global.news.flash，均provider_error；Crypto仅该时点未见失败。23:33:37双面匿名401。
+
+23:33–23:35，部署后的rt_min major2对14:35和15:00固定窗口各验收两页，普通/proof各用独立cursor，共8次200。逐行身份、event==through、proof窗口/结束/读取时钟、同cohort、分页无重复及普通/proof相同均通过；各验证2行且仍有下一页，quality degraded/freshness_sla_exceeded。首次18.177秒，其余9.739–12.577秒，不声明所有query低于15秒；本次未复现503，不声明旧间歇故障永久修复或全历史完整。前后current/物理cwd/manifest均为1edd16fa。完整本机证据为`Documents/Codex/2026-09-09/TradingDatas-catalog-release/`的canonical-release-session、staged-catalog-measurements、catalog-postdeploy、runtime-postdeploy和minute-postdeploy。
+
+真实客户仍缺已有登录，尚未验收客户授权目录、复制请求和客户key端到端；没有创建账户/key、提升权限、开通支付或变更官网前端。本节后的各时刻记录均为历史快照，PR550“未部署”只描述23:31之前状态。后续纯文档交接只同步主线/源码，不重复切换本运行版本。
+
 ## 22:50 更新：继续采集与完整目录审计
 
 目录与审计组合回归89项通过，最终审计工具32项复核及完整Ruff通过；独立review未发现P0/P1。README、状态及报告已检查真实渲染。当前候选仅包含离线审计工具、测试与文档，未改变API运行路径。
